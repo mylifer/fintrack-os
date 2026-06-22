@@ -1,0 +1,245 @@
+'use client'
+
+import { useState } from 'react'
+import { Header } from '@/components/layout/Header'
+import { useDebtStore, useAccountStore } from '@/store'
+import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { CurrencyInput } from '@/components/ui/CurrencyInput'
+import { Badge } from '@/components/ui/Badge'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { formatCurrency } from '@/lib/utils/currency'
+import { formatDate, daysUntil, isOverdue } from '@/lib/utils/date'
+import { parseCurrencyInput } from '@/lib/utils/currency'
+import type { Debt, DebtType, DebtDirection } from '@/types'
+import { useShallow } from 'zustand/react/shallow'
+
+const TYPE_OPTIONS = [
+  { value: 'personal',          label: 'Kişisel Borç/Alacak' },
+  { value: 'bank_loan',         label: 'Banka Kredisi' },
+  { value: 'credit_card_debt',  label: 'Kredi Kartı Borcu' },
+  { value: 'installment',       label: 'Taksitli Satın Alma' },
+]
+
+function emptyForm() {
+  return {
+    name: '', type: 'personal' as DebtType, direction: 'owe' as DebtDirection,
+    totalStr: '', paidStr: '0', interestStr: '',
+    startDate: new Date().toISOString().slice(0, 10),
+    dueDate: '', monthlyStr: '', totalInst: '', counterparty: '',
+    accountId: '', notes: '',
+  }
+}
+
+export default function DebtsPage() {
+  const { getActive, add, update, settle, remove } = useDebtStore()
+  const accounts = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
+  const debts = getActive()
+
+  const [showForm, setShowForm]       = useState(false)
+  const [editingDebt, setEditingDebt] = useState<Debt | undefined>()
+  const [loading, setLoading]         = useState(false)
+  const [form, setForm]               = useState(emptyForm())
+
+  const owe   = debts.filter(d => d.direction === 'owe')
+  const owed  = debts.filter(d => d.direction === 'owed')
+  const totalOwe  = owe.reduce((s, d)  => s + d.remainingAmount, 0)
+  const totalOwed = owed.reduce((s, d) => s + d.remainingAmount, 0)
+
+  function fmt(n: number) {
+    return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(n)
+  }
+
+  function startAdd() {
+    setEditingDebt(undefined)
+    setForm(emptyForm())
+    setShowForm(true)
+  }
+
+  function startEdit(debt: Debt) {
+    setEditingDebt(debt)
+    setForm({
+      name:        debt.name,
+      type:        debt.type,
+      direction:   debt.direction,
+      totalStr:    fmt(debt.totalAmount),
+      paidStr:     fmt(debt.paidAmount),
+      interestStr: debt.interestRate ? String(debt.interestRate) : '',
+      startDate:   debt.startDate,
+      dueDate:     debt.dueDate ?? '',
+      monthlyStr:  debt.monthlyPayment ? fmt(debt.monthlyPayment) : '',
+      totalInst:   debt.totalInstallments ? String(debt.totalInstallments) : '',
+      counterparty: debt.counterparty ?? '',
+      accountId:   debt.accountId ?? '',
+      notes:       debt.notes ?? '',
+    })
+    setShowForm(true)
+  }
+
+  function closeForm() {
+    setShowForm(false)
+    setEditingDebt(undefined)
+    setForm(emptyForm())
+  }
+
+  async function handleSave() {
+    if (!form.name || !parseCurrencyInput(form.totalStr)) return
+    setLoading(true)
+
+    const patch = {
+      name:              form.name,
+      type:              form.type,
+      direction:         form.direction,
+      totalAmount:       parseCurrencyInput(form.totalStr),
+      paidAmount:        parseCurrencyInput(form.paidStr),
+      interestRate:      parseCurrencyInput(form.interestStr) || undefined,
+      startDate:         form.startDate,
+      dueDate:           form.dueDate || undefined,
+      monthlyPayment:    parseCurrencyInput(form.monthlyStr) || undefined,
+      totalInstallments: form.totalInst ? Number(form.totalInst) : undefined,
+      counterparty:      form.counterparty || undefined,
+      accountId:         form.accountId || undefined,
+      notes:             form.notes || undefined,
+    }
+
+    if (editingDebt) {
+      await update(editingDebt.id, patch)
+    } else {
+      const d: Debt = {
+        ...patch,
+        id:               crypto.randomUUID(),
+        paidInstallments: 0,
+        isSettled:        false,
+        createdAt:        new Date().toISOString(),
+      }
+      await add(d)
+    }
+
+    closeForm()
+    setLoading(false)
+  }
+
+  function DebtCard({ debt }: { debt: ReturnType<typeof getActive>[0] }) {
+    const overdue = debt.dueDate && isOverdue(debt.dueDate)
+    const days    = debt.dueDate ? daysUntil(debt.dueDate) : null
+
+    return (
+      <div className="p-5 border-b border-line last:border-0">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div>
+            <div className="font-semibold text-sm">{debt.name}</div>
+            {debt.counterparty && (
+              <div className="text-[10px] font-mono text-muted mt-0.5">{debt.counterparty}</div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {overdue ? (
+              <Badge variant="danger">Gecikmiş</Badge>
+            ) : days !== null && days <= 7 ? (
+              <Badge variant="warning">{days}g</Badge>
+            ) : null}
+            <Badge variant={debt.direction === 'owe' ? 'danger' : 'ok'}>
+              {debt.direction === 'owe' ? 'Borçluyum' : 'Alacaklıyım'}
+            </Badge>
+            <button onClick={() => startEdit(debt)} className="text-muted hover:text-ink text-sm transition-colors">✎</button>
+            <button onClick={() => remove(debt.id)} className="text-muted hover:text-danger text-sm transition-colors">×</button>
+          </div>
+        </div>
+
+        <div className="flex items-baseline gap-2 mb-3">
+          <span className="text-2xl font-black tabular tracking-tight">
+            {formatCurrency(debt.remainingAmount)}
+          </span>
+          <span className="text-xs text-muted font-mono">/ {formatCurrency(debt.totalAmount)} toplam</span>
+        </div>
+
+        <div className="h-[2px] bg-line mb-2">
+          <div className="h-full bg-ok" style={{ width: `${debt.progressPercent}%` }} />
+        </div>
+
+        <div className="flex justify-between text-[10px] font-mono text-muted">
+          <span>{formatCurrency(debt.paidAmount)} ödendi (%{Math.round(debt.progressPercent)})</span>
+          {debt.dueDate && <span>{formatDate(debt.dueDate, 'd MMM yyyy')}</span>}
+          {debt.monthlyPayment && <span>Taksit: {formatCurrency(debt.monthlyPayment)}</span>}
+        </div>
+
+        {!debt.isSettled && (
+          <button
+            onClick={() => settle(debt.id)}
+            className="mt-3 text-[10px] font-mono uppercase tracking-wide text-muted hover:text-ok transition-colors"
+          >
+            Kapatıldı olarak işaretle →
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <Header title="Borç Takibi" action={{ label: 'Ekle', onClick: startAdd }} />
+
+      <div className="flex border-b border-line bg-surface">
+        <div className="flex-1 px-6 py-4 border-r border-line">
+          <div className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted mb-1">Toplam Borç</div>
+          <div className="text-xl font-black tabular text-danger">{formatCurrency(totalOwe)}</div>
+        </div>
+        <div className="flex-1 px-6 py-4">
+          <div className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted mb-1">Toplam Alacak</div>
+          <div className="text-xl font-black tabular text-ok">{formatCurrency(totalOwed)}</div>
+        </div>
+      </div>
+
+      <div className="p-4 lg:p-6">
+        {debts.length === 0 ? (
+          <EmptyState
+            icon="◇"
+            title="Aktif borç veya alacak yok"
+            description="Kredi, taksit veya kişisel borçlarınızı takip edin."
+            action={<Button size="sm" onClick={startAdd}>Ekle</Button>}
+          />
+        ) : (
+          <div className="card">
+            {debts.map(d => <DebtCard key={d.id} debt={d} />)}
+          </div>
+        )}
+      </div>
+
+      <Modal open={showForm} onClose={closeForm} title={editingDebt ? 'Borcu Düzenle' : 'Borç / Alacak Ekle'} size="md">
+        <div className="flex flex-col gap-3">
+          <Input label="Açıklama" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} placeholder="Araba Kredisi" />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="Tür" value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value as DebtType}))} options={TYPE_OPTIONS} />
+            <Select label="Yön" value={form.direction}
+              onChange={e => setForm(f => ({...f, direction: e.target.value as DebtDirection}))}
+              options={[{value:'owe',label:'Ben Borçluyum'},{value:'owed',label:'Bana Borçlu'}]}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <CurrencyInput label="Toplam Tutar" value={form.totalStr} onChange={v => setForm(f => ({...f, totalStr: v}))} />
+            <CurrencyInput label="Ödenen" value={form.paidStr} onChange={v => setForm(f => ({...f, paidStr: v}))} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Başlangıç" type="date" value={form.startDate} onChange={e => setForm(f => ({...f, startDate: e.target.value}))} />
+            <Input label="Son Ödeme / Vade" type="date" value={form.dueDate} onChange={e => setForm(f => ({...f, dueDate: e.target.value}))} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <CurrencyInput label="Aylık Taksit" value={form.monthlyStr} onChange={v => setForm(f => ({...f, monthlyStr: v}))} />
+            <Input label="Alacaklı / Kişi" value={form.counterparty} onChange={e => setForm(f => ({...f, counterparty: e.target.value}))} placeholder="Garanti BBVA" />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <Button variant="secondary" onClick={closeForm} fullWidth>İptal</Button>
+            <Button onClick={handleSave} loading={loading} fullWidth>{editingDebt ? 'Güncelle' : 'Kaydet'}</Button>
+          </div>
+        </div>
+      </Modal>
+    </>
+  )
+}
