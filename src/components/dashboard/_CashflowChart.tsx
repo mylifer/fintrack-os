@@ -1,9 +1,12 @@
 'use client'
 
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell,
+  Bar, BarChart, CartesianGrid, XAxis,
 } from 'recharts'
+import {
+  ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
 import { formatCompact } from '@/lib/utils/currency'
 import type { MonthYear } from '@/types'
 
@@ -19,52 +22,34 @@ interface Props {
   selectedPeriod: MonthYear
 }
 
-export default function CashflowBarChart({ data, selectedPeriod }: Props) {
+const chartConfig = {
+  income:  { label: 'Gelir',  color: 'var(--chart-2)' },
+  expense: { label: 'Gider',  color: 'var(--chart-1)' },
+} satisfies ChartConfig
+
+export default function CashflowBarChart({ data }: Props) {
   return (
-    <div className="px-2 py-4 h-48">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} barGap={2} barCategoryGap="30%">
-          <CartesianGrid strokeDasharray="3 0" stroke="#1A2840" vertical={false} />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 9, fontFamily: 'monospace', fill: '#4A6080' }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis hide />
-          <Tooltip
-            contentStyle={{
-              background: '#0E1826',
-              border: '1px solid #1A2840',
-              borderRadius: 8,
-              fontSize: 11,
-              fontFamily: 'monospace',
-            }}
-            formatter={(v) => [formatCompact(Number(v)), '']}
-            labelStyle={{ color: '#C0CCDD', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}
-          />
-          <Bar dataKey="income" name="Gelir" fill="#34D399" radius={[4, 4, 0, 0]}>
-            {data.map((entry, i) => (
-              <Cell
-                key={i}
-                fill={entry.my.month === selectedPeriod.month && entry.my.year === selectedPeriod.year
-                  ? '#34D399' : '#1A3830'
-                }
-              />
-            ))}
-          </Bar>
-          <Bar dataKey="expense" name="Gider" fill="#F87171" radius={[4, 4, 0, 0]}>
-            {data.map((entry, i) => (
-              <Cell
-                key={i}
-                fill={entry.my.month === selectedPeriod.month && entry.my.year === selectedPeriod.year
-                  ? '#F87171' : '#2A1820'
-                }
-              />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartContainer config={chartConfig} className="aspect-auto h-[220px] w-full">
+      <BarChart data={data} barGap={4} barCategoryGap="30%">
+        <CartesianGrid vertical={false} />
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          tickMargin={10}
+          axisLine={false}
+        />
+        <ChartTooltip
+          cursor={false}
+          content={
+            <ChartTooltipContent
+              formatter={(value, name) => [formatCompact(Number(value)), name]}
+            />
+          }
+        />
+        <ChartLegend content={<ChartLegendContent />} />
+        <Bar dataKey="income"  fill="var(--color-income)"  radius={[4, 4, 0, 0]} />
+        <Bar dataKey="expense" fill="var(--color-expense)" radius={[4, 4, 0, 0]} />
+      </BarChart>
+    </ChartContainer>
   )
 }

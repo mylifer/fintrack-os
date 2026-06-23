@@ -7,16 +7,13 @@ import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, calcMonthlyFlow } from '@/lib/utils/calculations'
 import { lastNMonths } from '@/lib/utils/date'
 import { formatCompact } from '@/lib/utils/currency'
-import { Card, CardHeader, CardContent } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
+import { TrendingUp, TrendingDown } from 'lucide-react'
 import type { MonthYear } from '@/types'
 
 const Chart = dynamic(() => import('./_NetWorthChart'), {
   ssr: false,
-  loading: () => (
-    <div className="h-48 flex items-center justify-center text-[10px] font-mono text-muted-foreground uppercase tracking-wide">
-      Yükleniyor...
-    </div>
-  ),
+  loading: () => <div className="h-[220px] flex items-center justify-center text-sm text-muted-foreground">Yükleniyor…</div>,
 })
 
 interface DataPoint {
@@ -52,28 +49,27 @@ export function NetWorthChart() {
     return result
   }, [transactions, currentNW])
 
-  const trend = data.length >= 2
-    ? data[data.length - 1].netWorth - data[0].netWorth
-    : 0
+  const trend = data.length >= 2 ? data[data.length - 1].netWorth - data[0].netWorth : 0
+  const up    = trend >= 0
 
   return (
-    <Card className="h-full overflow-hidden">
-      <CardHeader className="flex-row items-center justify-between border-b border-border/50 pb-4">
-        <span className="text-xs font-medium text-muted-foreground">Net Varlık Trendi — Son 6 Ay</span>
-        {trend !== 0 && (
-          <span className={`text-xs font-medium tabular-nums ${trend >= 0 ? 'text-emerald-400' : 'text-destructive'}`}>
-            {trend >= 0 ? '+' : ''}{formatCompact(trend)}
-          </span>
-        )}
+    <Card>
+      <CardHeader>
+        <CardTitle>Net Varlık</CardTitle>
+        <CardDescription>Son 6 aylık varlık trendi</CardDescription>
       </CardHeader>
-
-      <CardContent className="p-0">
+      <CardContent>
         <Chart data={data} selectedPeriod={selectedPeriod} />
-        <div className="px-6 pb-5 flex items-center gap-2">
-          <span className="w-2.5 h-2.5 bg-primary rounded-full inline-block" />
-          <span className="text-xs text-muted-foreground">Net Varlık</span>
-        </div>
       </CardContent>
+      <CardFooter className="flex-col items-start gap-2 text-sm">
+        <div className={`flex gap-2 font-medium leading-none ${up ? 'text-green-600' : 'text-destructive'}`}>
+          {up ? '6 ayda +' : '6 ayda '}{formatCompact(Math.abs(trend))} değişim{' '}
+          {up ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+        </div>
+        <div className="text-muted-foreground leading-none">
+          Güncel: {formatCompact(currentNW)}
+        </div>
+      </CardFooter>
     </Card>
   )
 }

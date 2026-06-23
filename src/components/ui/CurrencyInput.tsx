@@ -20,12 +20,12 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
-          <label htmlFor={inputId} className="text-xs font-semibold tracking-wide uppercase text-muted">
+          <label htmlFor={inputId} className="text-xs font-semibold tracking-wide uppercase text-muted-foreground">
             {label}
           </label>
         )}
         <div className="relative">
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-mono text-muted pointer-events-none">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-mono text-muted-foreground pointer-events-none">
             {symbol}
           </span>
           <input
@@ -36,9 +36,9 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
             value={value}
             onChange={e => onChange(e.target.value)}
             className={[
-              'w-full bg-surface text-ink text-sm pl-9 pr-3.5 py-2.5 rounded-xl',
-              'border border-line focus:border-accent outline-none',
-              'placeholder:text-muted font-mono tabular transition-colors duration-100',
+              'w-full bg-card text-foreground text-sm pl-9 pr-3.5 py-2.5 rounded-xl',
+              'border border-border focus:border-accent outline-none',
+              'placeholder:text-muted-foreground font-mono tabular transition-colors duration-100',
               'text-right',
               error ? 'border-danger focus:border-danger' : '',
               className,
@@ -47,7 +47,7 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
             {...props}
           />
         </div>
-        {error && <span className="text-xs text-danger">{error}</span>}
+        {error && <span className="text-xs text-destructive">{error}</span>}
       </div>
     )
   },

@@ -220,9 +220,9 @@ export default function ReportsPage() {
       <Header title="Raporlar" />
 
       {/* ── Filter bar ────────────────────────────────────────────── */}
-      <div className="px-6 py-3 border-b border-border/50 bg-surface flex flex-wrap items-center gap-3 flex-shrink-0">
+      <div className="px-6 py-3 border-b border-border/50 bg-card flex flex-wrap items-center gap-3 flex-shrink-0">
 
-        <div className="flex gap-0.5 bg-ground p-1 rounded-xl">
+        <div className="flex gap-0.5 bg-background p-1 rounded-xl">
           {PRESETS.map(p => (
             <button
               key={p.key}
@@ -243,14 +243,14 @@ export default function ReportsPage() {
               type="date"
               value={customFrom}
               onChange={e => setCustomFrom(e.target.value)}
-              className="border border-border rounded-xl px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-primary"
+              className="border border-border rounded-xl px-2 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:border-primary"
             />
-            <span className="text-muted text-xs">—</span>
+            <span className="text-muted-foreground text-xs">—</span>
             <input
               type="date"
               value={customTo}
               onChange={e => setCustomTo(e.target.value)}
-              className="border border-border rounded-xl px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-primary"
+              className="border border-border rounded-xl px-2 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:border-primary"
             />
           </div>
         )}
@@ -258,7 +258,7 @@ export default function ReportsPage() {
         <select
           value={accountId}
           onChange={e => setAccountId(e.target.value)}
-          className="ml-auto border border-border rounded-xl px-3 py-2 text-xs text-ink bg-surface focus:outline-none focus:border-primary cursor-pointer"
+          className="ml-auto border border-border rounded-xl px-3 py-2 text-xs text-foreground bg-card focus:outline-none focus:border-primary cursor-pointer"
         >
           <option value="all">Tüm Hesaplar</option>
           {accounts.map(a => (
@@ -275,9 +275,9 @@ export default function ReportsPage() {
             [...Array(4)].map((_, i) => (
               <Card key={i}>
                 <CardContent className="px-5 py-4">
-                  <div className="h-2.5 w-20 bg-line rounded animate-pulse mb-3" />
-                  <div className="h-7 w-32 bg-line rounded animate-pulse" />
-                  <div className="h-2 w-16 bg-line rounded animate-pulse mt-2" />
+                  <div className="h-2.5 w-20 bg-muted rounded animate-pulse mb-3" />
+                  <div className="h-7 w-32 bg-muted rounded animate-pulse" />
+                  <div className="h-2 w-16 bg-muted rounded animate-pulse mt-2" />
                 </CardContent>
               </Card>
             ))
@@ -320,7 +320,7 @@ export default function ReportsPage() {
             <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
               <span className="text-sm font-semibold text-foreground/90">Nakit Akışı</span>
               {!isLoading && (
-                <span className={`text-xs font-medium tabular-nums ${kpi.net >= 0 ? 'text-ok' : 'text-danger'}`}>
+                <span className={`text-xs font-medium tabular-nums ${kpi.net >= 0 ? 'text-green-600' : 'text-destructive'}`}>
                   Net: {kpi.net >= 0 ? '+' : '−'}{formatCurrency(Math.abs(kpi.net))}
                 </span>
               )}
@@ -332,8 +332,8 @@ export default function ReportsPage() {
                 </div>
               </div>
               <div className="px-5 pb-4 flex gap-4">
-                <LegendDot color="#16A34A" label="Gelir" />
-                <LegendDot color="#DC2626" label="Gider" />
+                <LegendDot color="#00E676" label="Gelir" />
+                <LegendDot color="#FF1744" label="Gider" />
               </div>
             </CardContent>
           </Card>
@@ -390,7 +390,7 @@ export default function ReportsPage() {
               </span>
               <button
                 onClick={() => { setSelectedCat(null); setActiveSliceIdx(null) }}
-                className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/[0.08] rounded-lg transition-colors text-sm flex-shrink-0"
+                className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors text-sm flex-shrink-0"
                 title="Kapat"
               >✕</button>
             </CardHeader>
@@ -414,7 +414,7 @@ export default function ReportsPage() {
               {accountId === 'all' ? 'Net Varlık Trendi' : 'Hesap Bakiye Trendi'}
             </span>
             {!isLoading && trendData.length > 0 && (
-              <span className={`text-xs font-medium tabular-nums ${(trendData.at(-1)?.balance ?? 0) >= 0 ? 'text-ok' : 'text-danger'}`}>
+              <span className={`text-xs font-medium tabular-nums ${(trendData.at(-1)?.balance ?? 0) >= 0 ? 'text-green-600' : 'text-destructive'}`}>
                 Güncel: {formatCurrency(trendData.at(-1)?.balance ?? 0)}
               </span>
             )}
@@ -444,7 +444,7 @@ function KPICard({
   prefix?: string
   color?: 'ok' | 'danger' | 'neutral'
 }) {
-  const cls = color === 'ok' ? 'text-ok' : color === 'danger' ? 'text-danger' : 'text-foreground'
+  const cls = color === 'ok' ? 'text-green-600' : color === 'danger' ? 'text-destructive' : 'text-foreground'
   return (
     <Card>
       <CardContent className="px-5 py-4">
@@ -472,8 +472,8 @@ function BarSkeleton() {
     <div className="flex items-end gap-2 px-4 pb-2 pt-4" style={{ height: 252 }}>
       {[65, 40, 80, 55, 70, 45, 75, 50].map((h, i) => (
         <div key={i} className="flex-1 flex gap-0.5 items-end">
-          <div className="flex-1 bg-line animate-pulse rounded-t" style={{ height: `${h}%` }} />
-          <div className="flex-1 bg-line animate-pulse rounded-t" style={{ height: `${h * 0.65}%` }} />
+          <div className="flex-1 bg-muted animate-pulse rounded-t" style={{ height: `${h}%` }} />
+          <div className="flex-1 bg-muted animate-pulse rounded-t" style={{ height: `${h * 0.65}%` }} />
         </div>
       ))}
     </div>
@@ -486,7 +486,7 @@ function DonutSkeleton() {
       <div className="w-44 h-44 rounded-full border-[20px] border-border animate-pulse" />
       <div className="grid grid-cols-2 gap-2 px-6 w-full">
         {[...Array(6)].map((_, i) => (
-          <div key={i} className="h-4 bg-line rounded animate-pulse" />
+          <div key={i} className="h-4 bg-muted rounded animate-pulse" />
         ))}
       </div>
     </div>

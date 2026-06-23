@@ -36,7 +36,7 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
   return (
     <div
       className={[
-        'flex items-center gap-2 px-5 py-3 bg-ground border-b border-border',
+        'flex items-center gap-2 px-5 py-3 bg-background border-b border-border',
         indent ? 'pl-14' : '',
       ].join(' ')}
     >
@@ -47,7 +47,7 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
         onChange={e => onChange({ ...form, icon: e.target.value })}
         placeholder="📦"
         maxLength={2}
-        className="w-10 h-9 text-center text-xl border border-border rounded-lg bg-ground text-ink focus:outline-none focus:border-primary"
+        className="w-10 h-9 text-center text-xl border border-border rounded-lg bg-background text-foreground focus:outline-none focus:border-primary"
       />
 
       {/* Name */}
@@ -58,14 +58,14 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
         onKeyDown={e => { if (e.key === 'Enter' && form.name.trim()) onSave() }}
         placeholder="Kategori adı"
         autoFocus
-        className="flex-1 text-sm border border-border rounded-lg px-3 h-9 bg-ground text-ink focus:outline-none focus:border-primary"
+        className="flex-1 text-sm border border-border rounded-lg px-3 h-9 bg-background text-foreground focus:outline-none focus:border-primary"
       />
 
       {/* Scope */}
       <select
         value={form.scope}
         onChange={e => onChange({ ...form, scope: e.target.value as CategoryScope })}
-        className="text-xs border border-border rounded-lg px-2 h-9 bg-ground text-ink focus:outline-none cursor-pointer flex-shrink-0"
+        className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0"
       >
         <option value="expense">Gider</option>
         <option value="income">Gelir</option>
@@ -98,7 +98,7 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
       {/* Cancel */}
       <button
         onClick={onCancel}
-        className="px-3 h-9 rounded-lg border border-border text-xs text-muted hover:text-ink transition-colors flex-shrink-0"
+        className="px-3 h-9 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
       >
         İptal
       </button>
@@ -191,7 +191,7 @@ export function CategoryManager() {
       <div
         key={cat.id}
         className={[
-          'flex items-center gap-3 px-5 py-3 border-b border-border hover:bg-white/[0.03] group transition-colors',
+          'flex items-center gap-3 px-5 py-3 border-b border-border hover:bg-accent group transition-colors',
           indent ? 'pl-14' : '',
         ].join(' ')}
       >
@@ -204,7 +204,7 @@ export function CategoryManager() {
         </div>
 
         {/* Name */}
-        <span className="flex-1 text-sm font-medium text-ink min-w-0 truncate">{cat.name}</span>
+        <span className="flex-1 text-sm font-medium text-foreground min-w-0 truncate">{cat.name}</span>
 
         {/* Scope pill */}
         <span
@@ -219,12 +219,12 @@ export function CategoryManager() {
 
         {/* System badge */}
         {cat.isSystem && (
-          <span className="text-[10px] font-medium text-muted flex-shrink-0">Sistem</span>
+          <span className="text-[10px] font-medium text-muted-foreground flex-shrink-0">Sistem</span>
         )}
 
         {/* Sub-count */}
         {subs.length > 0 && (
-          <span className="text-[10px] text-muted flex-shrink-0">{subs.length} alt</span>
+          <span className="text-[10px] text-muted-foreground flex-shrink-0">{subs.length} alt</span>
         )}
 
         {/* Action buttons */}
@@ -232,7 +232,7 @@ export function CategoryManager() {
           {/* Edit */}
           <button
             onClick={() => startEdit(cat)}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] transition-colors text-xs"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-xs"
             title="Düzenle"
           >✎</button>
 
@@ -240,7 +240,7 @@ export function CategoryManager() {
           {!indent && (
             <button
               onClick={() => startAdd(cat.id, cat.scope)}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-muted hover:text-accent hover:bg-white/[0.08] transition-colors font-bold text-sm leading-none"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-accent transition-colors font-bold text-sm leading-none"
               title="Alt kategori ekle"
             >+</button>
           )}
@@ -251,13 +251,13 @@ export function CategoryManager() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => handleDelete(cat)}
-                  className="px-2 h-7 rounded-lg bg-danger text-white text-[10px] font-semibold hover:bg-danger/80 transition-colors"
+                  className="px-2 h-7 rounded-lg bg-destructive text-white text-[10px] font-semibold hover:bg-destructive/80 transition-colors"
                 >
                   Sil
                 </button>
                 <button
                   onClick={() => setConfirmDelete(null)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center border border-border text-muted text-xs hover:text-ink transition-colors"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center border border-border text-muted-foreground text-xs hover:text-foreground transition-colors"
                 >
                   ✕
                 </button>
@@ -265,7 +265,7 @@ export function CategoryManager() {
             ) : (
               <button
                 onClick={() => handleDelete(cat)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted hover:text-danger hover:bg-white/[0.08] transition-colors text-base leading-none"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent transition-colors text-base leading-none"
                 title="Sil"
               >×</button>
             )

@@ -28,9 +28,9 @@ const buttonVariants = cva(
         danger:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20",
         ok:
-          "bg-ok/10 text-ok hover:bg-ok/20",
+          "bg-green-600/10 text-green-600 hover:bg-green-600/20",
         warning:
-          "bg-amber/10 text-amber hover:bg-amber/20",
+          "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20",
       },
       size: {
         default: "h-9 px-4",

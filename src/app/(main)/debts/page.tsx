@@ -132,7 +132,7 @@ export default function DebtsPage() {
           <div>
             <div className="font-semibold text-sm">{debt.name}</div>
             {debt.counterparty && (
-              <div className="text-xs text-muted mt-0.5">{debt.counterparty}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{debt.counterparty}</div>
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -144,8 +144,8 @@ export default function DebtsPage() {
             <Badge variant={debt.direction === 'owe' ? 'danger' : 'ok'}>
               {debt.direction === 'owe' ? 'Borçluyum' : 'Alacaklıyım'}
             </Badge>
-            <button onClick={() => startEdit(debt)} className="text-muted hover:text-ink text-sm transition-colors">✎</button>
-            <button onClick={() => remove(debt.id)} className="text-muted hover:text-danger text-sm transition-colors">×</button>
+            <button onClick={() => startEdit(debt)} className="text-muted-foreground hover:text-foreground text-sm transition-colors">✎</button>
+            <button onClick={() => remove(debt.id)} className="text-muted-foreground hover:text-destructive text-sm transition-colors">×</button>
           </div>
         </div>
 
@@ -153,14 +153,14 @@ export default function DebtsPage() {
           <span className="text-xl font-medium tracking-tight tabular-nums">
             {formatCurrency(debt.remainingAmount)}
           </span>
-          <span className="text-xs text-muted">/ {formatCurrency(debt.totalAmount)} toplam</span>
+          <span className="text-xs text-muted-foreground">/ {formatCurrency(debt.totalAmount)} toplam</span>
         </div>
 
-        <div className="h-[2px] bg-line mb-2">
-          <div className="h-full bg-ok" style={{ width: `${debt.progressPercent}%` }} />
+        <div className="h-[2px] bg-muted mb-2">
+          <div className="h-full bg-green-600" style={{ width: `${debt.progressPercent}%` }} />
         </div>
 
-        <div className="flex justify-between text-xs text-muted">
+        <div className="flex justify-between text-xs text-muted-foreground">
           <span>{formatCurrency(debt.paidAmount)} ödendi (%{Math.round(debt.progressPercent)})</span>
           {debt.dueDate && <span>{formatDate(debt.dueDate, 'd MMM yyyy')}</span>}
           {debt.monthlyPayment && <span>Taksit: {formatCurrency(debt.monthlyPayment)}</span>}
@@ -169,7 +169,7 @@ export default function DebtsPage() {
         {!debt.isSettled && (
           <button
             onClick={() => settle(debt.id)}
-            className="mt-3 text-xs font-medium uppercase tracking-wide text-muted hover:text-ok transition-colors"
+            className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-green-600 transition-colors"
           >
             Kapatıldı olarak işaretle →
           </button>
@@ -182,14 +182,14 @@ export default function DebtsPage() {
     <>
       <Header title="Borç Takibi" action={{ label: 'Ekle', onClick: startAdd }} />
 
-      <div className="flex border-b border-border bg-surface">
+      <div className="flex border-b border-border bg-card">
         <div className="flex-1 px-6 py-4 border-r border-border">
-          <div className="text-xs font-medium uppercase tracking-wide text-muted mb-1">Toplam Borç</div>
-          <div className="text-3xl font-light tracking-tight tabular-nums text-danger">{formatCurrency(totalOwe)}</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Toplam Borç</div>
+          <div className="text-3xl font-light tracking-tight tabular-nums text-destructive">{formatCurrency(totalOwe)}</div>
         </div>
         <div className="flex-1 px-6 py-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-muted mb-1">Toplam Alacak</div>
-          <div className="text-3xl font-light tracking-tight tabular-nums text-ok">{formatCurrency(totalOwed)}</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Toplam Alacak</div>
+          <div className="text-3xl font-light tracking-tight tabular-nums text-green-600">{formatCurrency(totalOwed)}</div>
         </div>
       </div>
 

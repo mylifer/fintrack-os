@@ -248,7 +248,7 @@ export function BackupManager() {
             </div>
             <button
               onClick={() => fileRef.current?.click()}
-              className="flex-shrink-0 px-4 h-9 rounded-xl border border-border text-xs font-semibold text-foreground hover:bg-white/[0.06] transition-colors"
+              className="flex-shrink-0 px-4 h-9 rounded-xl border border-border text-xs font-semibold text-foreground hover:bg-accent transition-colors"
             >
               Dosya Seç
             </button>
@@ -260,7 +260,7 @@ export function BackupManager() {
           {preview && (
             <div className="rounded-xl border border-border overflow-hidden">
               {/* File info */}
-              <div className="px-4 py-3 bg-ground flex items-center justify-between gap-3">
+              <div className="px-4 py-3 bg-background flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-xs font-semibold text-foreground truncate">{fileName}</div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">
@@ -284,7 +284,7 @@ export function BackupManager() {
                   return (
                     <span
                       key={key}
-                      className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/[0.08] text-foreground"
+                      className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-muted/50 text-foreground"
                     >
                       {count} {TABLE_LABELS[key]}
                     </span>
@@ -293,21 +293,21 @@ export function BackupManager() {
               </div>
 
               {/* Warning + confirm */}
-              <div className="px-4 py-3 border-t border-border bg-danger/[0.06] flex flex-col gap-2">
+              <div className="px-4 py-3 border-t border-border bg-destructive/[0.06] flex flex-col gap-2">
                 <p className="text-[10px] text-destructive font-medium">
                   Bu işlem geri alınamaz. Mevcut tüm verileriniz silinecek ve yedeğinizdeki veriler yüklenecek.
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setPreview(null); setFileName('') }}
-                    className="flex-1 h-9 rounded-xl border border-border bg-surface text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex-1 h-9 rounded-xl border border-border bg-card text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                   >
                     İptal
                   </button>
                   <button
                     onClick={handleImport}
                     disabled={importing}
-                    className="flex-1 h-9 rounded-xl bg-danger text-white text-xs font-semibold hover:bg-danger/80 disabled:opacity-40 transition-colors"
+                    className="flex-1 h-9 rounded-xl bg-destructive text-white text-xs font-semibold hover:bg-destructive/80 disabled:opacity-40 transition-colors"
                   >
                     {importing ? 'Geri Yükleniyor...' : 'Evet, Geri Yükle'}
                   </button>
@@ -319,12 +319,12 @@ export function BackupManager() {
 
         {/* Messages */}
         {error && (
-          <div className="text-xs text-destructive font-medium px-4 py-2.5 bg-danger/10 rounded-xl leading-relaxed">
+          <div className="text-xs text-destructive font-medium px-4 py-2.5 bg-destructive/10 rounded-xl leading-relaxed">
             {error}
           </div>
         )}
         {success && (
-          <div className="text-xs text-ok font-medium px-4 py-2.5 bg-ok/10 rounded-xl">
+          <div className="text-xs text-green-600 font-medium px-4 py-2.5 bg-green-600/10 rounded-xl">
             {success}
           </div>
         )}

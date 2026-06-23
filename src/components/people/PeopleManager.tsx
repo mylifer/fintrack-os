@@ -70,7 +70,7 @@ export function PeopleManager({ role, emptyText }: Props) {
         {/* Add form */}
         <div className="mb-6">
           {showAdd ? (
-            <div className="flex gap-2 items-center p-4 bg-surface border border-line rounded-xl">
+            <div className="flex gap-2 items-center p-4 bg-card border border-border rounded-xl">
               <input
                 autoFocus
                 value={newName}
@@ -80,18 +80,18 @@ export function PeopleManager({ role, emptyText }: Props) {
                   if (e.key === 'Escape') { setShowAdd(false); setNewName('') }
                 }}
                 placeholder="İsim girin..."
-                className="flex-1 border border-line px-3 py-2 text-sm bg-surface text-ink focus:border-ink outline-none rounded-lg"
+                className="flex-1 border border-border px-3 py-2 text-sm bg-card text-foreground focus:border-ink outline-none rounded-lg"
               />
               <button
                 onClick={handleAdd}
                 disabled={!newName.trim()}
-                className="px-4 py-2 bg-accent text-white text-xs font-semibold rounded-xl hover:bg-accent/85 transition-colors disabled:opacity-40"
+                className="px-4 py-2 bg-primary text-white text-xs font-semibold rounded-xl hover:bg-primary/85 transition-colors disabled:opacity-40"
               >
                 Ekle
               </button>
               <button
                 onClick={() => { setShowAdd(false); setNewName('') }}
-                className="px-4 py-2 border border-line text-xs font-semibold text-muted rounded-xl hover:bg-ground transition-colors"
+                className="px-4 py-2 border border-border text-xs font-semibold text-muted-foreground rounded-xl hover:bg-background transition-colors"
               >
                 İptal
               </button>
@@ -99,7 +99,7 @@ export function PeopleManager({ role, emptyText }: Props) {
           ) : (
             <button
               onClick={() => setShowAdd(true)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-line text-sm text-muted rounded-xl hover:border-muted hover:text-ink transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-border text-sm text-muted-foreground rounded-xl hover:border-muted hover:text-foreground transition-colors"
             >
               <span className="text-base leading-none font-bold">+</span>
               <span className="font-medium">Yeni ekle</span>
@@ -111,8 +111,8 @@ export function PeopleManager({ role, emptyText }: Props) {
         {people.length === 0 && !showAdd && (
           <div className="text-center py-16">
             <div className="text-5xl mb-4 opacity-20">👤</div>
-            <p className="text-sm font-medium text-ink/50">{emptyText}</p>
-            <p className="text-xs text-muted mt-1">Yukarıdaki butonu kullanarak ekleyebilirsiniz.</p>
+            <p className="text-sm font-medium text-foreground/50">{emptyText}</p>
+            <p className="text-xs text-muted-foreground mt-1">Yukarıdaki butonu kullanarak ekleyebilirsiniz.</p>
           </div>
         )}
 
@@ -127,7 +127,7 @@ export function PeopleManager({ role, emptyText }: Props) {
               return (
                 <div
                   key={person.id}
-                  className="group flex items-center gap-3 px-4 py-3 bg-surface border border-line rounded-xl hover:border-muted transition-colors min-h-[52px]"
+                  className="group flex items-center gap-3 px-4 py-3 bg-card border border-border rounded-xl hover:border-muted transition-colors min-h-[52px]"
                 >
                   {isEditing ? (
                     <>
@@ -146,7 +146,7 @@ export function PeopleManager({ role, emptyText }: Props) {
                             if (e.key === 'Escape') { setEditId(null); setEditName(''); setEditUrl('') }
                           }}
                           placeholder="İsim..."
-                          className="w-full border border-line px-2 py-1.5 text-sm bg-surface text-ink focus:border-accent outline-none rounded-lg"
+                          className="w-full border border-border px-2 py-1.5 text-sm bg-card text-foreground focus:border-accent outline-none rounded-lg"
                         />
                         {role === 'recipient' && (
                           <input
@@ -158,36 +158,36 @@ export function PeopleManager({ role, emptyText }: Props) {
                               if (e.key === 'Escape') { setEditId(null); setEditName(''); setEditUrl('') }
                             }}
                             placeholder="https://migros.com.tr  (favicon için)"
-                            className="w-full border border-line px-2 py-1.5 text-xs bg-surface text-muted focus:border-accent focus:text-ink outline-none rounded-lg"
+                            className="w-full border border-border px-2 py-1.5 text-xs bg-card text-muted-foreground focus:border-accent focus:text-foreground outline-none rounded-lg"
                           />
                         )}
                       </div>
                       <button
                         onClick={handleRename}
-                        className="w-7 h-7 flex-shrink-0 flex items-center justify-center text-ok hover:bg-white/[0.08] rounded-lg transition-colors font-bold text-sm"
+                        className="w-7 h-7 flex-shrink-0 flex items-center justify-center text-green-600 hover:bg-accent rounded-lg transition-colors font-bold text-sm"
                       >✓</button>
                       <button
                         onClick={() => { setEditId(null); setEditName(''); setEditUrl('') }}
-                        className="w-7 h-7 flex-shrink-0 flex items-center justify-center text-danger hover:bg-white/[0.08] rounded-lg transition-colors font-bold text-sm"
+                        className="w-7 h-7 flex-shrink-0 flex items-center justify-center text-destructive hover:bg-accent rounded-lg transition-colors font-bold text-sm"
                       >✕</button>
                     </>
                   ) : isDeleting ? (
                     <>
                       <PersonAvatar person={person} size="sm" className="flex-shrink-0 opacity-40" />
-                      <span className="flex-1 text-sm font-medium text-ink/40 line-through">{person.name}</span>
+                      <span className="flex-1 text-sm font-medium text-foreground/40 line-through">{person.name}</span>
                       {count > 0 && (
-                        <span className="text-[10px] text-danger font-semibold flex-shrink-0">
+                        <span className="text-[10px] text-destructive font-semibold flex-shrink-0">
                           {count} işlem etkilenecek
                         </span>
                       )}
-                      <span className="text-[11px] text-danger font-semibold flex-shrink-0">Sil?</span>
+                      <span className="text-[11px] text-destructive font-semibold flex-shrink-0">Sil?</span>
                       <button
                         onClick={() => handleDelete(person.id)}
-                        className="w-7 h-7 flex items-center justify-center text-ok hover:bg-white/[0.08] rounded-lg transition-colors font-bold text-sm flex-shrink-0"
+                        className="w-7 h-7 flex items-center justify-center text-green-600 hover:bg-accent rounded-lg transition-colors font-bold text-sm flex-shrink-0"
                       >✓</button>
                       <button
                         onClick={() => setDeleteId(null)}
-                        className="w-7 h-7 flex items-center justify-center text-muted hover:bg-white/[0.08] rounded-lg transition-colors font-bold text-sm flex-shrink-0"
+                        className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:bg-accent rounded-lg transition-colors font-bold text-sm flex-shrink-0"
                       >✕</button>
                     </>
                   ) : (
@@ -196,7 +196,7 @@ export function PeopleManager({ role, emptyText }: Props) {
                       <button
                         type="button"
                         onClick={() => setOverlay(person)}
-                        className="flex-1 min-w-0 text-sm font-medium text-ink text-left truncate hover:text-accent transition-colors"
+                        className="flex-1 min-w-0 text-sm font-medium text-foreground text-left truncate hover:text-primary transition-colors"
                       >
                         {person.name}
                       </button>
@@ -204,7 +204,7 @@ export function PeopleManager({ role, emptyText }: Props) {
                         <button
                           type="button"
                           onClick={() => setOverlay(person)}
-                          className="text-[10px] font-mono text-muted bg-ground px-2 py-0.5 rounded-full flex-shrink-0 hover:bg-white/[0.08] transition-colors"
+                          className="text-[10px] font-mono text-muted-foreground bg-background px-2 py-0.5 rounded-full flex-shrink-0 hover:bg-accent transition-colors"
                         >
                           {count} işlem
                         </button>
@@ -212,12 +212,12 @@ export function PeopleManager({ role, emptyText }: Props) {
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                         <button
                           onClick={() => { setEditId(person.id); setEditName(person.name); setEditUrl(person.url ?? ''); setDeleteId(null) }}
-                          className="w-7 h-7 flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] rounded-lg transition-colors text-sm"
+                          className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors text-sm"
                           title="Düzenle"
                         >✎</button>
                         <button
                           onClick={() => { setDeleteId(person.id); setEditId(null); setEditName('') }}
-                          className="w-7 h-7 flex items-center justify-center text-muted hover:text-danger hover:bg-white/[0.08] rounded-lg transition-colors text-sm"
+                          className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent rounded-lg transition-colors text-sm"
                           title="Sil"
                         >×</button>
                       </div>

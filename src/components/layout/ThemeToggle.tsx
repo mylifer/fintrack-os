@@ -6,11 +6,11 @@ const SUN  = 'M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.5
 const MOON = 'M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z'
 
 export function ThemeToggle() {
-  const [isDark, setIsDark] = useState(true)
+  const [isDark, setIsDark] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('fintrack-theme')
-    setIsDark(saved !== 'light')
+    setIsDark(saved === 'dark')
   }, [])
 
   function toggle() {
@@ -18,16 +18,16 @@ export function ThemeToggle() {
     setIsDark(next)
     localStorage.setItem('fintrack-theme', next ? 'dark' : 'light')
     if (next) {
-      document.documentElement.removeAttribute('data-theme')
+      document.documentElement.classList.add('dark')
     } else {
-      document.documentElement.setAttribute('data-theme', 'light')
+      document.documentElement.classList.remove('dark')
     }
   }
 
   return (
     <button
       onClick={toggle}
-      className="w-9 h-9 flex items-center justify-center rounded-xl text-muted hover:text-ink hover:bg-white/[0.05] transition-colors flex-shrink-0"
+      className="w-9 h-9 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
       title={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
     >
       <svg

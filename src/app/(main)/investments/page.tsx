@@ -37,7 +37,7 @@ const ASSET_META: Record<InvestmentAsset, { label: string; icon: string; unit: s
 }
 
 function pnlColor(pnl: number) {
-  return pnl > 0 ? 'text-ok' : pnl < 0 ? 'text-danger' : 'text-muted'
+  return pnl > 0 ? 'text-green-600' : pnl < 0 ? 'text-destructive' : 'text-muted-foreground'
 }
 
 function fmtQty(qty: number, unit: string) {
@@ -153,7 +153,7 @@ export default function InvestmentsPage() {
       />
 
       {/* Live price ticker */}
-      <div className="px-6 py-3 border-b border-border/50 bg-surface flex items-center gap-6 overflow-x-auto flex-shrink-0">
+      <div className="px-6 py-3 border-b border-border/50 bg-card flex items-center gap-6 overflow-x-auto flex-shrink-0">
         {prices ? (
           <>
             <Ticker label="USD/TRY"  value={prices.usdTry.toFixed(2)}  current={prices.usdTry}      previous={prices.prevUsdTry} />
@@ -162,9 +162,9 @@ export default function InvestmentsPage() {
             <Ticker label="Altın/gr" value={`₺${prices.goldGramTry.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`} current={prices.goldGramTry} previous={prices.prevGoldGramTry} />
             <div className="ml-auto flex items-center gap-3 flex-shrink-0">
               {pricesError && (
-                <span className="text-xs text-danger font-medium">{pricesError}</span>
+                <span className="text-xs text-destructive font-medium">{pricesError}</span>
               )}
-              <span className="text-xs text-muted">
+              <span className="text-xs text-muted-foreground">
                 {pricesLoading ? 'Güncelleniyor...' : updatedAt ? `Son: ${updatedAt}` : ''}
               </span>
               <button
@@ -178,7 +178,7 @@ export default function InvestmentsPage() {
           </>
         ) : (
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted">
+            <span className="text-xs text-muted-foreground">
               {pricesLoading ? 'Fiyatlar yükleniyor...' : pricesError ? `Fiyatlar alınamadı: ${pricesError}` : 'Fiyat verisi yok'}
             </span>
             {!pricesLoading && (
@@ -237,11 +237,11 @@ export default function InvestmentsPage() {
             <div className="flex gap-2">
               <button
                 onClick={openBuy}
-                className="px-3 py-1.5 rounded-xl bg-ok text-white text-xs font-semibold hover:bg-ok/80 transition-colors"
+                className="px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs font-semibold hover:bg-green-600/80 transition-colors"
               >Al</button>
               <button
                 onClick={openSell}
-                className="px-3 py-1.5 rounded-xl bg-danger text-white text-xs font-semibold hover:bg-danger/80 transition-colors"
+                className="px-3 py-1.5 rounded-xl bg-destructive text-white text-xs font-semibold hover:bg-destructive/80 transition-colors"
               >Sat</button>
             </div>
           </CardHeader>
@@ -265,25 +265,25 @@ export default function InvestmentsPage() {
                   {holdings.map(h => {
                     const meta = ASSET_META[h.asset]
                     return (
-                      <tr key={h.asset} className="border-b border-border/50 hover:bg-white/[0.03] transition-colors">
-                        <td className="px-4 py-4 font-medium text-ink whitespace-nowrap">
+                      <tr key={h.asset} className="border-b border-border/50 hover:bg-accent transition-colors">
+                        <td className="px-4 py-4 font-medium text-foreground whitespace-nowrap">
                           <span className="inline-flex items-center gap-1.5">
-                            <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-semibold bg-white/[0.08] text-ink/60">{meta.icon}</span>
+                            <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-semibold bg-muted/50 text-foreground/60">{meta.icon}</span>
                             {meta.label}
                           </span>
                         </td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-ink">{fmtQty(h.quantity, meta.unit)}</td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-muted">{formatCurrency(h.avgCostPerUnit)}</td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-muted">
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">{fmtQty(h.quantity, meta.unit)}</td>
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-muted-foreground">{formatCurrency(h.avgCostPerUnit)}</td>
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-muted-foreground">
                           {prices ? formatCurrency(h.currentPrice) : '—'}
                         </td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-ink">
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-foreground">
                           {prices ? formatCurrency(h.currentValue) : '—'}
                         </td>
-                        <td className={`px-4 py-4 tabular-nums text-sm font-medium tracking-tight ${prices ? pnlColor(h.pnl) : 'text-muted'}`}>
+                        <td className={`px-4 py-4 tabular-nums text-sm font-medium tracking-tight ${prices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
                           {prices ? ((h.pnl >= 0 ? '+' : '') + formatCurrency(h.pnl)) : '—'}
                         </td>
-                        <td className={`px-4 py-4 tabular-nums text-sm font-medium tracking-tight ${prices ? pnlColor(h.pnl) : 'text-muted'}`}>
+                        <td className={`px-4 py-4 tabular-nums text-sm font-medium tracking-tight ${prices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
                           {prices ? ((h.pnlPercent >= 0 ? '+' : '') + h.pnlPercent.toFixed(2) + '%') : '—'}
                         </td>
                       </tr>
@@ -319,28 +319,28 @@ export default function InvestmentsPage() {
                   : (tx.targetAccountId ? accounts.find(a => a.id === tx.targetAccountId) : null)
 
                 return (
-                  <div key={tx.id} className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] group transition-colors">
+                  <div key={tx.id} className="flex items-center gap-3 px-5 py-4 hover:bg-accent group transition-colors">
                     {/* Asset icon — color indicates buy (green) / sell (red) */}
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-semibold flex-shrink-0 ${isBuy ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'}`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-semibold flex-shrink-0 ${isBuy ? 'bg-green-600/10 text-green-600' : 'bg-destructive/10 text-destructive'}`}>
                       {meta.icon}
                     </div>
 
                     {/* Asset + buy/sell pill + date + linked account */}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-ink flex items-center gap-1.5">
+                      <div className="text-sm font-medium text-foreground flex items-center gap-1.5">
                         {meta.label}
-                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${isBuy ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'}`}>
+                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${isBuy ? 'bg-green-600/10 text-green-600' : 'bg-destructive/10 text-destructive'}`}>
                           {isBuy ? 'AL' : 'SAT'}
                         </span>
                       </div>
-                      <div className="text-xs text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
                         <span>{formatDate(tx.date)}</span>
                         {tx.note && <span>· {tx.note}</span>}
                         {linkedAccount
                           ? <span className="flex items-center gap-1">·
                               <span
                                 className="w-1.5 h-1.5 rounded-full inline-block"
-                                style={{ background: linkedAccount.color ?? '#0EA5E9' }}
+                                style={{ background: linkedAccount.color ?? '#00E5FF' }}
                               />
                               {linkedAccount.name}
                             </span>
@@ -350,17 +350,17 @@ export default function InvestmentsPage() {
                     </div>
 
                     {/* Quantity */}
-                    <span className="text-xs text-muted tabular-nums flex-shrink-0">
+                    <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
                       {fmtQty(tx.quantity, meta.unit)}
                     </span>
 
                     {/* Price per unit */}
-                    <span className="text-xs text-muted tabular-nums flex-shrink-0">
+                    <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
                       {formatCurrency(tx.pricePerUnit)}/birim
                     </span>
 
                     {/* Total */}
-                    <span className={`text-sm font-medium tabular-nums tracking-tight flex-shrink-0 ${isBuy ? 'text-danger' : 'text-ok'}`}>
+                    <span className={`text-sm font-medium tabular-nums tracking-tight flex-shrink-0 ${isBuy ? 'text-destructive' : 'text-green-600'}`}>
                       {isBuy ? '−' : '+'}{formatCurrency(total)}
                     </span>
 
@@ -368,24 +368,24 @@ export default function InvestmentsPage() {
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => openEdit(tx)}
-                        className="w-7 h-7 rounded-xl flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] transition-colors text-xs"
+                        className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-xs"
                         title="Düzenle"
                       >✏️</button>
                       {isConfirm ? (
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => { removeTransaction(tx.id); setConfirmDelete(null) }}
-                            className="px-2 h-6 rounded-xl bg-danger text-white text-xs font-semibold"
+                            className="px-2 h-6 rounded-xl bg-destructive text-white text-xs font-semibold"
                           >Sil</button>
                           <button
                             onClick={() => setConfirmDelete(null)}
-                            className="w-6 h-6 rounded-xl border border-border text-muted text-xs"
+                            className="w-6 h-6 rounded-xl border border-border text-muted-foreground text-xs"
                           >✕</button>
                         </div>
                       ) : (
                         <button
                           onClick={() => setConfirmDelete(tx.id)}
-                          className="w-7 h-7 rounded-xl flex items-center justify-center text-muted hover:text-danger hover:bg-white/[0.08] transition-colors text-base"
+                          className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent transition-colors text-base"
                         >×</button>
                       )}
                     </div>
@@ -424,11 +424,11 @@ function Ticker({ label, value, current, previous }: {
     <div className="flex-shrink-0">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-0.5">{label}</span>
       <div className="flex items-baseline gap-1.5">
-        <span className="text-xs font-medium tabular-nums text-ink">{value}</span>
+        <span className="text-xs font-medium tabular-nums text-foreground">{value}</span>
         {pct !== null && (
           <span className={[
             'text-xs font-medium tabular-nums flex items-center gap-0.5',
-            pct > 0 ? 'text-ok' : pct < 0 ? 'text-danger' : 'text-muted',
+            pct > 0 ? 'text-green-600' : pct < 0 ? 'text-destructive' : 'text-muted-foreground',
           ].join(' ')}>
             {pct > 0 ? '▲' : pct < 0 ? '▼' : ''}
             {Math.abs(pct).toFixed(2)}%
@@ -442,7 +442,7 @@ function Ticker({ label, value, current, previous }: {
 function SumCard({ label, value, color = 'neutral' }: {
   label: string; value: string; color?: 'ok' | 'danger' | 'neutral'
 }) {
-  const colorClass = color === 'ok' ? 'text-ok' : color === 'danger' ? 'text-danger' : 'text-foreground'
+  const colorClass = color === 'ok' ? 'text-green-600' : color === 'danger' ? 'text-destructive' : 'text-foreground'
   return (
     <Card className="rounded-2xl">
       <CardContent className="px-5 py-4">

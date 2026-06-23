@@ -1,4 +1,4 @@
-﻿import {
+import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
@@ -13,9 +13,9 @@ function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   const value = payload[0]?.value as number
   return (
-    <div className="bg-surface border border-line rounded-xl shadow-lg px-4 py-3 text-xs">
-      <div className="font-semibold text-ink mb-1">{label}</div>
-      <div className={`font-bold tabular text-sm ${value >= 0 ? 'text-ok' : 'text-danger'}`}>
+    <div className="bg-card border border-border rounded-lg shadow-md px-4 py-3 text-xs">
+      <div className="font-semibold text-foreground mb-1">{label}</div>
+      <div className={`font-bold tabular-nums text-sm ${value >= 0 ? 'text-green-600' : 'text-destructive'}`}>
         {value < 0 ? '−' : ''}{formatCompact(Math.abs(value))}
       </div>
     </div>
@@ -25,7 +25,7 @@ function CustomTooltip({ active, payload, label }: any) {
 export function BalanceTrendChartInner({ data }: { data: TrendPoint[] }) {
   if (data.length === 0) {
     return (
-      <div className="h-[220px] flex items-center justify-center text-sm text-muted">
+      <div className="h-[220px] flex items-center justify-center text-sm text-muted-foreground">
         Yeterli veri yok
       </div>
     )
@@ -39,23 +39,23 @@ export function BalanceTrendChartInner({ data }: { data: TrendPoint[] }) {
         <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="rpt_grad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="#00C896" stopOpacity={0.18} />
-              <stop offset="100%" stopColor="#00C896" stopOpacity={0} />
+              <stop offset="0%"   stopColor="#2563eb" stopOpacity={0.15} />
+              <stop offset="100%" stopColor="#2563eb" stopOpacity={0}    />
             </linearGradient>
           </defs>
-          <CartesianGrid vertical={false} stroke="#F0F0F0" />
+          <CartesianGrid vertical={false} stroke="#e4e4e7" />
           {hasNegative && (
-            <ReferenceLine y={0} stroke="#E0E0E0" strokeWidth={1} strokeDasharray="4 2" />
+            <ReferenceLine y={0} stroke="#d4d4d8" strokeWidth={1} strokeDasharray="4 2" />
           )}
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 10, fill: '#4A6080', fontFamily: 'inherit' }}
+            tick={{ fontSize: 11, fill: '#71717a' }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
             tickFormatter={v => formatCompact(v as number)}
-            tick={{ fontSize: 10, fill: '#4A6080', fontFamily: 'inherit' }}
+            tick={{ fontSize: 11, fill: '#71717a' }}
             axisLine={false}
             tickLine={false}
             width={60}
@@ -64,15 +64,14 @@ export function BalanceTrendChartInner({ data }: { data: TrendPoint[] }) {
           <Area
             type="monotone"
             dataKey="balance"
-            stroke="#00C896"
+            stroke="#2563eb"
             strokeWidth={2}
             fill="url(#rpt_grad)"
-            dot={data.length <= 14 ? { fill: '#00C896', r: 3, strokeWidth: 0 } : false}
-            activeDot={{ r: 4, fill: '#00C896', strokeWidth: 0 }}
+            dot={data.length <= 14 ? { fill: '#2563eb', r: 3, strokeWidth: 0 } : false}
+            activeDot={{ r: 4, fill: '#2563eb', strokeWidth: 0 }}
           />
         </AreaChart>
       </ResponsiveContainer>
     </div>
   )
 }
-

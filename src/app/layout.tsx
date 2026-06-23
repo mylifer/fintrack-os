@@ -20,12 +20,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" className={cn("h-full", inter.variable, "font-sans", geist.variable)} suppressHydrationWarning>
-      <body className="min-h-full bg-ground text-ink antialiased">
+      <body className="min-h-full bg-background text-foreground antialiased">
         {/* Anti-FOUC: restore saved theme before first paint */}
         <Script
           id="theme-restore"
           strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('fintrack-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}` }}
+          dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem('fintrack-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}` }}
         />
         {children}
       </body>

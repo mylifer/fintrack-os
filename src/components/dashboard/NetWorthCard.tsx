@@ -66,7 +66,7 @@ export function NetWorthCard() {
                   </div>
                   <div className="h-[2px] bg-border">
                     <div
-                      className={`h-full ${pct > 80 ? 'bg-destructive' : pct > 60 ? 'bg-amber' : 'bg-primary'}`}
+                      className={`h-full ${pct > 80 ? 'bg-destructive' : pct > 60 ? 'bg-orange-500' : 'bg-primary'}`}
                       style={{ width: `${Math.min(pct, 100)}%` }}
                     />
                   </div>

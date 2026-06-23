@@ -91,11 +91,11 @@ export function Sidebar() {
       {/* ── Logo ── */}
       <div className="px-5 pt-7 pb-6 flex-shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white font-black text-sm select-none">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white font-black text-sm select-none">
             F
           </div>
-          <span className="text-[15px] font-bold text-ink tracking-tight">
-            fin<span className="text-accent">track</span>
+          <span className="text-[15px] font-bold text-foreground tracking-tight">
+            fin<span className="text-primary">track</span>
           </span>
         </div>
       </div>
@@ -136,8 +136,8 @@ export function Sidebar() {
               className={[
                 'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                 pathname === '/accounts'
-                  ? 'text-ink font-semibold'
-                  : 'text-muted hover:text-ink hover:bg-white/[0.04]',
+                  ? 'text-foreground font-semibold'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent',
               ].join(' ')}
             >
               Tüm Hesaplar
@@ -149,8 +149,8 @@ export function Sidebar() {
                 className={[
                   'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                   pathname === `/accounts/${account.id}`
-                    ? 'text-ink font-semibold'
-                    : 'text-muted hover:text-ink hover:bg-white/[0.04]',
+                    ? 'text-foreground font-semibold'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent',
                 ].join(' ')}
               >
                 <AccountAvatar account={account} size="xs" />
@@ -165,7 +165,7 @@ export function Sidebar() {
             <Icon d={icon} />
             <span className="flex-1">{label}</span>
             {href === '/recurring' && dueCount > 0 && (
-              <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-amber/20 text-amber leading-none flex-shrink-0">
+              <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-500 leading-none flex-shrink-0">
                 {dueCount}
               </span>
             )}

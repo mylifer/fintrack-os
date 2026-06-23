@@ -44,23 +44,23 @@ export function PersonTransactionsOverlay({ person, onClose }: Props) {
       />
 
       {/* Drawer — slides in from right */}
-      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-surface shadow-2xl flex flex-col border-l border-line">
+      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-card shadow-2xl flex flex-col border-l border-border">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-line flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-ink">{person.name}</h2>
-              <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 bg-white/[0.08] text-muted rounded">
+              <h2 className="text-sm font-bold text-foreground">{person.name}</h2>
+              <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 bg-muted/50 text-muted-foreground rounded">
                 {roleLabel}
               </span>
             </div>
-            <p className="text-[10px] text-muted mt-0.5">
+            <p className="text-[10px] text-muted-foreground mt-0.5">
               {filtered.length > 0 ? `${filtered.length} işlem` : 'Henüz işlem yok'}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-white/[0.08] transition-colors text-lg leading-none"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-lg leading-none"
             aria-label="Kapat"
           >
             ×

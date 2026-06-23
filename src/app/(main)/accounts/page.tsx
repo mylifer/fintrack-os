@@ -43,13 +43,13 @@ export default function AccountsPage() {
       <PeriodTabs />
 
       {/* Net worth summary */}
-      <div className="px-6 lg:px-8 py-5 border-b border-border bg-surface flex items-baseline gap-3 flex-shrink-0">
-        <span className={`text-3xl font-light tracking-tight tabular-nums ${(netWorth + investValue) >= 0 ? 'text-ink' : 'text-danger'}`}>
+      <div className="px-6 lg:px-8 py-5 border-b border-border bg-card flex items-baseline gap-3 flex-shrink-0">
+        <span className={`text-3xl font-light tracking-tight tabular-nums ${(netWorth + investValue) >= 0 ? 'text-foreground' : 'text-destructive'}`}>
           {formatCurrency(netWorth + investValue)}
         </span>
-        <span className="text-xs font-medium text-muted uppercase tracking-wide">toplam net varlık</span>
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">toplam net varlık</span>
         {investValue > 0 && (
-          <span className="text-xs text-muted ml-auto">
+          <span className="text-xs text-muted-foreground ml-auto">
             Yatırım: {formatCompact(investValue)}
           </span>
         )}
@@ -96,20 +96,20 @@ export default function AccountsPage() {
                             <Badge variant="default">{TYPE_LABELS[account.type]}</Badge>
                             <button
                               onClick={() => { setEditingAccount(account); setShowForm(true) }}
-                              className="text-muted hover:text-ink text-sm transition-colors"
+                              className="text-muted-foreground hover:text-foreground text-sm transition-colors"
                             >✎</button>
                           </div>
                         </div>
 
-                        <div className={`text-xl font-light tracking-tight tabular-nums ${account.balance < 0 ? 'text-danger' : 'text-ink'}`}>
+                        <div className={`text-xl font-light tracking-tight tabular-nums ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
                           {formatCurrency(account.balance, account.currency)}
                         </div>
 
                         {/* Period stats */}
                         {hasActivity && (
                           <div className="flex items-center gap-3 mt-2 text-xs font-medium">
-                            {income > 0 && <span className="text-ok">+{formatCompact(income)}</span>}
-                            {expense > 0 && <span className="text-danger">−{formatCompact(expense)}</span>}
+                            {income > 0 && <span className="text-green-600">+{formatCompact(income)}</span>}
+                            {expense > 0 && <span className="text-destructive">−{formatCompact(expense)}</span>}
                           </div>
                         )}
 
@@ -119,9 +119,9 @@ export default function AccountsPage() {
                               <span>Kullanılabilir</span>
                               <span className="tabular-nums">{formatCurrency(available ?? 0, account.currency)}</span>
                             </div>
-                            <div className="h-[2px] bg-line">
+                            <div className="h-[2px] bg-muted">
                               <div
-                                className={`h-full ${usedPct > 80 ? 'bg-danger' : usedPct > 60 ? 'bg-amber' : 'bg-ok'}`}
+                                className={`h-full ${usedPct > 80 ? 'bg-destructive' : usedPct > 60 ? 'bg-orange-500' : 'bg-green-600'}`}
                                 style={{ width: `${Math.min(usedPct, 100)}%` }}
                               />
                             </div>

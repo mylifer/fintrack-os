@@ -138,32 +138,32 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-md bg-surface rounded-2xl shadow-2xl overflow-hidden border border-line">
+      <div className="w-full max-w-md bg-card rounded-2xl shadow-2xl overflow-hidden border border-border">
 
         {/* Header */}
-        <div className="px-6 py-5 border-b border-line flex items-center justify-between">
-          <span className="text-base font-semibold text-ink">
+        <div className="px-6 py-5 border-b border-border flex items-center justify-between">
+          <span className="text-base font-semibold text-foreground">
             {isEdit ? 'İşlemi Düzenle' : 'Yatırım İşlemi'}
           </span>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-xl flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] transition-colors"
+            className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >✕</button>
         </div>
 
         <div className="p-6 flex flex-col gap-4">
 
           {/* Buy / Sell toggle */}
-          <div className="flex rounded-xl overflow-hidden border border-line">
+          <div className="flex rounded-xl overflow-hidden border border-border">
             <button
               onClick={() => setTxType('buy')}
-              className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${txType === 'buy' ? 'bg-ok text-white' : 'text-muted hover:text-ink'}`}
+              className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${txType === 'buy' ? 'bg-green-600 text-white' : 'text-muted-foreground hover:text-foreground'}`}
             >
               Al
             </button>
             <button
               onClick={() => setTxType('sell')}
-              className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${txType === 'sell' ? 'bg-danger text-white' : 'text-muted hover:text-ink'}`}
+              className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${txType === 'sell' ? 'bg-destructive text-white' : 'text-muted-foreground hover:text-foreground'}`}
             >
               Sat
             </button>
@@ -171,11 +171,11 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
           {/* Asset */}
           <div>
-            <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">Varlık</label>
+            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">Varlık</label>
             <select
               value={asset}
               onChange={e => { setAsset(e.target.value as InvestmentAsset); setPrice('') }}
-              className="w-full text-sm border border-line rounded-xl px-3 h-10 bg-ground text-ink focus:outline-none focus:border-accent cursor-pointer"
+              className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent cursor-pointer"
             >
               {ASSETS.map(a => (
                 <option key={a.asset} value={a.asset}>{a.emoji} {a.label}</option>
@@ -186,13 +186,13 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {/* Quantity */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Miktar ({assetMeta.unit})
               </label>
               {txType === 'sell' && maxSell > 0 && maxSell < Infinity && (
                 <button
                   onClick={() => setQty(maxSell % 1 === 0 ? String(maxSell) : maxSell.toFixed(4).replace(/\.?0+$/, ''))}
-                  className="text-xs text-accent font-semibold hover:text-accent/80 transition-colors"
+                  className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors"
                 >
                   Tümünü sat ({maxSell.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} {assetMeta.unit})
                 </button>
@@ -206,19 +206,19 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 placeholder="0"
                 min={0}
                 step="any"
-                className="w-full text-sm border border-line rounded-xl px-3 pr-16 h-10 bg-ground text-ink focus:outline-none focus:border-accent"
+                className="w-full text-sm border border-border rounded-xl px-3 pr-16 h-10 bg-background text-foreground focus:outline-none focus:border-accent"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted font-medium">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
                 {assetMeta.unit}
               </span>
             </div>
             {txType === 'sell' && maxSell < Infinity && maxSell > 0 && (
-              <div className="mt-1 text-xs text-muted">
+              <div className="mt-1 text-xs text-muted-foreground">
                 Portföyde: {maxSell.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} {assetMeta.unit}
               </div>
             )}
             {sellExceeded && (
-              <div className="mt-1 text-xs text-danger font-medium">
+              <div className="mt-1 text-xs text-destructive font-medium">
                 Portföyden fazla miktar satılamaz.
               </div>
             )}
@@ -227,20 +227,20 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {/* Price per unit */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Birim Fiyat (₺)
               </label>
               {prices && (
                 <button
                   onClick={fillLivePrice}
-                  className="text-xs text-accent font-semibold hover:text-accent/80 transition-colors"
+                  className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors"
                 >
                   Canlı fiyatı kullan
                 </button>
               )}
             </div>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">₺</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₺</span>
               <input
                 type="number"
                 value={price}
@@ -248,7 +248,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 placeholder="0.00"
                 min={0}
                 step="any"
-                className="w-full text-sm border border-line rounded-xl pl-7 pr-3 h-10 bg-ground text-ink focus:outline-none focus:border-accent"
+                className="w-full text-sm border border-border rounded-xl pl-7 pr-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent"
               />
             </div>
           </div>
@@ -256,13 +256,13 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {/* Source account (buy only) */}
           {txType === 'buy' && (
             <div>
-              <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">
                 Hangi hesaptan? (isteğe bağlı)
               </label>
               <select
                 value={accountId}
                 onChange={e => setAccountId(e.target.value)}
-                className="w-full text-sm border border-line rounded-xl px-3 h-10 bg-ground text-ink focus:outline-none focus:border-accent cursor-pointer"
+                className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent cursor-pointer"
               >
                 <option value="">Hesap seçme — dış kaynak</option>
                 {accounts.map(a => (
@@ -272,7 +272,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 ))}
               </select>
               {accountId && total > 0 && (
-                <div className="mt-1 text-xs text-muted">
+                <div className="mt-1 text-xs text-muted-foreground">
                   Seçilen hesaptan {formatCurrency(total)} düşülecek.
                 </div>
               )}
@@ -282,13 +282,13 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {/* Target account (sell only) */}
           {txType === 'sell' && (
             <div>
-              <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">
                 Nakit hangi hesaba? (isteğe bağlı)
               </label>
               <select
                 value={targetAccId}
                 onChange={e => setTargetAccId(e.target.value)}
-                className="w-full text-sm border border-line rounded-xl px-3 h-10 bg-ground text-ink focus:outline-none focus:border-accent cursor-pointer"
+                className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent cursor-pointer"
               >
                 <option value="">Hesap seçme — dış kaynak</option>
                 {accounts.map(a => (
@@ -298,7 +298,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 ))}
               </select>
               {targetAccId && total > 0 && (
-                <div className="mt-1 text-xs text-muted">
+                <div className="mt-1 text-xs text-muted-foreground">
                   {formatCurrency(total)} seçilen hesaba eklenecek.
                 </div>
               )}
@@ -307,32 +307,32 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
           {/* Date */}
           <div>
-            <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">Tarih</label>
+            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">Tarih</label>
             <input
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
-              className="w-full text-sm border border-line rounded-xl px-3 h-10 bg-ground text-ink focus:outline-none focus:border-accent"
+              className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent"
             />
           </div>
 
           {/* Note */}
           <div>
-            <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">Not (isteğe bağlı)</label>
+            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">Not (isteğe bağlı)</label>
             <input
               type="text"
               value={note}
               onChange={e => setNote(e.target.value)}
               placeholder="Açıklama ekle..."
-              className="w-full text-sm border border-line rounded-xl px-3 h-10 bg-ground text-ink focus:outline-none focus:border-accent"
+              className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent"
             />
           </div>
 
           {/* Total */}
           {total > 0 && (
-            <div className="flex items-center justify-between py-3 px-4 rounded-xl bg-ground border border-line text-sm">
-              <span className="text-muted font-medium">Toplam</span>
-              <span className="font-semibold text-ink text-base tabular-nums">{formatCurrency(total)}</span>
+            <div className="flex items-center justify-between py-3 px-4 rounded-xl bg-background border border-border text-sm">
+              <span className="text-muted-foreground font-medium">Toplam</span>
+              <span className="font-semibold text-foreground text-base tabular-nums">{formatCurrency(total)}</span>
             </div>
           )}
         </div>
@@ -341,14 +341,14 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
         <div className="px-6 pb-6 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 h-10 rounded-xl border border-line text-sm font-semibold text-muted hover:text-ink transition-colors"
+            className="flex-1 h-10 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
           >
             İptal
           </button>
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className={`flex-1 h-10 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40 ${txType === 'buy' ? 'bg-ok hover:bg-ok/80' : 'bg-danger hover:bg-danger/80'}`}
+            className={`flex-1 h-10 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40 ${txType === 'buy' ? 'bg-green-600 hover:bg-green-600/80' : 'bg-destructive hover:bg-destructive/80'}`}
           >
             {saving ? '...' : isEdit ? 'Kaydet' : txType === 'buy' ? 'Al' : 'Sat'}
           </button>

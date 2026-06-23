@@ -107,7 +107,7 @@ export function TransactionList({
       <div style={{ minWidth: TABLE_MIN_W }}>
 
         {/* Sticky column headers — mx-3 matches card container padding so columns align */}
-        <div className="sticky top-0 z-10 bg-ground border-b border-line">
+        <div className="sticky top-0 z-10 bg-background border-b border-border">
           <div className="mx-3 grid" style={{ gridTemplateColumns: TABLE_COLS }}>
             {['Açıklama', 'Hesap', 'Alıcı', 'Aile Üyesi', 'Kategori', 'Miktar', 'Güncel Bakiye', ''].map((h, i) => (
               <div
@@ -128,15 +128,15 @@ export function TransactionList({
           {sortedDates.map(date => {
             const sorted = sortDay(grouped.get(date)!)
             return (
-              <div key={date} className="rounded-xl overflow-hidden border border-line bg-surface">
+              <div key={date} className="rounded-xl overflow-hidden border border-border bg-card">
 
                 {/* Date header */}
-                <div className="flex items-center gap-3 px-4 py-2.5 bg-ground border-b-2 border-line">
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-background border-b-2 border-border">
                   <div
                     className="w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center"
                     style={{ background: 'rgba(14,165,233,0.12)' }}
                   >
-                    <span className="text-sm font-semibold tabular-nums leading-none text-accent">
+                    <span className="text-sm font-semibold tabular-nums leading-none text-primary">
                       {formatDate(date, 'd')}
                     </span>
                   </div>
@@ -144,7 +144,7 @@ export function TransactionList({
                     <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       {formatDate(date, 'MMMM yyyy')}
                     </div>
-                    <div className="text-xs text-muted capitalize mt-[3px]">
+                    <div className="text-xs text-muted-foreground capitalize mt-[3px]">
                       {formatDate(date, 'EEEE')}
                     </div>
                   </div>
@@ -158,7 +158,7 @@ export function TransactionList({
                   const family      = tx.familyMemberId ? people.find(p => p.id === tx.familyMemberId) : null
                   const isIncome    = tx.type === 'income'
                   const isXfer      = tx.type === 'transfer'
-                  const iconBg      = cat?.color ? `${cat.color}20` : isXfer ? '#0EA5E920' : 'rgba(255,255,255,0.04)'
+                  const iconBg      = cat?.color ? `${cat.color}20` : isXfer ? '#00E5FF20' : 'rgba(255,255,255,0.04)'
                   const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
                   const iconIsText  = !cat?.icon && !!tx.icon
                   const balanceAfter = runningBalances.get(tx.id)
@@ -168,8 +168,8 @@ export function TransactionList({
                     <div
                       key={tx.id}
                       className={[
-                        'group grid border-t border-line transition-colors',
-                        isConfirming ? 'bg-danger/5' : 'hover:bg-white/[0.03]',
+                        'group grid border-t border-border transition-colors',
+                        isConfirming ? 'bg-destructive/5' : 'hover:bg-accent',
                       ].join(' ')}
                       style={{ gridTemplateColumns: TABLE_COLS }}
                     >
@@ -181,7 +181,7 @@ export function TransactionList({
                           <div
                             className={[
                               'w-6 h-6 flex-shrink-0 flex items-center justify-center rounded',
-                              iconIsText ? 'text-xs font-medium text-ink/50' : 'text-xs',
+                              iconIsText ? 'text-xs font-medium text-foreground/50' : 'text-xs',
                             ].join(' ')}
                             style={{ background: iconBg }}
                           >
@@ -189,10 +189,10 @@ export function TransactionList({
                           </div>
                         )}
                         <div className="min-w-0 overflow-hidden">
-                          <div className="text-xs font-medium text-ink truncate leading-none">
+                          <div className="text-xs font-medium text-foreground truncate leading-none">
                             {tx.description}
                             {tx.isInstallment && (
-                              <span className="ml-1 text-xs font-normal text-amber/80">
+                              <span className="ml-1 text-xs font-normal text-orange-500/80">
                                 ({tx.installIndex}/{tx.installTotal})
                               </span>
                             )}
@@ -205,7 +205,7 @@ export function TransactionList({
                         {account && (
                           <>
                             <AccountAvatar account={account} size="xs" className="flex-shrink-0" />
-                            <span className="text-xs text-muted truncate min-w-0">{account.name}</span>
+                            <span className="text-xs text-muted-foreground truncate min-w-0">{account.name}</span>
                           </>
                         )}
                       </div>
@@ -218,13 +218,13 @@ export function TransactionList({
                             <button
                               type="button"
                               onClick={() => onPersonClick?.('recipient', tx.recipientId!)}
-                              className="text-xs text-muted truncate min-w-0 hover:text-accent transition-colors text-left"
+                              className="text-xs text-muted-foreground truncate min-w-0 hover:text-primary transition-colors text-left"
                             >
                               {recipient.name}
                             </button>
                           </>
                         ) : (
-                          <span className="text-xs text-muted/25">—</span>
+                          <span className="text-xs text-muted-foreground/25">—</span>
                         )}
                       </div>
 
@@ -236,13 +236,13 @@ export function TransactionList({
                             <button
                               type="button"
                               onClick={() => onPersonClick?.('family_member', tx.familyMemberId!)}
-                              className="text-xs text-muted truncate min-w-0 hover:text-accent transition-colors text-left"
+                              className="text-xs text-muted-foreground truncate min-w-0 hover:text-primary transition-colors text-left"
                             >
                               {family.name}
                             </button>
                           </>
                         ) : (
-                          <span className="text-xs text-muted/25">—</span>
+                          <span className="text-xs text-muted-foreground/25">—</span>
                         )}
                       </div>
 
@@ -251,10 +251,10 @@ export function TransactionList({
                         {cat ? (
                           <>
                             <span className="text-xs leading-none flex-shrink-0">{cat.icon}</span>
-                            <span className="text-xs text-muted truncate min-w-0">{cat.name}</span>
+                            <span className="text-xs text-muted-foreground truncate min-w-0">{cat.name}</span>
                           </>
                         ) : (
-                          <span className="text-xs text-muted/25">—</span>
+                          <span className="text-xs text-muted-foreground/25">—</span>
                         )}
                       </div>
 
@@ -263,7 +263,7 @@ export function TransactionList({
                         <span
                           className={[
                             'text-sm font-medium tabular-nums',
-                            isIncome ? 'text-ok' : isXfer ? 'text-ink/50' : 'text-ink',
+                            isIncome ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground',
                           ].join(' ')}
                         >
                           {isIncome ? '+' : isXfer ? '' : '−'}
@@ -277,13 +277,13 @@ export function TransactionList({
                           <span
                             className={[
                               'text-xs font-medium tabular-nums',
-                              balanceAfter < 0 ? 'text-danger' : 'text-muted/70',
+                              balanceAfter < 0 ? 'text-destructive' : 'text-muted-foreground/70',
                             ].join(' ')}
                           >
                             {formatCurrency(balanceAfter, account?.currency)}
                           </span>
                         ) : (
-                          <span className="text-xs text-muted/25">—</span>
+                          <span className="text-xs text-muted-foreground/25">—</span>
                         )}
                       </div>
 
@@ -293,12 +293,12 @@ export function TransactionList({
                           <>
                             <button
                               onClick={() => { removeTx(tx.id); setConfirmDeleteId(null) }}
-                              className="w-6 h-6 flex items-center justify-center text-xs font-medium text-ok hover:bg-white/[0.08] rounded transition-colors"
+                              className="w-6 h-6 flex items-center justify-center text-xs font-medium text-green-600 hover:bg-accent rounded transition-colors"
                               title="Evet, sil"
                             >✓</button>
                             <button
                               onClick={() => setConfirmDeleteId(null)}
-                              className="w-6 h-6 flex items-center justify-center text-xs font-medium text-muted hover:bg-white/[0.08] rounded transition-colors"
+                              className="w-6 h-6 flex items-center justify-center text-xs font-medium text-muted-foreground hover:bg-accent rounded transition-colors"
                               title="İptal"
                             >✕</button>
                           </>
@@ -306,12 +306,12 @@ export function TransactionList({
                           <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
                             <button
                               onClick={() => openModal('edit-transaction', { id: tx.id })}
-                              className="w-6 h-6 flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] transition-colors text-sm rounded"
+                              className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-sm rounded"
                               title="Düzenle"
                             >⋯</button>
                             <button
                               onClick={() => setConfirmDeleteId(tx.id)}
-                              className="w-6 h-6 flex items-center justify-center text-muted hover:text-danger hover:bg-white/[0.08] transition-colors text-sm rounded"
+                              className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent transition-colors text-sm rounded"
                               title="Sil"
                             >×</button>
                           </div>
@@ -335,18 +335,18 @@ export function TransactionList({
         const sorted = sortDay(grouped.get(date)!)
 
         return (
-          <div key={date} className="rounded-xl overflow-hidden border border-line bg-surface">
+          <div key={date} className="rounded-xl overflow-hidden border border-border bg-card">
 
             {/* Date header */}
-            <div className="flex items-center gap-2.5 px-4 py-2 bg-ground border-b border-line">
-              <span className="text-xl font-semibold tabular-nums leading-none text-muted w-7 text-center flex-shrink-0">
+            <div className="flex items-center gap-2.5 px-4 py-2 bg-background border-b border-border">
+              <span className="text-xl font-semibold tabular-nums leading-none text-muted-foreground w-7 text-center flex-shrink-0">
                 {formatDate(date, 'd')}
               </span>
               <div className="leading-none">
                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   {formatDate(date, 'MMMM yyyy')}
                 </div>
-                <div className="text-xs text-ink/30 capitalize mt-[3px]">
+                <div className="text-xs text-foreground/30 capitalize mt-[3px]">
                   {formatDate(date, 'EEEE')}
                 </div>
               </div>
@@ -359,7 +359,7 @@ export function TransactionList({
               const recipient = tx.recipientId ? people.find(p => p.id === tx.recipientId) : null
               const isIncome  = tx.type === 'income'
               const isXfer    = tx.type === 'transfer'
-              const iconBg    = cat?.color ? `${cat.color}20` : isXfer ? '#0EA5E920' : 'rgba(255,255,255,0.04)'
+              const iconBg    = cat?.color ? `${cat.color}20` : isXfer ? '#00E5FF20' : 'rgba(255,255,255,0.04)'
               const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
               const iconIsText  = !cat?.icon && !!tx.icon
 
@@ -368,8 +368,8 @@ export function TransactionList({
                   key={tx.id}
                   className={[
                     'group flex items-center gap-3 px-4 py-3.5',
-                    'hover:bg-white/[0.03] transition-colors',
-                    txIdx > 0 ? 'border-t border-line' : '',
+                    'hover:bg-accent transition-colors',
+                    txIdx > 0 ? 'border-t border-border' : '',
                   ].join(' ')}
                 >
                   {/* Icon */}
@@ -379,7 +379,7 @@ export function TransactionList({
                     <div
                       className={[
                         'w-7 h-7 flex-shrink-0 flex items-center justify-center',
-                        iconIsText ? 'text-xs font-medium text-ink/50' : 'text-sm',
+                        iconIsText ? 'text-xs font-medium text-foreground/50' : 'text-sm',
                       ].join(' ')}
                       style={{ background: iconBg }}
                     >
@@ -389,17 +389,17 @@ export function TransactionList({
 
                   {/* Description + sub */}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-ink truncate leading-tight">
+                    <div className="text-sm font-medium text-foreground truncate leading-tight">
                       {tx.description}
                     </div>
-                    <div className="text-xs text-muted truncate leading-tight mt-[2px]">
+                    <div className="text-xs text-muted-foreground truncate leading-tight mt-[2px]">
                       {showAccount && account
                         ? account.name
                         : tx.isInstallment
                           ? `Taksit ${tx.installIndex}/${tx.installTotal}`
                           : null}
                       {tx.isInstallment && showAccount && account && (
-                        <span className="text-amber ml-1">
+                        <span className="text-orange-500 ml-1">
                           · Taksit {tx.installIndex}/{tx.installTotal}
                         </span>
                       )}
@@ -451,7 +451,7 @@ export function TransactionList({
                   <span
                     className={[
                       'w-[104px] flex-shrink-0 text-right text-sm font-medium tabular-nums',
-                      isIncome ? 'text-ok' : isXfer ? 'text-ink/50' : 'text-ink',
+                      isIncome ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground',
                     ].join(' ')}
                   >
                     {isIncome ? '+' : isXfer ? '' : '−'}
@@ -461,15 +461,15 @@ export function TransactionList({
                   {/* Row actions */}
                   {confirmDeleteId === tx.id ? (
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <span className="text-xs text-danger font-semibold mr-0.5">Sil?</span>
+                      <span className="text-xs text-destructive font-semibold mr-0.5">Sil?</span>
                       <button
                         onClick={() => { removeTx(tx.id); setConfirmDeleteId(null) }}
-                        className="w-6 h-6 flex items-center justify-center text-xs font-medium text-ok hover:bg-white/[0.08] rounded transition-colors"
+                        className="w-6 h-6 flex items-center justify-center text-xs font-medium text-green-600 hover:bg-accent rounded transition-colors"
                         title="Evet, sil"
                       >✓</button>
                       <button
                         onClick={() => setConfirmDeleteId(null)}
-                        className="w-6 h-6 flex items-center justify-center text-xs font-medium text-muted hover:bg-white/[0.08] rounded transition-colors"
+                        className="w-6 h-6 flex items-center justify-center text-xs font-medium text-muted-foreground hover:bg-accent rounded transition-colors"
                         title="İptal"
                       >✕</button>
                     </div>
@@ -477,12 +477,12 @@ export function TransactionList({
                     <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0 transition-opacity">
                       <button
                         onClick={() => openModal('edit-transaction', { id: tx.id })}
-                        className="w-6 h-6 flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] transition-colors text-sm rounded"
+                        className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-sm rounded"
                         title="Düzenle"
                       >⋯</button>
                       <button
                         onClick={() => setConfirmDeleteId(tx.id)}
-                        className="w-6 h-6 flex items-center justify-center text-muted hover:text-danger hover:bg-white/[0.08] transition-colors text-sm rounded"
+                        className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent transition-colors text-sm rounded"
                         title="Sil"
                       >×</button>
                     </div>

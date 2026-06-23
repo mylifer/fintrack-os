@@ -72,26 +72,17 @@ function StatCard({ label, value, sub, color }: {
   sub: string
   color: CardColor
 }) {
-  const accentColor =
-    color === 'ok'     ? 'var(--color-ok)'    :
-    color === 'danger' ? 'var(--color-danger)' :
-                         'var(--color-border)'
-
   const valueClass =
-    color === 'ok'     ? 'text-ok'         :
-    color === 'danger' ? 'text-destructive' :
+    color === 'ok'     ? 'text-green-600'    :
+    color === 'danger' ? 'text-destructive'  :
                          'text-foreground'
 
   return (
-    <Card style={{ borderTopWidth: 2, borderTopColor: accentColor }}>
-      <CardContent className="flex flex-col gap-1 pt-0">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {label}
-        </span>
-        <div className={`text-xl font-medium tracking-tight tabular-nums leading-none ${valueClass}`}>
-          {value}
-        </div>
-        <div className="text-xs text-muted-foreground">{sub}</div>
+    <Card>
+      <CardContent className="flex flex-col gap-1">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className={`text-2xl font-semibold tabular-nums ${valueClass}`}>{value}</p>
+        <p className="text-xs text-muted-foreground">{sub}</p>
       </CardContent>
     </Card>
   )

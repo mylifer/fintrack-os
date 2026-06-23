@@ -48,13 +48,13 @@ export function RecentTransactions() {
                       {tx.isInstallment && (
                         <>
                           <span>·</span>
-                          <span className="text-amber">{tx.installIndex}/{tx.installTotal}</span>
+                          <span className="text-orange-500">{tx.installIndex}/{tx.installTotal}</span>
                         </>
                       )}
                     </div>
                   </div>
                   <span className={`text-sm tabular-nums flex-shrink-0 font-medium ${
-                    isPos ? 'text-emerald-400' : isXfer ? 'text-primary' : 'text-foreground'
+                    isPos ? 'text-green-600' : isXfer ? 'text-primary' : 'text-foreground'
                   }`}>
                     {isPos ? '+' : isXfer ? '↔' : '−'}{formatCurrency(tx.amount, tx.currency)}
                   </span>

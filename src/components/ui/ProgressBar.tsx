@@ -10,9 +10,9 @@ interface ProgressBarProps {
 }
 
 const fillColor: Record<BudgetStatus, string> = {
-  ok:       'bg-accent',
-  warning:  'bg-amber',
-  exceeded: 'bg-danger',
+  ok:       'bg-primary',
+  warning:  'bg-orange-500',
+  exceeded: 'bg-destructive',
 }
 
 export function ProgressBar({ percent, status = 'ok', className = '', showLabel }: ProgressBarProps) {
@@ -20,7 +20,7 @@ export function ProgressBar({ percent, status = 'ok', className = '', showLabel 
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <div className="flex-1 h-1.5 bg-line rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-300 ${fillColor[status]}`}
           style={{ width: `${capped}%` }}
@@ -28,7 +28,7 @@ export function ProgressBar({ percent, status = 'ok', className = '', showLabel 
       </div>
       {showLabel && (
         <span className={`font-mono text-[10px] tabular w-8 text-right ${
-          status === 'exceeded' ? 'text-danger' : status === 'warning' ? 'text-amber' : 'text-muted'
+          status === 'exceeded' ? 'text-destructive' : status === 'warning' ? 'text-orange-500' : 'text-muted-foreground'
         }`}>
           {Math.round(percent)}%
         </span>

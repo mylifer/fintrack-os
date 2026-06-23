@@ -137,12 +137,12 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
           <>
             <CurrencyInput label="Kredi Limiti" value={limitStr} onChange={setLimitStr} currency={currency} error={errors.limit} />
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium tracking-wide uppercase text-muted">Ekstre Kesim Günü</label>
+              <label className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Ekstre Kesim Günü</label>
               <input
                 type="number" min={1} max={28}
                 value={stmtDay}
                 onChange={e => setStmtDay(Number(e.target.value))}
-                className="w-full border border-line px-3 py-2.5 text-sm font-mono bg-surface focus:border-ink outline-none"
+                className="w-full border border-border px-3 py-2.5 text-sm font-mono bg-card focus:border-ink outline-none"
               />
             </div>
           </>
@@ -150,7 +150,7 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
 
         {/* Color picker */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium tracking-wide uppercase text-muted">Renk</label>
+          <label className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Renk</label>
           <div className="flex gap-2">
             {COLORS.map(c => (
               <button
@@ -165,14 +165,14 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
 
         {/* Custom icon */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium tracking-wide uppercase text-muted">
+          <label className="text-xs font-medium tracking-wide uppercase text-muted-foreground">
             Hesap Görseli <span className="normal-case font-normal">(isteğe bağlı)</span>
           </label>
 
           {icon ? (
             /* Preview */
-            <div className="flex items-center gap-3 p-3 rounded-xl border border-line bg-surface">
-              <div className="w-10 h-10 rounded-xl overflow-hidden border border-line bg-surface flex items-center justify-center p-1 flex-shrink-0">
+            <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
+              <div className="w-10 h-10 rounded-xl overflow-hidden border border-border bg-card flex items-center justify-center p-1 flex-shrink-0">
                 <img
                   src={icon}
                   alt=""
@@ -180,12 +180,12 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
                   onError={() => setIcon('')}
                 />
               </div>
-              <span className="text-xs text-muted flex-1 truncate min-w-0">
+              <span className="text-xs text-muted-foreground flex-1 truncate min-w-0">
                 {icon.startsWith('data:') ? 'Yüklenen görsel' : icon}
               </span>
               <button
                 onClick={() => setIcon('')}
-                className="text-xs text-muted hover:text-danger transition-colors flex-shrink-0"
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
               >
                 Kaldır
               </button>
@@ -199,16 +199,16 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
                 onChange={e => setIconUrl(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') applyUrl() }}
                 placeholder="https://bank.com/logo.png"
-                className="flex-1 min-w-0 border border-line px-3 py-2.5 text-xs bg-surface focus:border-ink outline-none"
+                className="flex-1 min-w-0 border border-border px-3 py-2.5 text-xs bg-card focus:border-ink outline-none"
               />
               <button
                 onClick={applyUrl}
                 disabled={!iconUrl.trim()}
-                className="px-3 py-2.5 text-xs font-semibold border border-line hover:bg-white/[0.06] disabled:opacity-40 transition-colors flex-shrink-0"
+                className="px-3 py-2.5 text-xs font-semibold border border-border hover:bg-accent disabled:opacity-40 transition-colors flex-shrink-0"
               >
                 URL'den Çek
               </button>
-              <label className="px-3 py-2.5 text-xs font-semibold border border-line hover:bg-white/[0.06] cursor-pointer transition-colors flex-shrink-0">
+              <label className="px-3 py-2.5 text-xs font-semibold border border-border hover:bg-accent cursor-pointer transition-colors flex-shrink-0">
                 Yükle
                 <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
               </label>

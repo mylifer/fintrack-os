@@ -43,7 +43,7 @@ export function BudgetOverview() {
                       <span className="text-sm font-medium text-foreground">{cat?.name}</span>
                       {b.status !== 'ok' && (
                         <span className={`text-xs font-medium ${
-                          b.status === 'exceeded' ? 'text-destructive' : 'text-amber'
+                          b.status === 'exceeded' ? 'text-destructive' : 'text-orange-500'
                         }`}>
                           {b.status === 'exceeded' ? 'Aşıldı' : 'Uyarı'}
                         </span>
@@ -51,7 +51,7 @@ export function BudgetOverview() {
                     </div>
                     <div className="text-right">
                       <span className={`text-sm tabular-nums ${
-                        b.status === 'exceeded' ? 'text-destructive' : b.status === 'warning' ? 'text-amber' : 'text-foreground'
+                        b.status === 'exceeded' ? 'text-destructive' : b.status === 'warning' ? 'text-orange-500' : 'text-foreground'
                       }`}>
                         {formatCurrency(b.spent, 'TRY')}
                       </span>

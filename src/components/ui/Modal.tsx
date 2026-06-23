@@ -35,7 +35,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
             </DialogTitle>
             <DialogClose
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               aria-label="Kapat"
             >
               <XIcon className="size-4" />

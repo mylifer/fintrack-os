@@ -63,7 +63,7 @@ export function AccountAvatar({ account, size = 'md', className = '' }: Props) {
 
       {/* Overlay: icon with white card — hidden via onError if load fails */}
       {iconSrc && (
-        <div className={`absolute inset-0 bg-surface flex items-center justify-center ${s.pad}`}>
+        <div className={`absolute inset-0 bg-card flex items-center justify-center ${s.pad}`}>
           <img
             src={iconSrc}
             alt={account.name}

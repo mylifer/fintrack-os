@@ -7,10 +7,10 @@ const Inner = dynamic(
     ssr: false,
     loading: () => (
       <div className="flex flex-col items-center gap-4 py-6" style={{ minHeight: 340 }}>
-        <div className="w-44 h-44 rounded-full border-[20px] border-line animate-pulse" />
+        <div className="w-44 h-44 rounded-full border-[20px] border-border animate-pulse" />
         <div className="grid grid-cols-2 gap-2 px-6 w-full">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="h-4 bg-line rounded animate-pulse" />
+            <div key={i} className="h-4 bg-muted rounded animate-pulse" />
           ))}
         </div>
       </div>

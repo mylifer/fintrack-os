@@ -61,18 +61,18 @@ export default function TransactionsPage() {
       <PeriodTabs />
 
       {/* Filters */}
-      <div className="flex items-center gap-2 px-6 py-4 bg-transparent border-b border-line flex-shrink-0">
+      <div className="flex items-center gap-2 px-6 py-4 bg-transparent border-b border-border flex-shrink-0">
         <input
           type="text"
           placeholder="İşlem ara..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-32 text-sm bg-ground px-4 py-2 rounded-xl border border-transparent focus:border-line outline-none placeholder:text-muted/60 text-ink"
+          className="flex-1 min-w-32 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
         />
         <select
           value={typeFilter}
           onChange={e => setTypeFilter(e.target.value)}
-          className="text-xs border border-line bg-surface text-ink px-3 py-2 rounded-xl focus:outline-none focus:border-accent cursor-pointer"
+          className="text-xs border border-border bg-card text-foreground px-3 py-2 rounded-xl focus:outline-none focus:border-accent cursor-pointer"
         >
           <option value="">Tüm Türler</option>
           <option value="expense">Gider</option>
@@ -83,7 +83,7 @@ export default function TransactionsPage() {
 
       {/* Active person filter chips */}
       {hasPersonFilter && (
-        <div className="flex gap-2 px-6 py-2 bg-surface border-b border-line flex-wrap flex-shrink-0">
+        <div className="flex gap-2 px-6 py-2 bg-card border-b border-border flex-wrap flex-shrink-0">
           {familyFilter && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full" style={{ background: 'rgba(125,211,252,0.12)', color: '#7DD3FC' }}>
               Aile: {familyFilter.name}
@@ -101,10 +101,10 @@ export default function TransactionsPage() {
 
       {/* Summary bar */}
       {filtered.length > 0 && (
-        <div className="flex items-center gap-6 px-6 py-2.5 bg-surface border-b border-line flex-shrink-0">
-          <span className="text-2xl font-light tracking-tight tabular-nums text-ok">+{formatCurrency(totalIncome)}</span>
-          <span className="text-2xl font-light tracking-tight tabular-nums text-danger">−{formatCurrency(totalExpense)}</span>
-          <span className="ml-auto text-muted text-xs">{filtered.length} işlem</span>
+        <div className="flex items-center gap-6 px-6 py-2.5 bg-card border-b border-border flex-shrink-0">
+          <span className="text-2xl font-light tracking-tight tabular-nums text-green-600">+{formatCurrency(totalIncome)}</span>
+          <span className="text-2xl font-light tracking-tight tabular-nums text-destructive">−{formatCurrency(totalExpense)}</span>
+          <span className="ml-auto text-muted-foreground text-xs">{filtered.length} işlem</span>
         </div>
       )}
 

@@ -87,7 +87,7 @@ export function PendingRecurringCard() {
                   )}
                 </div>
 
-                <span className={`font-medium tabular-nums text-sm flex-shrink-0 ${r.type === 'income' ? 'text-emerald-400' : 'text-destructive'}`}>
+                <span className={`font-medium tabular-nums text-sm flex-shrink-0 ${r.type === 'income' ? 'text-green-600' : 'text-destructive'}`}>
                   {r.type === 'income' ? '+' : '−'}{formatCurrency(r.amount)}
                 </span>
 

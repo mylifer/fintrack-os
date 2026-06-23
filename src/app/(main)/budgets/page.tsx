@@ -112,14 +112,14 @@ export default function BudgetsPage() {
                     <div className="flex items-center gap-3">
                       <div className="text-right">
                         <span className={`text-xl font-light tracking-tight tabular-nums ${
-                          b.status === 'exceeded' ? 'text-danger' : b.status === 'warning' ? 'text-amber' : 'text-ink'
+                          b.status === 'exceeded' ? 'text-destructive' : b.status === 'warning' ? 'text-orange-500' : 'text-foreground'
                         }`}>
                           {formatCurrency(b.spent)}
                         </span>
                         <span className="text-muted-foreground text-sm font-medium tabular-nums"> / {formatCurrency(b.amount)}</span>
                       </div>
                       <button onClick={() => startEdit(b)} className="text-muted-foreground hover:text-foreground text-sm transition-colors">✎</button>
-                      <button onClick={() => remove(b.id)} className="text-muted-foreground hover:text-danger text-sm transition-colors">×</button>
+                      <button onClick={() => remove(b.id)} className="text-muted-foreground hover:text-destructive text-sm transition-colors">×</button>
                     </div>
                   </div>
                   <ProgressBar percent={b.percentUsed} status={b.status} showLabel />

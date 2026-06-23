@@ -17,11 +17,11 @@ const badgeVariants = cva(
         ghost:       "hover:bg-secondary hover:text-foreground",
         link:        "text-primary underline-offset-4 hover:underline",
         /* ── semantic (financial statuses) ── */
-        ok:      "bg-ok/10      text-ok      border-ok/20",
-        warning: "bg-amber/10   text-amber   border-amber/20",
-        danger:  "bg-danger/10  text-danger  border-danger/20",
-        info:    "bg-info/10    text-info    border-info/20",
-        amber:   "bg-amber/10   text-amber   border-amber/20",
+        ok:      "bg-green-600/10      text-green-600      border-ok/20",
+        warning: "bg-orange-500/10   text-orange-500   border-amber/20",
+        danger:  "bg-destructive/10  text-destructive  border-danger/20",
+        info:    "bg-blue-500/10    text-blue-500    border-info/20",
+        amber:   "bg-orange-500/10   text-orange-500   border-amber/20",
       },
     },
     defaultVariants: {

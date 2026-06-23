@@ -145,7 +145,7 @@ function RecipientAvatar({
   if (!failed) {
     return (
       <div
-        className={`${s.box} flex-shrink-0 rounded-md overflow-hidden bg-surface border border-line flex items-center justify-center ${s.pad} ${className}`}
+        className={`${s.box} flex-shrink-0 rounded-md overflow-hidden bg-card border border-border flex items-center justify-center ${s.pad} ${className}`}
       >
         <img
           src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
@@ -160,7 +160,7 @@ function RecipientAvatar({
   return (
     <div
       className={`${s.box} flex-shrink-0 rounded-md flex items-center justify-center ${s.text} font-bold text-white select-none ${className}`}
-      style={{ background: '#0EA5E9' }}
+      style={{ background: '#00E5FF' }}
     >
       {initial}
     </div>

@@ -8,10 +8,10 @@ import type { AssetGroup, PricePoint } from '@/app/api/prices/history/route'
 // ── Constants ──────────────────────────────────────────────────────
 
 const COLORS: Record<AssetGroup, string> = {
-  GOLD: '#F59E0B',
-  USD:  '#0EA5E9',
-  EUR:  '#60A5FA',
-  GBP:  '#A78BFA',
+  GOLD: '#d97706',
+  USD:  '#2563eb',
+  EUR:  '#7c3aed',
+  GBP:  '#0891b2',
 }
 
 const RAW_PRICE_LABEL: Record<AssetGroup, string> = {
@@ -30,7 +30,7 @@ const LOWER_MIN = 0    // unit-price band: 0–45
 const LOWER_MAX = 45
 // gap = 45–55 (10 units) keeps the lines visually separated
 
-const PRICE_COLOR = '#34D399' // emerald-400
+const PRICE_COLOR = '#16a34a' // green-600
 
 const TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara']
 
@@ -232,15 +232,15 @@ export function PriceHistoryChart({
           </span>
 
           {currentValue ? (
-            <div className="text-[22px] font-black tabular tracking-tight text-ink leading-none">
+            <div className="text-[22px] font-black tabular tracking-tight text-foreground leading-none">
               ₺{fmtPrice(currentValue)}
             </div>
           ) : loading ? (
-            <div className="h-7 w-28 bg-line rounded animate-pulse" />
+            <div className="h-7 w-28 bg-muted rounded animate-pulse" />
           ) : null}
 
           {pct !== null && (
-            <div className={`text-[11px] font-bold tabular mt-1 ${up ? 'text-ok' : 'text-danger'}`}>
+            <div className={`text-[11px] font-bold tabular mt-1 ${up ? 'text-green-600' : 'text-destructive'}`}>
               {up ? '↑' : '↓'} {Math.abs(pct).toFixed(2)}% bu dönemde
             </div>
           )}
@@ -254,7 +254,7 @@ export function PriceHistoryChart({
               onClick={() => setPeriod(p.key)}
               className={[
                 'px-2 py-1 text-[9px] font-bold rounded transition-colors leading-none',
-                period === p.key ? 'bg-white/[0.12] text-ink' : 'text-muted hover:text-ink/60',
+                period === p.key ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground/60',
               ].join(' ')}
             >
               {p.key}
@@ -282,7 +282,7 @@ export function PriceHistoryChart({
                 <span className="ml-1 tabular">
                   ₺{fmtPrice(lastRaw)}
                   {rawPct !== null && (
-                    <span className={rawUp ? ' text-ok' : ' text-danger'}>
+                    <span className={rawUp ? ' text-green-600' : ' text-destructive'}>
                       {' '}{rawUp ? '↑' : '↓'}{Math.abs(rawPct).toFixed(2)}%
                     </span>
                   )}
@@ -301,7 +301,7 @@ export function PriceHistoryChart({
             {Array.from({ length: 14 }).map((_, i) => (
               <div
                 key={i}
-                className="flex-1 bg-line rounded-sm animate-pulse"
+                className="flex-1 bg-muted rounded-sm animate-pulse"
                 style={{ height: `${32 + Math.sin(i * 0.8) * 22 + 28}%`, animationDelay: `${i * 55}ms` }}
               />
             ))}
@@ -333,7 +333,7 @@ export function PriceHistoryChart({
 
             <XAxis
               dataKey="date"
-              tick={{ fill: '#4A6080', fontSize: 9, fontFamily: 'ui-monospace, monospace' }}
+              tick={{ fill: '#71717a', fontSize: 9, fontFamily: 'inherit' }}
               tickLine={false}
               axisLine={false}
               tickFormatter={fmtAxisDate}
@@ -353,10 +353,10 @@ export function PriceHistoryChart({
 
                 return (
                   <div style={{
-                    background: '#0E1826', border: '1px solid #1A2840',
-                    borderRadius: 8, padding: '8px 12px', minWidth: 155,
+                    background: '#ffffff', border: '1px solid #e4e4e7',
+                    borderRadius: 6, padding: '8px 12px', minWidth: 155,
                   }}>
-                    <div style={{ fontSize: 9, color: '#4A6080', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    <div style={{ fontSize: 9, color: '#71717a', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                       {fmtTooltipDate(date)}
                     </div>
 
@@ -365,8 +365,8 @@ export function PriceHistoryChart({
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                           <svg width="12" height="6"><line x1="0" y1="3" x2="12" y2="3" stroke={color} strokeWidth="2" /></svg>
                           <div>
-                            <div style={{ fontSize: 8, color: '#4A6080', marginBottom: 1 }}>Portföy</div>
-                            <div style={{ fontSize: 14, fontWeight: 800, color: '#C0CCDD', fontVariantNumeric: 'tabular-nums' }}>
+                            <div style={{ fontSize: 8, color: '#71717a', marginBottom: 1 }}>Portföy</div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#18181b', fontVariantNumeric: 'tabular-nums' }}>
                               ₺{fmtPrice(row.realValue)}
                             </div>
                           </div>
@@ -375,8 +375,8 @@ export function PriceHistoryChart({
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <svg width="12" height="6"><line x1="0" y1="3" x2="12" y2="3" stroke={PRICE_COLOR} strokeWidth="1.5" strokeDasharray="3 2" /></svg>
                           <div>
-                            <div style={{ fontSize: 8, color: '#4A6080', marginBottom: 1 }}>{RAW_PRICE_LABEL[asset]}</div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: '#C0CCDD', fontVariantNumeric: 'tabular-nums' }}>
+                            <div style={{ fontSize: 8, color: '#71717a', marginBottom: 1 }}>{RAW_PRICE_LABEL[asset]}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#18181b', fontVariantNumeric: 'tabular-nums' }}>
                               ₺{fmtPrice(row.realRawPrice)}
                             </div>
                           </div>
@@ -385,12 +385,12 @@ export function PriceHistoryChart({
                     )}
 
                     {buys && (
-                      <div style={{ borderTop: '1px solid #1A2840', marginTop: 7, paddingTop: 7, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <div style={{ borderTop: '1px solid #e4e4e7', marginTop: 7, paddingTop: 7, display: 'flex', flexDirection: 'column', gap: 5 }}>
                         {buys.map((b, i) => (
                           <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                             <span style={{ fontSize: 9, marginTop: 1 }}>🛒</span>
                             <div>
-                              <div style={{ fontSize: 9, color: '#7A9AB8', fontWeight: 600, lineHeight: 1.3 }}>{b.description}</div>
+                              <div style={{ fontSize: 9, color: '#71717a', fontWeight: 600, lineHeight: 1.3 }}>{b.description}</div>
                               <div style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color }}>
                                 ₺{fmtPrice(b.totalCost)}
                               </div>
@@ -419,7 +419,7 @@ export function PriceHistoryChart({
                 return (
                   <g key={`buy-${payload.date}`}>
                     <circle cx={cx} cy={cy} r={10} fill={color} fillOpacity={0.12} />
-                    <circle cx={cx} cy={cy} r={4}  fill={color} stroke="#0B1120" strokeWidth={2} />
+                    <circle cx={cx} cy={cy} r={4}  fill={color} stroke="#ffffff" strokeWidth={2} />
                   </g>
                 )
               }}
@@ -429,7 +429,7 @@ export function PriceHistoryChart({
                 return (
                   <g key={`active-v-${payload?.date}`}>
                     {isBuy && <circle cx={cx} cy={cy} r={11} fill={color} fillOpacity={0.2} />}
-                    <circle cx={cx} cy={cy} r={isBuy ? 5 : 4} fill={color} stroke="#0B1120" strokeWidth={2} />
+                    <circle cx={cx} cy={cy} r={isBuy ? 5 : 4} fill={color} stroke="#ffffff" strokeWidth={2} />
                   </g>
                 )
               }}

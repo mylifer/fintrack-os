@@ -1,9 +1,12 @@
 'use client'
 
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer,
+  Area, AreaChart, CartesianGrid, XAxis,
 } from 'recharts'
+import {
+  ChartContainer, ChartTooltip, ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
 import { formatCompact } from '@/lib/utils/currency'
 import type { MonthYear } from '@/types'
 
@@ -18,72 +21,54 @@ interface Props {
   selectedPeriod: MonthYear
 }
 
-export default function NetWorthLineChart({ data, selectedPeriod }: Props) {
-  const allValues  = data.map(d => d.netWorth)
-  const minVal     = Math.min(...allValues)
-  const maxVal     = Math.max(...allValues)
-  const padding    = Math.max(Math.abs(maxVal - minVal) * 0.15, 1000)
-  const domainMin  = minVal - padding
-  const domainMax  = maxVal + padding
+const chartConfig = {
+  netWorth: { label: 'Net Varlık', color: 'var(--chart-3)' },
+} satisfies ChartConfig
+
+export default function NetWorthLineChart({ data }: Props) {
+  if (data.length === 0) {
+    return (
+      <div className="h-[220px] flex items-center justify-center text-sm text-muted-foreground">
+        Yeterli veri yok
+      </div>
+    )
+  }
 
   return (
-    <div className="px-2 py-4 h-48">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-          <defs>
-            <linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="10%" stopColor="#0EA5E9" stopOpacity={0.25} />
-              <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-
-          <CartesianGrid strokeDasharray="3 0" stroke="#1A2840" vertical={false} />
-
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 9, fontFamily: 'monospace', fill: '#4A6080' }}
-            axisLine={false}
-            tickLine={false}
-          />
-
-          <YAxis hide domain={[domainMin, domainMax]} />
-
-          <Tooltip
-            contentStyle={{
-              background: '#0E1826',
-              border: '1px solid #1A2840',
-              borderRadius: 8,
-              fontSize: 11,
-              fontFamily: 'monospace',
-            }}
-            formatter={(v) => [formatCompact(Number(v)), 'Net Varlık']}
-            labelStyle={{ color: '#C0CCDD', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}
-          />
-
-          <Area
-            type="monotone"
-            dataKey="netWorth"
-            stroke="#0EA5E9"
-            strokeWidth={2}
-            fill="url(#nwFill)"
-            dot={(props) => {
-              const { cx, cy, payload } = props
-              const isSelected =
-                payload.my.month === selectedPeriod.month &&
-                payload.my.year  === selectedPeriod.year
-              if (!isSelected) return <g key={props.key} />
-              return (
-                <circle
-                  key={props.key}
-                  cx={cx} cy={cy} r={5}
-                  fill="#0EA5E9" stroke="#0E1826" strokeWidth={2}
-                />
-              )
-            }}
-            activeDot={{ r: 4, fill: '#0EA5E9', stroke: '#0E1826', strokeWidth: 2 }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartContainer config={chartConfig} className="aspect-auto h-[220px] w-full">
+      <AreaChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+        <defs>
+          <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%"   stopColor="var(--color-netWorth)" stopOpacity={0.8} />
+            <stop offset="95%"  stopColor="var(--color-netWorth)" stopOpacity={0.1} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} />
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          tickMargin={10}
+          axisLine={false}
+        />
+        <ChartTooltip
+          cursor={false}
+          content={
+            <ChartTooltipContent
+              formatter={(value) => [formatCompact(Number(value)), 'Net Varlık']}
+              hideLabel
+            />
+          }
+        />
+        <Area
+          type="monotone"
+          dataKey="netWorth"
+          stroke="var(--color-netWorth)"
+          strokeWidth={2}
+          fill="url(#nwGrad)"
+          dot={false}
+          activeDot={{ r: 4, strokeWidth: 0 }}
+        />
+      </AreaChart>
+    </ChartContainer>
   )
 }

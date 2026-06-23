@@ -12,7 +12,7 @@ import { calcNetWorth, calcPeriodFlow } from '@/lib/utils/calculations'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { getPeriodRange, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import dynamic from 'next/dynamic'
-import { Card, CardHeader, CardTitle, CardContent, CardAction } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -23,11 +23,11 @@ import type { PeriodType } from '@/types'
 
 const CashflowChart = dynamic(
   () => import('@/components/dashboard/CashflowChart').then(m => ({ default: m.CashflowChart })),
-  { ssr: false, loading: () => <Card className="h-60 animate-pulse bg-muted/30" /> },
+  { ssr: false, loading: () => <Card className="h-[360px] animate-pulse bg-muted/30" /> },
 )
 const NetWorthChart = dynamic(
   () => import('@/components/dashboard/NetWorthChart').then(m => ({ default: m.NetWorthChart })),
-  { ssr: false, loading: () => <Card className="h-60 animate-pulse bg-muted/30" /> },
+  { ssr: false, loading: () => <Card className="h-[360px] animate-pulse bg-muted/30" /> },
 )
 
 const PERIOD_LABEL: Record<PeriodType, string> = {
@@ -87,50 +87,51 @@ export default function DashboardPage() {
   }
 
   return (
-
-
     <>
       <Header title="Dashboard" action={{ label: 'İşlem Ekle', onClick: () => openModal('add-transaction') }} />
       <PeriodTabs />
 
-      <div className="p-6 lg:p-8 space-y-6 lg:space-y-8">
+      <div className="p-6 lg:p-8 space-y-6">
 
         {/* ── Stat Cards ─────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: `${prefix} · Gider`,  value: formatCompact(expense),  sub: expense === 0 ? 'işlem yok' : `${formatCompact(income)} gelir`,     ok: false },
-            { label: `${prefix} · Gelir`,  value: formatCompact(income),   sub: income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,     ok: true  },
-            { label: 'Net Varlık',          value: formatCompact(netWorth), sub: `${accounts.length} hesap`,                                         ok: netWorth >= 0 },
+            { label: `${prefix} · Gider`,  value: formatCompact(expense),  sub: expense === 0 ? 'işlem yok' : `${formatCompact(income)} gelir`,                              ok: false },
+            { label: `${prefix} · Gelir`,  value: formatCompact(income),   sub: income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,                              ok: true  },
+            { label: 'Net Varlık',          value: formatCompact(netWorth), sub: `${accounts.length} hesap`,                                                                  ok: netWorth >= 0 },
             { label: `${prefix} · Net`,     value: (net >= 0 ? '+' : '') + formatCompact(net), sub: net > 0 ? 'fazla tasarruf' : net < 0 ? 'bütçe açığı' : 'başabaş', ok: net >= 0 },
           ].map(({ label, value, sub, ok }) => (
-            <Card key={label}>
-              <CardContent className="pt-6">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
-                <p className={`mt-2 text-3xl font-light tracking-tight tabular-nums ${ok ? 'text-emerald-400' : 'text-rose-400'}`}>{value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
+            <Card key={label} className="gap-2">
+              <CardHeader className="pb-2">
+                <CardDescription>{label}</CardDescription>
+                <p className={`text-2xl font-bold tabular-nums ${ok ? 'text-green-600' : 'text-destructive'}`}>{value}</p>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">{sub}</p>
               </CardContent>
             </Card>
           ))}
         </div>
 
         {/* ── Charts ─────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <CashflowChart />
           <NetWorthChart />
         </div>
 
         {/* ── Budget + Recent Transactions ────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* Budget */}
           <Card>
-            <CardHeader className="border-b border-border/50 pb-4">
-              <CardTitle className="text-sm font-semibold">Bütçe Durumu</CardTitle>
-              <CardAction>
-                <Link href="/budgets" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Bütçe Durumu</CardTitle>
+                <Link href="/budgets" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Tümü →
                 </Link>
-              </CardAction>
+              </div>
+              <CardDescription>Bu ay harcama limitleri</CardDescription>
             </CardHeader>
             <CardContent>
               {budgets.length === 0 ? (
@@ -157,14 +158,14 @@ export default function DashboardPage() {
           </Card>
 
           {/* Recent Transactions */}
-          <Card>
-            <CardHeader className="border-b border-border/50 pb-4">
-              <CardTitle className="text-sm font-semibold">Son İşlemler</CardTitle>
-              <CardAction>
-                <Link href="/transactions" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <Card className="gap-0">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <CardTitle>Son İşlemler</CardTitle>
+                <Link href="/transactions" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Tümü →
                 </Link>
-              </CardAction>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {recent.length === 0 ? (
@@ -177,7 +178,7 @@ export default function DashboardPage() {
                     const isIncome   = tx.type === 'income'
                     const isTransfer = tx.type === 'transfer'
                     return (
-                      <li key={tx.id} className="flex items-center gap-3 px-6 py-3.5">
+                      <li key={tx.id} className="flex items-center gap-3 px-6 py-3">
                         <span className="text-base w-6 text-center shrink-0 select-none">
                           {cat?.icon ?? (isTransfer ? '↔' : '·')}
                         </span>
@@ -187,7 +188,7 @@ export default function DashboardPage() {
                             {formatDateShort(tx.date)} · {account?.name ?? '—'}
                           </p>
                         </div>
-                        <span className={`text-sm tabular-nums shrink-0 font-medium ${isIncome ? 'text-emerald-400' : isTransfer ? 'text-sky-400' : 'text-foreground'}`}>
+                        <span className={`text-sm tabular-nums shrink-0 font-medium ${isIncome ? 'text-green-600' : isTransfer ? 'text-primary' : 'text-foreground'}`}>
                           {isIncome ? '+' : isTransfer ? '↔' : '−'}{formatCurrency(tx.amount, tx.currency)}
                         </span>
                       </li>
@@ -201,18 +202,18 @@ export default function DashboardPage() {
 
         {/* ── Pending Recurring ───────────────────────────────── */}
         {pending.length > 0 && (
-          <Card>
-            <CardHeader className="border-b border-border/50 pb-4">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                Bekleyen Tekrarlayan İşlemler
-                <Badge variant="warning" className="ml-1">{pending.length}</Badge>
-              </CardTitle>
-              <CardAction>
-                <Link href="/recurring" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <Card className="gap-0">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  Bekleyen Tekrarlayan İşlemler
+                  <Badge variant="warning" className="ml-1">{pending.length}</Badge>
+                </CardTitle>
+                <Link href="/recurring" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Tümü →
                 </Link>
-              </CardAction>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <ul className="divide-y divide-border">
@@ -220,23 +221,16 @@ export default function DashboardPage() {
                   const cat     = categories.find(c => c.id === r.categoryId)
                   const account = allAccounts.find(a => a.id === r.accountId)
                   return (
-                    <li key={r.id} className="flex items-center gap-3 px-6 py-3.5">
+                    <li key={r.id} className="flex items-center gap-3 px-6 py-3">
                       <span className="text-base w-6 text-center shrink-0">{cat?.icon ?? '↻'}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{r.name}</p>
-                        {account && (
-                          <p className="text-xs text-muted-foreground">{account.name}</p>
-                        )}
+                        {account && <p className="text-xs text-muted-foreground">{account.name}</p>}
                       </div>
-                      <span className={`text-sm tabular-nums shrink-0 font-medium ${r.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      <span className={`text-sm tabular-nums shrink-0 font-medium ${r.type === 'income' ? 'text-green-600' : 'text-destructive'}`}>
                         {r.type === 'income' ? '+' : '−'}{formatCurrency(r.amount)}
                       </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleGenerate(r.id)}
-                        className="shrink-0 rounded-xl"
-                      >
+                      <Button variant="outline" size="sm" onClick={() => handleGenerate(r.id)} className="shrink-0">
                         Kaydet
                       </Button>
                     </li>
@@ -248,17 +242,17 @@ export default function DashboardPage() {
         )}
 
         {/* ── Accounts + Debt ─────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* Accounts */}
-          <Card>
-            <CardHeader className="border-b border-border/50 pb-4">
-              <CardTitle className="text-sm font-semibold">Hesaplar</CardTitle>
-              <CardAction>
-                <Link href="/accounts" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <Card className="gap-0">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <CardTitle>Hesaplar</CardTitle>
+                <Link href="/accounts" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Yönet →
                 </Link>
-              </CardAction>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {accounts.length === 0 ? (
@@ -267,13 +261,13 @@ export default function DashboardPage() {
                 <ul className="divide-y divide-border">
                   {accounts.map(a => (
                     <li key={a.id}>
-                      <Link href={`/accounts/${a.id}`} className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/50 transition-colors">
+                      <Link href={`/accounts/${a.id}`} className="flex items-center gap-3 px-6 py-3 hover:bg-muted/50 transition-colors">
                         <span className="w-2 h-2 rounded-full shrink-0" style={{ background: a.color }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{a.name}</p>
                           <p className="text-xs text-muted-foreground">{ACCOUNT_TYPE[a.type] ?? a.type}</p>
                         </div>
-                        <span className={`text-sm tabular-nums shrink-0 ${a.balance < 0 ? 'text-rose-400' : 'text-foreground'}`}>
+                        <span className={`text-sm tabular-nums shrink-0 ${a.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
                           {formatCurrency(a.balance, a.currency)}
                         </span>
                       </Link>
@@ -286,20 +280,21 @@ export default function DashboardPage() {
 
           {/* Debt Summary */}
           <Card>
-            <CardHeader className="border-b border-border/50 pb-4">
-              <CardTitle className="text-sm font-semibold">Borç Takibi</CardTitle>
-              <CardAction>
-                <Link href="/debts" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Borç Takibi</CardTitle>
+                <Link href="/debts" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Tümü →
                 </Link>
-              </CardAction>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-baseline gap-2 mb-4">
-                <span className="text-3xl font-light tracking-tight tabular-nums">{formatCurrency(totalOwed)}</span>
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">toplam borç</span>
               </div>
-              <Separator className="mb-4" />
+              <CardDescription>Yaklaşan ödemeler ve toplam borç</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold tabular-nums">{formatCurrency(totalOwed)}</span>
+                <span className="text-sm text-muted-foreground">toplam borç</span>
+              </div>
+              <Separator />
               {dueSoon.length === 0 ? (
                 <p className="text-sm text-muted-foreground">30 gün içinde vadesi gelen ödeme yok.</p>
               ) : (

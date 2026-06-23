@@ -83,37 +83,37 @@ export default function AccountDetailClient({ id }: { id: string }) {
       <PeriodTabs />
 
       {/* Account summary */}
-      <div className="px-6 lg:px-8 py-5 border-b border-line bg-surface flex-shrink-0">
+      <div className="px-6 lg:px-8 py-5 border-b border-border bg-card flex-shrink-0">
         {/* Top row: avatar + type badge + edit */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <AccountAvatar account={account} size="lg" />
             <div className="flex flex-col gap-1.5">
-              <div className="text-base font-semibold text-ink">{account.name}</div>
+              <div className="text-base font-semibold text-foreground">{account.name}</div>
               <Badge variant="default">{TYPE_LABELS[account.type]}</Badge>
             </div>
           </div>
           <button
             onClick={() => setEditingAccount(account)}
-            className="text-muted hover:text-ink text-sm transition-colors mt-1"
+            className="text-muted-foreground hover:text-foreground text-sm transition-colors mt-1"
           >✎</button>
         </div>
 
         {/* Balance */}
-        <div className={`text-3xl font-light tracking-tight tabular-nums mb-4 ${account.balance < 0 ? 'text-danger' : 'text-ink'}`}>
+        <div className={`text-3xl font-light tracking-tight tabular-nums mb-4 ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
           {formatCurrency(account.balance, account.currency)}
         </div>
 
         {/* Credit card utilisation bar */}
         {account.type === 'credit_card' && account.creditLimit && (
           <div className="mb-4">
-            <div className="flex justify-between text-xs text-muted mb-1.5">
+            <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
               <span>Kullanılabilir: {formatCurrency(available ?? 0, account.currency)}</span>
               <span>Limit: {formatCurrency(account.creditLimit, account.currency)}</span>
             </div>
-            <div className="h-1.5 bg-line rounded-full overflow-hidden">
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${usedPct > 80 ? 'bg-danger' : usedPct > 60 ? 'bg-amber' : 'bg-ok'}`}
+                className={`h-full rounded-full transition-all ${usedPct > 80 ? 'bg-destructive' : usedPct > 60 ? 'bg-orange-500' : 'bg-green-600'}`}
                 style={{ width: `${Math.min(usedPct, 100)}%` }}
               />
             </div>
@@ -121,25 +121,25 @@ export default function AccountDetailClient({ id }: { id: string }) {
         )}
 
         {/* Period stats */}
-        <div className="flex gap-6 pt-4 border-t border-line">
+        <div className="flex gap-6 pt-4 border-t border-border">
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted mb-0.5">Gelir</div>
-            <div className="text-sm font-medium tabular-nums text-ok">+{formatCurrency(periodIncome, account.currency)}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Gelir</div>
+            <div className="text-sm font-medium tabular-nums text-green-600">+{formatCurrency(periodIncome, account.currency)}</div>
           </div>
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted mb-0.5">Gider</div>
-            <div className="text-sm font-medium tabular-nums text-danger">−{formatCurrency(periodExpense, account.currency)}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Gider</div>
+            <div className="text-sm font-medium tabular-nums text-destructive">−{formatCurrency(periodExpense, account.currency)}</div>
           </div>
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted mb-0.5">İşlem</div>
-            <div className="text-sm font-medium tabular-nums text-ink">{filteredTxs.length}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">İşlem</div>
+            <div className="text-sm font-medium tabular-nums text-foreground">{filteredTxs.length}</div>
           </div>
         </div>
       </div>
 
       {/* Active person filter chips */}
       {(familyFilter || recipientFilter) && (
-        <div className="flex gap-2 px-6 py-2 bg-surface border-b border-line flex-wrap flex-shrink-0">
+        <div className="flex gap-2 px-6 py-2 bg-card border-b border-border flex-wrap flex-shrink-0">
           {familyFilter && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded" style={{ background: 'rgba(125,211,252,0.12)', color: '#7DD3FC' }}>
               Aile: {familyFilter.name}

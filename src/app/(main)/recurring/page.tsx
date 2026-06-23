@@ -222,8 +222,8 @@ export default function RecurringPage() {
         {/* ── Pending (due) ─────────────────────────────────────────── */}
         {due.length > 0 && (
           <section>
-            <div className="text-xs font-medium tracking-wide uppercase text-amber font-semibold mb-2 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber inline-block" />
+            <div className="text-xs font-medium tracking-wide uppercase text-orange-500 font-semibold mb-2 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />
               Bekleyen — {due.length} işlem
             </div>
             <Card className="gap-0 py-0">
@@ -246,7 +246,7 @@ export default function RecurringPage() {
 
         {/* ── Active ────────────────────────────────────────────────── */}
         <section>
-          <div className="text-xs font-medium tracking-wide uppercase text-muted font-semibold mb-2">
+          <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground font-semibold mb-2">
             Aktif — {active.length}
           </div>
           {recurring.filter(r => r.isActive).length === 0 && due.length === 0 ? (
@@ -281,7 +281,7 @@ export default function RecurringPage() {
         {/* ── Paused ────────────────────────────────────────────────── */}
         {paused.length > 0 && (
           <section>
-            <div className="text-xs font-medium tracking-wide uppercase text-muted font-semibold mb-2">
+            <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground font-semibold mb-2">
               Duraklatıldı — {paused.length}
             </div>
             <Card className="gap-0 py-0 opacity-60">
@@ -325,7 +325,7 @@ export default function RecurringPage() {
 
           {/* Type tabs */}
           <div>
-            <label className="block text-xs font-medium tracking-wide uppercase text-muted mb-1.5">Tür</label>
+            <label className="block text-xs font-medium tracking-wide uppercase text-muted-foreground mb-1.5">Tür</label>
             <div className="flex border border-border">
               {TYPE_OPTIONS.map(opt => (
                 <button
@@ -335,8 +335,8 @@ export default function RecurringPage() {
                   className={[
                     'flex-1 py-2 text-xs font-semibold uppercase tracking-wide transition-colors',
                     form.type === opt.value
-                      ? 'bg-accent/[0.15] text-accent border-b-2 border-accent'
-                      : 'text-muted hover:text-ink hover:bg-ground',
+                      ? 'bg-primary/[0.15] text-primary border-b-2 border-accent'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-background',
                   ].join(' ')}
                 >
                   {opt.label}
@@ -449,12 +449,12 @@ function DueRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           {category && <span className="text-base">{category.icon}</span>}
-          <span className="font-semibold text-sm text-ink truncate">{r.name}</span>
+          <span className="font-semibold text-sm text-foreground truncate">{r.name}</span>
           <Badge variant={r.type === 'income' ? 'ok' : r.type === 'transfer' ? 'info' : 'danger'}>
             {FREQ_LABEL[r.frequency]}
           </Badge>
         </div>
-        <div className="text-xs font-medium text-muted mt-0.5 flex items-center gap-2">
+        <div className="text-xs font-medium text-muted-foreground mt-0.5 flex items-center gap-2">
           {account && (
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: account.color }} />
@@ -468,12 +468,12 @@ function DueRow({
         </div>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
-        <span className={`font-medium tabular-nums tracking-tight text-lg ${r.type === 'income' ? 'text-ok' : r.type === 'transfer' ? 'text-info' : 'text-danger'}`}>
+        <span className={`font-medium tabular-nums tracking-tight text-lg ${r.type === 'income' ? 'text-green-600' : r.type === 'transfer' ? 'text-blue-500' : 'text-destructive'}`}>
           {r.type === 'income' ? '+' : r.type === 'expense' ? '−' : '⇄'}{formatCurrency(r.amount)}
         </span>
         <button
           onClick={onSkip}
-          className="text-xs font-medium text-muted hover:text-ink transition-colors px-2 py-1 border border-border rounded-xl"
+          className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-1 border border-border rounded-xl"
           title="Bu sefer atla"
         >
           Atla
@@ -511,12 +511,12 @@ function RecurringRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           {category && <span className="text-base">{category.icon}</span>}
-          <span className="font-semibold text-sm text-ink truncate">{r.name}</span>
+          <span className="font-semibold text-sm text-foreground truncate">{r.name}</span>
           <Badge variant={r.type === 'income' ? 'ok' : r.type === 'transfer' ? 'info' : 'default'}>
             {FREQ_LABEL[r.frequency]}
           </Badge>
         </div>
-        <div className="text-xs font-medium text-muted mt-0.5 flex items-center gap-2">
+        <div className="text-xs font-medium text-muted-foreground mt-0.5 flex items-center gap-2">
           {account && (
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: account.color }} />
@@ -530,25 +530,25 @@ function RecurringRow({
         </div>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
-        <span className={`tabular-nums tracking-tight text-lg font-medium ${r.type === 'income' ? 'text-ok' : 'text-muted'}`}>
+        <span className={`tabular-nums tracking-tight text-lg font-medium ${r.type === 'income' ? 'text-green-600' : 'text-muted-foreground'}`}>
           {formatCurrency(r.amount)}
         </span>
         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-          <button onClick={onEdit} className="w-7 h-7 rounded-xl flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] text-xs transition-colors" title="Düzenle">✎</button>
+          <button onClick={onEdit} className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent text-xs transition-colors" title="Düzenle">✎</button>
           <button
             onClick={onToggle}
-            className="w-7 h-7 rounded-xl flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] text-xs transition-colors"
+            className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent text-xs transition-colors"
             title={r.isActive ? 'Durdur' : 'Aktif et'}
           >
             {r.isActive ? '⏸' : '▶'}
           </button>
           {isConfirm ? (
             <div className="flex items-center gap-1">
-              <button onClick={onDelete} className="px-2 h-6 rounded-full bg-danger text-white text-xs font-semibold">Sil</button>
-              <button onClick={onCancelDelete} className="w-6 h-6 rounded-full border border-border text-muted text-xs">✕</button>
+              <button onClick={onDelete} className="px-2 h-6 rounded-full bg-destructive text-white text-xs font-semibold">Sil</button>
+              <button onClick={onCancelDelete} className="w-6 h-6 rounded-full border border-border text-muted-foreground text-xs">✕</button>
             </div>
           ) : (
-            <button onClick={onConfirmDelete} className="w-7 h-7 rounded-xl flex items-center justify-center text-muted hover:text-danger hover:bg-white/[0.08] text-base transition-colors">×</button>
+            <button onClick={onConfirmDelete} className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent text-base transition-colors">×</button>
           )}
         </div>
       </div>
