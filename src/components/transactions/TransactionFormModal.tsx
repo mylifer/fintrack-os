@@ -1,47 +1,116 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useId } from 'react'
 import { useUIStore, useAccountStore, useCategoryStore, useTransactionStore, usePeopleStore } from '@/store'
-import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/Input'
-import { SelectField as Select } from '@/components/ui/Select'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog'
 import { parseCurrencyInput } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
+import { cn } from '@/lib/utils'
 import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
-import { PersonAvatar } from '@/components/people/PersonAvatar'
+import { Check, X, Plus } from 'lucide-react'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/Select'
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 type Tab = 'expense' | 'income' | 'transfer'
 
-const TAB_LABELS: Record<Tab, string> = {
-  expense:  'Gider',
-  income:   'Gelir',
-  transfer: 'Transfer',
-}
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'expense',  label: 'Gider'    },
+  { key: 'income',   label: 'Gelir'    },
+  { key: 'transfer', label: 'Transfer' },
+]
 
-function newTx(): Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'> {
+function newForm() {
   return {
-    type: 'expense',
+    type: 'expense' as Tab,
     amount: 0,
-    currency: 'TRY',
+    currency: 'TRY' as CurrencyCode,
     date: today(),
     accountId: '',
-    categoryId: '',
+    toAccountId: undefined as string | undefined,
+    categoryId: '' as string | undefined,
     description: '',
+    notes: undefined as string | undefined,
     isInstallment: false,
+    familyMemberId: undefined as string | null | undefined,
+    recipientId:    undefined as string | null | undefined,
   }
 }
 
 interface Suggestion {
-  description: string
-  categoryId: string
+  description:     string
+  categoryId:      string
   familyMemberId?: string
-  recipientId?: string
+  recipientId?:    string
 }
 
-interface DescriptionAutocompleteProps {
+// ── Field wrapper ─────────────────────────────────────────────────────────────
+
+function Field({ label, error, children, optional }: {
+  label: string
+  error?: string
+  children: React.ReactNode
+  optional?: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label className={cn("text-sm font-medium", error && "text-destructive")}>
+        {label}
+        {optional && <span className="font-normal text-muted-foreground ml-1">(opsiyonel)</span>}
+      </Label>
+      {children}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+// ── Shadcn Select wrapper ─────────────────────────────────────────────────────
+
+function AppSelect({
+  value, onChange, options, placeholder, error, disabled, onOpenChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  placeholder?: string
+  error?: boolean
+  disabled?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
+  return (
+    <Select value={value || undefined} onValueChange={onChange} disabled={disabled} onOpenChange={onOpenChange}>
+      <SelectTrigger
+        aria-invalid={!!error}
+        className={cn(
+          "h-9 w-full rounded-md",
+          error && "border-destructive aria-invalid:ring-destructive/20",
+        )}
+      >
+        <SelectValue placeholder={placeholder ?? 'Seçin...'} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(o => (
+          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+// ── Autocomplete ──────────────────────────────────────────────────────────────
+
+function DescriptionAutocomplete({
+  value, onChange, onSelect, suggestions, categories, people, error,
+}: {
   value: string
   onChange: (v: string) => void
   onSelect: (s: Suggestion) => void
@@ -49,111 +118,74 @@ interface DescriptionAutocompleteProps {
   categories: { id: string; name: string; icon: string }[]
   people: Person[]
   error?: string
-}
-
-function DescriptionAutocomplete({
-  value, onChange, onSelect, suggestions, categories, people, error,
-}: DescriptionAutocompleteProps) {
+}) {
   const [open, setOpen] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const id = useId()
 
   const filtered = useMemo(() => {
     const q = value.trim().toLowerCase()
     if (!q) return []
-    return suggestions
-      .filter(s => s.description.toLowerCase().includes(q))
-      .slice(0, 6)
+    return suggestions.filter(s => s.description.toLowerCase().includes(q)).slice(0, 6)
   }, [value, suggestions])
 
   useEffect(() => { setHighlighted(0) }, [filtered.length])
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (!open || filtered.length === 0) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setHighlighted(h => Math.min(h + 1, filtered.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setHighlighted(h => Math.max(h - 1, 0))
-    } else if (e.key === 'Enter' && filtered[highlighted]) {
-      e.preventDefault()
-      onSelect(filtered[highlighted])
-      setOpen(false)
-    } else if (e.key === 'Escape') {
-      setOpen(false)
-    }
+    if (!open || !filtered.length) return
+    if (e.key === 'ArrowDown')  { e.preventDefault(); setHighlighted(h => Math.min(h + 1, filtered.length - 1)) }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); setHighlighted(h => Math.max(h - 1, 0)) }
+    else if (e.key === 'Enter' && filtered[highlighted]) { e.preventDefault(); onSelect(filtered[highlighted]); setOpen(false) }
+    else if (e.key === 'Escape') setOpen(false)
   }
+
+  const showDropdown = open && filtered.length > 0
 
   return (
     <div className="relative">
-      <label className="block text-xs font-medium text-foreground/80 mb-1.5">
-        Açıklama
-      </label>
       <input
+        id={id}
         ref={inputRef}
         autoFocus
         value={value}
         onChange={e => { onChange(e.target.value); setOpen(true) }}
         onKeyDown={handleKeyDown}
         onFocus={() => value.trim() && setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Migros, Maaş, Kira..."
-        className={[
-          'w-full border px-3 py-2 text-sm bg-card text-foreground font-sans rounded-xl',
-          'placeholder:text-muted-foreground focus:outline-none transition-colors',
-          error
-            ? 'border-danger focus:border-danger'
-            : 'border-border focus:border-ink',
-        ].join(' ')}
+        aria-invalid={!!error}
+        className={cn(
+          "h-9 w-full rounded-md border bg-background dark:bg-muted px-3 text-sm outline-none transition-colors",
+          "placeholder:text-muted-foreground",
+          "focus:ring-2 focus:ring-ring/50 focus:border-ring",
+          "aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20",
+          showDropdown && "rounded-b-none border-b-0",
+          error ? "border-destructive" : "border-input",
+        )}
       />
-      {error && (
-        <p className="mt-1 text-xs text-destructive">{error}</p>
-      )}
 
-      {open && filtered.length > 0 && (
-        <div className="absolute z-50 left-0 right-0 top-full border border-t-0 border-border bg-card rounded-b-xl overflow-hidden">
+      {showDropdown && (
+        <div className="absolute left-0 right-0 top-full z-50 overflow-hidden rounded-b-md border border-t-0 border-input bg-popover shadow-md">
           {filtered.map((s, i) => {
             const cat = categories.find(c => c.id === s.categoryId)
+            const famPerson = people.find(p => p.id === s.familyMemberId)
+            const recPerson = people.find(p => p.id === s.recipientId)
             return (
               <button
                 key={s.description}
                 type="button"
-                onMouseDown={() => {
-                  onSelect(s)
-                  setOpen(false)
-                }}
-                className={[
-                  'w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors',
-                  i === highlighted ? 'bg-background' : 'hover:bg-background',
-                ].join(' ')}
+                onMouseDown={() => { onSelect(s); setOpen(false) }}
+                className={cn(
+                  "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors",
+                  i === highlighted ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
+                )}
               >
-                <span className="text-sm truncate flex-1">{s.description}</span>
-                <span className="flex-shrink-0 flex items-center gap-2">
-                  {s.familyMemberId && (() => {
-                    const p = people.find(x => x.id === s.familyMemberId)
-                    return p ? (
-                      <span className="flex items-center gap-1">
-                        <PersonAvatar person={p} size="xs" />
-                        <span className="text-xs text-muted-foreground">{p.name}</span>
-                      </span>
-                    ) : null
-                  })()}
-                  {s.recipientId && (() => {
-                    const p = people.find(x => x.id === s.recipientId)
-                    return p ? (
-                      <span className="flex items-center gap-1">
-                        <PersonAvatar person={p} size="xs" />
-                        <span className="text-xs text-muted-foreground">{p.name}</span>
-                      </span>
-                    ) : null
-                  })()}
-                  {cat && (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <span>{cat.icon}</span>
-                      <span className="tracking-wide">{cat.name}</span>
-                    </span>
-                  )}
+                <span className="flex-1 truncate">{s.description}</span>
+                <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                  {famPerson && <span>{famPerson.name}</span>}
+                  {recPerson && <span>{recPerson.name}</span>}
+                  {cat && <span>{cat.icon} {cat.name}</span>}
                 </span>
               </button>
             )
@@ -164,179 +196,187 @@ function DescriptionAutocomplete({
   )
 }
 
-const PERSON_ROLE_LABELS: Record<PersonRole, string> = {
-  family_member: 'Aile Üyesi',
-  recipient:     'Alıcı',
-}
+// ── Person field ──────────────────────────────────────────────────────────────
 
-function PersonSelectField({
-  role,
-  value,
-  onChange,
+function PersonField({
+  role, value, onChange, onSelectOpen,
 }: {
   role: PersonRole
   value: string | null | undefined
   onChange: (id: string | undefined) => void
+  onSelectOpen?: (open: boolean) => void
 }) {
   const allPeople = usePeopleStore(s => s.people)
   const addPerson = usePeopleStore(s => s.add)
   const people    = allPeople.filter(p => p.role === role)
-  const [adding, setAdding]     = useState(false)
-  const [newName, setNewName]   = useState('')
-  const [saving, setSaving]     = useState(false)
-  const [addError, setAddError] = useState<string | null>(null)
+
+  const [adding, setAdding]   = useState(false)
+  const [newName, setNewName] = useState('')
+  const [saving, setSaving]   = useState(false)
+
+  const label = role === 'family_member' ? 'Aile Üyesi' : 'Alıcı'
 
   async function handleAdd() {
     const name = newName.trim()
     if (!name) return
     setSaving(true)
-    setAddError(null)
     try {
       const person = await addPerson(name, role)
       onChange(person.id)
       setAdding(false)
       setNewName('')
-    } catch {
-      setAddError('Kaydedilemedi')
     } finally {
       setSaving(false)
     }
   }
 
-  const label = PERSON_ROLE_LABELS[role]
-
-  const selectedPerson = people.find(p => p.id === value)
-
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="block text-xs font-medium text-foreground/80">
-        {label} <span className="normal-case font-normal text-muted-foreground">(opsiyonel)</span>
-      </label>
-
+    <Field label={label} optional>
       {adding ? (
-        /* Compact add row: input + ✓ + ✕ icon buttons — fits in a narrow grid column */
-        <div className="flex items-center gap-1">
+        <div className="flex gap-1">
           <input
             autoFocus
             value={newName}
             onChange={e => setNewName(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') handleAdd()
-              if (e.key === 'Escape') { setAdding(false); setNewName(''); setAddError(null) }
+              if (e.key === 'Enter')  handleAdd()
+              if (e.key === 'Escape') { setAdding(false); setNewName('') }
             }}
             placeholder={`${label} adı...`}
-            className="flex-1 min-w-0 border border-border px-2 py-[7px] text-sm bg-card text-foreground focus:border-accent outline-none rounded-xl"
             disabled={saving}
+            className="h-9 flex-1 min-w-0 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
           />
           <button
             type="button"
             onClick={handleAdd}
             disabled={saving || !newName.trim()}
-            className="w-8 h-[33px] flex-shrink-0 flex items-center justify-center text-green-600 border border-border hover:bg-background disabled:opacity-40 transition-colors font-bold text-sm rounded-xl"
-            title="Kaydet"
-          >{saving ? '…' : '✓'}</button>
+            className="h-9 w-9 flex items-center justify-center rounded-md border border-input text-green-600 hover:bg-accent disabled:opacity-40 transition-colors"
+          >
+            <Check className="size-4" />
+          </button>
           <button
             type="button"
-            onClick={() => { setAdding(false); setNewName(''); setAddError(null) }}
-            className="w-8 h-[33px] flex-shrink-0 flex items-center justify-center text-muted-foreground border border-border hover:bg-background transition-colors text-sm rounded-xl"
-            title="İptal"
-          >✕</button>
+            onClick={() => { setAdding(false); setNewName('') }}
+            className="h-9 w-9 flex items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-accent transition-colors"
+          >
+            <X className="size-4" />
+          </button>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
-          {selectedPerson && (
-            <PersonAvatar person={selectedPerson} size="sm" className="flex-shrink-0" />
-          )}
-          <select
+        <div className="flex gap-1">
+          <Select
             value={value ?? ''}
-            onChange={e => {
-              if (e.target.value === '__NEW__') { setAdding(true); return }
-              onChange(e.target.value || undefined)
+            onValueChange={v => {
+              if (v === '__NEW__') { setAdding(true); return }
+              onChange(v || undefined)
             }}
-            className="flex-1 min-w-0 border border-border px-2 py-[7px] text-sm bg-card text-foreground focus:border-accent outline-none rounded-xl"
+            onOpenChange={onSelectOpen}
           >
-            <option value="">— Seçin —</option>
-            {people.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-            <option value="__NEW__">+ Yeni ekle…</option>
-          </select>
+            <SelectTrigger className="h-9 flex-1 rounded-md">
+              <SelectValue placeholder="— Seçin —" />
+            </SelectTrigger>
+            <SelectContent>
+              {people.map(p => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+              <SelectItem value="__NEW__">+ Yeni ekle…</SelectItem>
+            </SelectContent>
+          </Select>
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange(undefined)}
+              className="h-9 w-9 flex items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-accent transition-colors"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
       )}
-
-      {addError && <p className="text-xs text-destructive">{addError}</p>}
-    </div>
+    </Field>
   )
 }
 
+// ── Main modal ────────────────────────────────────────────────────────────────
+
 export function TransactionFormModal() {
   const { modal, modalPayload, closeModal } = useUIStore()
-  const accounts      = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
-  const categories    = useCategoryStore(s => s.categories)
-  const transactions  = useTransactionStore(s => s.transactions)
-  const addTx         = useTransactionStore(s => s.add)
-  const addGroup      = useTransactionStore(s => s.addInstallmentGroup)
-  const updateTx      = useTransactionStore(s => s.update)
-  const editingTx: Transaction | undefined =
-    modal === 'edit-transaction' && modalPayload?.id
-      ? transactions.find(t => t.id === modalPayload.id)
-      : undefined
-
-  const [tab, setTab]               = useState<Tab>('expense')
-  const [form, setForm]             = useState(newTx())
-  const [amountStr, setAmountStr]   = useState('')
-  const [installments, setInstallments] = useState(1)
-  const [loading, setLoading]       = useState(false)
-  const [errors, setErrors]         = useState<Record<string, string>>({})
+  const accounts   = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
+  const categories = useCategoryStore(s => s.categories)
+  const transactions = useTransactionStore(s => s.transactions)
+  const addTx        = useTransactionStore(s => s.add)
+  const addGroup     = useTransactionStore(s => s.addInstallmentGroup)
+  const updateTx     = useTransactionStore(s => s.update)
+  const allPeople    = usePeopleStore(s => s.people)
 
   const open = modal === 'add-transaction' || modal === 'edit-transaction'
+  const isEdit = modal === 'edit-transaction'
 
+  const editingTx: Transaction | undefined = isEdit && modalPayload?.id
+    ? transactions.find(t => t.id === modalPayload.id)
+    : undefined
+
+  const [tab, setTab]             = useState<Tab>('expense')
+  const [form, setForm]           = useState(newForm())
+  const [amountStr, setAmountStr] = useState('')
+  const [installments, setInstallments] = useState(1)
+  const [loading, setLoading]     = useState(false)
+  const [errors, setErrors]       = useState<Record<string, string>>({})
+
+  // Track Select open state to prevent dialog from closing while a dropdown is open.
+  // Radix DismissableLayer defers dialog's onInteractOutside to the "click" event,
+  // by which time the Select has already closed. Snapshot the state on pointerdown
+  // (capture phase, before any bubbling handler fires) for reliable detection.
+  const selectOpenRef = useRef(false)
+  const selectWasOpenRef = useRef(false)
+  useEffect(() => {
+    const snap = () => { selectWasOpenRef.current = selectOpenRef.current }
+    document.addEventListener('pointerdown', snap, true)
+    return () => document.removeEventListener('pointerdown', snap, true)
+  }, [])
+  const onSelectOpen = (open: boolean) => { selectOpenRef.current = open }
+
+  // Reset / populate on open
   useEffect(() => {
     if (!open) {
-      setForm(newTx())
-      setAmountStr('')
-      setInstallments(1)
-      setErrors({})
-    } else if (modal === 'edit-transaction' && modalPayload?.id) {
-      const tx = transactions.find(t => t.id === modalPayload.id)
-      if (tx) {
-        setTab(tx.type as Tab)
-        setForm({
-          type: tx.type,
-          amount: tx.amount,
-          currency: tx.currency,
-          date: tx.date,
-          accountId: tx.accountId,
-          toAccountId: tx.toAccountId,
-          categoryId: tx.categoryId ?? '',
-          description: tx.description,
-          notes: tx.notes,
-          isInstallment: tx.isInstallment,
-          familyMemberId: tx.familyMemberId ?? undefined,
-          recipientId: tx.recipientId ?? undefined,
-        })
-        setAmountStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(tx.amount))
-        setInstallments(tx.installTotal ?? 1)
-      }
+      setForm(newForm()); setAmountStr(''); setInstallments(1); setErrors({})
+      return
+    }
+    if (isEdit && editingTx) {
+      setTab(editingTx.type as Tab)
+      setForm({
+        type:           editingTx.type as Tab,
+        amount:         editingTx.amount,
+        currency:       editingTx.currency,
+        date:           editingTx.date,
+        accountId:      editingTx.accountId,
+        toAccountId:    editingTx.toAccountId,
+        categoryId:     editingTx.categoryId ?? '',
+        description:    editingTx.description,
+        notes:          editingTx.notes,
+        isInstallment:  editingTx.isInstallment,
+        familyMemberId: editingTx.familyMemberId ?? undefined,
+        recipientId:    editingTx.recipientId    ?? undefined,
+      })
+      setAmountStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(editingTx.amount))
+      setInstallments(editingTx.installTotal ?? 1)
     } else {
       setTab('expense')
-      if (modalPayload?.accountId) {
-        setForm(f => ({ ...f, accountId: modalPayload!.accountId! }))
-      }
+      const f = newForm()
+      if (modalPayload?.accountId) f.accountId = modalPayload.accountId
+      setForm(f)
     }
   }, [open])
 
-  const allPeople = usePeopleStore(s => s.people)
-
-  // Build suggestions: unique descriptions for current tab type, most recent data per description
+  // Autocomplete suggestions
   const suggestions = useMemo<Suggestion[]>(() => {
     const map = new Map<string, { description: string; categoryId: string; date: string; familyMemberId?: string; recipientId?: string }>()
     transactions
       .filter(tx => tx.type === tab && tx.description?.trim())
       .forEach(tx => {
         const key = tx.description.trim().toLowerCase()
-        const existing = map.get(key)
-        if (!existing || tx.date > existing.date) {
+        const ex  = map.get(key)
+        if (!ex || tx.date > ex.date) {
           map.set(key, {
             description:    tx.description.trim(),
             categoryId:     tx.categoryId ?? '',
@@ -346,27 +386,23 @@ export function TransactionFormModal() {
           })
         }
       })
-    return Array.from(map.values()).map(({ description, categoryId, familyMemberId, recipientId }) => ({
-      description, categoryId, familyMemberId, recipientId,
-    }))
+    return Array.from(map.values()).map(({ description, categoryId, familyMemberId, recipientId }) =>
+      ({ description, categoryId, familyMemberId, recipientId }))
   }, [transactions, tab])
 
-  const filteredCategories = categories.filter(
-    c => c.scope === tab || c.scope === 'both',
-  )
-
-  const accountOptions  = accounts.map(a => ({ value: a.id, label: a.name }))
-  const categoryOptions = filteredCategories.map(c => ({ value: c.id, label: `${c.icon} ${c.name}` }))
+  const filteredCategories = categories.filter(c => c.scope === tab || c.scope === 'both')
+  const accountOptions     = accounts.map(a => ({ value: a.id, label: a.name }))
+  const categoryOptions    = filteredCategories.map(c => ({ value: c.id, label: `${c.icon} ${c.name}` }))
 
   function validate(): boolean {
     const e: Record<string, string> = {}
     const amount = parseCurrencyInput(amountStr)
-    if (!amount || amount <= 0)      e.amount      = 'Geçerli bir tutar girin'
-    if (!form.accountId)             e.accountId   = 'Hesap seçin'
-    if (!form.date)                  e.date        = 'Tarih seçin'
-    if (tab !== 'transfer' && !form.categoryId)  e.categoryId  = 'Kategori seçin'
-    if (tab === 'transfer' && !form.toAccountId) e.toAccountId = 'Hedef hesap seçin'
-    if (!form.description.trim())    e.description = 'Açıklama girin'
+    if (!amount || amount <= 0)                      e.amount      = 'Geçerli bir tutar girin'
+    if (!form.accountId)                             e.accountId   = 'Hesap seçin'
+    if (!form.date)                                  e.date        = 'Tarih seçin'
+    if (tab !== 'transfer' && !form.categoryId)      e.categoryId  = 'Kategori seçin'
+    if (tab === 'transfer' && !form.toAccountId)     e.toAccountId = 'Hedef hesap seçin'
+    if (!form.description.trim())                    e.description = 'Açıklama girin'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -374,7 +410,6 @@ export function TransactionFormModal() {
   async function handleSubmit() {
     if (!validate()) return
     setLoading(true)
-
     const amount   = parseCurrencyInput(amountStr)
     const account  = accounts.find(a => a.id === form.accountId)
     const currency = (account?.currency ?? 'TRY') as CurrencyCode
@@ -382,12 +417,7 @@ export function TransactionFormModal() {
 
     if (editingTx) {
       await updateTx(editingTx.id, {
-        ...form,
-        type: tab as TransactionType,
-        amount,
-        currency,
-        updatedAt: now,
-        // Explicitly null to clear if deselected (Dexie ignores undefined in updates)
+        ...form, type: tab as TransactionType, amount, currency, updatedAt: now,
         familyMemberId: form.familyMemberId ?? null,
         recipientId:    form.recipientId    ?? null,
       })
@@ -396,162 +426,205 @@ export function TransactionFormModal() {
       if (form.isInstallment && installments > 1) {
         await addGroup(base, installments)
       } else {
-        const tx: Transaction = { ...base, id: crypto.randomUUID(), isInstallment: false, createdAt: now, updatedAt: now }
-        await addTx(tx)
+        await addTx({ ...base, id: crypto.randomUUID(), isInstallment: false, createdAt: now, updatedAt: now })
       }
     }
-
     setLoading(false)
     closeModal()
   }
 
+  const patch = (p: Partial<ReturnType<typeof newForm>>) => setForm(f => ({ ...f, ...p }))
+
   return (
-    <Modal open={open} onClose={closeModal} title={editingTx ? 'İşlemi Düzenle' : 'İşlem Ekle'} size="md">
-      {/* Tab selector */}
-      <div className="flex rounded-xl overflow-hidden border border-border mb-5">
-        {(Object.keys(TAB_LABELS) as Tab[]).map(t => (
-          <button
-            key={t}
-            onClick={() => {
-              setTab(t)
-              setForm(f => ({ ...f, type: t, categoryId: '', toAccountId: undefined }))
-            }}
-            className={[
-              'flex-1 py-2 text-xs font-semibold tracking-wide transition-colors',
-              tab === t ? 'bg-primary/[0.15] text-primary border-b-2 border-accent' : 'text-muted-foreground hover:text-foreground hover:bg-background',
-            ].join(' ')}
-          >
-            {TAB_LABELS[t]}
-          </button>
-        ))}
-      </div>
+    <Dialog open={open} onOpenChange={v => !v && closeModal()}>
+      <DialogContent
+        className="sm:max-w-lg gap-0 p-0 overflow-hidden"
+        showCloseButton={false}
+        onInteractOutside={(e) => {
+          if (selectWasOpenRef.current) { selectWasOpenRef.current = false; e.preventDefault() }
+        }}
+      >
 
-      <div className="flex flex-col gap-5">
-        {/* Description — first, with autocomplete */}
-        <DescriptionAutocomplete
-          value={form.description}
-          onChange={v => setForm(f => ({ ...f, description: v }))}
-          onSelect={s => setForm(f => ({
-            ...f,
-            description:    s.description,
-            categoryId:     s.categoryId,
-            familyMemberId: s.familyMemberId,
-            recipientId:    s.recipientId,
-          }))}
-          suggestions={suggestions}
-          categories={categories}
-          people={allPeople}
-          error={errors.description}
-        />
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+          <div className="flex items-center justify-between">
+            <DialogTitle>{isEdit ? 'İşlemi Düzenle' : 'İşlem Ekle'}</DialogTitle>
+            <button
+              type="button"
+              onClick={closeModal}
+              className="rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
 
-        {/* Amount */}
-        <CurrencyInput
-          label="Tutar"
-          value={amountStr}
-          onChange={setAmountStr}
-          error={errors.amount}
-        />
+          {/* Tab switcher */}
+          <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+            {TABS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setTab(key)
+                  patch({ type: key, categoryId: '', toAccountId: undefined })
+                }}
+                className={cn(
+                  "rounded-md py-1.5 text-sm font-medium transition-all",
+                  tab === key
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-3">
-          {/* Account */}
-          <Select
-            label="Hesap"
-            value={form.accountId}
-            onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))}
-            options={accountOptions}
-            placeholder="Seçin..."
-            error={errors.accountId}
-          />
+        {/* ── Form body ──────────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[65vh]">
 
-          {/* Category or To Account */}
-          {tab === 'transfer' ? (
-            <Select
-              label="Hedef Hesap"
-              value={form.toAccountId ?? ''}
-              onChange={e => setForm(f => ({ ...f, toAccountId: e.target.value }))}
-              options={accountOptions.filter(a => a.value !== form.accountId)}
-              placeholder="Seçin..."
-              error={errors.toAccountId}
+          {/* Description */}
+          <Field label="Açıklama" error={errors.description}>
+            <DescriptionAutocomplete
+              value={form.description}
+              onChange={v => patch({ description: v })}
+              onSelect={s => patch({
+                description:    s.description,
+                categoryId:     s.categoryId,
+                familyMemberId: s.familyMemberId,
+                recipientId:    s.recipientId,
+              })}
+              suggestions={suggestions}
+              categories={categories}
+              people={allPeople}
+              error={errors.description}
             />
-          ) : (
-            <Select
-              label="Kategori"
-              value={form.categoryId ?? ''}
-              onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}
-              options={categoryOptions}
-              placeholder="Seçin..."
-              error={errors.categoryId}
+          </Field>
+
+          {/* Amount */}
+          <Field label="Tutar" error={errors.amount}>
+            <CurrencyInput value={amountStr} onChange={setAmountStr} error={errors.amount} />
+          </Field>
+
+          {/* Account + Category/Target */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Hesap" error={errors.accountId}>
+              <AppSelect
+                value={form.accountId}
+                onChange={v => patch({ accountId: v })}
+                options={accountOptions}
+                placeholder="Seçin..."
+                error={!!errors.accountId}
+                onOpenChange={onSelectOpen}
+              />
+            </Field>
+
+            {tab === 'transfer' ? (
+              <Field label="Hedef Hesap" error={errors.toAccountId}>
+                <AppSelect
+                  value={form.toAccountId ?? ''}
+                  onChange={v => patch({ toAccountId: v })}
+                  options={accountOptions.filter(a => a.value !== form.accountId)}
+                  placeholder="Seçin..."
+                  error={!!errors.toAccountId}
+                  onOpenChange={onSelectOpen}
+                />
+              </Field>
+            ) : (
+              <Field label="Kategori" error={errors.categoryId}>
+                <AppSelect
+                  value={form.categoryId ?? ''}
+                  onChange={v => patch({ categoryId: v })}
+                  options={categoryOptions}
+                  placeholder="Seçin..."
+                  error={!!errors.categoryId}
+                  onOpenChange={onSelectOpen}
+                />
+              </Field>
+            )}
+          </div>
+
+          {/* Date */}
+          <Field label="Tarih" error={errors.date}>
+            <Input
+              type="date"
+              value={form.date}
+              onChange={e => patch({ date: e.target.value })}
+              error={errors.date}
             />
+          </Field>
+
+          {/* People */}
+          {tab !== 'transfer' && (
+            <div className="grid grid-cols-2 gap-3">
+              <PersonField
+                key={`fam-${modal}-${modalPayload?.id ?? 'new'}`}
+                role="family_member"
+                value={form.familyMemberId}
+                onChange={id => patch({ familyMemberId: id })}
+                onSelectOpen={onSelectOpen}
+              />
+              <PersonField
+                key={`rec-${modal}-${modalPayload?.id ?? 'new'}`}
+                role="recipient"
+                value={form.recipientId}
+                onChange={id => patch({ recipientId: id })}
+                onSelectOpen={onSelectOpen}
+              />
+            </div>
+          )}
+
+          {/* Notes */}
+          <Field label="Not" optional>
+            <Input
+              value={form.notes ?? ''}
+              onChange={e => patch({ notes: e.target.value || undefined })}
+              placeholder="Ek bilgi..."
+            />
+          </Field>
+
+          {/* Installment */}
+          {tab === 'expense' && !isEdit && (
+            <div className="rounded-lg border border-dashed p-4 flex flex-col gap-3">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.isInstallment}
+                  onChange={e => patch({ isInstallment: e.target.checked })}
+                  className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                />
+                <span className="text-sm font-medium">Taksitli ödeme</span>
+              </label>
+              {form.isInstallment && (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">Taksit sayısı</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={60}
+                    value={installments}
+                    onChange={e => setInstallments(Number(e.target.value))}
+                    className="w-20 h-9 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm text-center outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
+                  />
+                  <span className="text-sm text-muted-foreground">taksit</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Date */}
-        <Input
-          label="Tarih"
-          type="date"
-          value={form.date}
-          onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-          error={errors.date}
-        />
+        {/* ── Footer ─────────────────────────────────────────────────────── */}
+        <DialogFooter className="border-t px-6 py-4">
+          <Button variant="outline" onClick={closeModal} disabled={loading}>
+            İptal
+          </Button>
+          <Button onClick={handleSubmit} loading={loading} disabled={loading}>
+            {isEdit ? 'Güncelle' : 'Kaydet'}
+          </Button>
+        </DialogFooter>
 
-        {/* Notes */}
-        <Input
-          label="Not (opsiyonel)"
-          value={form.notes ?? ''}
-          onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-          placeholder="Ek bilgi..."
-        />
-
-        {/* Person tags */}
-        <div className="grid grid-cols-2 gap-3">
-          <PersonSelectField
-            key={`family-${modal}-${modalPayload?.id ?? 'new'}`}
-            role="family_member"
-            value={form.familyMemberId}
-            onChange={id => setForm(f => ({ ...f, familyMemberId: id }))}
-          />
-          <PersonSelectField
-            key={`recipient-${modal}-${modalPayload?.id ?? 'new'}`}
-            role="recipient"
-            value={form.recipientId}
-            onChange={id => setForm(f => ({ ...f, recipientId: id }))}
-          />
-        </div>
-
-        {/* Installment toggle */}
-        {tab === 'expense' && !editingTx && (
-          <div className="flex flex-col gap-2 pt-1 border-t border-border">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.isInstallment}
-                onChange={e => setForm(f => ({ ...f, isInstallment: e.target.checked }))}
-                className="w-3 h-3 accent-ink"
-              />
-              <span className="text-xs font-medium tracking-wide text-muted-foreground">Taksitli ödeme</span>
-            </label>
-            {form.isInstallment && (
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground font-medium">Taksit sayısı</span>
-                <input
-                  type="number"
-                  min={2}
-                  max={60}
-                  value={installments}
-                  onChange={e => setInstallments(Number(e.target.value))}
-                  className="w-20 border border-border px-2 py-1.5 text-sm text-center bg-card text-foreground focus:border-ink outline-none rounded-xl"
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2 pt-2">
-          <Button variant="secondary" onClick={closeModal} fullWidth>İptal</Button>
-          <Button onClick={handleSubmit} loading={loading} fullWidth className="h-10 rounded-xl font-medium">Kaydet</Button>
-        </div>
-      </div>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   )
 }

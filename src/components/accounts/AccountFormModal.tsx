@@ -142,7 +142,7 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
                 type="number" min={1} max={28}
                 value={stmtDay}
                 onChange={e => setStmtDay(Number(e.target.value))}
-                className="w-full border border-border px-3 py-2.5 text-sm font-mono bg-card focus:border-ink outline-none"
+                className="w-full border border-border px-3 py-2.5 text-sm font-mono bg-background dark:bg-muted focus:border-ink outline-none"
               />
             </div>
           </>
@@ -199,7 +199,7 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
                 onChange={e => setIconUrl(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') applyUrl() }}
                 placeholder="https://bank.com/logo.png"
-                className="flex-1 min-w-0 border border-border px-3 py-2.5 text-xs bg-card focus:border-ink outline-none"
+                className="flex-1 min-w-0 border border-border px-3 py-2.5 text-xs bg-background dark:bg-muted focus:border-ink outline-none"
               />
               <button
                 onClick={applyUrl}

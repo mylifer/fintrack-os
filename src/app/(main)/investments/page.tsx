@@ -193,7 +193,7 @@ export default function InvestmentsPage() {
         )}
       </div>
 
-      <div className="p-6 lg:p-8 flex flex-col gap-6 overflow-auto flex-1">
+      <div className="p-6 flex flex-col gap-6 overflow-auto flex-1">
 
         {/* Summary cards */}
         {(holdings.length > 0 || totalCost > 0) && (
@@ -231,7 +231,7 @@ export default function InvestmentsPage() {
         )}
 
         {/* Holdings */}
-        <Card className="overflow-hidden gap-0 py-0 rounded-2xl">
+        <Card className="overflow-hidden gap-0 py-0">
           <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
             <span className="text-sm font-semibold text-foreground/90">Portföy</span>
             <div className="flex gap-2">
@@ -273,17 +273,17 @@ export default function InvestmentsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">{fmtQty(h.quantity, meta.unit)}</td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-muted-foreground">{formatCurrency(h.avgCostPerUnit)}</td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-muted-foreground">
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-muted-foreground">{formatCurrency(h.avgCostPerUnit)}</td>
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-muted-foreground">
                           {prices ? formatCurrency(h.currentPrice) : '—'}
                         </td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-foreground">
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">
                           {prices ? formatCurrency(h.currentValue) : '—'}
                         </td>
-                        <td className={`px-4 py-4 tabular-nums text-sm font-medium tracking-tight ${prices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
+                        <td className={`px-4 py-4 tabular-nums text-sm font-medium ${prices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
                           {prices ? ((h.pnl >= 0 ? '+' : '') + formatCurrency(h.pnl)) : '—'}
                         </td>
-                        <td className={`px-4 py-4 tabular-nums text-sm font-medium tracking-tight ${prices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
+                        <td className={`px-4 py-4 tabular-nums text-sm font-medium ${prices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
                           {prices ? ((h.pnlPercent >= 0 ? '+' : '') + h.pnlPercent.toFixed(2) + '%') : '—'}
                         </td>
                       </tr>
@@ -297,7 +297,7 @@ export default function InvestmentsPage() {
         </Card>
 
         {/* Transaction history */}
-        <Card className="overflow-hidden gap-0 py-0 rounded-2xl">
+        <Card className="overflow-hidden gap-0 py-0">
           <CardHeader className="px-5 py-4 border-b border-border/50">
             <span className="text-sm font-semibold text-foreground/90">İşlem Geçmişi</span>
           </CardHeader>
@@ -360,7 +360,7 @@ export default function InvestmentsPage() {
                     </span>
 
                     {/* Total */}
-                    <span className={`text-sm font-medium tabular-nums tracking-tight flex-shrink-0 ${isBuy ? 'text-destructive' : 'text-green-600'}`}>
+                    <span className={`text-sm font-medium tabular-nums flex-shrink-0 ${isBuy ? 'text-destructive' : 'text-green-600'}`}>
                       {isBuy ? '−' : '+'}{formatCurrency(total)}
                     </span>
 
@@ -444,12 +444,12 @@ function SumCard({ label, value, color = 'neutral' }: {
 }) {
   const colorClass = color === 'ok' ? 'text-green-600' : color === 'danger' ? 'text-destructive' : 'text-foreground'
   return (
-    <Card className="rounded-2xl">
+    <Card>
       <CardContent className="px-5 py-4">
         <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground block mb-2">
           {label}
         </span>
-        <div className={`text-3xl lg:text-4xl font-light tracking-tight tabular-nums ${colorClass}`}>{value}</div>
+        <div className={`text-3xl font-normal tabular-nums ${colorClass}`}>{value}</div>
       </CardContent>
     </Card>
   )

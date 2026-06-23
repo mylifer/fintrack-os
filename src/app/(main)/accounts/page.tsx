@@ -44,7 +44,7 @@ export default function AccountsPage() {
 
       {/* Net worth summary */}
       <div className="px-6 lg:px-8 py-5 border-b border-border bg-card flex items-baseline gap-3 flex-shrink-0">
-        <span className={`text-3xl font-light tracking-tight tabular-nums ${(netWorth + investValue) >= 0 ? 'text-foreground' : 'text-destructive'}`}>
+        <span className={`text-3xl font-normal tabular-nums ${(netWorth + investValue) >= 0 ? 'text-foreground' : 'text-destructive'}`}>
           {formatCurrency(netWorth + investValue)}
         </span>
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">toplam net varlık</span>
@@ -55,7 +55,7 @@ export default function AccountsPage() {
         )}
       </div>
 
-      <div className="p-6 lg:p-8 overflow-auto flex-1">
+      <div className="p-6 overflow-auto flex-1">
         {accounts.length === 0 ? (
           <EmptyState
             icon="▣"
@@ -101,7 +101,7 @@ export default function AccountsPage() {
                           </div>
                         </div>
 
-                        <div className={`text-xl font-light tracking-tight tabular-nums ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                        <div className={`text-sm font-medium tabular-nums ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
                           {formatCurrency(account.balance, account.currency)}
                         </div>
 

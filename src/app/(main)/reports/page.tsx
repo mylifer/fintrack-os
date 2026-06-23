@@ -267,7 +267,7 @@ export default function ReportsPage() {
         </select>
       </div>
 
-      <div className="p-6 lg:p-8 flex flex-col gap-6 overflow-auto flex-1">
+      <div className="p-6 flex flex-col gap-6 overflow-auto flex-1">
 
         {/* ── KPI Cards ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
@@ -449,7 +449,7 @@ function KPICard({
     <Card>
       <CardContent className="px-5 py-4">
         <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-2">{label}</div>
-        <div className={`text-2xl font-light tracking-tight tabular-nums leading-tight ${cls}`}>
+        <div className={`text-3xl font-normal tabular-nums ${cls}`}>
           {prefix}{value}
         </div>
         {sub && <div className="text-xs text-muted-foreground mt-1.5 font-medium">{sub}</div>}

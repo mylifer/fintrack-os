@@ -28,7 +28,7 @@ function CustomTooltip({ active, payload, label }: any) {
       </div>
       <div className={`flex items-center justify-between gap-4 mt-2 pt-2 border-t border-border ${net >= 0 ? 'text-green-600' : 'text-destructive'}`}>
         <span className="text-muted-foreground">Net</span>
-        <span className="font-bold tabular-nums">{net >= 0 ? '+' : ''}{formatCompact(net)}</span>
+        <span className="font-normal tabular-nums">{net >= 0 ? '+' : ''}{formatCompact(net)}</span>
       </div>
     </div>
   )

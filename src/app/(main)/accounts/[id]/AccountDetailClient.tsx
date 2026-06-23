@@ -100,7 +100,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
         </div>
 
         {/* Balance */}
-        <div className={`text-3xl font-light tracking-tight tabular-nums mb-4 ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
+        <div className={`text-3xl font-normal tabular-nums mb-4 ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
           {formatCurrency(account.balance, account.currency)}
         </div>
 

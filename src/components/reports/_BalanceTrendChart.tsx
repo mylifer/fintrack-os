@@ -15,7 +15,7 @@ function CustomTooltip({ active, payload, label }: any) {
   return (
     <div className="bg-card border border-border rounded-lg shadow-md px-4 py-3 text-xs">
       <div className="font-semibold text-foreground mb-1">{label}</div>
-      <div className={`font-bold tabular-nums text-sm ${value >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+      <div className={`font-normal tabular-nums text-sm ${value >= 0 ? 'text-green-600' : 'text-destructive'}`}>
         {value < 0 ? '−' : ''}{formatCompact(Math.abs(value))}
       </div>
     </div>

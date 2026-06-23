@@ -14,8 +14,8 @@ export function Header({ title, action }: HeaderProps) {
   const openModal = useUIStore(s => s.openModal)
 
   return (
-    <header className="flex items-center justify-between px-6 py-5 border-b border-border/50 bg-card sticky top-0 z-30">
-      <h1 className="text-base font-semibold text-foreground tracking-tight">{title}</h1>
+    <header className="flex items-center justify-between px-6 py-5 border-b border-border bg-background sticky top-0 z-30">
+      <h1 className="text-base font-semibold text-foreground">{title}</h1>
 
       <div className="flex items-center gap-2">
         {action && (

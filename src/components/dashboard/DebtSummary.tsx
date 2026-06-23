@@ -29,7 +29,7 @@ export function DebtSummary() {
       <CardContent className="p-0">
         {/* Total */}
         <div className="px-6 py-4 border-b border-border/50 flex items-baseline gap-2">
-          <span className="text-2xl font-light tracking-tight tabular-nums text-foreground">
+          <span className="text-3xl font-normal tabular-nums text-foreground">
             {formatCurrency(totalOwed)}
           </span>
           <span className="text-xs text-muted-foreground uppercase tracking-wide">toplam borç</span>

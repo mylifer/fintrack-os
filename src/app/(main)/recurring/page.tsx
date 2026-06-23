@@ -217,7 +217,7 @@ export default function RecurringPage() {
     <>
       <Header title="Tekrarlayan İşlemler" action={{ label: 'Ekle', onClick: openAdd }} />
 
-      <div className="p-6 lg:p-8 flex flex-col gap-6">
+      <div className="p-6 flex flex-col gap-6">
 
         {/* ── Pending (due) ─────────────────────────────────────────── */}
         {due.length > 0 && (
@@ -468,7 +468,7 @@ function DueRow({
         </div>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
-        <span className={`font-medium tabular-nums tracking-tight text-lg ${r.type === 'income' ? 'text-green-600' : r.type === 'transfer' ? 'text-blue-500' : 'text-destructive'}`}>
+        <span className={`font-medium tabular-nums text-lg ${r.type === 'income' ? 'text-green-600' : r.type === 'transfer' ? 'text-blue-500' : 'text-destructive'}`}>
           {r.type === 'income' ? '+' : r.type === 'expense' ? '−' : '⇄'}{formatCurrency(r.amount)}
         </span>
         <button
@@ -530,7 +530,7 @@ function RecurringRow({
         </div>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
-        <span className={`tabular-nums tracking-tight text-lg font-medium ${r.type === 'income' ? 'text-green-600' : 'text-muted-foreground'}`}>
+        <span className={`tabular-nums text-lg font-medium ${r.type === 'income' ? 'text-green-600' : 'text-muted-foreground'}`}>
           {formatCurrency(r.amount)}
         </span>
         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">

@@ -80,7 +80,7 @@ export function PeopleManager({ role, emptyText }: Props) {
                   if (e.key === 'Escape') { setShowAdd(false); setNewName('') }
                 }}
                 placeholder="İsim girin..."
-                className="flex-1 border border-border px-3 py-2 text-sm bg-card text-foreground focus:border-ink outline-none rounded-lg"
+                className="flex-1 border border-border px-3 py-2 text-sm bg-background dark:bg-muted text-foreground focus:border-ink outline-none rounded-lg"
               />
               <button
                 onClick={handleAdd}
@@ -146,7 +146,7 @@ export function PeopleManager({ role, emptyText }: Props) {
                             if (e.key === 'Escape') { setEditId(null); setEditName(''); setEditUrl('') }
                           }}
                           placeholder="İsim..."
-                          className="w-full border border-border px-2 py-1.5 text-sm bg-card text-foreground focus:border-accent outline-none rounded-lg"
+                          className="w-full border border-border px-2 py-1.5 text-sm bg-background dark:bg-muted text-foreground focus:border-accent outline-none rounded-lg"
                         />
                         {role === 'recipient' && (
                           <input
@@ -158,7 +158,7 @@ export function PeopleManager({ role, emptyText }: Props) {
                               if (e.key === 'Escape') { setEditId(null); setEditName(''); setEditUrl('') }
                             }}
                             placeholder="https://migros.com.tr  (favicon için)"
-                            className="w-full border border-border px-2 py-1.5 text-xs bg-card text-muted-foreground focus:border-accent focus:text-foreground outline-none rounded-lg"
+                            className="w-full border border-border px-2 py-1.5 text-xs bg-background dark:bg-muted text-muted-foreground focus:border-accent focus:text-foreground outline-none rounded-lg"
                           />
                         )}
                       </div>

@@ -15,6 +15,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const loadBudgets               = useBudgetStore(s => s.load)
   const loadDebts                 = useDebtStore(s => s.load)
   const loadInvestments           = useInvestmentStore(s => s.load)
+  const fetchPrices               = useInvestmentStore(s => s.fetchPrices)
   const loadPeople                = usePeopleStore(s => s.load)
   const loadRecurring             = useRecurringStore(s => s.load)
   const reprocessSellLinkedTxs    = useInvestmentStore(s => s.reprocessSellLinkedTxs)
@@ -29,13 +30,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       loadInvestments(),
       loadPeople(),
       loadRecurring(),
+      fetchPrices(),
     ]).then(() => {
       reprocessSellLinkedTxs()
       const { recomputeBalances } = useAccountStore.getState()
       const { transactions }      = useTransactionStore.getState()
       recomputeBalances(transactions)
     })
-  }, [loadAccounts, loadTransactions, loadCategories, initCategories, loadBudgets, loadDebts, loadInvestments, loadPeople, loadRecurring, reprocessSellLinkedTxs])
+  }, [loadAccounts, loadTransactions, loadCategories, initCategories, loadBudgets, loadDebts, loadInvestments, fetchPrices, loadPeople, loadRecurring, reprocessSellLinkedTxs])
 
   return <>{children}</>
 }

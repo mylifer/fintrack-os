@@ -29,7 +29,7 @@ const ASSET_LABELS: Record<InvestmentAsset, string> = {
   GBP:          'GBP',
 }
 
-function getAssetPrice(asset: InvestmentAsset, prices: PriceData): number {
+export function getAssetPrice(asset: InvestmentAsset, prices: PriceData): number {
   if (asset in GOLD_GRAMS) return prices.goldGramTry * GOLD_GRAMS[asset]!
   if (asset === 'USD') return prices.usdTry
   if (asset === 'EUR') return prices.eurTry

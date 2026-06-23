@@ -89,7 +89,7 @@ export default function BudgetsPage() {
         <button onClick={() => setPeriod(nextMonth(selectedPeriod))} className="text-muted-foreground hover:text-foreground text-sm transition-colors">→</button>
       </div>
 
-      <div className="p-6 lg:p-8">
+      <div className="p-6">
         {budgets.length === 0 ? (
           <EmptyState
             icon="◎"
@@ -98,7 +98,7 @@ export default function BudgetsPage() {
             action={<Button size="sm" onClick={() => setShowForm(true)}>Bütçe Ekle</Button>}
           />
         ) : (
-          <Card className="gap-0 py-0 rounded-2xl">
+          <Card className="gap-0 py-0">
             <CardContent className="p-0">
             {budgets.map((b, i) => {
               const cat = categories.find(c => c.id === b.categoryId)
@@ -111,7 +111,7 @@ export default function BudgetsPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <span className={`text-xl font-light tracking-tight tabular-nums ${
+                        <span className={`text-sm font-medium tabular-nums ${
                           b.status === 'exceeded' ? 'text-destructive' : b.status === 'warning' ? 'text-orange-500' : 'text-foreground'
                         }`}>
                           {formatCurrency(b.spent)}

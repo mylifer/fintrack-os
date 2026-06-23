@@ -150,7 +150,7 @@ export default function DebtsPage() {
         </div>
 
         <div className="flex items-baseline gap-2 mb-3">
-          <span className="text-xl font-medium tracking-tight tabular-nums">
+          <span className="text-xl font-medium tabular-nums">
             {formatCurrency(debt.remainingAmount)}
           </span>
           <span className="text-xs text-muted-foreground">/ {formatCurrency(debt.totalAmount)} toplam</span>
@@ -185,15 +185,15 @@ export default function DebtsPage() {
       <div className="flex border-b border-border bg-card">
         <div className="flex-1 px-6 py-4 border-r border-border">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Toplam Borç</div>
-          <div className="text-3xl font-light tracking-tight tabular-nums text-destructive">{formatCurrency(totalOwe)}</div>
+          <div className="text-3xl font-normal tabular-nums text-destructive">{formatCurrency(totalOwe)}</div>
         </div>
         <div className="flex-1 px-6 py-4">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Toplam Alacak</div>
-          <div className="text-3xl font-light tracking-tight tabular-nums text-green-600">{formatCurrency(totalOwed)}</div>
+          <div className="text-3xl font-normal tabular-nums text-green-600">{formatCurrency(totalOwed)}</div>
         </div>
       </div>
 
-      <div className="p-6 lg:p-8">
+      <div className="p-6">
         {debts.length === 0 ? (
           <EmptyState
             icon="◇"
@@ -202,7 +202,7 @@ export default function DebtsPage() {
             action={<Button size="sm" onClick={startAdd}>Ekle</Button>}
           />
         ) : (
-          <Card className="gap-0 py-0 rounded-2xl">
+          <Card className="gap-0 py-0">
             <CardContent className="p-0">
               {debts.map(d => <DebtCard key={d.id} debt={d} />)}
             </CardContent>

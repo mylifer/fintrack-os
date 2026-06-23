@@ -5,7 +5,8 @@ import { useMemo } from 'react'
 import { useTransactionStore, useAccountStore, useUIStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, calcMonthlyFlow } from '@/lib/utils/calculations'
-import { lastNMonths } from '@/lib/utils/date'
+import { lastNMonths, monthRange, isInRange } from '@/lib/utils/date'
+import { getAssetPrice } from '@/store/investment.store'
 import { formatCompact } from '@/lib/utils/currency'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { TrendingUp, TrendingDown } from 'lucide-react'
@@ -26,9 +27,11 @@ export function NetWorthChart() {
   const transactions   = useTransactionStore(s => s.transactions)
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const selectedPeriod = useUIStore(s => s.selectedPeriod)
-  const prices         = useInvestmentStore(s => s.prices)
+  const prices      = useInvestmentStore(s => s.prices)
+  const investValue = useInvestmentStore(s => s.getPortfolioValue())
+  const investTxs   = useInvestmentStore(s => s.transactions)
 
-  const currentNW = calcNetWorth(accounts, prices)
+  const currentNW = calcNetWorth(accounts, prices) + investValue
   const months    = lastNMonths(6)
 
   const data = useMemo<DataPoint[]>(() => {
@@ -44,10 +47,24 @@ export function NetWorthChart() {
       }
       const { net } = calcMonthlyFlow(transactions, months[i])
       nw -= net
+
+      // Subtract current portfolio value added by investment buys in this month
+      // (buys reduce cash but add portfolio value; going backwards we remove that value)
+      if (prices) {
+        const { from, to } = monthRange(months[i])
+        const investDelta = investTxs
+          .filter(tx => isInRange(tx.date, from, to))
+          .reduce((sum, tx) => {
+            const unitPrice = getAssetPrice(tx.asset, prices)
+            const currentValue = tx.quantity * unitPrice
+            return tx.type === 'buy' ? sum - currentValue : sum + currentValue
+          }, 0)
+        nw += investDelta
+      }
     }
 
     return result
-  }, [transactions, currentNW])
+  }, [transactions, currentNW, investTxs, prices])
 
   const trend = data.length >= 2 ? data[data.length - 1].netWorth - data[0].netWorth : 0
   const up    = trend >= 0

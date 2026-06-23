@@ -102,8 +102,8 @@ export default function TransactionsPage() {
       {/* Summary bar */}
       {filtered.length > 0 && (
         <div className="flex items-center gap-6 px-6 py-2.5 bg-card border-b border-border flex-shrink-0">
-          <span className="text-2xl font-light tracking-tight tabular-nums text-green-600">+{formatCurrency(totalIncome)}</span>
-          <span className="text-2xl font-light tracking-tight tabular-nums text-destructive">−{formatCurrency(totalExpense)}</span>
+          <span className="text-3xl font-normal tabular-nums text-green-600">+{formatCurrency(totalIncome)}</span>
+          <span className="text-3xl font-normal tabular-nums text-destructive">−{formatCurrency(totalExpense)}</span>
           <span className="ml-auto text-muted-foreground text-xs">{filtered.length} işlem</span>
         </div>
       )}

@@ -29,13 +29,13 @@ export default function SettingsPage() {
     <>
       <Header title="Ayarlar" />
 
-      <div className="p-6 lg:p-8 flex flex-col gap-6 max-w-2xl mx-auto">
+      <div className="p-6 flex flex-col gap-6 max-w-2xl mx-auto">
 
         {/* App info */}
-        <Card className="rounded-2xl">
+        <Card>
           <CardContent>
             <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-3">Uygulama</div>
-            <div className="text-2xl font-semibold tracking-tight mb-1">
+            <div className="text-2xl font-semibold mb-1">
               FINTRACK<span className="text-primary">.</span>OS
             </div>
             <div className="text-xs text-muted-foreground">Kişisel Bütçe & Finans Takip Platformu · v1.0</div>
@@ -44,7 +44,7 @@ export default function SettingsPage() {
         </Card>
 
         {/* Demo & Reset */}
-        <Card className="rounded-2xl">
+        <Card>
           <CardContent>
             <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-4">Demo & Sıfırlama</div>
 

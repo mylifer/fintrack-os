@@ -91,7 +91,7 @@ export default function DashboardPage() {
       <Header title="Dashboard" action={{ label: 'İşlem Ekle', onClick: () => openModal('add-transaction') }} />
       <PeriodTabs />
 
-      <div className="p-6 lg:p-8 space-y-6">
+      <div className="p-6 space-y-6">
 
         {/* ── Stat Cards ─────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -104,7 +104,7 @@ export default function DashboardPage() {
             <Card key={label} className="gap-2">
               <CardHeader className="pb-2">
                 <CardDescription>{label}</CardDescription>
-                <p className={`text-2xl font-bold tabular-nums ${ok ? 'text-green-600' : 'text-destructive'}`}>{value}</p>
+                <p className={`text-3xl font-normal tabular-nums ${ok ? 'text-green-600' : 'text-destructive'}`}>{value}</p>
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-muted-foreground">{sub}</p>
@@ -291,7 +291,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold tabular-nums">{formatCurrency(totalOwed)}</span>
+                <span className="text-3xl font-normal tabular-nums">{formatCurrency(totalOwed)}</span>
                 <span className="text-sm text-muted-foreground">toplam borç</span>
               </div>
               <Separator />

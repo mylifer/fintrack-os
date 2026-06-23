@@ -86,7 +86,7 @@ export function Sidebar() {
   }, [isOnAccounts])
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 shrink-0 bg-sidebar border-r border-border">
+    <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 shrink-0 bg-background border-r border-border">
 
       {/* ── Logo ── */}
       <div className="px-5 pt-7 pb-6 flex-shrink-0">
@@ -94,7 +94,7 @@ export function Sidebar() {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white font-black text-sm select-none">
             F
           </div>
-          <span className="text-[15px] font-bold text-foreground tracking-tight">
+          <span className="text-[15px] font-bold text-foreground">
             fin<span className="text-primary">track</span>
           </span>
         </div>
@@ -175,11 +175,11 @@ export function Sidebar() {
       </nav>
 
       {/* ── Net worth widget ── */}
-      <div className="mx-3 mb-3 px-4 py-4 rounded-2xl bg-secondary border border-border flex-shrink-0">
+      <div className="mx-3 mb-3 px-4 py-4 rounded-xl bg-muted border border-border flex-shrink-0">
         <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-1">
           Toplam Net Varlık
         </div>
-        <div className={`text-2xl font-light tabular-nums tracking-tight leading-none ${totalWealth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
+        <div className={`text-2xl font-normal tabular-nums ${totalWealth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
           {formatCompact(totalWealth)}
         </div>
         {investValue > 0 && (

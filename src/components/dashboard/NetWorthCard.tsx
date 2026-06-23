@@ -26,7 +26,7 @@ export function NetWorthCard() {
       </CardHeader>
 
       <CardContent className="pt-5">
-        <div className={`text-3xl lg:text-4xl font-light tracking-tight tabular-nums leading-none mb-1 ${netWorth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
+        <div className={`text-3xl font-normal tabular-nums mb-1 ${netWorth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
           {formatCompact(netWorth, currency)}
         </div>
 
