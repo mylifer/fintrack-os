@@ -132,7 +132,7 @@ export default function DebtsPage() {
           <div>
             <div className="font-semibold text-sm">{debt.name}</div>
             {debt.counterparty && (
-              <div className="text-[10px] font-mono text-muted mt-0.5">{debt.counterparty}</div>
+              <div className="text-xs text-muted mt-0.5">{debt.counterparty}</div>
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -150,17 +150,17 @@ export default function DebtsPage() {
         </div>
 
         <div className="flex items-baseline gap-2 mb-3">
-          <span className="text-2xl font-black tabular tracking-tight">
+          <span className="text-xl font-medium tracking-tight tabular-nums">
             {formatCurrency(debt.remainingAmount)}
           </span>
-          <span className="text-xs text-muted font-mono">/ {formatCurrency(debt.totalAmount)} toplam</span>
+          <span className="text-xs text-muted">/ {formatCurrency(debt.totalAmount)} toplam</span>
         </div>
 
         <div className="h-[2px] bg-line mb-2">
           <div className="h-full bg-ok" style={{ width: `${debt.progressPercent}%` }} />
         </div>
 
-        <div className="flex justify-between text-[10px] font-mono text-muted">
+        <div className="flex justify-between text-xs text-muted">
           <span>{formatCurrency(debt.paidAmount)} ödendi (%{Math.round(debt.progressPercent)})</span>
           {debt.dueDate && <span>{formatDate(debt.dueDate, 'd MMM yyyy')}</span>}
           {debt.monthlyPayment && <span>Taksit: {formatCurrency(debt.monthlyPayment)}</span>}
@@ -169,7 +169,7 @@ export default function DebtsPage() {
         {!debt.isSettled && (
           <button
             onClick={() => settle(debt.id)}
-            className="mt-3 text-[10px] font-mono uppercase tracking-wide text-muted hover:text-ok transition-colors"
+            className="mt-3 text-xs font-medium uppercase tracking-wide text-muted hover:text-ok transition-colors"
           >
             Kapatıldı olarak işaretle →
           </button>
@@ -184,16 +184,16 @@ export default function DebtsPage() {
 
       <div className="flex border-b border-border bg-surface">
         <div className="flex-1 px-6 py-4 border-r border-border">
-          <div className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted mb-1">Toplam Borç</div>
-          <div className="text-xl font-black tabular text-danger">{formatCurrency(totalOwe)}</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-muted mb-1">Toplam Borç</div>
+          <div className="text-3xl font-light tracking-tight tabular-nums text-danger">{formatCurrency(totalOwe)}</div>
         </div>
         <div className="flex-1 px-6 py-4">
-          <div className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted mb-1">Toplam Alacak</div>
-          <div className="text-xl font-black tabular text-ok">{formatCurrency(totalOwed)}</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-muted mb-1">Toplam Alacak</div>
+          <div className="text-3xl font-light tracking-tight tabular-nums text-ok">{formatCurrency(totalOwed)}</div>
         </div>
       </div>
 
-      <div className="p-4 lg:p-6">
+      <div className="p-6 lg:p-8">
         {debts.length === 0 ? (
           <EmptyState
             icon="◇"
@@ -202,7 +202,7 @@ export default function DebtsPage() {
             action={<Button size="sm" onClick={startAdd}>Ekle</Button>}
           />
         ) : (
-          <Card className="gap-0 py-0">
+          <Card className="gap-0 py-0 rounded-2xl">
             <CardContent className="p-0">
               {debts.map(d => <DebtCard key={d.id} debt={d} />)}
             </CardContent>

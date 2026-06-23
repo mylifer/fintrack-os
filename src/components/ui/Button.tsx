@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -33,9 +33,9 @@ const buttonVariants = cva(
           "bg-amber/10 text-amber hover:bg-amber/20",
       },
       size: {
-        default: "h-8 px-3",
-        xs:      "h-6 rounded-md px-2 text-xs",
-        sm:      "h-7 rounded-md px-2.5 text-[0.8rem]",
+        default: "h-9 px-4",
+        xs:      "h-6 rounded-lg px-2 text-xs",
+        sm:      "h-7 rounded-lg px-2.5 text-[0.8rem]",
         lg:      "h-10 px-4",
         icon:    "size-8",
         "icon-xs": "size-6 rounded-md",

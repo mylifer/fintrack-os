@@ -81,15 +81,15 @@ export default function BudgetsPage() {
       <Header title="Bütçeler" action={{ label: 'Bütçe Ekle', onClick: () => setShowForm(true) }} />
 
       {/* Period nav */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-border bg-surface">
-        <button onClick={() => setPeriod(prevMonth(selectedPeriod))} className="text-muted hover:text-ink font-mono text-sm">←</button>
-        <span className="text-xs font-mono tracking-wide uppercase text-ink min-w-24 text-center">
+      <div className="flex items-center gap-3 px-6 py-3 bg-transparent border-b border-border/50">
+        <button onClick={() => setPeriod(prevMonth(selectedPeriod))} className="text-muted-foreground hover:text-foreground text-sm transition-colors">←</button>
+        <span className="text-xs font-medium tracking-wide uppercase text-foreground min-w-24 text-center">
           {formatMonthYear(selectedPeriod)}
         </span>
-        <button onClick={() => setPeriod(nextMonth(selectedPeriod))} className="text-muted hover:text-ink font-mono text-sm">→</button>
+        <button onClick={() => setPeriod(nextMonth(selectedPeriod))} className="text-muted-foreground hover:text-foreground text-sm transition-colors">→</button>
       </div>
 
-      <div className="p-4 lg:p-6">
+      <div className="p-6 lg:p-8">
         {budgets.length === 0 ? (
           <EmptyState
             icon="◎"
@@ -98,32 +98,32 @@ export default function BudgetsPage() {
             action={<Button size="sm" onClick={() => setShowForm(true)}>Bütçe Ekle</Button>}
           />
         ) : (
-          <Card className="gap-0 py-0">
+          <Card className="gap-0 py-0 rounded-2xl">
             <CardContent className="p-0">
             {budgets.map((b, i) => {
               const cat = categories.find(c => c.id === b.categoryId)
               return (
-                <div key={b.id} className={`px-5 py-4 ${i < budgets.length - 1 ? 'border-b border-border' : ''}`}>
+                <div key={b.id} className={`px-5 py-4 ${i < budgets.length - 1 ? 'border-b border-border/50' : ''}`}>
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{cat?.icon}</span>
-                      <span className="font-medium text-sm">{cat?.name}</span>
+                      <span className="text-sm font-semibold text-foreground/90">{cat?.name}</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <span className={`font-mono text-sm tabular ${
+                        <span className={`text-xl font-light tracking-tight tabular-nums ${
                           b.status === 'exceeded' ? 'text-danger' : b.status === 'warning' ? 'text-amber' : 'text-ink'
                         }`}>
                           {formatCurrency(b.spent)}
                         </span>
-                        <span className="text-muted font-mono text-xs"> / {formatCurrency(b.amount)}</span>
+                        <span className="text-muted-foreground text-sm font-medium tabular-nums"> / {formatCurrency(b.amount)}</span>
                       </div>
-                      <button onClick={() => startEdit(b)} className="text-muted hover:text-ink text-sm transition-colors">✎</button>
-                      <button onClick={() => remove(b.id)} className="text-muted hover:text-danger text-sm transition-colors">×</button>
+                      <button onClick={() => startEdit(b)} className="text-muted-foreground hover:text-foreground text-sm transition-colors">✎</button>
+                      <button onClick={() => remove(b.id)} className="text-muted-foreground hover:text-danger text-sm transition-colors">×</button>
                     </div>
                   </div>
                   <ProgressBar percent={b.percentUsed} status={b.status} showLabel />
-                  <div className="flex justify-between mt-1 text-[10px] font-mono text-muted">
+                  <div className="flex justify-between mt-1 text-xs font-medium text-muted-foreground">
                     <span>
                       {b.status === 'exceeded'
                         ? `${formatCurrency(b.spent - b.amount)} aşım`

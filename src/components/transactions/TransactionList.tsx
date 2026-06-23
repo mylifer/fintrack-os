@@ -113,7 +113,7 @@ export function TransactionList({
               <div
                 key={i}
                 className={[
-                  'py-2 text-[9px] font-bold uppercase tracking-widest text-muted/50 select-none',
+                  'py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground select-none',
                   i === 0 ? 'px-3' : i === 5 || i === 6 ? 'px-3 text-right' : 'px-2',
                 ].join(' ')}
               >
@@ -124,27 +124,27 @@ export function TransactionList({
         </div>
 
         {/* Date group cards */}
-        <div className="flex flex-col gap-2 px-3 py-2">
+        <div className="flex flex-col gap-2 px-6 py-2">
           {sortedDates.map(date => {
             const sorted = sortDay(grouped.get(date)!)
             return (
               <div key={date} className="rounded-xl overflow-hidden border border-line bg-surface">
 
-                {/* Date header — same style as cards layout */}
+                {/* Date header */}
                 <div className="flex items-center gap-3 px-4 py-2.5 bg-ground border-b-2 border-line">
                   <div
                     className="w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center"
                     style={{ background: 'rgba(14,165,233,0.12)' }}
                   >
-                    <span className="text-[15px] font-black tabular leading-none text-accent">
+                    <span className="text-sm font-semibold tabular-nums leading-none text-accent">
                       {formatDate(date, 'd')}
                     </span>
                   </div>
                   <div className="leading-none">
-                    <div className="text-[12px] font-bold text-ink/80 tracking-wide">
+                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       {formatDate(date, 'MMMM yyyy')}
                     </div>
-                    <div className="text-[10px] text-muted capitalize mt-[3px]">
+                    <div className="text-xs text-muted capitalize mt-[3px]">
                       {formatDate(date, 'EEEE')}
                     </div>
                   </div>
@@ -174,14 +174,14 @@ export function TransactionList({
                       style={{ gridTemplateColumns: TABLE_COLS }}
                     >
                       {/* Açıklama — single line, installment number inlined */}
-                      <div className="px-3 py-2.5 flex items-center gap-2 min-w-0 overflow-hidden">
+                      <div className="px-3 py-3.5 flex items-center gap-2 min-w-0 overflow-hidden">
                         {recipient ? (
                           <PersonAvatar person={recipient} size="sm" className="flex-shrink-0" />
                         ) : (
                           <div
                             className={[
                               'w-6 h-6 flex-shrink-0 flex items-center justify-center rounded',
-                              iconIsText ? 'text-[10px] font-bold text-ink/50' : 'text-xs',
+                              iconIsText ? 'text-xs font-medium text-ink/50' : 'text-xs',
                             ].join(' ')}
                             style={{ background: iconBg }}
                           >
@@ -189,10 +189,10 @@ export function TransactionList({
                           </div>
                         )}
                         <div className="min-w-0 overflow-hidden">
-                          <div className="text-[12px] font-medium text-ink truncate leading-none">
+                          <div className="text-xs font-medium text-ink truncate leading-none">
                             {tx.description}
                             {tx.isInstallment && (
-                              <span className="ml-1 text-[10px] font-normal text-amber/80">
+                              <span className="ml-1 text-xs font-normal text-amber/80">
                                 ({tx.installIndex}/{tx.installTotal})
                               </span>
                             )}
@@ -201,68 +201,68 @@ export function TransactionList({
                       </div>
 
                       {/* Hesap */}
-                      <div className="px-2 py-2.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
+                      <div className="px-2 py-3.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
                         {account && (
                           <>
                             <AccountAvatar account={account} size="xs" className="flex-shrink-0" />
-                            <span className="text-[11px] text-muted truncate min-w-0">{account.name}</span>
+                            <span className="text-xs text-muted truncate min-w-0">{account.name}</span>
                           </>
                         )}
                       </div>
 
                       {/* Alıcı */}
-                      <div className="px-2 py-2.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
+                      <div className="px-2 py-3.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
                         {recipient ? (
                           <>
                             <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
                             <button
                               type="button"
                               onClick={() => onPersonClick?.('recipient', tx.recipientId!)}
-                              className="text-[11px] text-muted truncate min-w-0 hover:text-accent transition-colors text-left"
+                              className="text-xs text-muted truncate min-w-0 hover:text-accent transition-colors text-left"
                             >
                               {recipient.name}
                             </button>
                           </>
                         ) : (
-                          <span className="text-[11px] text-muted/25">—</span>
+                          <span className="text-xs text-muted/25">—</span>
                         )}
                       </div>
 
                       {/* Aile Üyesi */}
-                      <div className="px-2 py-2.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
+                      <div className="px-2 py-3.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
                         {family ? (
                           <>
                             <PersonAvatar person={family} size="xs" className="flex-shrink-0" />
                             <button
                               type="button"
                               onClick={() => onPersonClick?.('family_member', tx.familyMemberId!)}
-                              className="text-[11px] text-muted truncate min-w-0 hover:text-accent transition-colors text-left"
+                              className="text-xs text-muted truncate min-w-0 hover:text-accent transition-colors text-left"
                             >
                               {family.name}
                             </button>
                           </>
                         ) : (
-                          <span className="text-[11px] text-muted/25">—</span>
+                          <span className="text-xs text-muted/25">—</span>
                         )}
                       </div>
 
                       {/* Kategori */}
-                      <div className="px-2 py-2.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
+                      <div className="px-2 py-3.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
                         {cat ? (
                           <>
                             <span className="text-xs leading-none flex-shrink-0">{cat.icon}</span>
-                            <span className="text-[11px] text-muted truncate min-w-0">{cat.name}</span>
+                            <span className="text-xs text-muted truncate min-w-0">{cat.name}</span>
                           </>
                         ) : (
-                          <span className="text-[11px] text-muted/25">—</span>
+                          <span className="text-xs text-muted/25">—</span>
                         )}
                       </div>
 
                       {/* Miktar */}
-                      <div className="px-3 py-2.5 flex items-center justify-end">
+                      <div className="px-3 py-3.5 flex items-center justify-end">
                         <span
                           className={[
-                            'text-[13px] font-semibold tabular',
+                            'text-sm font-medium tabular-nums',
                             isIncome ? 'text-ok' : isXfer ? 'text-ink/50' : 'text-ink',
                           ].join(' ')}
                         >
@@ -272,33 +272,33 @@ export function TransactionList({
                       </div>
 
                       {/* Güncel Bakiye */}
-                      <div className="px-3 py-2.5 flex items-center justify-end">
+                      <div className="px-3 py-3.5 flex items-center justify-end">
                         {balanceAfter !== undefined ? (
                           <span
                             className={[
-                              'text-[11px] font-medium tabular',
+                              'text-xs font-medium tabular-nums',
                               balanceAfter < 0 ? 'text-danger' : 'text-muted/70',
                             ].join(' ')}
                           >
                             {formatCurrency(balanceAfter, account?.currency)}
                           </span>
                         ) : (
-                          <span className="text-[11px] text-muted/25">—</span>
+                          <span className="text-xs text-muted/25">—</span>
                         )}
                       </div>
 
                       {/* Actions */}
-                      <div className="px-2 py-2.5 flex items-center justify-end gap-0.5 flex-shrink-0">
+                      <div className="px-2 py-3.5 flex items-center justify-end gap-0.5 flex-shrink-0">
                         {isConfirming ? (
                           <>
                             <button
                               onClick={() => { removeTx(tx.id); setConfirmDeleteId(null) }}
-                              className="w-6 h-6 flex items-center justify-center text-[12px] font-bold text-ok hover:bg-white/[0.08] rounded transition-colors"
+                              className="w-6 h-6 flex items-center justify-center text-xs font-medium text-ok hover:bg-white/[0.08] rounded transition-colors"
                               title="Evet, sil"
                             >✓</button>
                             <button
                               onClick={() => setConfirmDeleteId(null)}
-                              className="w-6 h-6 flex items-center justify-center text-[12px] font-bold text-muted hover:bg-white/[0.08] rounded transition-colors"
+                              className="w-6 h-6 flex items-center justify-center text-xs font-medium text-muted hover:bg-white/[0.08] rounded transition-colors"
                               title="İptal"
                             >✕</button>
                           </>
@@ -330,7 +330,7 @@ export function TransactionList({
 
   // ── CARDS layout (original) ────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-2 p-3">
+    <div className="flex flex-col gap-2 px-6 py-3">
       {sortedDates.map(date => {
         const sorted = sortDay(grouped.get(date)!)
 
@@ -339,14 +339,14 @@ export function TransactionList({
 
             {/* Date header */}
             <div className="flex items-center gap-2.5 px-4 py-2 bg-ground border-b border-line">
-              <span className="text-[20px] font-black tabular leading-none text-muted w-7 text-center flex-shrink-0">
+              <span className="text-xl font-semibold tabular-nums leading-none text-muted w-7 text-center flex-shrink-0">
                 {formatDate(date, 'd')}
               </span>
               <div className="leading-none">
-                <div className="text-[11px] font-semibold text-ink/50">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   {formatDate(date, 'MMMM yyyy')}
                 </div>
-                <div className="text-[10px] text-ink/30 capitalize mt-[3px]">
+                <div className="text-xs text-ink/30 capitalize mt-[3px]">
                   {formatDate(date, 'EEEE')}
                 </div>
               </div>
@@ -367,7 +367,7 @@ export function TransactionList({
                 <div
                   key={tx.id}
                   className={[
-                    'group flex items-center gap-3 px-4 py-2.5',
+                    'group flex items-center gap-3 px-4 py-3.5',
                     'hover:bg-white/[0.03] transition-colors',
                     txIdx > 0 ? 'border-t border-line' : '',
                   ].join(' ')}
@@ -379,7 +379,7 @@ export function TransactionList({
                     <div
                       className={[
                         'w-7 h-7 flex-shrink-0 flex items-center justify-center',
-                        iconIsText ? 'text-[11px] font-bold text-ink/50' : 'text-sm',
+                        iconIsText ? 'text-xs font-medium text-ink/50' : 'text-sm',
                       ].join(' ')}
                       style={{ background: iconBg }}
                     >
@@ -389,10 +389,10 @@ export function TransactionList({
 
                   {/* Description + sub */}
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-medium text-ink truncate leading-tight">
+                    <div className="text-sm font-medium text-ink truncate leading-tight">
                       {tx.description}
                     </div>
-                    <div className="text-[11px] text-muted truncate leading-tight mt-[2px]">
+                    <div className="text-xs text-muted truncate leading-tight mt-[2px]">
                       {showAccount && account
                         ? account.name
                         : tx.isInstallment
@@ -419,7 +419,7 @@ export function TransactionList({
                               type="button"
                               onClick={e => { e.stopPropagation(); onPersonClick?.(role, pid) }}
                               className={[
-                                'inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide leading-none',
+                                'inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-semibold rounded-full leading-none',
                                 onPersonClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : 'cursor-default',
                               ].join(' ')}
                               style={{ background: style.bg, color: style.color }}
@@ -436,7 +436,7 @@ export function TransactionList({
                   <div className="hidden lg:flex w-[88px] flex-shrink-0 justify-start">
                     {cat && (
                       <span
-                        className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide truncate max-w-full"
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold truncate max-w-full"
                         style={{
                           background: cat.color ? `${cat.color}20` : 'rgba(255,255,255,0.06)',
                           color:      cat.color ?? '#7DD3FC',
@@ -450,7 +450,7 @@ export function TransactionList({
                   {/* Amount */}
                   <span
                     className={[
-                      'w-[104px] flex-shrink-0 text-right text-[13px] font-semibold tabular',
+                      'w-[104px] flex-shrink-0 text-right text-sm font-medium tabular-nums',
                       isIncome ? 'text-ok' : isXfer ? 'text-ink/50' : 'text-ink',
                     ].join(' ')}
                   >
@@ -461,15 +461,15 @@ export function TransactionList({
                   {/* Row actions */}
                   {confirmDeleteId === tx.id ? (
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <span className="text-[11px] text-danger font-semibold mr-0.5">Sil?</span>
+                      <span className="text-xs text-danger font-semibold mr-0.5">Sil?</span>
                       <button
                         onClick={() => { removeTx(tx.id); setConfirmDeleteId(null) }}
-                        className="w-6 h-6 flex items-center justify-center text-[11px] font-bold text-ok hover:bg-white/[0.08] rounded transition-colors"
+                        className="w-6 h-6 flex items-center justify-center text-xs font-medium text-ok hover:bg-white/[0.08] rounded transition-colors"
                         title="Evet, sil"
                       >✓</button>
                       <button
                         onClick={() => setConfirmDeleteId(null)}
-                        className="w-6 h-6 flex items-center justify-center text-[11px] font-bold text-muted hover:bg-white/[0.08] rounded transition-colors"
+                        className="w-6 h-6 flex items-center justify-center text-xs font-medium text-muted hover:bg-white/[0.08] rounded transition-colors"
                         title="İptal"
                       >✕</button>
                     </div>

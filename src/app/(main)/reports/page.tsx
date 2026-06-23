@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useMemo, useState, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -220,7 +220,7 @@ export default function ReportsPage() {
       <Header title="Raporlar" />
 
       {/* ── Filter bar ────────────────────────────────────────────── */}
-      <div className="px-4 lg:px-6 py-3 border-b border-border bg-surface flex flex-wrap items-center gap-3 flex-shrink-0">
+      <div className="px-6 py-3 border-b border-border/50 bg-surface flex flex-wrap items-center gap-3 flex-shrink-0">
 
         <div className="flex gap-0.5 bg-ground p-1 rounded-xl">
           {PRESETS.map(p => (
@@ -228,8 +228,8 @@ export default function ReportsPage() {
               key={p.key}
               onClick={() => setPreset(p.key)}
               className={[
-                'px-3 py-1.5 rounded-[10px] text-[11px] font-semibold transition-colors whitespace-nowrap',
-                preset === p.key ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
+                'px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap',
+                preset === p.key ? 'bg-secondary text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground rounded-xl',
               ].join(' ')}
             >
               {p.label}
@@ -243,14 +243,14 @@ export default function ReportsPage() {
               type="date"
               value={customFrom}
               onChange={e => setCustomFrom(e.target.value)}
-              className="border border-border rounded-lg px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-primary"
+              className="border border-border rounded-xl px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-primary"
             />
             <span className="text-muted text-xs">—</span>
             <input
               type="date"
               value={customTo}
               onChange={e => setCustomTo(e.target.value)}
-              className="border border-border rounded-lg px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-primary"
+              className="border border-border rounded-xl px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-primary"
             />
           </div>
         )}
@@ -267,10 +267,10 @@ export default function ReportsPage() {
         </select>
       </div>
 
-      <div className="p-4 lg:p-6 flex flex-col gap-4 overflow-auto flex-1">
+      <div className="p-6 lg:p-8 flex flex-col gap-6 overflow-auto flex-1">
 
         {/* ── KPI Cards ─────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
           {isLoading ? (
             [...Array(4)].map((_, i) => (
               <Card key={i}>
@@ -314,13 +314,13 @@ export default function ReportsPage() {
         </div>
 
         {/* ── Charts row 1: Cash Flow + Category ────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           <Card className="overflow-hidden gap-0 py-0">
-            <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-              <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">Nakit Akışı</span>
+            <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
+              <span className="text-sm font-semibold text-foreground/90">Nakit Akışı</span>
               {!isLoading && (
-                <span className={`text-[10px] font-mono tabular ${kpi.net >= 0 ? 'text-ok' : 'text-danger'}`}>
+                <span className={`text-xs font-medium tabular-nums ${kpi.net >= 0 ? 'text-ok' : 'text-danger'}`}>
                   Net: {kpi.net >= 0 ? '+' : '−'}{formatCurrency(Math.abs(kpi.net))}
                 </span>
               )}
@@ -339,12 +339,12 @@ export default function ReportsPage() {
           </Card>
 
           <Card className="overflow-hidden gap-0 py-0">
-            <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-              <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">Kategori Bazlı Giderler</span>
+            <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
+              <span className="text-sm font-semibold text-foreground/90">Kategori Bazlı Giderler</span>
               {selectedCat && (
                 <button
                   onClick={() => { setSelectedCat(null); setActiveSliceIdx(null) }}
-                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
                 >
                   <span className="w-2 h-2 rounded-sm inline-block" style={{ background: selectedCat.color }} />
                   {selectedCat.name}
@@ -380,12 +380,12 @@ export default function ReportsPage() {
         {/* ── Category drill-down ───────────────────────────────────── */}
         {selectedCat && !isLoading && (
           <Card className="overflow-hidden gap-0 py-0">
-            <CardHeader className="flex-row items-center gap-3 px-5 py-4 border-b border-border">
+            <CardHeader className="flex-row items-center gap-3 px-5 py-4 border-b border-border/50">
               <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: selectedCat.color }} />
-              <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground flex-1">
+              <span className="text-sm font-semibold text-foreground/90 flex-1">
                 {selectedCat.name} — {catFilteredTxs.length} işlem
               </span>
-              <span className="text-xs font-semibold tabular text-destructive">
+              <span className="text-sm font-medium tabular-nums text-destructive">
                 −{formatCurrency(selectedCat.amount)}
               </span>
               <button
@@ -409,12 +409,12 @@ export default function ReportsPage() {
 
         {/* ── Balance / Net Worth Trend ──────────────────────────────── */}
         <Card className="overflow-hidden gap-0 py-0">
-          <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-            <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">
+          <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
+            <span className="text-sm font-semibold text-foreground/90">
               {accountId === 'all' ? 'Net Varlık Trendi' : 'Hesap Bakiye Trendi'}
             </span>
             {!isLoading && trendData.length > 0 && (
-              <span className={`text-[10px] font-mono tabular ${(trendData.at(-1)?.balance ?? 0) >= 0 ? 'text-ok' : 'text-danger'}`}>
+              <span className={`text-xs font-medium tabular-nums ${(trendData.at(-1)?.balance ?? 0) >= 0 ? 'text-ok' : 'text-danger'}`}>
                 Güncel: {formatCurrency(trendData.at(-1)?.balance ?? 0)}
               </span>
             )}
@@ -448,11 +448,11 @@ function KPICard({
   return (
     <Card>
       <CardContent className="px-5 py-4">
-        <div className="text-[9px] font-semibold tracking-wider uppercase text-muted-foreground mb-2">{label}</div>
-        <div className={`text-xl font-black tabular tracking-tight leading-tight ${cls}`}>
+        <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-2">{label}</div>
+        <div className={`text-2xl font-light tracking-tight tabular-nums leading-tight ${cls}`}>
           {prefix}{value}
         </div>
-        {sub && <div className="text-[9px] text-muted-foreground mt-1.5 font-medium">{sub}</div>}
+        {sub && <div className="text-xs text-muted-foreground mt-1.5 font-medium">{sub}</div>}
       </CardContent>
     </Card>
   )
@@ -462,7 +462,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <span className="w-2 h-2 inline-block" style={{ background: color }} />
-      <span className="text-[10px] font-mono text-muted uppercase tracking-wide">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground tracking-wide">{label}</span>
     </div>
   )
 }
@@ -492,4 +492,3 @@ function DonutSkeleton() {
     </div>
   )
 }
-

@@ -15,47 +15,47 @@ export function BudgetOverview() {
   const budgets = getBudgets(selectedPeriod, transactions).slice(0, 6)
 
   return (
-    <Card className="h-full gap-0 py-0">
-      <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-        <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">Bütçe Durumu</span>
-        <Link href="/budgets" className="text-[9px] font-mono tracking-wide uppercase text-muted-foreground hover:text-primary transition-colors">
+    <Card className="h-full overflow-hidden">
+      <CardHeader className="flex-row items-center justify-between border-b border-border/50 pb-4">
+        <span className="text-xs font-medium text-muted-foreground">Bütçe Durumu</span>
+        <Link href="/budgets" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
           Tümü →
         </Link>
       </CardHeader>
 
       <CardContent className="p-0">
         {budgets.length === 0 ? (
-          <div className="px-5 py-8 text-center">
-            <p className="text-xs text-muted-foreground">Bu ay için bütçe tanımlı değil.</p>
-            <Link href="/budgets" className="text-xs font-mono uppercase tracking-wide text-amber hover:underline mt-1 inline-block">
+          <div className="px-6 py-8 text-center">
+            <p className="text-sm text-muted-foreground">Bu ay için bütçe tanımlı değil.</p>
+            <Link href="/budgets" className="text-xs text-primary hover:underline mt-2 inline-block">
               Bütçe ekle →
             </Link>
           </div>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-border/50">
             {budgets.map(b => {
               const cat = categories.find(c => c.id === b.categoryId)
               return (
-                <div key={b.id} className="px-5 py-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm">{cat?.icon}</span>
-                      <span className="text-xs font-medium text-foreground">{cat?.name}</span>
+                <div key={b.id} className="px-6 py-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">{cat?.icon}</span>
+                      <span className="text-sm font-medium text-foreground">{cat?.name}</span>
                       {b.status !== 'ok' && (
-                        <span className={`text-[9px] font-mono uppercase tracking-wide ${
+                        <span className={`text-xs font-medium ${
                           b.status === 'exceeded' ? 'text-destructive' : 'text-amber'
                         }`}>
-                          {b.status === 'exceeded' ? '!!' : '!'}
+                          {b.status === 'exceeded' ? 'Aşıldı' : 'Uyarı'}
                         </span>
                       )}
                     </div>
                     <div className="text-right">
-                      <span className={`text-xs font-mono tabular ${
+                      <span className={`text-sm tabular-nums ${
                         b.status === 'exceeded' ? 'text-destructive' : b.status === 'warning' ? 'text-amber' : 'text-foreground'
                       }`}>
                         {formatCurrency(b.spent, 'TRY')}
                       </span>
-                      <span className="text-[10px] font-mono text-muted-foreground"> / {formatCurrency(b.amount, 'TRY')}</span>
+                      <span className="text-xs text-muted-foreground"> / {formatCurrency(b.amount, 'TRY')}</span>
                     </div>
                   </div>
                   <ProgressBar percent={b.percentUsed} status={b.status} showLabel />

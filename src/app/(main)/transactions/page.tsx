@@ -61,7 +61,7 @@ export default function TransactionsPage() {
       <PeriodTabs />
 
       {/* Filters */}
-      <div className="flex items-center gap-2 px-6 py-3 border-b border-line bg-surface flex-shrink-0">
+      <div className="flex items-center gap-2 px-6 py-4 bg-transparent border-b border-line flex-shrink-0">
         <input
           type="text"
           placeholder="İşlem ara..."
@@ -85,13 +85,13 @@ export default function TransactionsPage() {
       {hasPersonFilter && (
         <div className="flex gap-2 px-6 py-2 bg-surface border-b border-line flex-wrap flex-shrink-0">
           {familyFilter && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded" style={{ background: 'rgba(125,211,252,0.12)', color: '#7DD3FC' }}>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full" style={{ background: 'rgba(125,211,252,0.12)', color: '#7DD3FC' }}>
               Aile: {familyFilter.name}
               <button onClick={() => setFamilyFilter(null)} className="ml-0.5 hover:opacity-70 font-bold leading-none">✕</button>
             </span>
           )}
           {recipientFilter && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded" style={{ background: 'rgba(167,139,250,0.12)', color: '#A78BFA' }}>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full" style={{ background: 'rgba(167,139,250,0.12)', color: '#A78BFA' }}>
               Alıcı: {recipientFilter.name}
               <button onClick={() => setRecipientFilter(null)} className="ml-0.5 hover:opacity-70 font-bold leading-none">✕</button>
             </span>
@@ -101,10 +101,10 @@ export default function TransactionsPage() {
 
       {/* Summary bar */}
       {filtered.length > 0 && (
-        <div className="flex items-center gap-6 px-6 py-2.5 bg-surface border-b border-line text-xs flex-shrink-0">
-          <span className="text-ok font-semibold">+{formatCurrency(totalIncome)}</span>
-          <span className="text-danger font-semibold">−{formatCurrency(totalExpense)}</span>
-          <span className="ml-auto text-muted">{filtered.length} işlem</span>
+        <div className="flex items-center gap-6 px-6 py-2.5 bg-surface border-b border-line flex-shrink-0">
+          <span className="text-2xl font-light tracking-tight tabular-nums text-ok">+{formatCurrency(totalIncome)}</span>
+          <span className="text-2xl font-light tracking-tight tabular-nums text-danger">−{formatCurrency(totalExpense)}</span>
+          <span className="ml-auto text-muted text-xs">{filtered.length} işlem</span>
         </div>
       )}
 

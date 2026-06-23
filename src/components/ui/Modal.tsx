@@ -29,13 +29,13 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
         className={cn('gap-0 p-0 max-h-[90vh] flex flex-col', sizeClass[size])}
       >
         {title && (
-          <DialogHeader className="flex-row items-center justify-between px-6 py-4 border-b border-white/[0.07] flex-shrink-0">
-            <DialogTitle className="text-sm font-semibold tracking-wide text-foreground">
+          <DialogHeader className="flex-row items-center justify-between px-6 py-5 border-b border-border/30 flex-shrink-0">
+            <DialogTitle className="text-base font-semibold text-foreground">
               {title}
             </DialogTitle>
             <DialogClose
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors"
               aria-label="Kapat"
             >
               <XIcon className="size-4" />

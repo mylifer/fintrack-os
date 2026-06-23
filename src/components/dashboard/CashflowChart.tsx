@@ -37,11 +37,11 @@ export function CashflowChart() {
   const net = currentData ? currentData.income - currentData.expense : 0
 
   return (
-    <Card className="h-full gap-0 py-0">
-      <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-        <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">Nakit Akışı — Son 6 Ay</span>
+    <Card className="h-full overflow-hidden">
+      <CardHeader className="flex-row items-center justify-between border-b border-border/50 pb-4">
+        <span className="text-xs font-medium text-muted-foreground">Nakit Akışı — Son 6 Ay</span>
         {currentData && (
-          <span className={`text-[10px] font-mono tabular ${net >= 0 ? 'text-ok' : 'text-destructive'}`}>
+          <span className={`text-xs font-medium tabular-nums ${net >= 0 ? 'text-emerald-400' : 'text-destructive'}`}>
             Net: {formatCompact(net)}
           </span>
         )}
@@ -49,14 +49,14 @@ export function CashflowChart() {
 
       <CardContent className="p-0">
         <Chart data={data} selectedPeriod={selectedPeriod} />
-        <div className="px-5 pb-4 flex gap-4">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 bg-ok rounded-full inline-block" />
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wide">Gelir</span>
+        <div className="px-6 pb-5 flex gap-5">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full inline-block" />
+            <span className="text-xs text-muted-foreground">Gelir</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 bg-destructive rounded-full inline-block" />
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wide">Gider</span>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 bg-destructive rounded-full inline-block" />
+            <span className="text-xs text-muted-foreground">Gider</span>
           </div>
         </div>
       </CardContent>

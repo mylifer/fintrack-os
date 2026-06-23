@@ -17,32 +17,32 @@ export function NetWorthCard() {
   const creditCards = accounts.filter(a => a.type === 'credit_card')
 
   return (
-    <Card className="h-full gap-0 py-0">
-      <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-        <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">Net Varlık</span>
-        <Link href="/accounts" className="text-[9px] font-mono tracking-wide uppercase text-muted-foreground hover:text-primary transition-colors">
+    <Card className="h-full overflow-hidden">
+      <CardHeader className="flex-row items-center justify-between border-b border-border/50 pb-4">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Net Varlık</span>
+        <Link href="/accounts" className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
           Tümü →
         </Link>
       </CardHeader>
 
-      <CardContent className="px-5 py-5">
-        <div className={`text-4xl font-black tabular tracking-[-0.04em] leading-none mb-1 ${netWorth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
+      <CardContent className="pt-5">
+        <div className={`text-3xl lg:text-4xl font-light tracking-tight tabular-nums leading-none mb-1 ${netWorth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
           {formatCompact(netWorth, currency)}
         </div>
 
         <div className="mt-5 flex flex-col gap-2">
-          <div className="flex justify-between text-[10px] font-mono uppercase text-muted-foreground pb-1.5 border-b border-border">
+          <div className="flex justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground pb-1.5 border-b border-border/50">
             <span>Hesap</span>
             <span>Bakiye</span>
           </div>
           {accounts.map(account => (
-            <div key={account.id} className="flex items-center gap-2">
+            <div key={account.id} className="flex items-center gap-2 py-2">
               <span
                 className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                 style={{ background: account.color }}
               />
-              <span className="flex-1 text-xs text-muted-foreground truncate">{account.name}</span>
-              <span className={`font-mono text-xs tabular ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
+              <span className="flex-1 text-sm text-muted-foreground truncate">{account.name}</span>
+              <span className={`text-sm font-medium tabular-nums ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
                 {formatCurrency(account.balance, account.currency)}
               </span>
             </div>
@@ -50,17 +50,17 @@ export function NetWorthCard() {
         </div>
 
         {creditCards.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <div className="text-[9px] font-mono tracking-[0.1em] uppercase text-muted-foreground mb-2">Kullanılabilir Kredi</div>
+          <div className="mt-4 pt-4 border-t border-border/50">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Kullanılabilir Kredi</div>
             {creditCards.map(cc => {
               const available = calcAvailableCredit(cc)
               const used = cc.creditLimit ? cc.creditLimit - available : 0
               const pct = cc.creditLimit ? (used / cc.creditLimit) * 100 : 0
               return (
                 <div key={cc.id} className="flex flex-col gap-1.5">
-                  <div className="flex justify-between text-xs">
+                  <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{cc.name}</span>
-                    <span className="font-mono tabular text-foreground">
+                    <span className="font-medium tabular-nums text-foreground">
                       {formatCurrency(available, cc.currency)}
                     </span>
                   </div>
@@ -70,7 +70,7 @@ export function NetWorthCard() {
                       style={{ width: `${Math.min(pct, 100)}%` }}
                     />
                   </div>
-                  <div className="text-[10px] font-mono text-muted-foreground text-right">
+                  <div className="text-xs font-medium tabular-nums text-muted-foreground text-right">
                     {formatCurrency(used, cc.currency)} / {formatCurrency(cc.creditLimit ?? 0, cc.currency)}
                   </div>
                 </div>

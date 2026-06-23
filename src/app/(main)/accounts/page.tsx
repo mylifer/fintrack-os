@@ -43,11 +43,11 @@ export default function AccountsPage() {
       <PeriodTabs />
 
       {/* Net worth summary */}
-      <div className="px-6 py-4 border-b border-border bg-surface flex items-baseline gap-3 flex-shrink-0">
-        <span className={`text-3xl font-black tabular tracking-tight ${(netWorth + investValue) >= 0 ? 'text-ink' : 'text-danger'}`}>
+      <div className="px-6 lg:px-8 py-5 border-b border-border bg-surface flex items-baseline gap-3 flex-shrink-0">
+        <span className={`text-3xl font-light tracking-tight tabular-nums ${(netWorth + investValue) >= 0 ? 'text-ink' : 'text-danger'}`}>
           {formatCurrency(netWorth + investValue)}
         </span>
-        <span className="text-xs font-mono text-muted uppercase">toplam net varlık</span>
+        <span className="text-xs font-medium text-muted uppercase tracking-wide">toplam net varlık</span>
         {investValue > 0 && (
           <span className="text-xs text-muted ml-auto">
             Yatırım: {formatCompact(investValue)}
@@ -55,7 +55,7 @@ export default function AccountsPage() {
         )}
       </div>
 
-      <div className="p-4 lg:p-6 overflow-auto flex-1">
+      <div className="p-6 lg:p-8 overflow-auto flex-1">
         {accounts.length === 0 ? (
           <EmptyState
             icon="▣"
@@ -64,7 +64,7 @@ export default function AccountsPage() {
             action={<Button size="sm" onClick={() => setShowForm(true)}>Hesap Ekle</Button>}
           />
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-5">
             {accounts.map((account) => {
                     const available = account.type === 'credit_card' ? calcAvailableCredit(account) : null
                     const usedPct   = account.creditLimit && available !== null
@@ -101,13 +101,13 @@ export default function AccountsPage() {
                           </div>
                         </div>
 
-                        <div className={`text-2xl font-black tabular tracking-tight ${account.balance < 0 ? 'text-danger' : 'text-ink'}`}>
+                        <div className={`text-xl font-light tracking-tight tabular-nums ${account.balance < 0 ? 'text-danger' : 'text-ink'}`}>
                           {formatCurrency(account.balance, account.currency)}
                         </div>
 
                         {/* Period stats */}
                         {hasActivity && (
-                          <div className="flex items-center gap-3 mt-2 text-[10px] font-semibold">
+                          <div className="flex items-center gap-3 mt-2 text-xs font-medium">
                             {income > 0 && <span className="text-ok">+{formatCompact(income)}</span>}
                             {expense > 0 && <span className="text-danger">−{formatCompact(expense)}</span>}
                           </div>
@@ -115,9 +115,9 @@ export default function AccountsPage() {
 
                         {account.type === 'credit_card' && account.creditLimit && (
                           <div className="mt-3 pt-3 border-t border-border">
-                            <div className="flex justify-between text-[10px] font-mono text-muted-foreground mb-1.5">
+                            <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
                               <span>Kullanılabilir</span>
-                              <span className="tabular">{formatCurrency(available ?? 0, account.currency)}</span>
+                              <span className="tabular-nums">{formatCurrency(available ?? 0, account.currency)}</span>
                             </div>
                             <div className="h-[2px] bg-line">
                               <div
@@ -125,7 +125,7 @@ export default function AccountsPage() {
                                 style={{ width: `${Math.min(usedPct, 100)}%` }}
                               />
                             </div>
-                            <div className="text-[10px] font-mono text-muted-foreground mt-1">
+                            <div className="text-xs text-muted-foreground mt-1">
                               Limit: {formatCurrency(account.creditLimit, account.currency)}
                               {account.statementDay && ` · Ekstre: ${account.statementDay}. gün`}
                             </div>

@@ -18,44 +18,44 @@ export function DebtSummary() {
     .reduce((s, d) => s + d.remainingAmount, 0)
 
   return (
-    <Card className="h-full gap-0 py-0">
-      <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-        <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">Borç Takibi</span>
-        <Link href="/debts" className="text-[9px] font-mono tracking-wide uppercase text-muted-foreground hover:text-primary transition-colors">
+    <Card className="h-full overflow-hidden">
+      <CardHeader className="flex-row items-center justify-between border-b border-border/50 pb-4">
+        <span className="text-xs font-medium text-muted-foreground">Borç Takibi</span>
+        <Link href="/debts" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
           Tümü →
         </Link>
       </CardHeader>
 
       <CardContent className="p-0">
         {/* Total */}
-        <div className="px-5 py-4 border-b border-border flex items-baseline gap-2">
-          <span className="text-2xl font-black tabular tracking-tight text-foreground">
+        <div className="px-6 py-4 border-b border-border/50 flex items-baseline gap-2">
+          <span className="text-2xl font-light tracking-tight tabular-nums text-foreground">
             {formatCurrency(totalOwed)}
           </span>
-          <span className="text-[10px] font-mono text-muted-foreground uppercase">toplam borç</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wide">toplam borç</span>
         </div>
 
         {/* Due soon */}
         {dueSoon.length === 0 ? (
-          <div className="px-5 py-4 text-xs text-muted-foreground">30 gün içinde vadesi gelen ödeme yok.</div>
+          <div className="px-6 py-4 text-sm text-muted-foreground">30 gün içinde vadesi gelen ödeme yok.</div>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-border/50">
             {dueSoon.map(debt => {
               const overdue = debt.dueDate && isOverdue(debt.dueDate)
               const days    = debt.dueDate ? daysUntil(debt.dueDate) : null
 
               return (
-                <div key={debt.id} className="px-5 py-3">
-                  <div className="flex items-start justify-between gap-2">
+                <div key={debt.id} className="px-6 py-3.5">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-xs font-medium text-foreground">{debt.name}</div>
-                      <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                      <div className="text-sm font-medium text-foreground">{debt.name}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
                         {debt.counterparty && `${debt.counterparty} · `}
                         {debt.dueDate && formatDate(debt.dueDate, 'd MMM yyyy')}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="text-xs font-mono tabular text-foreground">
+                      <div className="text-sm tabular-nums text-foreground">
                         {formatCurrency(debt.monthlyPayment ?? debt.remainingAmount)}
                       </div>
                       {overdue ? (

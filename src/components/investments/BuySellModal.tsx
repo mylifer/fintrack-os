@@ -142,12 +142,12 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
         {/* Header */}
         <div className="px-6 py-5 border-b border-line flex items-center justify-between">
-          <span className="text-base font-bold text-ink">
+          <span className="text-base font-semibold text-ink">
             {isEdit ? 'İşlemi Düzenle' : 'Yatırım İşlemi'}
           </span>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] transition-colors"
+            className="w-7 h-7 rounded-xl flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] transition-colors"
           >✕</button>
         </div>
 
@@ -171,7 +171,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
           {/* Asset */}
           <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted block mb-1.5">Varlık</label>
+            <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">Varlık</label>
             <select
               value={asset}
               onChange={e => { setAsset(e.target.value as InvestmentAsset); setPrice('') }}
@@ -186,13 +186,13 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {/* Quantity */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted">
                 Miktar ({assetMeta.unit})
               </label>
               {txType === 'sell' && maxSell > 0 && maxSell < Infinity && (
                 <button
                   onClick={() => setQty(maxSell % 1 === 0 ? String(maxSell) : maxSell.toFixed(4).replace(/\.?0+$/, ''))}
-                  className="text-[10px] text-accent font-semibold hover:text-accent/80 transition-colors"
+                  className="text-xs text-accent font-semibold hover:text-accent/80 transition-colors"
                 >
                   Tümünü sat ({maxSell.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} {assetMeta.unit})
                 </button>
@@ -213,12 +213,12 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               </span>
             </div>
             {txType === 'sell' && maxSell < Infinity && maxSell > 0 && (
-              <div className="mt-1 text-[10px] text-muted">
+              <div className="mt-1 text-xs text-muted">
                 Portföyde: {maxSell.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} {assetMeta.unit}
               </div>
             )}
             {sellExceeded && (
-              <div className="mt-1 text-[10px] text-danger font-medium">
+              <div className="mt-1 text-xs text-danger font-medium">
                 Portföyden fazla miktar satılamaz.
               </div>
             )}
@@ -227,13 +227,13 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {/* Price per unit */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted">
                 Birim Fiyat (₺)
               </label>
               {prices && (
                 <button
                   onClick={fillLivePrice}
-                  className="text-[10px] text-accent font-semibold hover:text-accent/80 transition-colors"
+                  className="text-xs text-accent font-semibold hover:text-accent/80 transition-colors"
                 >
                   Canlı fiyatı kullan
                 </button>
@@ -256,7 +256,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {/* Source account (buy only) */}
           {txType === 'buy' && (
             <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted block mb-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">
                 Hangi hesaptan? (isteğe bağlı)
               </label>
               <select
@@ -272,7 +272,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 ))}
               </select>
               {accountId && total > 0 && (
-                <div className="mt-1 text-[10px] text-muted">
+                <div className="mt-1 text-xs text-muted">
                   Seçilen hesaptan {formatCurrency(total)} düşülecek.
                 </div>
               )}
@@ -282,7 +282,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {/* Target account (sell only) */}
           {txType === 'sell' && (
             <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted block mb-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">
                 Nakit hangi hesaba? (isteğe bağlı)
               </label>
               <select
@@ -298,7 +298,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 ))}
               </select>
               {targetAccId && total > 0 && (
-                <div className="mt-1 text-[10px] text-muted">
+                <div className="mt-1 text-xs text-muted">
                   {formatCurrency(total)} seçilen hesaba eklenecek.
                 </div>
               )}
@@ -307,7 +307,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
           {/* Date */}
           <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted block mb-1.5">Tarih</label>
+            <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">Tarih</label>
             <input
               type="date"
               value={date}
@@ -318,7 +318,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
           {/* Note */}
           <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted block mb-1.5">Not (isteğe bağlı)</label>
+            <label className="text-xs font-medium uppercase tracking-wide text-muted block mb-1.5">Not (isteğe bağlı)</label>
             <input
               type="text"
               value={note}
@@ -332,7 +332,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {total > 0 && (
             <div className="flex items-center justify-between py-3 px-4 rounded-xl bg-ground border border-line text-sm">
               <span className="text-muted font-medium">Toplam</span>
-              <span className="font-black text-ink text-base">{formatCurrency(total)}</span>
+              <span className="font-semibold text-ink text-base tabular-nums">{formatCurrency(total)}</span>
             </div>
           )}
         </div>

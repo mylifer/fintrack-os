@@ -87,7 +87,7 @@ function DescriptionAutocomplete({
 
   return (
     <div className="relative">
-      <label className="block text-[9px] font-mono tracking-[0.12em] uppercase text-muted mb-1.5">
+      <label className="block text-xs font-medium text-foreground/80 mb-1.5">
         Açıklama
       </label>
       <input
@@ -100,7 +100,7 @@ function DescriptionAutocomplete({
         onBlur={() => setTimeout(() => setOpen(false), 120)}
         placeholder="Migros, Maaş, Kira..."
         className={[
-          'w-full border px-3 py-2 text-sm bg-surface text-ink font-sans',
+          'w-full border px-3 py-2 text-sm bg-surface text-ink font-sans rounded-xl',
           'placeholder:text-muted focus:outline-none transition-colors',
           error
             ? 'border-danger focus:border-danger'
@@ -108,11 +108,11 @@ function DescriptionAutocomplete({
         ].join(' ')}
       />
       {error && (
-        <p className="mt-1 text-[10px] font-mono text-danger">{error}</p>
+        <p className="mt-1 text-xs text-danger">{error}</p>
       )}
 
       {open && filtered.length > 0 && (
-        <div className="absolute z-50 left-0 right-0 top-full border border-t-0 border-line bg-surface">
+        <div className="absolute z-50 left-0 right-0 top-full border border-t-0 border-line bg-surface rounded-b-xl overflow-hidden">
           {filtered.map((s, i) => {
             const cat = categories.find(c => c.id === s.categoryId)
             return (
@@ -135,7 +135,7 @@ function DescriptionAutocomplete({
                     return p ? (
                       <span className="flex items-center gap-1">
                         <PersonAvatar person={p} size="xs" />
-                        <span className="text-[10px] text-muted">{p.name}</span>
+                        <span className="text-xs text-muted">{p.name}</span>
                       </span>
                     ) : null
                   })()}
@@ -144,14 +144,14 @@ function DescriptionAutocomplete({
                     return p ? (
                       <span className="flex items-center gap-1">
                         <PersonAvatar person={p} size="xs" />
-                        <span className="text-[10px] text-muted">{p.name}</span>
+                        <span className="text-xs text-muted">{p.name}</span>
                       </span>
                     ) : null
                   })()}
                   {cat && (
-                    <span className="flex items-center gap-1 text-[10px] font-mono text-muted">
+                    <span className="flex items-center gap-1 text-xs text-muted">
                       <span>{cat.icon}</span>
-                      <span className="uppercase tracking-wide">{cat.name}</span>
+                      <span className="tracking-wide">{cat.name}</span>
                     </span>
                   )}
                 </span>
@@ -209,8 +209,8 @@ function PersonSelectField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="block text-[9px] font-mono tracking-[0.12em] uppercase text-muted">
-        {label} <span className="normal-case font-normal tracking-normal">(opsiyonel)</span>
+      <label className="block text-xs font-medium text-foreground/80">
+        {label} <span className="normal-case font-normal text-muted-foreground">(opsiyonel)</span>
       </label>
 
       {adding ? (
@@ -225,20 +225,20 @@ function PersonSelectField({
               if (e.key === 'Escape') { setAdding(false); setNewName(''); setAddError(null) }
             }}
             placeholder={`${label} adı...`}
-            className="flex-1 min-w-0 border border-line px-2 py-[7px] text-sm bg-surface text-ink focus:border-accent outline-none"
+            className="flex-1 min-w-0 border border-line px-2 py-[7px] text-sm bg-surface text-ink focus:border-accent outline-none rounded-xl"
             disabled={saving}
           />
           <button
             type="button"
             onClick={handleAdd}
             disabled={saving || !newName.trim()}
-            className="w-8 h-[33px] flex-shrink-0 flex items-center justify-center text-ok border border-line hover:bg-ground disabled:opacity-40 transition-colors font-bold text-sm"
+            className="w-8 h-[33px] flex-shrink-0 flex items-center justify-center text-ok border border-line hover:bg-ground disabled:opacity-40 transition-colors font-bold text-sm rounded-xl"
             title="Kaydet"
           >{saving ? '…' : '✓'}</button>
           <button
             type="button"
             onClick={() => { setAdding(false); setNewName(''); setAddError(null) }}
-            className="w-8 h-[33px] flex-shrink-0 flex items-center justify-center text-muted border border-line hover:bg-ground transition-colors text-sm"
+            className="w-8 h-[33px] flex-shrink-0 flex items-center justify-center text-muted border border-line hover:bg-ground transition-colors text-sm rounded-xl"
             title="İptal"
           >✕</button>
         </div>
@@ -253,7 +253,7 @@ function PersonSelectField({
               if (e.target.value === '__NEW__') { setAdding(true); return }
               onChange(e.target.value || undefined)
             }}
-            className="flex-1 min-w-0 border border-line px-2 py-[7px] text-sm bg-surface text-ink focus:border-accent outline-none"
+            className="flex-1 min-w-0 border border-line px-2 py-[7px] text-sm bg-surface text-ink focus:border-accent outline-none rounded-xl"
           >
             <option value="">— Seçin —</option>
             {people.map(p => (
@@ -264,7 +264,7 @@ function PersonSelectField({
         </div>
       )}
 
-      {addError && <p className="text-[10px] font-mono text-danger">{addError}</p>}
+      {addError && <p className="text-xs text-danger">{addError}</p>}
     </div>
   )
 }
@@ -408,7 +408,7 @@ export function TransactionFormModal() {
   return (
     <Modal open={open} onClose={closeModal} title={editingTx ? 'İşlemi Düzenle' : 'İşlem Ekle'} size="md">
       {/* Tab selector */}
-      <div className="flex border border-line mb-5">
+      <div className="flex rounded-xl overflow-hidden border border-line mb-5">
         {(Object.keys(TAB_LABELS) as Tab[]).map(t => (
           <button
             key={t}
@@ -417,7 +417,7 @@ export function TransactionFormModal() {
               setForm(f => ({ ...f, type: t, categoryId: '', toAccountId: undefined }))
             }}
             className={[
-              'flex-1 py-2 text-xs font-mono font-semibold tracking-wide uppercase transition-colors',
+              'flex-1 py-2 text-xs font-semibold tracking-wide transition-colors',
               tab === t ? 'bg-accent/[0.15] text-accent border-b-2 border-accent' : 'text-muted hover:text-ink hover:bg-ground',
             ].join(' ')}
           >
@@ -426,7 +426,7 @@ export function TransactionFormModal() {
         ))}
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-5">
         {/* Description — first, with autocomplete */}
         <DescriptionAutocomplete
           value={form.description}
@@ -528,18 +528,18 @@ export function TransactionFormModal() {
                 onChange={e => setForm(f => ({ ...f, isInstallment: e.target.checked }))}
                 className="w-3 h-3 accent-ink"
               />
-              <span className="text-xs font-mono uppercase tracking-wide text-muted">Taksitli ödeme</span>
+              <span className="text-xs font-medium tracking-wide text-muted">Taksitli ödeme</span>
             </label>
             {form.isInstallment && (
               <div className="flex items-center gap-3">
-                <span className="text-xs text-muted font-mono">Taksit sayısı</span>
+                <span className="text-xs text-muted font-medium">Taksit sayısı</span>
                 <input
                   type="number"
                   min={2}
                   max={60}
                   value={installments}
                   onChange={e => setInstallments(Number(e.target.value))}
-                  className="w-20 border border-line px-2 py-1.5 text-sm font-mono text-center bg-surface text-ink focus:border-ink outline-none"
+                  className="w-20 border border-line px-2 py-1.5 text-sm text-center bg-surface text-ink focus:border-ink outline-none rounded-xl"
                 />
               </div>
             )}
@@ -549,7 +549,7 @@ export function TransactionFormModal() {
         {/* Actions */}
         <div className="flex gap-2 pt-2">
           <Button variant="secondary" onClick={closeModal} fullWidth>İptal</Button>
-          <Button onClick={handleSubmit} loading={loading} fullWidth>Kaydet</Button>
+          <Button onClick={handleSubmit} loading={loading} fullWidth className="h-10 rounded-xl font-medium">Kaydet</Button>
         </div>
       </div>
     </Modal>

@@ -83,13 +83,13 @@ export default function AccountDetailClient({ id }: { id: string }) {
       <PeriodTabs />
 
       {/* Account summary */}
-      <div className="px-6 py-5 border-b border-line bg-surface flex-shrink-0">
+      <div className="px-6 lg:px-8 py-5 border-b border-line bg-surface flex-shrink-0">
         {/* Top row: avatar + type badge + edit */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <AccountAvatar account={account} size="lg" />
             <div className="flex flex-col gap-1.5">
-              <div className="text-base font-bold text-ink">{account.name}</div>
+              <div className="text-base font-semibold text-ink">{account.name}</div>
               <Badge variant="default">{TYPE_LABELS[account.type]}</Badge>
             </div>
           </div>
@@ -100,14 +100,14 @@ export default function AccountDetailClient({ id }: { id: string }) {
         </div>
 
         {/* Balance */}
-        <div className={`text-3xl font-black tabular tracking-tight mb-4 ${account.balance < 0 ? 'text-danger' : 'text-ink'}`}>
+        <div className={`text-3xl font-light tracking-tight tabular-nums mb-4 ${account.balance < 0 ? 'text-danger' : 'text-ink'}`}>
           {formatCurrency(account.balance, account.currency)}
         </div>
 
         {/* Credit card utilisation bar */}
         {account.type === 'credit_card' && account.creditLimit && (
           <div className="mb-4">
-            <div className="flex justify-between text-[10px] font-mono text-muted mb-1.5">
+            <div className="flex justify-between text-xs text-muted mb-1.5">
               <span>Kullanılabilir: {formatCurrency(available ?? 0, account.currency)}</span>
               <span>Limit: {formatCurrency(account.creditLimit, account.currency)}</span>
             </div>
@@ -123,16 +123,16 @@ export default function AccountDetailClient({ id }: { id: string }) {
         {/* Period stats */}
         <div className="flex gap-6 pt-4 border-t border-line">
           <div>
-            <div className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted mb-0.5">Gelir</div>
-            <div className="text-sm font-black tabular text-ok">+{formatCurrency(periodIncome, account.currency)}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted mb-0.5">Gelir</div>
+            <div className="text-sm font-medium tabular-nums text-ok">+{formatCurrency(periodIncome, account.currency)}</div>
           </div>
           <div>
-            <div className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted mb-0.5">Gider</div>
-            <div className="text-sm font-black tabular text-danger">−{formatCurrency(periodExpense, account.currency)}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted mb-0.5">Gider</div>
+            <div className="text-sm font-medium tabular-nums text-danger">−{formatCurrency(periodExpense, account.currency)}</div>
           </div>
           <div>
-            <div className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted mb-0.5">İşlem</div>
-            <div className="text-sm font-black tabular text-ink">{filteredTxs.length}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted mb-0.5">İşlem</div>
+            <div className="text-sm font-medium tabular-nums text-ink">{filteredTxs.length}</div>
           </div>
         </div>
       </div>

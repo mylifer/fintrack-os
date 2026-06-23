@@ -57,13 +57,11 @@ export function NetWorthChart() {
     : 0
 
   return (
-    <Card className="h-full gap-0 py-0">
-      <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-        <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">
-          Net Varlık Trendi — Son 6 Ay
-        </span>
+    <Card className="h-full overflow-hidden">
+      <CardHeader className="flex-row items-center justify-between border-b border-border/50 pb-4">
+        <span className="text-xs font-medium text-muted-foreground">Net Varlık Trendi — Son 6 Ay</span>
         {trend !== 0 && (
-          <span className={`text-[10px] font-mono tabular ${trend >= 0 ? 'text-ok' : 'text-destructive'}`}>
+          <span className={`text-xs font-medium tabular-nums ${trend >= 0 ? 'text-emerald-400' : 'text-destructive'}`}>
             {trend >= 0 ? '+' : ''}{formatCompact(trend)}
           </span>
         )}
@@ -71,9 +69,9 @@ export function NetWorthChart() {
 
       <CardContent className="p-0">
         <Chart data={data} selectedPeriod={selectedPeriod} />
-        <div className="px-5 pb-4 flex items-center gap-1.5">
-          <span className="w-2 h-2 bg-primary rounded-full inline-block" />
-          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wide">Net Varlık</span>
+        <div className="px-6 pb-5 flex items-center gap-2">
+          <span className="w-2.5 h-2.5 bg-primary rounded-full inline-block" />
+          <span className="text-xs text-muted-foreground">Net Varlık</span>
         </div>
       </CardContent>
     </Card>

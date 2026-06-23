@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState, useMemo } from 'react'
 import { Header }            from '@/components/layout/Header'
@@ -153,7 +153,7 @@ export default function InvestmentsPage() {
       />
 
       {/* Live price ticker */}
-      <div className="px-6 py-3 border-b border-border bg-surface flex items-center gap-6 overflow-x-auto flex-shrink-0">
+      <div className="px-6 py-3 border-b border-border/50 bg-surface flex items-center gap-6 overflow-x-auto flex-shrink-0">
         {prices ? (
           <>
             <Ticker label="USD/TRY"  value={prices.usdTry.toFixed(2)}  current={prices.usdTry}      previous={prices.prevUsdTry} />
@@ -162,15 +162,15 @@ export default function InvestmentsPage() {
             <Ticker label="Altın/gr" value={`₺${prices.goldGramTry.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`} current={prices.goldGramTry} previous={prices.prevGoldGramTry} />
             <div className="ml-auto flex items-center gap-3 flex-shrink-0">
               {pricesError && (
-                <span className="text-[10px] text-danger font-medium">{pricesError}</span>
+                <span className="text-xs text-danger font-medium">{pricesError}</span>
               )}
-              <span className="text-[10px] text-muted">
+              <span className="text-xs text-muted">
                 {pricesLoading ? 'Güncelleniyor...' : updatedAt ? `Son: ${updatedAt}` : ''}
               </span>
               <button
                 onClick={fetchPrices}
                 disabled={pricesLoading}
-                className="text-[10px] text-primary font-semibold hover:text-primary/80 disabled:opacity-40 transition-colors"
+                className="text-xs text-primary font-semibold hover:text-primary/80 disabled:opacity-40 transition-colors"
               >
                 {pricesLoading ? '...' : 'Yenile'}
               </button>
@@ -184,7 +184,7 @@ export default function InvestmentsPage() {
             {!pricesLoading && (
               <button
                 onClick={fetchPrices}
-                className="text-[10px] text-primary font-semibold hover:text-primary/80 transition-colors"
+                className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors"
               >
                 Tekrar Dene
               </button>
@@ -193,11 +193,11 @@ export default function InvestmentsPage() {
         )}
       </div>
 
-      <div className="p-4 lg:p-6 flex flex-col gap-5 overflow-auto flex-1">
+      <div className="p-6 lg:p-8 flex flex-col gap-6 overflow-auto flex-1">
 
         {/* Summary cards */}
         {(holdings.length > 0 || totalCost > 0) && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
             <SumCard label="Toplam Değer"  value={formatCompact(totalValue)} />
             <SumCard label="Toplam Maliyet" value={formatCompact(totalCost)} />
             <SumCard
@@ -215,7 +215,7 @@ export default function InvestmentsPage() {
 
         {/* Price history charts */}
         {chartGroups.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {chartGroups.map(g => (
               <PriceHistoryChart
                 key={g.key}
@@ -231,17 +231,17 @@ export default function InvestmentsPage() {
         )}
 
         {/* Holdings */}
-        <Card className="overflow-hidden gap-0 py-0">
-          <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Portföy</span>
+        <Card className="overflow-hidden gap-0 py-0 rounded-2xl">
+          <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
+            <span className="text-sm font-semibold text-foreground/90">Portföy</span>
             <div className="flex gap-2">
               <button
                 onClick={openBuy}
-                className="px-3 py-1.5 rounded-lg bg-ok text-white text-xs font-semibold hover:bg-ok/80 transition-colors"
+                className="px-3 py-1.5 rounded-xl bg-ok text-white text-xs font-semibold hover:bg-ok/80 transition-colors"
               >Al</button>
               <button
                 onClick={openSell}
-                className="px-3 py-1.5 rounded-lg bg-danger text-white text-xs font-semibold hover:bg-danger/80 transition-colors"
+                className="px-3 py-1.5 rounded-xl bg-danger text-white text-xs font-semibold hover:bg-danger/80 transition-colors"
               >Sat</button>
             </div>
           </CardHeader>
@@ -255,9 +255,9 @@ export default function InvestmentsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-border">
+                  <tr className="border-b border-border/50">
                     {['Varlık', 'Miktar', 'Ort. Maliyet', 'Güncel Fiyat', 'Değer', 'K/Z', 'K/Z%'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                      <th key={h} className="px-4 py-4 text-left font-medium text-muted-foreground whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -265,25 +265,25 @@ export default function InvestmentsPage() {
                   {holdings.map(h => {
                     const meta = ASSET_META[h.asset]
                     return (
-                      <tr key={h.asset} className="border-b border-border hover:bg-white/[0.03] transition-colors">
-                        <td className="px-4 py-3 font-medium text-ink whitespace-nowrap">
+                      <tr key={h.asset} className="border-b border-border/50 hover:bg-white/[0.03] transition-colors">
+                        <td className="px-4 py-4 font-medium text-ink whitespace-nowrap">
                           <span className="inline-flex items-center gap-1.5">
-                            <span className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold bg-white/[0.08] text-ink/60">{meta.icon}</span>
+                            <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-semibold bg-white/[0.08] text-ink/60">{meta.icon}</span>
                             {meta.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3 tabular text-ink">{fmtQty(h.quantity, meta.unit)}</td>
-                        <td className="px-4 py-3 tabular text-muted">{formatCurrency(h.avgCostPerUnit)}</td>
-                        <td className="px-4 py-3 tabular text-muted">
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-ink">{fmtQty(h.quantity, meta.unit)}</td>
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-muted">{formatCurrency(h.avgCostPerUnit)}</td>
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-muted">
                           {prices ? formatCurrency(h.currentPrice) : '—'}
                         </td>
-                        <td className="px-4 py-3 tabular font-semibold text-ink">
+                        <td className="px-4 py-4 tabular-nums text-sm font-medium tracking-tight text-ink">
                           {prices ? formatCurrency(h.currentValue) : '—'}
                         </td>
-                        <td className={`px-4 py-3 tabular font-semibold ${prices ? pnlColor(h.pnl) : 'text-muted'}`}>
+                        <td className={`px-4 py-4 tabular-nums text-sm font-medium tracking-tight ${prices ? pnlColor(h.pnl) : 'text-muted'}`}>
                           {prices ? ((h.pnl >= 0 ? '+' : '') + formatCurrency(h.pnl)) : '—'}
                         </td>
-                        <td className={`px-4 py-3 tabular font-semibold ${prices ? pnlColor(h.pnl) : 'text-muted'}`}>
+                        <td className={`px-4 py-4 tabular-nums text-sm font-medium tracking-tight ${prices ? pnlColor(h.pnl) : 'text-muted'}`}>
                           {prices ? ((h.pnlPercent >= 0 ? '+' : '') + h.pnlPercent.toFixed(2) + '%') : '—'}
                         </td>
                       </tr>
@@ -297,9 +297,9 @@ export default function InvestmentsPage() {
         </Card>
 
         {/* Transaction history */}
-        <Card className="overflow-hidden gap-0 py-0">
-          <CardHeader className="px-5 py-4 border-b border-border">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">İşlem Geçmişi</span>
+        <Card className="overflow-hidden gap-0 py-0 rounded-2xl">
+          <CardHeader className="px-5 py-4 border-b border-border/50">
+            <span className="text-sm font-semibold text-foreground/90">İşlem Geçmişi</span>
           </CardHeader>
 
           <CardContent className="p-0">
@@ -308,7 +308,7 @@ export default function InvestmentsPage() {
               Henüz işlem yok.
             </div>
           ) : (
-            <div className="divide-y divide-border">
+            <div className="divide-y divide-border/50">
               {transactions.map(tx => {
                 const meta = ASSET_META[tx.asset]
                 const total = tx.quantity * tx.pricePerUnit
@@ -319,9 +319,9 @@ export default function InvestmentsPage() {
                   : (tx.targetAccountId ? accounts.find(a => a.id === tx.targetAccountId) : null)
 
                 return (
-                  <div key={tx.id} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.03] group transition-colors">
+                  <div key={tx.id} className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] group transition-colors">
                     {/* Asset icon — color indicates buy (green) / sell (red) */}
-                    <div className={`w-8 h-8 flex items-center justify-center text-sm font-bold flex-shrink-0 ${isBuy ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'}`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-semibold flex-shrink-0 ${isBuy ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'}`}>
                       {meta.icon}
                     </div>
 
@@ -329,11 +329,11 @@ export default function InvestmentsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-ink flex items-center gap-1.5">
                         {meta.label}
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${isBuy ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'}`}>
+                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${isBuy ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'}`}>
                           {isBuy ? 'AL' : 'SAT'}
                         </span>
                       </div>
-                      <div className="text-[10px] text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <div className="text-xs text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
                         <span>{formatDate(tx.date)}</span>
                         {tx.note && <span>· {tx.note}</span>}
                         {linkedAccount
@@ -350,17 +350,17 @@ export default function InvestmentsPage() {
                     </div>
 
                     {/* Quantity */}
-                    <span className="text-xs text-muted tabular flex-shrink-0">
+                    <span className="text-xs text-muted tabular-nums flex-shrink-0">
                       {fmtQty(tx.quantity, meta.unit)}
                     </span>
 
                     {/* Price per unit */}
-                    <span className="text-xs text-muted tabular flex-shrink-0">
+                    <span className="text-xs text-muted tabular-nums flex-shrink-0">
                       {formatCurrency(tx.pricePerUnit)}/birim
                     </span>
 
                     {/* Total */}
-                    <span className={`text-sm font-semibold tabular flex-shrink-0 ${isBuy ? 'text-danger' : 'text-ok'}`}>
+                    <span className={`text-sm font-medium tabular-nums tracking-tight flex-shrink-0 ${isBuy ? 'text-danger' : 'text-ok'}`}>
                       {isBuy ? '−' : '+'}{formatCurrency(total)}
                     </span>
 
@@ -368,24 +368,24 @@ export default function InvestmentsPage() {
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => openEdit(tx)}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] transition-colors text-xs"
+                        className="w-7 h-7 rounded-xl flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] transition-colors text-xs"
                         title="Düzenle"
-                      >�?</button>
+                      >✏️</button>
                       {isConfirm ? (
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => { removeTransaction(tx.id); setConfirmDelete(null) }}
-                            className="px-2 h-6 rounded-lg bg-danger text-white text-[10px] font-semibold"
+                            className="px-2 h-6 rounded-xl bg-danger text-white text-xs font-semibold"
                           >Sil</button>
                           <button
                             onClick={() => setConfirmDelete(null)}
-                            className="w-6 h-6 rounded-lg border border-border text-muted text-xs"
+                            className="w-6 h-6 rounded-xl border border-border text-muted text-xs"
                           >✕</button>
                         </div>
                       ) : (
                         <button
                           onClick={() => setConfirmDelete(tx.id)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted hover:text-danger hover:bg-white/[0.08] transition-colors text-base"
+                          className="w-7 h-7 rounded-xl flex items-center justify-center text-muted hover:text-danger hover:bg-white/[0.08] transition-colors text-base"
                         >×</button>
                       )}
                     </div>
@@ -422,12 +422,12 @@ function Ticker({ label, value, current, previous }: {
 
   return (
     <div className="flex-shrink-0">
-      <span className="text-[10px] text-muted block mb-0.5">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-0.5">{label}</span>
       <div className="flex items-baseline gap-1.5">
-        <span className="text-xs font-bold text-ink">{value}</span>
+        <span className="text-xs font-medium tabular-nums text-ink">{value}</span>
         {pct !== null && (
           <span className={[
-            'text-[9px] font-bold flex items-center gap-0.5',
+            'text-xs font-medium tabular-nums flex items-center gap-0.5',
             pct > 0 ? 'text-ok' : pct < 0 ? 'text-danger' : 'text-muted',
           ].join(' ')}>
             {pct > 0 ? '▲' : pct < 0 ? '▼' : ''}
@@ -444,14 +444,13 @@ function SumCard({ label, value, color = 'neutral' }: {
 }) {
   const colorClass = color === 'ok' ? 'text-ok' : color === 'danger' ? 'text-danger' : 'text-foreground'
   return (
-    <Card>
+    <Card className="rounded-2xl">
       <CardContent className="px-5 py-4">
-        <span className="text-[9px] font-semibold tracking-wider uppercase text-muted-foreground block mb-2">
+        <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground block mb-2">
           {label}
         </span>
-        <div className={`text-xl font-black tabular tracking-tight ${colorClass}`}>{value}</div>
+        <div className={`text-3xl lg:text-4xl font-light tracking-tight tabular-nums ${colorClass}`}>{value}</div>
       </CardContent>
     </Card>
   )
 }
-

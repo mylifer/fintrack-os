@@ -35,7 +35,7 @@ export function StatCards() {
   const prefix   = PERIOD_LABELS[periodType]
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
       <StatCard
         label={`${prefix} · Gider`}
         value={formatCompact(expense)}
@@ -85,13 +85,13 @@ function StatCard({ label, value, sub, color }: {
   return (
     <Card style={{ borderTopWidth: 2, borderTopColor: accentColor }}>
       <CardContent className="flex flex-col gap-1 pt-0">
-        <span className="text-[9px] font-semibold tracking-wider uppercase text-muted-foreground">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </span>
-        <div className={`text-2xl font-black tabular tracking-[-0.03em] leading-none ${valueClass}`}>
+        <div className={`text-xl font-medium tracking-tight tabular-nums leading-none ${valueClass}`}>
           {value}
         </div>
-        <div className="text-[10px] text-muted-foreground">{sub}</div>
+        <div className="text-xs text-muted-foreground">{sub}</div>
       </CardContent>
     </Card>
   )

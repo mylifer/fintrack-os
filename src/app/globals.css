@@ -99,34 +99,34 @@
    4. RUNTIME CSS VARIABLES — dark theme (our default)
    ───────────────────────────────────────────────────────────────── */
 :root {
-  --background:         #0B1120;  /* ground */
-  --foreground:         #C0CCDD;  /* ink */
-  --card:               #0E1826;  /* surface */
-  --card-foreground:    #C0CCDD;
-  --popover:            #0E1826;
-  --popover-foreground: #C0CCDD;
-  --primary:            #0EA5E9;  /* sky-blue CTA */
+  --background:         #080E1A;  /* deep canvas */
+  --foreground:         #C8D4E6;  /* soft white */
+  --card:               #0F1C2E;  /* elevated surface — clearly distinct from background */
+  --card-foreground:    #C8D4E6;
+  --popover:            #0F1C2E;
+  --popover-foreground: #C8D4E6;
+  --primary:            #0A84FF;  /* Apple blue */
   --primary-foreground: #ffffff;
-  --secondary:          #1A2840;  /* subtle bg (line colour) */
-  --secondary-foreground: #C0CCDD;
-  --muted-foreground:   #4A6080;  /* dimmed text */
-  --accent-foreground:  #C0CCDD;
-  --destructive:        #F87171;  /* danger */
-  --border:             #1A2840;
-  --input:              #1A2840;
-  --ring:               #0EA5E9;
-  --radius:             0.75rem;  /* 12px — matches our --radius-lg */
+  --secondary:          #162236;  /* subtle hover/section bg */
+  --secondary-foreground: #C8D4E6;
+  --muted-foreground:   #5A7090;  /* dimmed text */
+  --accent-foreground:  #C8D4E6;
+  --destructive:        #FF453A;  /* Apple red */
+  --border:             #1E2F47;  /* subtle separator — slightly more visible */
+  --input:              #162236;
+  --ring:               #0A84FF;
+  --radius:             1rem;     /* 16px base — Apple generous rounding */
 
   /* Charts (financial palette) */
-  --chart-1: #0EA5E9;  /* sky  */
-  --chart-2: #34D399;  /* emerald */
-  --chart-3: #FB923C;  /* amber */
-  --chart-4: #F87171;  /* danger */
-  --chart-5: #7DD3FC;  /* info */
+  --chart-1: #0A84FF;  /* Apple blue */
+  --chart-2: #30D158;  /* Apple green */
+  --chart-3: #FF9F0A;  /* Apple orange */
+  --chart-4: #FF453A;  /* Apple red */
+  --chart-5: #5AC8FA;  /* Apple teal */
 
   /* Sidebar */
-  --sidebar-bg: #0E1826;
-  --sidebar-fg: #C0CCDD;
+  --sidebar-bg: #0B1525;
+  --sidebar-fg: #C8D4E6;
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -150,31 +150,31 @@ html[data-theme="light"] * {
 }
 
 html[data-theme="light"] {
-  --background:         #F0F4F8;
-  --foreground:         #0B1120;
+  --background:         #F2F5F9;
+  --foreground:         #0D1524;
   --card:               #FFFFFF;
-  --card-foreground:    #0B1120;
+  --card-foreground:    #0D1524;
   --popover:            #FFFFFF;
-  --popover-foreground: #0B1120;
-  --primary:            #0EA5E9;
+  --popover-foreground: #0D1524;
+  --primary:            #0A84FF;
   --primary-foreground: #ffffff;
-  --secondary:          #DDE3EC;
-  --secondary-foreground: #0B1120;
+  --secondary:          #E8EDF5;
+  --secondary-foreground: #0D1524;
   --muted-foreground:   #6B7E99;
-  --accent-foreground:  #0B1120;
-  --destructive:        #EF4444;
-  --border:             #DDE3EC;
-  --input:              #DDE3EC;
-  --ring:               #0EA5E9;
+  --accent-foreground:  #0D1524;
+  --destructive:        #FF3B30;
+  --border:             #D8E0EC;
+  --input:              #E8EDF5;
+  --ring:               #0A84FF;
 
-  --chart-1: #0EA5E9;
-  --chart-2: #059669;
-  --chart-3: #F97316;
-  --chart-4: #EF4444;
-  --chart-5: #0369A1;
+  --chart-1: #0A84FF;
+  --chart-2: #30D158;
+  --chart-3: #FF9F0A;
+  --chart-4: #FF3B30;
+  --chart-5: #5AC8FA;
 
   --sidebar-bg: #F7F9FC;
-  --sidebar-fg: #0B1120;
+  --sidebar-fg: #0D1524;
 }
 
 /* Keep Tailwind layer overrides in sync for light theme */
@@ -205,11 +205,9 @@ html[data-theme="light"] {
     border-color: var(--border);
   }
   body {
-    /* Layered radial gradients give the dark canvas subtle depth without
-       distracting from financial data — accent at top-left, ok at bottom-right */
+    /* Extremely subtle radial glow at top-left for depth — Apple dark mode feel */
     background:
-      radial-gradient(ellipse 90% 50% at 15% -5%, rgba(14, 165, 233, 0.055) 0%, transparent 65%),
-      radial-gradient(ellipse 70% 40% at 85% 105%, rgba(52, 211, 153, 0.04) 0%, transparent 65%),
+      radial-gradient(ellipse 80% 60% at 10% -10%, rgba(10, 132, 255, 0.04) 0%, transparent 60%),
       var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
