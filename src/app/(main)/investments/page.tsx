@@ -6,6 +6,7 @@ import { BuySellModal }      from '@/components/investments/BuySellModal'
 import { PriceHistoryChart, type BuyPoint } from '@/components/investments/PriceHistoryChart'
 import { useInvestmentStore, useAccountStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
+import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { formatDate }        from '@/lib/utils/date'
 import type { InvestmentAsset } from '@/types'
@@ -152,7 +153,7 @@ export default function InvestmentsPage() {
       />
 
       {/* Live price ticker */}
-      <div className="px-6 py-3 border-b border-line bg-surface flex items-center gap-6 overflow-x-auto flex-shrink-0">
+      <div className="px-6 py-3 border-b border-border bg-surface flex items-center gap-6 overflow-x-auto flex-shrink-0">
         {prices ? (
           <>
             <Ticker label="USD/TRY"  value={prices.usdTry.toFixed(2)}  current={prices.usdTry}      previous={prices.prevUsdTry} />
@@ -169,7 +170,7 @@ export default function InvestmentsPage() {
               <button
                 onClick={fetchPrices}
                 disabled={pricesLoading}
-                className="text-[10px] text-accent font-semibold hover:text-accent/80 disabled:opacity-40 transition-colors"
+                className="text-[10px] text-primary font-semibold hover:text-primary/80 disabled:opacity-40 transition-colors"
               >
                 {pricesLoading ? '...' : 'Yenile'}
               </button>
@@ -183,7 +184,7 @@ export default function InvestmentsPage() {
             {!pricesLoading && (
               <button
                 onClick={fetchPrices}
-                className="text-[10px] text-accent font-semibold hover:text-accent/80 transition-colors"
+                className="text-[10px] text-primary font-semibold hover:text-primary/80 transition-colors"
               >
                 Tekrar Dene
               </button>
@@ -230,9 +231,9 @@ export default function InvestmentsPage() {
         )}
 
         {/* Holdings */}
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted">Portföy</span>
+        <Card className="overflow-hidden gap-0 py-0">
+          <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Portföy</span>
             <div className="flex gap-2">
               <button
                 onClick={openBuy}
@@ -243,19 +244,20 @@ export default function InvestmentsPage() {
                 className="px-3 py-1.5 rounded-lg bg-danger text-white text-xs font-semibold hover:bg-danger/80 transition-colors"
               >Sat</button>
             </div>
-          </div>
+          </CardHeader>
 
+          <CardContent className="p-0">
           {holdings.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-muted">
+            <div className="px-5 py-10 text-center text-sm text-muted-foreground">
               Portföyde varlık yok. Yatırım işlemi ekleyin.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-line">
+                  <tr className="border-b border-border">
                     {['Varlık', 'Miktar', 'Ort. Maliyet', 'Güncel Fiyat', 'Değer', 'K/Z', 'K/Z%'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left font-semibold text-muted whitespace-nowrap">{h}</th>
+                      <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -263,7 +265,7 @@ export default function InvestmentsPage() {
                   {holdings.map(h => {
                     const meta = ASSET_META[h.asset]
                     return (
-                      <tr key={h.asset} className="border-b border-line hover:bg-white/[0.03] transition-colors">
+                      <tr key={h.asset} className="border-b border-border hover:bg-white/[0.03] transition-colors">
                         <td className="px-4 py-3 font-medium text-ink whitespace-nowrap">
                           <span className="inline-flex items-center gap-1.5">
                             <span className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold bg-white/[0.08] text-ink/60">{meta.icon}</span>
@@ -291,20 +293,22 @@ export default function InvestmentsPage() {
               </table>
             </div>
           )}
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Transaction history */}
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-line">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted">İşlem Geçmişi</span>
-          </div>
+        <Card className="overflow-hidden gap-0 py-0">
+          <CardHeader className="px-5 py-4 border-b border-border">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">İşlem Geçmişi</span>
+          </CardHeader>
 
+          <CardContent className="p-0">
           {transactions.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-muted">
+            <div className="px-5 py-10 text-center text-sm text-muted-foreground">
               Henüz işlem yok.
             </div>
           ) : (
-            <div className="divide-y divide-[#F0F0F0]">
+            <div className="divide-y divide-border">
               {transactions.map(tx => {
                 const meta = ASSET_META[tx.asset]
                 const total = tx.quantity * tx.pricePerUnit
@@ -375,7 +379,7 @@ export default function InvestmentsPage() {
                           >Sil</button>
                           <button
                             onClick={() => setConfirmDelete(null)}
-                            className="w-6 h-6 rounded-lg border border-line text-muted text-xs"
+                            className="w-6 h-6 rounded-lg border border-border text-muted text-xs"
                           >✕</button>
                         </div>
                       ) : (
@@ -390,7 +394,8 @@ export default function InvestmentsPage() {
               })}
             </div>
           )}
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       <BuySellModal
@@ -437,14 +442,16 @@ function Ticker({ label, value, current, previous }: {
 function SumCard({ label, value, color = 'neutral' }: {
   label: string; value: string; color?: 'ok' | 'danger' | 'neutral'
 }) {
-  const colorClass = color === 'ok' ? 'text-ok' : color === 'danger' ? 'text-danger' : 'text-ink'
+  const colorClass = color === 'ok' ? 'text-ok' : color === 'danger' ? 'text-danger' : 'text-foreground'
   return (
-    <div className="card px-5 py-4">
-      <span className="text-[9px] font-semibold tracking-wider uppercase text-muted block mb-2">
-        {label}
-      </span>
-      <div className={`text-xl font-black tabular tracking-tight ${colorClass}`}>{value}</div>
-    </div>
+    <Card>
+      <CardContent className="px-5 py-4">
+        <span className="text-[9px] font-semibold tracking-wider uppercase text-muted-foreground block mb-2">
+          {label}
+        </span>
+        <div className={`text-xl font-black tabular tracking-tight ${colorClass}`}>{value}</div>
+      </CardContent>
+    </Card>
   )
 }
 

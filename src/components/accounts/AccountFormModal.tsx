@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { Modal }  from '@/components/ui/Modal'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui/button'
 import { Input }  from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
+import { SelectField as Select } from '@/components/ui/Select'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { useAccountStore, useTransactionStore } from '@/store'
 import { parseCurrencyInput } from '@/lib/utils/currency'

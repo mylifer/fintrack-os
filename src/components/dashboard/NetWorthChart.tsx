@@ -2,17 +2,18 @@
 
 import dynamic from 'next/dynamic'
 import { useMemo } from 'react'
-import { useTransactionStore, useAccountStore, useUIStore } from '@/store'
+import { useTransactionStore, useAccountStore, useUIStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, calcMonthlyFlow } from '@/lib/utils/calculations'
 import { lastNMonths } from '@/lib/utils/date'
 import { formatCompact } from '@/lib/utils/currency'
+import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import type { MonthYear } from '@/types'
 
 const Chart = dynamic(() => import('./_NetWorthChart'), {
   ssr: false,
   loading: () => (
-    <div className="h-48 flex items-center justify-center text-[10px] font-mono text-muted uppercase tracking-wide">
+    <div className="h-48 flex items-center justify-center text-[10px] font-mono text-muted-foreground uppercase tracking-wide">
       Yükleniyor...
     </div>
   ),
@@ -28,8 +29,9 @@ export function NetWorthChart() {
   const transactions   = useTransactionStore(s => s.transactions)
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const selectedPeriod = useUIStore(s => s.selectedPeriod)
+  const prices         = useInvestmentStore(s => s.prices)
 
-  const currentNW = calcNetWorth(accounts)
+  const currentNW = calcNetWorth(accounts, prices)
   const months    = lastNMonths(6)
 
   const data = useMemo<DataPoint[]>(() => {
@@ -55,22 +57,25 @@ export function NetWorthChart() {
     : 0
 
   return (
-    <div className="card h-full">
-      <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-        <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted">
+    <Card className="h-full gap-0 py-0">
+      <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
+        <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">
           Net Varlık Trendi — Son 6 Ay
         </span>
         {trend !== 0 && (
-          <span className={`text-[10px] font-mono tabular ${trend >= 0 ? 'text-ok' : 'text-danger'}`}>
+          <span className={`text-[10px] font-mono tabular ${trend >= 0 ? 'text-ok' : 'text-destructive'}`}>
             {trend >= 0 ? '+' : ''}{formatCompact(trend)}
           </span>
         )}
-      </div>
-      <Chart data={data} selectedPeriod={selectedPeriod} />
-      <div className="px-5 pb-4 flex items-center gap-1.5">
-        <span className="w-2 h-2 bg-accent rounded-full inline-block" />
-        <span className="text-[10px] font-mono text-muted uppercase tracking-wide">Net Varlık</span>
-      </div>
-    </div>
+      </CardHeader>
+
+      <CardContent className="p-0">
+        <Chart data={data} selectedPeriod={selectedPeriod} />
+        <div className="px-5 pb-4 flex items-center gap-1.5">
+          <span className="w-2 h-2 bg-primary rounded-full inline-block" />
+          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wide">Net Varlık</span>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

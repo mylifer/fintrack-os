@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Account, Transaction, Category, Budget, Debt, InvestmentTransaction, Person } from '@/types'
+import type { Account, Transaction, Category, Budget, Debt, InvestmentTransaction, Person, RecurringTransaction } from '@/types'
 
 class FinTrackDB extends Dexie {
   accounts!: EntityTable<Account, 'id'>
@@ -9,6 +9,7 @@ class FinTrackDB extends Dexie {
   debts!: EntityTable<Debt, 'id'>
   investmentTransactions!: EntityTable<InvestmentTransaction, 'id'>
   people!: EntityTable<Person, 'id'>
+  recurringTransactions!: EntityTable<RecurringTransaction, 'id'>
 
   constructor() {
     super('fintrack-os')
@@ -66,6 +67,18 @@ class FinTrackDB extends Dexie {
       debts:                  '&id, type, direction, isSettled, dueDate',
       investmentTransactions: '&id, type, asset, date',
       people:                 '&id, role',
+    })
+
+    // v5: add recurringTransactions table
+    this.version(5).stores({
+      accounts:               '&id, type, currency, isArchived',
+      transactions:           '&id, type, accountId, toAccountId, categoryId, date, installGroupId, debtId, familyMemberId, recipientId',
+      categories:             '&id, scope, parentId, isSystem',
+      budgets:                '&id, categoryId, period, year, month',
+      debts:                  '&id, type, direction, isSettled, dueDate',
+      investmentTransactions: '&id, type, asset, date',
+      people:                 '&id, role',
+      recurringTransactions:  '&id, type, frequency, nextDueDate, isActive',
     })
   }
 }

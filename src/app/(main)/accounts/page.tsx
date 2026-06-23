@@ -12,8 +12,9 @@ import { getPeriodRange } from '@/lib/utils/date'
 import { AccountFormModal } from '@/components/accounts/AccountFormModal'
 import { AccountAvatar }  from '@/components/accounts/AccountAvatar'
 import { EmptyState }    from '@/components/ui/EmptyState'
-import { Button }        from '@/components/ui/Button'
+import { Button }        from '@/components/ui/button'
 import { Badge }         from '@/components/ui/Badge'
+import { Card, CardContent } from '@/components/ui/card'
 import type { Account }  from '@/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -26,10 +27,11 @@ export default function AccountsPage() {
   const transactions  = useTransactionStore(s => s.transactions)
   const periodType    = useUIStore(s => s.periodType)
   const investValue   = useInvestmentStore(s => s.getPortfolioValue())
+  const prices        = useInvestmentStore(s => s.prices)
 
   const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
 
-  const netWorth = calcNetWorth(accounts)
+  const netWorth = calcNetWorth(accounts, prices)
 
   const [showForm, setShowForm]             = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | undefined>()
@@ -41,7 +43,7 @@ export default function AccountsPage() {
       <PeriodTabs />
 
       {/* Net worth summary */}
-      <div className="px-6 py-4 border-b border-line bg-surface flex items-baseline gap-3 flex-shrink-0">
+      <div className="px-6 py-4 border-b border-border bg-surface flex items-baseline gap-3 flex-shrink-0">
         <span className={`text-3xl font-black tabular tracking-tight ${(netWorth + investValue) >= 0 ? 'text-ink' : 'text-danger'}`}>
           {formatCurrency(netWorth + investValue)}
         </span>
@@ -75,16 +77,17 @@ export default function AccountsPage() {
                     const hasActivity = income > 0 || expense > 0
 
                     return (
-                      <div
+                      <Card
                         key={account.id}
-                        className="card p-5"
+                        className="p-0"
                       >
+                        <CardContent className="p-5">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-2.5">
                             <AccountAvatar account={account} size="sm" />
                             <Link
                               href={`/accounts/${account.id}`}
-                              className="text-xs font-semibold hover:text-accent transition-colors"
+                              className="text-xs font-semibold hover:text-primary transition-colors"
                             >
                               {account.name}
                             </Link>
@@ -111,8 +114,8 @@ export default function AccountsPage() {
                         )}
 
                         {account.type === 'credit_card' && account.creditLimit && (
-                          <div className="mt-3 pt-3 border-t border-line">
-                            <div className="flex justify-between text-[10px] font-mono text-muted mb-1.5">
+                          <div className="mt-3 pt-3 border-t border-border">
+                            <div className="flex justify-between text-[10px] font-mono text-muted-foreground mb-1.5">
                               <span>Kullanılabilir</span>
                               <span className="tabular">{formatCurrency(available ?? 0, account.currency)}</span>
                             </div>
@@ -122,13 +125,14 @@ export default function AccountsPage() {
                                 style={{ width: `${Math.min(usedPct, 100)}%` }}
                               />
                             </div>
-                            <div className="text-[10px] font-mono text-muted mt-1">
+                            <div className="text-[10px] font-mono text-muted-foreground mt-1">
                               Limit: {formatCurrency(account.creditLimit, account.currency)}
                               {account.statementDay && ` · Ekstre: ${account.statementDay}. gün`}
                             </div>
                           </div>
                         )}
-                      </div>
+                        </CardContent>
+                      </Card>
                     )
             })}
           </div>

@@ -1,10 +1,10 @@
-import type { Account, Transaction, Budget, BudgetWithSpent, Debt, DebtWithRemaining, MonthYear } from '@/types'
+import type { Account, Transaction, Budget, BudgetWithSpent, Debt, DebtWithRemaining, MonthYear, PriceData } from '@/types'
 import { isInRange, monthRange, yearRange } from './date'
 
 // Sum of all transaction effects on an account (income adds, expense/outgoing-transfer subtracts).
 // Used to derive the current balance from initialBalance.
 export function computeTransactionEffect(accountId: string, transactions: Transaction[]): number {
-  return transactions.reduce((sum, t) => {
+  const raw = transactions.reduce((sum, t) => {
     if (t.type === 'transfer') {
       if (t.accountId === accountId) return sum - t.amount
       if (t.toAccountId === accountId) return sum + t.amount
@@ -13,12 +13,22 @@ export function computeTransactionEffect(accountId: string, transactions: Transa
     }
     return sum
   }, 0)
+  return Math.round(raw * 100) / 100
 }
 
-export function calcNetWorth(accounts: Account[]): number {
-  return accounts
+export function calcNetWorth(accounts: Account[], prices?: PriceData | null): number {
+  const raw = accounts
     .filter(a => !a.isArchived)
-    .reduce((sum, a) => sum + a.balance, 0)
+    .reduce((sum, a) => {
+      let balance = a.balance
+      if (prices && a.currency !== 'TRY') {
+        if (a.currency === 'USD') balance *= prices.usdTry
+        else if (a.currency === 'EUR') balance *= prices.eurTry
+        else if (a.currency === 'GBP') balance *= prices.gbpTry
+      }
+      return sum + balance
+    }, 0)
+  return Math.round(raw * 100) / 100
 }
 
 export function calcAvailableCredit(account: Account): number {
@@ -35,13 +45,14 @@ export function calcBudgetSpent(
     ? monthRange({ month: budget.month, year: budget.year })
     : yearRange(budget.year)
 
-  return transactions
+  const raw = transactions
     .filter(tx =>
       tx.type === 'expense' &&
       tx.categoryId === budget.categoryId &&
       isInRange(tx.date, range.from, range.to),
     )
     .reduce((sum, tx) => sum + tx.amount, 0)
+  return Math.round(raw * 100) / 100
 }
 
 export function enrichBudget(
@@ -65,9 +76,9 @@ export function calcPeriodFlow(
   to: string,
 ): { income: number; expense: number; net: number } {
   const inRange = transactions.filter(tx => tx.date >= from && tx.date <= to)
-  const income  = inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const expense = inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  return { income, expense, net: income - expense }
+  const income  = Math.round(inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0) * 100) / 100
+  const expense = Math.round(inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0) * 100) / 100
+  return { income, expense, net: Math.round((income - expense) * 100) / 100 }
 }
 
 export function calcMonthlyFlow(
@@ -77,9 +88,9 @@ export function calcMonthlyFlow(
   const { from, to } = monthRange(my)
   const inRange = transactions.filter(tx => isInRange(tx.date, from, to))
 
-  const income  = inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const expense = inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  return { income, expense, net: income - expense }
+  const income  = Math.round(inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0) * 100) / 100
+  const expense = Math.round(inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0) * 100) / 100
+  return { income, expense, net: Math.round((income - expense) * 100) / 100 }
 }
 
 export function enrichDebt(debt: Debt): DebtWithRemaining {

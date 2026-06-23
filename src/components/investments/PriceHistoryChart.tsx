@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Card } from '@/components/ui/card'
 import { AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import type { AssetGroup, PricePoint } from '@/app/api/prices/history/route'
 
@@ -221,12 +222,12 @@ export function PriceHistoryChart({
   const rawUp    = rawPct !== null && rawPct >= 0
 
   return (
-    <div className="card overflow-hidden">
+    <Card className="overflow-hidden gap-0 py-0">
 
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="px-5 pt-4 pb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted block mb-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground block mb-1.5">
             {label}
           </span>
 
@@ -269,13 +270,13 @@ export function PriceHistoryChart({
             <svg width="20" height="8">
               <line x1="0" y1="4" x2="20" y2="4" stroke={color} strokeWidth="2" />
             </svg>
-            <span className="text-[9px] text-muted font-medium">Portföy</span>
+            <span className="text-[9px] text-muted-foreground font-medium">Portföy</span>
           </div>
           <div className="flex items-center gap-1.5">
             <svg width="20" height="8">
               <line x1="0" y1="4" x2="20" y2="4" stroke={PRICE_COLOR} strokeWidth="1.5" strokeDasharray="4 2" />
             </svg>
-            <span className="text-[9px] text-muted font-medium">
+            <span className="text-[9px] text-muted-foreground font-medium">
               {RAW_PRICE_LABEL[asset]}
               {lastRaw && (
                 <span className="ml-1 tabular">
@@ -309,7 +310,7 @@ export function PriceHistoryChart({
 
         {error && (
           <div className="flex items-center justify-center" style={{ height: CHART_H }}>
-            <span className="text-[11px] text-muted">Veri alınamadı</span>
+            <span className="text-[11px] text-muted-foreground">Veri alınamadı</span>
           </div>
         )}
 
@@ -450,10 +451,10 @@ export function PriceHistoryChart({
 
         {!loading && !error && chartData.length <= 1 && (
           <div className="flex items-center justify-center" style={{ height: CHART_H }}>
-            <span className="text-[11px] text-muted">Yeterli veri yok</span>
+            <span className="text-[11px] text-muted-foreground">Yeterli veri yok</span>
           </div>
         )}
       </div>
-    </div>
+    </Card>
   )
 }

@@ -4,12 +4,13 @@ import { useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { useBudgetStore, useTransactionStore, useCategoryStore, useUIStore } from '@/store'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
+import { SelectField as Select } from '@/components/ui/Select'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Card, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatMonthYear, prevMonth, nextMonth } from '@/lib/utils/date'
 import { parseCurrencyInput } from '@/lib/utils/currency'
@@ -80,7 +81,7 @@ export default function BudgetsPage() {
       <Header title="Bütçeler" action={{ label: 'Bütçe Ekle', onClick: () => setShowForm(true) }} />
 
       {/* Period nav */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-line bg-surface">
+      <div className="flex items-center gap-3 px-6 py-3 border-b border-border bg-surface">
         <button onClick={() => setPeriod(prevMonth(selectedPeriod))} className="text-muted hover:text-ink font-mono text-sm">←</button>
         <span className="text-xs font-mono tracking-wide uppercase text-ink min-w-24 text-center">
           {formatMonthYear(selectedPeriod)}
@@ -97,11 +98,12 @@ export default function BudgetsPage() {
             action={<Button size="sm" onClick={() => setShowForm(true)}>Bütçe Ekle</Button>}
           />
         ) : (
-          <div className="card">
+          <Card className="gap-0 py-0">
+            <CardContent className="p-0">
             {budgets.map((b, i) => {
               const cat = categories.find(c => c.id === b.categoryId)
               return (
-                <div key={b.id} className={`px-5 py-4 ${i < budgets.length - 1 ? 'border-b border-line' : ''}`}>
+                <div key={b.id} className={`px-5 py-4 ${i < budgets.length - 1 ? 'border-b border-border' : ''}`}>
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{cat?.icon}</span>
@@ -133,7 +135,8 @@ export default function BudgetsPage() {
                 </div>
               )
             })}
-          </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 

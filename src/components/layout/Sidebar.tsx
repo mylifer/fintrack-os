@@ -3,9 +3,10 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { useAccountStore, useInvestmentStore } from '@/store'
+import { useAccountStore, useInvestmentStore, useRecurringStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth } from '@/lib/utils/calculations'
+import { today }        from '@/lib/utils/date'
 import { formatCompact } from '@/lib/utils/currency'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
@@ -40,6 +41,7 @@ const IC = {
   chevron:     'm8.25 4.5 7.5 7.5-7.5 7.5',
   family:      'M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z',
   recipient:   'M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z',
+  recurring:   'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99',
 }
 
 const MAIN_NAV = [
@@ -48,12 +50,13 @@ const MAIN_NAV = [
 ]
 
 const LOWER_NAV = [
-  { href: '/investments',  label: 'Yatırımlar',   icon: IC.investments },
-  { href: '/reports',      label: 'Raporlar',     icon: IC.reports },
-  { href: '/budgets',      label: 'Bütçeler',     icon: IC.budgets },
-  { href: '/debts',        label: 'Borçlar',      icon: IC.debts },
-  { href: '/aile-uyeleri', label: 'Aile Üyeleri', icon: IC.family },
-  { href: '/alicilar',     label: 'Alıcılar',     icon: IC.recipient },
+  { href: '/investments',  label: 'Yatırımlar',      icon: IC.investments },
+  { href: '/reports',      label: 'Raporlar',        icon: IC.reports },
+  { href: '/budgets',      label: 'Bütçeler',        icon: IC.budgets },
+  { href: '/debts',        label: 'Borçlar',         icon: IC.debts },
+  { href: '/recurring',    label: 'Tekrarlayan',     icon: IC.recurring },
+  { href: '/aile-uyeleri', label: 'Aile Üyeleri',   icon: IC.family },
+  { href: '/alicilar',     label: 'Alıcılar',        icon: IC.recipient },
 ]
 
 const itemBase = 'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors duration-100'
@@ -65,10 +68,13 @@ function navCls(active: boolean) {
 }
 
 export function Sidebar() {
-  const pathname = usePathname()
-  const accounts = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
+  const pathname    = usePathname()
+  const accounts    = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const investValue = useInvestmentStore(s => s.getPortfolioValue())
-  const totalWealth = calcNetWorth(accounts) + investValue
+  const prices      = useInvestmentStore(s => s.prices)
+  const totalWealth = calcNetWorth(accounts, prices) + investValue
+  const getDue      = useRecurringStore(s => s.getDue)
+  const dueCount    = getDue(today()).length
 
   const activeAccounts = accounts
 
@@ -80,7 +86,7 @@ export function Sidebar() {
   }, [isOnAccounts])
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 shrink-0 bg-sidebar border-r border-line">
+    <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 shrink-0 bg-sidebar border-r border-border">
 
       {/* ── Logo ── */}
       <div className="px-5 pt-6 pb-5 flex-shrink-0">
@@ -157,29 +163,34 @@ export function Sidebar() {
         {LOWER_NAV.map(({ href, label, icon }) => (
           <Link key={href} href={href} className={navCls(pathname === href)}>
             <Icon d={icon} />
-            <span>{label}</span>
+            <span className="flex-1">{label}</span>
+            {href === '/recurring' && dueCount > 0 && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber/20 text-amber leading-none flex-shrink-0">
+                {dueCount}
+              </span>
+            )}
           </Link>
         ))}
 
       </nav>
 
       {/* ── Net worth widget ── */}
-      <div className="mx-3 mb-3 px-4 py-3 rounded-xl bg-ground border border-line flex-shrink-0">
-        <div className="text-[9px] font-semibold tracking-[0.1em] uppercase text-muted mb-1">
+      <div className="mx-3 mb-3 px-4 py-3 rounded-xl bg-secondary border border-border flex-shrink-0">
+        <div className="text-[9px] font-semibold tracking-[0.1em] uppercase text-muted-foreground mb-1">
           Toplam Net Varlık
         </div>
-        <div className={`text-lg font-black tabular tracking-tight leading-none ${totalWealth >= 0 ? 'text-ink' : 'text-danger'}`}>
+        <div className={`text-lg font-black tabular tracking-tight leading-none ${totalWealth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
           {formatCompact(totalWealth)}
         </div>
         {investValue > 0 && (
-          <div className="text-[9px] text-muted mt-1 font-medium">
+          <div className="text-[9px] text-muted-foreground mt-1 font-medium">
             Yatırım dahil
           </div>
         )}
       </div>
 
       {/* ── Settings + theme toggle (bottom) ── */}
-      <div className="px-3 pb-4 border-t border-line pt-3 flex-shrink-0 flex items-center gap-1">
+      <div className="px-3 pb-4 border-t border-border pt-3 flex-shrink-0 flex items-center gap-1">
         <Link href="/settings" className={`${navCls(pathname === '/settings')} flex-1`}>
           <Icon d={IC.settings} />
           <span>Ayarlar</span>

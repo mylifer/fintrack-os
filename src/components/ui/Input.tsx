@@ -1,40 +1,47 @@
-'use client'
+import * as React from "react"
+import { cn } from "@/lib/utils"
 
-import { type InputHTMLAttributes, forwardRef } from 'react'
-
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+type InputProps = React.ComponentProps<"input"> & {
   label?: string
   error?: string
-  hint?: string
+  hint?:  string
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, className = '', id, ...props }, ref) => {
-    const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-')
+function Input({ className, type, label, error, hint, id, ...props }: InputProps) {
+  const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-')
 
-    return (
-      <div className="flex flex-col gap-1.5">
-        {label && (
-          <label htmlFor={inputId} className="text-xs font-semibold tracking-wide uppercase text-muted">
-            {label}
-          </label>
-        )}
-        <input
-          ref={ref}
-          id={inputId}
-          className={[
-            'w-full bg-surface text-ink text-sm px-3.5 py-2.5 rounded-xl',
-            'border border-line focus:border-accent outline-none',
-            'placeholder:text-muted transition-colors duration-100',
-            error ? 'border-danger focus:border-danger' : '',
-            className,
-          ].join(' ')}
-          {...props}
-        />
-        {error && <span className="text-xs text-danger">{error}</span>}
-        {hint && !error && <span className="text-xs text-muted">{hint}</span>}
-      </div>
-    )
-  },
-)
-Input.displayName = 'Input'
+  const input = (
+    <input
+      id={inputId}
+      type={type}
+      data-slot="input"
+      aria-invalid={!!error}
+      className={cn(
+        "h-9 w-full min-w-0 rounded-xl border border-input bg-transparent px-3 py-1 text-sm transition-colors outline-none",
+        "placeholder:text-muted-foreground",
+        "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
+        "aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20",
+        className
+      )}
+      {...props}
+    />
+  )
+
+  if (!label && !error && !hint) return input
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {label && (
+        <label htmlFor={inputId} className="text-xs font-medium text-muted-foreground">
+          {label}
+        </label>
+      )}
+      {input}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  )
+}
+
+export { Input }

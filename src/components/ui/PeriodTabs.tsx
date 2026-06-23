@@ -16,16 +16,16 @@ export function PeriodTabs() {
   const setPeriodType = useUIStore(s => s.setPeriodType)
 
   return (
-    <div className="flex items-center gap-1 px-6 py-3 border-b border-line bg-surface overflow-x-auto flex-shrink-0">
+    <div className="flex items-center gap-1 px-4 py-3 border-b border-border bg-card overflow-x-auto flex-shrink-0">
       {PERIODS.map(({ type, label }) => (
         <button
           key={type}
           onClick={() => setPeriodType(type)}
           className={[
-            'flex-shrink-0 px-4 py-1.5 rounded-xl text-xs font-semibold transition-colors duration-100',
+            'flex-shrink-0 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
             periodType === type
-              ? 'bg-accent text-white'
-              : 'text-muted hover:text-ink hover:bg-white/[0.05]',
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-secondary',
           ].join(' ')}
         >
           {label}

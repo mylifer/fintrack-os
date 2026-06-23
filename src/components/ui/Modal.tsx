@@ -1,67 +1,51 @@
 'use client'
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
+import { cn } from '@/lib/utils'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose,
+} from '@/components/ui/dialog'
+import { XIcon } from 'lucide-react'
 
 interface ModalProps {
-  open: boolean
-  onClose: () => void
-  title?: string
+  open:     boolean
+  onClose:  () => void
+  title?:   string
   children: ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?:    'sm' | 'md' | 'lg'
 }
 
-const sizeClass = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' }
+const sizeClass = {
+  sm: 'sm:max-w-sm',
+  md: 'sm:max-w-md',
+  lg: 'sm:max-w-lg',
+}
 
 export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    const d = dialogRef.current
-    if (!d) return
-    if (open) { d.showModal() } else { d.close() }
-  }, [open])
-
-  useEffect(() => {
-    const d = dialogRef.current
-    if (!d) return
-    const handler = (e: MouseEvent) => {
-      const r = d.getBoundingClientRect()
-      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
-        onClose()
-      }
-    }
-    d.addEventListener('click', handler)
-    return () => d.removeEventListener('click', handler)
-  }, [onClose])
-
   return (
-    <dialog
-      ref={dialogRef}
-      onCancel={onClose}
-      className={[
-        'w-full bg-surface text-ink m-auto p-0',
-        'border border-line rounded-2xl',
-        'shadow-[0_8px_40px_rgba(0,0,0,0.6)]',
-        'backdrop:bg-black/60 backdrop:backdrop-blur-sm',
-        sizeClass[size],
-      ].join(' ')}
-    >
-      {/* Inner wrapper handles max-height + scroll — NOT on <dialog> to avoid overriding display:none */}
-      <div className="flex flex-col max-h-[90vh]">
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className={cn('gap-0 p-0 max-h-[90vh] flex flex-col', sizeClass[size])}
+      >
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-line flex-shrink-0">
-            <h2 className="text-sm font-bold tracking-wide">{title}</h2>
-            <button
+          <DialogHeader className="flex-row items-center justify-between px-6 py-4 border-b border-white/[0.07] flex-shrink-0">
+            <DialogTitle className="text-sm font-semibold tracking-wide text-foreground">
+              {title}
+            </DialogTitle>
+            <DialogClose
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-ground transition-colors text-lg leading-none"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors"
               aria-label="Kapat"
             >
-              ×
-            </button>
-          </div>
+              <XIcon className="size-4" />
+            </DialogClose>
+          </DialogHeader>
         )}
-        <div className="p-6 overflow-y-auto min-h-0">{children}</div>
-      </div>
-    </dialog>
+        <div className="p-6 overflow-y-auto min-h-0 flex-1">
+          {children}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

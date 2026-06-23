@@ -11,6 +11,7 @@ import {
 import { tr } from 'date-fns/locale'
 import { Header }           from '@/components/layout/Header'
 import { useTransactionStore, useAccountStore, useCategoryStore } from '@/store'
+import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency }   from '@/lib/utils/currency'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
@@ -219,7 +220,7 @@ export default function ReportsPage() {
       <Header title="Raporlar" />
 
       {/* ── Filter bar ────────────────────────────────────────────── */}
-      <div className="px-4 lg:px-6 py-3 border-b border-line bg-surface flex flex-wrap items-center gap-3 flex-shrink-0">
+      <div className="px-4 lg:px-6 py-3 border-b border-border bg-surface flex flex-wrap items-center gap-3 flex-shrink-0">
 
         <div className="flex gap-0.5 bg-ground p-1 rounded-xl">
           {PRESETS.map(p => (
@@ -242,14 +243,14 @@ export default function ReportsPage() {
               type="date"
               value={customFrom}
               onChange={e => setCustomFrom(e.target.value)}
-              className="border border-line rounded-lg px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-accent"
+              className="border border-border rounded-lg px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-primary"
             />
             <span className="text-muted text-xs">—</span>
             <input
               type="date"
               value={customTo}
               onChange={e => setCustomTo(e.target.value)}
-              className="border border-line rounded-lg px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-accent"
+              className="border border-border rounded-lg px-2 py-1.5 text-xs text-ink bg-surface focus:outline-none focus:border-primary"
             />
           </div>
         )}
@@ -257,7 +258,7 @@ export default function ReportsPage() {
         <select
           value={accountId}
           onChange={e => setAccountId(e.target.value)}
-          className="ml-auto border border-line rounded-xl px-3 py-2 text-xs text-ink bg-surface focus:outline-none focus:border-accent cursor-pointer"
+          className="ml-auto border border-border rounded-xl px-3 py-2 text-xs text-ink bg-surface focus:outline-none focus:border-primary cursor-pointer"
         >
           <option value="all">Tüm Hesaplar</option>
           {accounts.map(a => (
@@ -272,11 +273,13 @@ export default function ReportsPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {isLoading ? (
             [...Array(4)].map((_, i) => (
-              <div key={i} className="card px-5 py-4">
-                <div className="h-2.5 w-20 bg-line rounded animate-pulse mb-3" />
-                <div className="h-7 w-32 bg-line rounded animate-pulse" />
-                <div className="h-2 w-16 bg-line rounded animate-pulse mt-2" />
-              </div>
+              <Card key={i}>
+                <CardContent className="px-5 py-4">
+                  <div className="h-2.5 w-20 bg-line rounded animate-pulse mb-3" />
+                  <div className="h-7 w-32 bg-line rounded animate-pulse" />
+                  <div className="h-2 w-16 bg-line rounded animate-pulse mt-2" />
+                </CardContent>
+              </Card>
             ))
           ) : (
             <>
@@ -313,95 +316,101 @@ export default function ReportsPage() {
         {/* ── Charts row 1: Cash Flow + Category ────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          <div className="card overflow-hidden">
-            <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-              <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted">Nakit Akışı</span>
+          <Card className="overflow-hidden gap-0 py-0">
+            <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
+              <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">Nakit Akışı</span>
               {!isLoading && (
                 <span className={`text-[10px] font-mono tabular ${kpi.net >= 0 ? 'text-ok' : 'text-danger'}`}>
                   Net: {kpi.net >= 0 ? '+' : '−'}{formatCurrency(Math.abs(kpi.net))}
                 </span>
               )}
-            </div>
-            <div className="overflow-x-auto">
-              <div className="min-w-[360px]">
-                {isLoading ? <BarSkeleton /> : <CashFlowBarChart data={cashFlowData} />}
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <div className="min-w-[360px]">
+                  {isLoading ? <BarSkeleton /> : <CashFlowBarChart data={cashFlowData} />}
+                </div>
               </div>
-            </div>
-            <div className="px-5 pb-4 flex gap-4">
-              <LegendDot color="#16A34A" label="Gelir" />
-              <LegendDot color="#DC2626" label="Gider" />
-            </div>
-          </div>
+              <div className="px-5 pb-4 flex gap-4">
+                <LegendDot color="#16A34A" label="Gelir" />
+                <LegendDot color="#DC2626" label="Gider" />
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="card overflow-hidden">
-            <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-              <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted">Kategori Bazlı Giderler</span>
+          <Card className="overflow-hidden gap-0 py-0">
+            <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
+              <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">Kategori Bazlı Giderler</span>
               {selectedCat && (
                 <button
                   onClick={() => { setSelectedCat(null); setActiveSliceIdx(null) }}
-                  className="text-[10px] text-muted hover:text-ink transition-colors flex items-center gap-1"
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
                 >
                   <span className="w-2 h-2 rounded-sm inline-block" style={{ background: selectedCat.color }} />
                   {selectedCat.name}
                   <span className="ml-1 opacity-50">✕</span>
                 </button>
               )}
-            </div>
-            <div className="overflow-x-auto">
-              <div className="min-w-[360px]">
-                {isLoading ? <DonutSkeleton /> : (
-                  <CategoryDonutChart
-                    data={categoryData}
-                    activeIndex={activeSliceIdx}
-                    onSliceClick={(slice, idx) => {
-                      if (activeSliceIdx === idx) {
-                        setSelectedCat(null)
-                        setActiveSliceIdx(null)
-                      } else {
-                        setSelectedCat(slice)
-                        setActiveSliceIdx(idx)
-                      }
-                    }}
-                  />
-                )}
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <div className="min-w-[360px]">
+                  {isLoading ? <DonutSkeleton /> : (
+                    <CategoryDonutChart
+                      data={categoryData}
+                      activeIndex={activeSliceIdx}
+                      onSliceClick={(slice, idx) => {
+                        if (activeSliceIdx === idx) {
+                          setSelectedCat(null)
+                          setActiveSliceIdx(null)
+                        } else {
+                          setSelectedCat(slice)
+                          setActiveSliceIdx(idx)
+                        }
+                      }}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
         </div>
 
         {/* ── Category drill-down ───────────────────────────────────── */}
         {selectedCat && !isLoading && (
-          <div className="card overflow-hidden">
-            <div className="px-5 py-4 border-b border-line flex items-center gap-3">
+          <Card className="overflow-hidden gap-0 py-0">
+            <CardHeader className="flex-row items-center gap-3 px-5 py-4 border-b border-border">
               <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: selectedCat.color }} />
-              <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted flex-1">
+              <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground flex-1">
                 {selectedCat.name} — {catFilteredTxs.length} işlem
               </span>
-              <span className="text-xs font-semibold tabular text-danger">
+              <span className="text-xs font-semibold tabular text-destructive">
                 −{formatCurrency(selectedCat.amount)}
               </span>
               <button
                 onClick={() => { setSelectedCat(null); setActiveSliceIdx(null) }}
-                className="w-6 h-6 flex items-center justify-center text-muted hover:text-ink hover:bg-white/[0.08] rounded-lg transition-colors text-sm flex-shrink-0"
+                className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/[0.08] rounded-lg transition-colors text-sm flex-shrink-0"
                 title="Kapat"
               >✕</button>
-            </div>
-            <div className="overflow-auto" style={{ maxHeight: 440 }}>
-              <TransactionList
-                transactions={catFilteredTxs}
-                showAccount
-                emptyTitle="İşlem bulunamadı"
-                emptyDescription="Seçili dönemde bu kategoride gider yok."
-              />
-            </div>
-          </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto" style={{ maxHeight: 440 }}>
+                <TransactionList
+                  transactions={catFilteredTxs}
+                  showAccount
+                  emptyTitle="İşlem bulunamadı"
+                  emptyDescription="Seçili dönemde bu kategoride gider yok."
+                />
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* ── Balance / Net Worth Trend ──────────────────────────────── */}
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-            <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted">
+        <Card className="overflow-hidden gap-0 py-0">
+          <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
+            <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted-foreground">
               {accountId === 'all' ? 'Net Varlık Trendi' : 'Hesap Bakiye Trendi'}
             </span>
             {!isLoading && trendData.length > 0 && (
@@ -409,13 +418,15 @@ export default function ReportsPage() {
                 Güncel: {formatCurrency(trendData.at(-1)?.balance ?? 0)}
               </span>
             )}
-          </div>
-          <div className="overflow-x-auto">
-            <div className="min-w-[400px]">
-              {isLoading ? <BarSkeleton /> : <BalanceTrendChart data={trendData} />}
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <div className="min-w-[400px]">
+                {isLoading ? <BarSkeleton /> : <BalanceTrendChart data={trendData} />}
+              </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
       </div>
     </>
@@ -433,15 +444,17 @@ function KPICard({
   prefix?: string
   color?: 'ok' | 'danger' | 'neutral'
 }) {
-  const cls = color === 'ok' ? 'text-ok' : color === 'danger' ? 'text-danger' : 'text-ink'
+  const cls = color === 'ok' ? 'text-ok' : color === 'danger' ? 'text-danger' : 'text-foreground'
   return (
-    <div className="card px-5 py-4">
-      <div className="text-[9px] font-semibold tracking-wider uppercase text-muted mb-2">{label}</div>
-      <div className={`text-xl font-black tabular tracking-tight leading-tight ${cls}`}>
-        {prefix}{value}
-      </div>
-      {sub && <div className="text-[9px] text-muted mt-1.5 font-medium">{sub}</div>}
-    </div>
+    <Card>
+      <CardContent className="px-5 py-4">
+        <div className="text-[9px] font-semibold tracking-wider uppercase text-muted-foreground mb-2">{label}</div>
+        <div className={`text-xl font-black tabular tracking-tight leading-tight ${cls}`}>
+          {prefix}{value}
+        </div>
+        {sub && <div className="text-[9px] text-muted-foreground mt-1.5 font-medium">{sub}</div>}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -470,7 +483,7 @@ function BarSkeleton() {
 function DonutSkeleton() {
   return (
     <div className="flex flex-col items-center gap-4 py-6" style={{ minHeight: 340 }}>
-      <div className="w-44 h-44 rounded-full border-[20px] border-line animate-pulse" />
+      <div className="w-44 h-44 rounded-full border-[20px] border-border animate-pulse" />
       <div className="grid grid-cols-2 gap-2 px-6 w-full">
         {[...Array(6)].map((_, i) => (
           <div key={i} className="h-4 bg-line rounded animate-pulse" />

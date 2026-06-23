@@ -8,8 +8,9 @@ import { NetWorthChart }      from '@/components/dashboard/NetWorthChart'
 import { BudgetOverview }     from '@/components/dashboard/BudgetOverview'
 import { RecentTransactions } from '@/components/dashboard/RecentTransactions'
 import { AccountsWidget }     from '@/components/dashboard/AccountsWidget'
-import { DebtSummary }        from '@/components/dashboard/DebtSummary'
-import { useUIStore }         from '@/store'
+import { DebtSummary }            from '@/components/dashboard/DebtSummary'
+import { PendingRecurringCard }   from '@/components/dashboard/PendingRecurringCard'
+import { useUIStore }             from '@/store'
 
 export default function DashboardPage() {
   const { openModal } = useUIStore()
@@ -39,6 +40,9 @@ export default function DashboardPage() {
           <BudgetOverview />
           <RecentTransactions />
         </div>
+
+        {/* Pending recurring transactions */}
+        <PendingRecurringCard />
 
         {/* Accounts + Debt summary */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

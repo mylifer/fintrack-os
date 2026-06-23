@@ -49,7 +49,7 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
   recordPayment: async (id, amount) => {
     const debt = get().debts.find(d => d.id === id)
     if (!debt) return
-    const paidAmount = debt.paidAmount + amount
+    const paidAmount = Math.round((debt.paidAmount + amount) * 100) / 100
     const paidInstallments = (debt.paidInstallments ?? 0) + 1
     const isSettled = paidAmount >= debt.totalAmount
     const patch = { paidAmount, paidInstallments, isSettled }

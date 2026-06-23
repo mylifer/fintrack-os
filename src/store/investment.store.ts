@@ -93,20 +93,24 @@ async function createLinkedTx(
 async function cleanLinkedTxs(investTx: InvestmentTransaction): Promise<void> {
   if (!investTx.sourceAccountId) return
 
-  const { transactions: allTxs, remove: removeTx } = useTransactionStore.getState()
-  const assetLabel = ASSET_LABELS[investTx.asset]
+  const txStore = useTransactionStore.getState()
 
-  const toDelete = allTxs.filter(t =>
+  // Primary path: remove by stored ID (safe, no accidental collateral deletion)
+  if (investTx.linkedTransactionId) {
+    await txStore.remove(investTx.linkedTransactionId)
+    return
+  }
+
+  // Fallback for records created before linkedTransactionId was introduced
+  const assetLabel = ASSET_LABELS[investTx.asset]
+  const toDelete = txStore.transactions.filter(t =>
     t.type === 'expense' &&
     t.accountId === investTx.sourceAccountId &&
     t.date === investTx.date &&
     t.description.includes(assetLabel) &&
-    t.description.includes('Alım')
+    t.description.includes('Alım'),
   )
-
-  for (const t of toDelete) {
-    await removeTx(t.id)
-  }
+  for (const t of toDelete) await txStore.remove(t.id)
 }
 
 async function createSellLinkedTxs(
@@ -169,21 +173,31 @@ async function createSellLinkedTxs(
 async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void> {
   if (!investTx.targetAccountId) return
 
-  const { transactions: allTxs, remove: removeTx } = useTransactionStore.getState()
+  const txStore    = useTransactionStore.getState()
   const assetLabel = ASSET_LABELS[investTx.asset]
 
-  // Matches both the capital-return income tx ("Satışı") and the P&L tx ("Satış Kârı/Zararı")
-  const toDelete = allTxs.filter(t =>
+  if (investTx.linkedTransactionId) {
+    // Remove capital-return transaction by stored ID
+    await txStore.remove(investTx.linkedTransactionId)
+    // P&L transaction has no stored ID — match by exact description (not substring)
+    const pnlTx = txStore.transactions.find(t =>
+      t.accountId === investTx.targetAccountId &&
+      t.date === investTx.date &&
+      (t.description === `${assetLabel} Satış Kârı` || t.description === `${assetLabel} Satış Zararı`),
+    )
+    if (pnlTx) await txStore.remove(pnlTx.id)
+    return
+  }
+
+  // Fallback for records without linkedTransactionId
+  const toDelete = txStore.transactions.filter(t =>
     (t.type === 'income' || t.type === 'expense') &&
     t.accountId === investTx.targetAccountId &&
     t.date === investTx.date &&
     t.description.includes(assetLabel) &&
-    t.description.includes('Satış')
+    t.description.includes('Satış'),
   )
-
-  for (const t of toDelete) {
-    await removeTx(t.id)
-  }
+  for (const t of toDelete) await txStore.remove(t.id)
 }
 
 /* ── Portfolio calculation ───────────────────────────────────────── */

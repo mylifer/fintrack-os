@@ -31,7 +31,9 @@ export function parseCurrencyInput(raw: string): number {
     ? abs.replace(/\./g, '').replace(',', '.')
     : abs
   const n = parseFloat(normalized)
-  return isNaN(n) ? 0 : (negative ? -n : n)
+  if (isNaN(n)) return 0
+  const rounded = Math.round(n * 100) / 100
+  return negative ? -rounded : rounded
 }
 
 export function formatCompact(amount: number, currency: CurrencyCode = 'TRY'): string {

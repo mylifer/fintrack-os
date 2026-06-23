@@ -242,4 +242,7 @@ export async function clearAllData(): Promise<void> {
   await db.accounts.clear()
   await db.budgets.clear()
   await db.debts.clear()
+  await db.investmentTransactions.clear()
+  await db.people.clear()
+  await db.recurringTransactions.clear()
 }

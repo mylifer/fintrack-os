@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { useCategoryStore } from '@/store'
 import type { Category, CategoryScope } from '@/types'
 
@@ -35,7 +36,7 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
   return (
     <div
       className={[
-        'flex items-center gap-2 px-5 py-3 bg-ground border-b border-line',
+        'flex items-center gap-2 px-5 py-3 bg-ground border-b border-border',
         indent ? 'pl-14' : '',
       ].join(' ')}
     >
@@ -46,7 +47,7 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
         onChange={e => onChange({ ...form, icon: e.target.value })}
         placeholder="📦"
         maxLength={2}
-        className="w-10 h-9 text-center text-xl border border-line rounded-lg bg-ground text-ink focus:outline-none focus:border-accent"
+        className="w-10 h-9 text-center text-xl border border-border rounded-lg bg-ground text-ink focus:outline-none focus:border-primary"
       />
 
       {/* Name */}
@@ -57,14 +58,14 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
         onKeyDown={e => { if (e.key === 'Enter' && form.name.trim()) onSave() }}
         placeholder="Kategori adı"
         autoFocus
-        className="flex-1 text-sm border border-line rounded-lg px-3 h-9 bg-ground text-ink focus:outline-none focus:border-accent"
+        className="flex-1 text-sm border border-border rounded-lg px-3 h-9 bg-ground text-ink focus:outline-none focus:border-primary"
       />
 
       {/* Scope */}
       <select
         value={form.scope}
         onChange={e => onChange({ ...form, scope: e.target.value as CategoryScope })}
-        className="text-xs border border-line rounded-lg px-2 h-9 bg-ground text-ink focus:outline-none cursor-pointer flex-shrink-0"
+        className="text-xs border border-border rounded-lg px-2 h-9 bg-ground text-ink focus:outline-none cursor-pointer flex-shrink-0"
       >
         <option value="expense">Gider</option>
         <option value="income">Gelir</option>
@@ -74,7 +75,7 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
       {/* Color picker */}
       <label className="relative flex-shrink-0 cursor-pointer" title="Renk seç">
         <div
-          className="w-9 h-9 rounded-lg border border-line overflow-hidden"
+          className="w-9 h-9 rounded-lg border border-border overflow-hidden"
           style={{ background: form.color }}
         />
         <input
@@ -89,7 +90,7 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
       <button
         onClick={onSave}
         disabled={!form.name.trim()}
-        className="px-3 h-9 rounded-lg bg-accent text-white text-xs font-semibold disabled:opacity-40 hover:bg-accent/85 transition-colors flex-shrink-0"
+        className="px-3 h-9 rounded-lg bg-primary text-white text-xs font-semibold disabled:opacity-40 hover:bg-primary/85 transition-colors flex-shrink-0"
       >
         {label}
       </button>
@@ -97,7 +98,7 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
       {/* Cancel */}
       <button
         onClick={onCancel}
-        className="px-3 h-9 rounded-lg border border-line text-xs text-muted hover:text-ink transition-colors flex-shrink-0"
+        className="px-3 h-9 rounded-lg border border-border text-xs text-muted hover:text-ink transition-colors flex-shrink-0"
       >
         İptal
       </button>
@@ -190,7 +191,7 @@ export function CategoryManager() {
       <div
         key={cat.id}
         className={[
-          'flex items-center gap-3 px-5 py-3 border-b border-line hover:bg-white/[0.03] group transition-colors',
+          'flex items-center gap-3 px-5 py-3 border-b border-border hover:bg-white/[0.03] group transition-colors',
           indent ? 'pl-14' : '',
         ].join(' ')}
       >
@@ -256,7 +257,7 @@ export function CategoryManager() {
                 </button>
                 <button
                   onClick={() => setConfirmDelete(null)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center border border-line text-muted text-xs hover:text-ink transition-colors"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center border border-border text-muted text-xs hover:text-ink transition-colors"
                 >
                   ✕
                 </button>
@@ -275,22 +276,22 @@ export function CategoryManager() {
   }
 
   return (
-    <div className="card overflow-hidden">
+    <Card className="overflow-hidden gap-0 py-0">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+      <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Kategoriler
         </span>
         <button
           onClick={() => startAdd('root')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/85 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/85 transition-colors"
         >
           <span className="text-base leading-none">+</span> Yeni Kategori
         </button>
-      </div>
+      </CardHeader>
 
       {/* Category list */}
-      <div>
+      <CardContent className="p-0">
         {parents.map(parent => {
           const subs = getChildren(parent.id)
           return (
@@ -328,11 +329,11 @@ export function CategoryManager() {
 
         {/* Empty state */}
         {parents.length === 0 && addingFor !== 'root' && (
-          <div className="px-5 py-8 text-center text-sm text-muted">
+          <div className="px-5 py-8 text-center text-sm text-muted-foreground">
             Henüz kategori yok.
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }

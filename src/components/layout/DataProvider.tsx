@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from 'react'
 import {
   useAccountStore, useTransactionStore, useCategoryStore,
   useBudgetStore, useDebtStore, useInvestmentStore, usePeopleStore,
+  useRecurringStore,
 } from '@/store'
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -15,6 +16,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const loadDebts                 = useDebtStore(s => s.load)
   const loadInvestments           = useInvestmentStore(s => s.load)
   const loadPeople                = usePeopleStore(s => s.load)
+  const loadRecurring             = useRecurringStore(s => s.load)
   const reprocessSellLinkedTxs    = useInvestmentStore(s => s.reprocessSellLinkedTxs)
 
   useEffect(() => {
@@ -26,13 +28,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       loadDebts(),
       loadInvestments(),
       loadPeople(),
+      loadRecurring(),
     ]).then(() => {
       reprocessSellLinkedTxs()
       const { recomputeBalances } = useAccountStore.getState()
       const { transactions }      = useTransactionStore.getState()
       recomputeBalances(transactions)
     })
-  }, [loadAccounts, loadTransactions, loadCategories, initCategories, loadBudgets, loadDebts, loadInvestments, loadPeople, reprocessSellLinkedTxs])
+  }, [loadAccounts, loadTransactions, loadCategories, initCategories, loadBudgets, loadDebts, loadInvestments, loadPeople, loadRecurring, reprocessSellLinkedTxs])
 
   return <>{children}</>
 }

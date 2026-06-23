@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { useDebtStore, useAccountStore } from '@/store'
-import { Button } from '@/components/ui/Button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
+import { SelectField as Select } from '@/components/ui/Select'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -126,7 +127,7 @@ export default function DebtsPage() {
     const days    = debt.dueDate ? daysUntil(debt.dueDate) : null
 
     return (
-      <div className="p-5 border-b border-line last:border-0">
+      <div className="p-5 border-b border-border last:border-0">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div>
             <div className="font-semibold text-sm">{debt.name}</div>
@@ -181,8 +182,8 @@ export default function DebtsPage() {
     <>
       <Header title="Borç Takibi" action={{ label: 'Ekle', onClick: startAdd }} />
 
-      <div className="flex border-b border-line bg-surface">
-        <div className="flex-1 px-6 py-4 border-r border-line">
+      <div className="flex border-b border-border bg-surface">
+        <div className="flex-1 px-6 py-4 border-r border-border">
           <div className="text-[9px] font-mono tracking-[0.12em] uppercase text-muted mb-1">Toplam Borç</div>
           <div className="text-xl font-black tabular text-danger">{formatCurrency(totalOwe)}</div>
         </div>
@@ -201,9 +202,11 @@ export default function DebtsPage() {
             action={<Button size="sm" onClick={startAdd}>Ekle</Button>}
           />
         ) : (
-          <div className="card">
-            {debts.map(d => <DebtCard key={d.id} debt={d} />)}
-          </div>
+          <Card className="gap-0 py-0">
+            <CardContent className="p-0">
+              {debts.map(d => <DebtCard key={d.id} debt={d} />)}
+            </CardContent>
+          </Card>
         )}
       </div>
 

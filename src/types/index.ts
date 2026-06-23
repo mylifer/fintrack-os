@@ -241,6 +241,34 @@ export interface InvestmentHolding {
   pnlPercent: number
 }
 
+// ─── Recurring Transaction ─────────────────────────────────────────────────
+
+export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
+
+export interface RecurringTransaction {
+  id: string
+  name: string              // Human label: "Kira", "Netflix", "Maaş"
+  type: TransactionType
+  amount: number
+  currency: CurrencyCode
+  accountId: string
+  toAccountId?: string      // Transfer target
+  categoryId?: string
+  description: string       // Description copied to generated transaction
+  notes?: string
+  frequency: RecurringFrequency
+  dayOfMonth?: number       // 1–28, meaningful for monthly/yearly
+  monthOfYear?: number      // 1–12, meaningful for yearly
+  startDate: string         // ISO date — first occurrence
+  endDate?: string          // Optional end date
+  nextDueDate: string       // Date of the next generation
+  lastGeneratedDate?: string
+  isActive: boolean
+  familyMemberId?: string
+  recipientId?: string
+  createdAt: string
+}
+
 // ─── Default categories ────────────────────────────────────────────────────
 
 export const DEFAULT_CATEGORIES: Omit<Category, 'id'>[] = [
