@@ -12,6 +12,7 @@ import { calcNetWorth, calcPeriodFlow } from '@/lib/utils/calculations'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { getPeriodRange, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import dynamic from 'next/dynamic'
+import { useCountUp } from '@/lib/hooks/useCountUp'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/button'
@@ -66,10 +67,17 @@ export default function DashboardPage() {
   const netWorth = calcNetWorth(accounts, prices) + investValue
   const prefix   = PERIOD_LABEL[periodType]
 
+  const totalOwed = getActive().filter(d => d.direction === 'owe').reduce((s, d) => s + d.remainingAmount, 0)
+
+  const animExpense   = useCountUp(expense)
+  const animIncome    = useCountUp(income)
+  const animNetWorth  = useCountUp(Math.abs(netWorth))
+  const animNet       = useCountUp(Math.abs(net))
+  const animTotalOwed = useCountUp(totalOwed)
+
   const recent  = useMemo(() => transactions.slice(0, 8), [transactions])
   const budgets = useMemo(() => getBudgets(selectedPeriod, transactions).slice(0, 5), [selectedPeriod, transactions, getBudgets])
   const dueSoon = getDueSoon(30)
-  const totalOwed = getActive().filter(d => d.direction === 'owe').reduce((s, d) => s + d.remainingAmount, 0)
   const pending = getDue(today())
 
   async function handleGenerate(id: string) {
@@ -96,10 +104,10 @@ export default function DashboardPage() {
         {/* ── Stat Cards ─────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: `${prefix} · Gider`,  value: formatCompact(expense),  sub: expense === 0 ? 'işlem yok' : `${formatCompact(income)} gelir`,                              ok: false },
-            { label: `${prefix} · Gelir`,  value: formatCompact(income),   sub: income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,                              ok: true  },
-            { label: 'Net Varlık',          value: formatCompact(netWorth), sub: `${accounts.length} hesap`,                                                                  ok: netWorth >= 0 },
-            { label: `${prefix} · Net`,     value: (net >= 0 ? '+' : '') + formatCompact(net), sub: net > 0 ? 'fazla tasarruf' : net < 0 ? 'bütçe açığı' : 'başabaş', ok: net >= 0 },
+            { label: `${prefix} · Gider`,  value: formatCompact(animExpense),  sub: expense === 0 ? 'işlem yok' : `${formatCompact(income)} gelir`,                              ok: false },
+            { label: `${prefix} · Gelir`,  value: formatCompact(animIncome),   sub: income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,                              ok: true  },
+            { label: 'Net Varlık',          value: (netWorth < 0 ? '−' : '') + formatCompact(animNetWorth), sub: `${accounts.length} hesap`,                                   ok: netWorth >= 0 },
+            { label: `${prefix} · Net`,     value: (net >= 0 ? '+' : '−') + formatCompact(animNet), sub: net > 0 ? 'fazla tasarruf' : net < 0 ? 'bütçe açığı' : 'başabaş', ok: net >= 0 },
           ].map(({ label, value, sub, ok }) => (
             <Card key={label} className="gap-2">
               <CardHeader className="pb-2">
@@ -291,7 +299,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-normal tabular-nums">{formatCurrency(totalOwed)}</span>
+                <span className="text-3xl font-normal tabular-nums">{formatCurrency(animTotalOwed)}</span>
                 <span className="text-sm text-muted-foreground">toplam borç</span>
               </div>
               <Separator />

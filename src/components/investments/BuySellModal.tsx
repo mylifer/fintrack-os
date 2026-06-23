@@ -44,6 +44,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   const [date,           setDate]           = useState(today())
   const [note,           setNote]           = useState('')
   const [saving,         setSaving]         = useState(false)
+  const [fetchingPrice,  setFetchingPrice]  = useState(false)
 
   // Populate form when modal opens
   useEffect(() => {
@@ -59,7 +60,9 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
       setNote(editingTx.note ?? '')
     } else {
       setTxType(defaultType)
-      setAsset('GOLD_GRAM')
+      const held = getHoldings().filter(h => h.quantity > 0.000001).map(h => h.asset)
+      const firstHeld = held[0]
+      setAsset(defaultType === 'sell' && firstHeld ? firstHeld : 'GOLD_GRAM')
       setQty('')
       setPrice('')
       setAccountId('')
@@ -79,17 +82,60 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     if (livePrice > 0) setPrice(livePrice.toFixed(2))
   }
 
+  // Auto-fill price when date or asset changes (new transactions only)
+  useEffect(() => {
+    if (!open || editingTx) return
+    if (!date) return
+
+    const todayStr = today()
+
+    if (date === todayStr) {
+      if (!prices) return
+      let p = 0
+      if (asset in GOLD_GRAMS) p = prices.goldGramTry * GOLD_GRAMS[asset]!
+      else if (asset === 'USD') p = prices.usdTry
+      else if (asset === 'EUR') p = prices.eurTry
+      else if (asset === 'GBP') p = prices.gbpTry
+      if (p > 0) setPrice(p.toFixed(2))
+      return
+    }
+
+    if (date > todayStr) return
+
+    const group = (asset in GOLD_GRAMS ? 'GOLD' : asset) as 'GOLD' | 'USD' | 'EUR' | 'GBP'
+    const gramMult = GOLD_GRAMS[asset] ?? 1
+
+    const ctrl = new AbortController()
+    setFetchingPrice(true)
+
+    fetch(`/api/prices/history?asset=${group}&from=${date}&buyDates=${date}`, { signal: ctrl.signal })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((pts: { date: string; price: number }[]) => {
+        const pt = pts.find(p => p.date === date) ?? pts[pts.length - 1]
+        if (pt) {
+          const unitPrice = group === 'GOLD' ? pt.price * gramMult : pt.price
+          setPrice(unitPrice.toFixed(2))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setFetchingPrice(false))
+
+    return () => ctrl.abort()
+  }, [open, date, asset, editingTx, prices])
+
   const qtyNum    = parseFloat(qty)   || 0
   const priceNum  = parseFloat(price) || 0
   const total     = qtyNum * priceNum
-  const assetMeta = ASSETS.find(a => a.asset === asset)!
 
   // Sell validation
-  const holdings       = getHoldings()
-  const currentHolding = holdings.find(h => h.asset === asset)
-  const heldQty        = currentHolding?.quantity ?? 0
-  const editOffset     = isEdit && editingTx?.type === 'sell' ? editingTx.quantity : 0
-  const maxSell        = txType === 'sell'
+  const holdings        = getHoldings()
+  const sellableAssets  = ASSETS.filter(a => holdings.some(h => h.asset === a.asset && h.quantity > 0.000001))
+  const visibleAssets   = txType === 'sell' && !isEdit ? sellableAssets : ASSETS
+  const assetMeta       = visibleAssets.find(a => a.asset === asset) ?? ASSETS.find(a => a.asset === asset)!
+  const currentHolding  = holdings.find(h => h.asset === asset)
+  const heldQty         = currentHolding?.quantity ?? 0
+  const editOffset      = isEdit && editingTx?.type === 'sell' ? editingTx.quantity : 0
+  const maxSell         = txType === 'sell'
     ? heldQty + (isEdit && txType === editingTx?.type ? editOffset : 0)
     : Infinity
   const sellExceeded = txType === 'sell' && qtyNum > maxSell
@@ -162,7 +208,13 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               Al
             </button>
             <button
-              onClick={() => setTxType('sell')}
+              onClick={() => {
+                setTxType('sell')
+                if (!sellableAssets.some(a => a.asset === asset)) {
+                  const first = sellableAssets[0]?.asset
+                  if (first) setAsset(first)
+                }
+              }}
               className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${txType === 'sell' ? 'bg-destructive text-white' : 'text-muted-foreground hover:text-foreground'}`}
             >
               Sat
@@ -177,7 +229,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               onChange={e => { setAsset(e.target.value as InvestmentAsset); setPrice('') }}
               className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent cursor-pointer"
             >
-              {ASSETS.map(a => (
+              {visibleAssets.map(a => (
                 <option key={a.asset} value={a.asset}>{a.emoji} {a.label}</option>
               ))}
             </select>
@@ -230,7 +282,9 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Birim Fiyat (₺)
               </label>
-              {prices && (
+              {fetchingPrice ? (
+                <span className="text-xs text-muted-foreground animate-pulse">Fiyat yükleniyor...</span>
+              ) : prices && (
                 <button
                   onClick={fillLivePrice}
                   className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors"
@@ -248,7 +302,8 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 placeholder="0.00"
                 min={0}
                 step="any"
-                className="w-full text-sm border border-border rounded-xl pl-7 pr-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent"
+                disabled={fetchingPrice}
+                className="w-full text-sm border border-border rounded-xl pl-7 pr-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent disabled:opacity-60"
               />
             </div>
           </div>

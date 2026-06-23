@@ -116,7 +116,9 @@ export function PriceHistoryChart({
     const days = PERIODS.find(p => p.key === period)!.days!
     const d = new Date()
     d.setUTCDate(d.getUTCDate() - days)
-    return d.toISOString().split('T')[0]
+    const periodFrom = d.toISOString().split('T')[0]
+    // Never start before the first purchase — chart has no meaning before that date
+    return periodFrom > from ? periodFrom : from
   }, [from, period])
 
   const buyDatesStr = useMemo(

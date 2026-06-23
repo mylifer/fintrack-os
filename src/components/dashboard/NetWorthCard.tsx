@@ -4,6 +4,7 @@ import { useAccountStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, calcAvailableCredit } from '@/lib/utils/calculations'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
+import { useCountUp } from '@/lib/hooks/useCountUp'
 import Link from 'next/link'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 
@@ -14,7 +15,8 @@ export function NetWorthCard() {
   const hasMultiCurrency = accounts.some(a => a.currency !== 'TRY')
   const currency = (hasMultiCurrency || prices) ? 'TRY' : (accounts[0]?.currency ?? 'TRY')
 
-  const creditCards = accounts.filter(a => a.type === 'credit_card')
+  const animNetWorth = useCountUp(netWorth)
+  const creditCards  = accounts.filter(a => a.type === 'credit_card')
 
   return (
     <Card className="h-full overflow-hidden">
@@ -27,7 +29,7 @@ export function NetWorthCard() {
 
       <CardContent className="pt-5">
         <div className={`text-3xl font-normal tabular-nums mb-1 ${netWorth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
-          {formatCompact(netWorth, currency)}
+          {formatCompact(animNetWorth, currency)}
         </div>
 
         <div className="mt-5 flex flex-col gap-2">

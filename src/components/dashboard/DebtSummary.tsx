@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useDebtStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
+import { useCountUp } from '@/lib/hooks/useCountUp'
 import { formatDate, daysUntil, isOverdue } from '@/lib/utils/date'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
@@ -13,9 +14,10 @@ export function DebtSummary() {
   const dueSoon    = getDueSoon(30)
   const allActive  = getActive()
 
-  const totalOwed = allActive
+  const totalOwed     = allActive
     .filter(d => d.direction === 'owe')
     .reduce((s, d) => s + d.remainingAmount, 0)
+  const animTotalOwed = useCountUp(totalOwed)
 
   return (
     <Card className="h-full overflow-hidden">
@@ -30,7 +32,7 @@ export function DebtSummary() {
         {/* Total */}
         <div className="px-6 py-4 border-b border-border/50 flex items-baseline gap-2">
           <span className="text-3xl font-normal tabular-nums text-foreground">
-            {formatCurrency(totalOwed)}
+            {formatCurrency(animTotalOwed)}
           </span>
           <span className="text-xs text-muted-foreground uppercase tracking-wide">toplam borç</span>
         </div>

@@ -8,6 +8,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth } from '@/lib/utils/calculations'
 import { today }        from '@/lib/utils/date'
 import { formatCompact } from '@/lib/utils/currency'
+import { useCountUp } from '@/lib/hooks/useCountUp'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 
@@ -72,7 +73,8 @@ export function Sidebar() {
   const accounts    = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const investValue = useInvestmentStore(s => s.getPortfolioValue())
   const prices      = useInvestmentStore(s => s.prices)
-  const totalWealth = calcNetWorth(accounts, prices) + investValue
+  const totalWealth    = calcNetWorth(accounts, prices) + investValue
+  const animTotalWealth = useCountUp(totalWealth)
   const getDue      = useRecurringStore(s => s.getDue)
   const dueCount    = getDue(today()).length
 
@@ -180,7 +182,7 @@ export function Sidebar() {
           Toplam Net Varlık
         </div>
         <div className={`text-2xl font-normal tabular-nums ${totalWealth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
-          {formatCompact(totalWealth)}
+          {formatCompact(animTotalWealth)}
         </div>
         {investValue > 0 && (
           <div className="text-xs text-muted-foreground mt-1 font-medium">
