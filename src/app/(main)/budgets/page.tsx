@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatMonthYear, prevMonth, nextMonth } from '@/lib/utils/date'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { parseCurrencyInput } from '@/lib/utils/currency'
 import type { Budget, BudgetPeriod } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
@@ -61,8 +62,6 @@ export default function BudgetsPage() {
         categoryId: catId,
         amount: parseCurrencyInput(amtStr),
         period: 'monthly',
-        year: selectedPeriod.year,
-        month: selectedPeriod.month,
         rollover: false,
         alertThreshold: Number(threshold) || 80,
       }
@@ -114,9 +113,9 @@ export default function BudgetsPage() {
                         <span className={`text-sm font-medium tabular-nums ${
                           b.status === 'exceeded' ? 'text-destructive' : b.status === 'warning' ? 'text-orange-500' : 'text-foreground'
                         }`}>
-                          {formatCurrency(b.spent)}
+                          <AnimatedNumber value={b.spent} format={formatCurrency} />
                         </span>
-                        <span className="text-muted-foreground text-sm font-medium tabular-nums"> / {formatCurrency(b.amount)}</span>
+                        <span className="text-muted-foreground text-sm font-medium tabular-nums"> / <AnimatedNumber value={b.amount} format={formatCurrency} /></span>
                       </div>
                       <button onClick={() => startEdit(b)} className="text-muted-foreground hover:text-foreground text-sm transition-colors">✎</button>
                       <button onClick={() => remove(b.id)} className="text-muted-foreground hover:text-destructive text-sm transition-colors">×</button>
@@ -126,8 +125,8 @@ export default function BudgetsPage() {
                   <div className="flex justify-between mt-1 text-xs font-medium text-muted-foreground">
                     <span>
                       {b.status === 'exceeded'
-                        ? `${formatCurrency(b.spent - b.amount)} aşım`
-                        : `${formatCurrency(b.remaining)} kaldı`
+                        ? <><AnimatedNumber value={b.spent - b.amount} format={formatCurrency} /> aşım</>
+                        : <><AnimatedNumber value={b.remaining} format={formatCurrency} /> kaldı</>
                       }
                     </span>
                     <span>Uyarı eşiği: %{b.alertThreshold}</span>
@@ -145,9 +144,9 @@ export default function BudgetsPage() {
           <Select label="Kategori" value={catId} onChange={e => setCatId(e.target.value)} options={catOptions} placeholder="Seçin..." />
           <CurrencyInput label="Aylık Limit" value={amtStr} onChange={setAmtStr} />
           <Input label="Uyarı Eşiği (%)" type="number" min={50} max={100} value={threshold} onChange={e => setThreshold(e.target.value)} />
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={closeForm} fullWidth>İptal</Button>
+          <div className="flex flex-col gap-2">
             <Button onClick={handleSave} loading={loading} fullWidth>{editingBudget ? 'Güncelle' : 'Ekle'}</Button>
+            <Button variant="secondary" onClick={closeForm} fullWidth>İptal</Button>
           </div>
         </div>
       </Modal>

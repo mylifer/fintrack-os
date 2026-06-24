@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useEffect } from 'react'
+import { useCountUp } from '@/lib/hooks/useCountUp'
 import { useShallow } from 'zustand/react/shallow'
 import {
   format, parseISO, startOfMonth, endOfMonth,
@@ -215,6 +216,11 @@ export default function ReportsPage() {
 
   const isLoading = !txsReady || !accountsReady
 
+  const animIncome  = useCountUp(kpi.income)
+  const animExpense = useCountUp(kpi.expense)
+  const animNet     = useCountUp(Math.abs(kpi.net))
+  const animTrend   = useCountUp(trendData.at(-1)?.balance ?? 0)
+
   return (
     <>
       <Header title="Raporlar" />
@@ -285,19 +291,19 @@ export default function ReportsPage() {
             <>
               <KPICard
                 label="Toplam Gelir"
-                value={formatCurrency(kpi.income)}
+                value={formatCurrency(animIncome)}
                 sub={`${filteredTxs.filter(t => t.type === 'income').length} işlem`}
                 color="ok"
               />
               <KPICard
                 label="Toplam Gider"
-                value={formatCurrency(kpi.expense)}
+                value={formatCurrency(animExpense)}
                 sub={`${filteredTxs.filter(t => t.type === 'expense').length} işlem`}
                 color="danger"
               />
               <KPICard
                 label="Net Tasarruf"
-                value={formatCurrency(Math.abs(kpi.net))}
+                value={formatCurrency(animNet)}
                 sub={kpi.net >= 0 ? 'Pozitif birikim' : 'Açık var'}
                 prefix={kpi.net >= 0 ? '+' : '−'}
                 color={kpi.net >= 0 ? 'ok' : 'danger'}
@@ -321,7 +327,7 @@ export default function ReportsPage() {
               <span className="text-sm font-semibold text-foreground/90">Nakit Akışı</span>
               {!isLoading && (
                 <span className={`text-xs font-medium tabular-nums ${kpi.net >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  Net: {kpi.net >= 0 ? '+' : '−'}{formatCurrency(Math.abs(kpi.net))}
+                  Net: {kpi.net >= 0 ? '+' : '−'}{formatCurrency(animNet)}
                 </span>
               )}
             </CardHeader>
@@ -415,7 +421,7 @@ export default function ReportsPage() {
             </span>
             {!isLoading && trendData.length > 0 && (
               <span className={`text-xs font-medium tabular-nums ${(trendData.at(-1)?.balance ?? 0) >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                Güncel: {formatCurrency(trendData.at(-1)?.balance ?? 0)}
+                Güncel: {formatCurrency(animTrend)}
               </span>
             )}
           </CardHeader>

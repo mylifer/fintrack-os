@@ -15,6 +15,8 @@ import { EmptyState }    from '@/components/ui/EmptyState'
 import { Button }        from '@/components/ui/button'
 import { Badge }         from '@/components/ui/Badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { useCountUp }    from '@/lib/hooks/useCountUp'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import type { Account }  from '@/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -33,6 +35,9 @@ export default function AccountsPage() {
 
   const netWorth = calcNetWorth(accounts, prices)
 
+  const animTotal = useCountUp(netWorth + investValue)
+  const animInvest = useCountUp(investValue)
+
   const [showForm, setShowForm]             = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | undefined>()
 
@@ -45,12 +50,12 @@ export default function AccountsPage() {
       {/* Net worth summary */}
       <div className="px-6 lg:px-8 py-5 border-b border-border bg-card flex items-baseline gap-3 flex-shrink-0">
         <span className={`text-3xl font-normal tabular-nums ${(netWorth + investValue) >= 0 ? 'text-foreground' : 'text-destructive'}`}>
-          {formatCurrency(netWorth + investValue)}
+          {formatCurrency(animTotal)}
         </span>
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">toplam net varlık</span>
         {investValue > 0 && (
           <span className="text-xs text-muted-foreground ml-auto">
-            Yatırım: {formatCompact(investValue)}
+            Yatırım: {formatCompact(animInvest)}
           </span>
         )}
       </div>
@@ -102,14 +107,14 @@ export default function AccountsPage() {
                         </div>
 
                         <div className={`text-sm font-medium tabular-nums ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
-                          {formatCurrency(account.balance, account.currency)}
+                          <AnimatedNumber value={account.balance} format={v => formatCurrency(v, account.currency)} />
                         </div>
 
                         {/* Period stats */}
                         {hasActivity && (
                           <div className="flex items-center gap-3 mt-2 text-xs font-medium">
-                            {income > 0 && <span className="text-green-600">+{formatCompact(income)}</span>}
-                            {expense > 0 && <span className="text-destructive">−{formatCompact(expense)}</span>}
+                            {income > 0 && <span className="text-green-600">+<AnimatedNumber value={income} format={formatCompact} /></span>}
+                            {expense > 0 && <span className="text-destructive">−<AnimatedNumber value={expense} format={formatCompact} /></span>}
                           </div>
                         )}
 
@@ -117,7 +122,7 @@ export default function AccountsPage() {
                           <div className="mt-3 pt-3 border-t border-border">
                             <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
                               <span>Kullanılabilir</span>
-                              <span className="tabular-nums">{formatCurrency(available ?? 0, account.currency)}</span>
+                              <span className="tabular-nums"><AnimatedNumber value={available ?? 0} format={v => formatCurrency(v, account.currency)} /></span>
                             </div>
                             <div className="h-[2px] bg-muted">
                               <div
@@ -126,7 +131,7 @@ export default function AccountsPage() {
                               />
                             </div>
                             <div className="text-xs text-muted-foreground mt-1">
-                              Limit: {formatCurrency(account.creditLimit, account.currency)}
+                              Limit: <AnimatedNumber value={account.creditLimit} format={v => formatCurrency(v, account.currency)} />
                               {account.statementDay && ` · Ekstre: ${account.statementDay}. gün`}
                             </div>
                           </div>

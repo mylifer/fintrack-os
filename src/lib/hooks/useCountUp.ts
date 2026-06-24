@@ -7,7 +7,7 @@ export function useCountUp(target: number, duration = 900, startDelay = 300): nu
   const [ready, setReady] = useState(false)
   const fromRef  = useRef(0)
   const startRef = useRef<number | null>(null)
-  const rafRef   = useRef<number>()
+  const rafRef   = useRef<number | undefined>(undefined)
 
   // Isolated effect so it only fires once per mount.
   // StrictMode cancels+replaces the timer on the second invocation — safe.

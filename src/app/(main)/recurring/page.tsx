@@ -417,11 +417,11 @@ export default function RecurringPage() {
             />
           </div>
 
-          <div className="flex gap-2 pt-1">
-            <Button variant="secondary" onClick={closeForm} fullWidth>İptal</Button>
+          <div className="flex flex-col gap-2 pt-1">
             <Button onClick={handleSave} loading={loading} fullWidth>
               {editingId ? 'Güncelle' : 'Kaydet'}
             </Button>
+            <Button variant="secondary" onClick={closeForm} fullWidth>İptal</Button>
           </div>
         </div>
       </Modal>

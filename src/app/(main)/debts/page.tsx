@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, daysUntil, isOverdue } from '@/lib/utils/date'
+import { useCountUp } from '@/lib/hooks/useCountUp'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { parseCurrencyInput } from '@/lib/utils/currency'
 import type { Debt, DebtType, DebtDirection } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
@@ -48,6 +50,9 @@ export default function DebtsPage() {
   const owed  = debts.filter(d => d.direction === 'owed')
   const totalOwe  = owe.reduce((s, d)  => s + d.remainingAmount, 0)
   const totalOwed = owed.reduce((s, d) => s + d.remainingAmount, 0)
+
+  const animTotalOwe  = useCountUp(totalOwe)
+  const animTotalOwed = useCountUp(totalOwed)
 
   function fmt(n: number) {
     return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(n)
@@ -151,9 +156,9 @@ export default function DebtsPage() {
 
         <div className="flex items-baseline gap-2 mb-3">
           <span className="text-xl font-medium tabular-nums">
-            {formatCurrency(debt.remainingAmount)}
+            <AnimatedNumber value={debt.remainingAmount} format={formatCurrency} />
           </span>
-          <span className="text-xs text-muted-foreground">/ {formatCurrency(debt.totalAmount)} toplam</span>
+          <span className="text-xs text-muted-foreground">/ <AnimatedNumber value={debt.totalAmount} format={formatCurrency} /> toplam</span>
         </div>
 
         <div className="h-[2px] bg-muted mb-2">
@@ -161,9 +166,9 @@ export default function DebtsPage() {
         </div>
 
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{formatCurrency(debt.paidAmount)} ödendi (%{Math.round(debt.progressPercent)})</span>
+          <span><AnimatedNumber value={debt.paidAmount} format={formatCurrency} /> ödendi (%{Math.round(debt.progressPercent)})</span>
           {debt.dueDate && <span>{formatDate(debt.dueDate, 'd MMM yyyy')}</span>}
-          {debt.monthlyPayment && <span>Taksit: {formatCurrency(debt.monthlyPayment)}</span>}
+          {debt.monthlyPayment && <span>Taksit: <AnimatedNumber value={debt.monthlyPayment} format={formatCurrency} /></span>}
         </div>
 
         {!debt.isSettled && (
@@ -185,11 +190,11 @@ export default function DebtsPage() {
       <div className="flex border-b border-border bg-card">
         <div className="flex-1 px-6 py-4 border-r border-border">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Toplam Borç</div>
-          <div className="text-3xl font-normal tabular-nums text-destructive">{formatCurrency(totalOwe)}</div>
+          <div className="text-3xl font-normal tabular-nums text-destructive">{formatCurrency(animTotalOwe)}</div>
         </div>
         <div className="flex-1 px-6 py-4">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Toplam Alacak</div>
-          <div className="text-3xl font-normal tabular-nums text-green-600">{formatCurrency(totalOwed)}</div>
+          <div className="text-3xl font-normal tabular-nums text-green-600">{formatCurrency(animTotalOwed)}</div>
         </div>
       </div>
 
@@ -237,9 +242,9 @@ export default function DebtsPage() {
             <Input label="Alacaklı / Kişi" value={form.counterparty} onChange={e => setForm(f => ({...f, counterparty: e.target.value}))} placeholder="Garanti BBVA" />
           </div>
 
-          <div className="flex gap-2 pt-1">
-            <Button variant="secondary" onClick={closeForm} fullWidth>İptal</Button>
+          <div className="flex flex-col gap-2 pt-1">
             <Button onClick={handleSave} loading={loading} fullWidth>{editingDebt ? 'Güncelle' : 'Kaydet'}</Button>
+            <Button variant="secondary" onClick={closeForm} fullWidth>İptal</Button>
           </div>
         </div>
       </Modal>

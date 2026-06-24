@@ -8,9 +8,10 @@ import {
   useInvestmentStore, useBudgetStore, useCategoryStore,
   useDebtStore, useRecurringStore,
 } from '@/store'
-import { calcNetWorth, calcPeriodFlow } from '@/lib/utils/calculations'
+import { calcNetWorth, calcPeriodFlow, computeTransactionEffect } from '@/lib/utils/calculations'
+import { computeHoldings } from '@/store/investment.store'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
-import { getPeriodRange, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
+import { getPeriodRange, getPrevPeriodRange, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import dynamic from 'next/dynamic'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
@@ -52,6 +53,7 @@ export default function DashboardPage() {
   const categories   = useCategoryStore(s => s.categories)
   const investValue  = useInvestmentStore(s => s.getPortfolioValue())
   const prices       = useInvestmentStore(s => s.prices)
+  const investTxs    = useInvestmentStore(s => s.transactions)
   const getBudgets   = useBudgetStore(s => s.getMonthBudgets)
   const getDueSoon   = useDebtStore(s => s.getDueSoon)
   const getActive    = useDebtStore(s => s.getActive)
@@ -74,6 +76,24 @@ export default function DashboardPage() {
   const animNetWorth  = useCountUp(Math.abs(netWorth))
   const animNet       = useCountUp(Math.abs(net))
   const animTotalOwed = useCountUp(totalOwed)
+
+  // Previous period comparison
+  const prevRange = useMemo(() => getPrevPeriodRange(periodType), [periodType])
+  const prevFlow = useMemo(() => {
+    if (!prevRange) return null
+    return calcPeriodFlow(transactions, prevRange.from, prevRange.to)
+  }, [transactions, prevRange])
+  const prevNetWorth = useMemo(() => {
+    if (!prevRange) return null
+    const prevTxs = transactions.filter(t => t.date <= prevRange.to)
+    const prevAccounts = accounts.map(a => ({
+      ...a,
+      balance: a.initialBalance + computeTransactionEffect(a.id, prevTxs),
+    }))
+    const prevInvestTxs = investTxs.filter(t => t.date <= prevRange.to)
+    const prevInvestValue = computeHoldings(prevInvestTxs, prices).reduce((s, h) => s + h.currentValue, 0)
+    return calcNetWorth(prevAccounts, prices) + prevInvestValue
+  }, [accounts, transactions, investTxs, prices, prevRange])
 
   const recent  = useMemo(() => transactions.slice(0, 8), [transactions])
   const budgets = useMemo(() => getBudgets(selectedPeriod, transactions).slice(0, 5), [selectedPeriod, transactions, getBudgets])
@@ -103,22 +123,59 @@ export default function DashboardPage() {
 
         {/* ── Stat Cards ─────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: `${prefix} · Gider`,  value: formatCompact(animExpense),  sub: expense === 0 ? 'işlem yok' : `${formatCompact(income)} gelir`,                              ok: false },
-            { label: `${prefix} · Gelir`,  value: formatCompact(animIncome),   sub: income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,                              ok: true  },
-            { label: 'Net Varlık',          value: (netWorth < 0 ? '−' : '') + formatCompact(animNetWorth), sub: `${accounts.length} hesap`,                                   ok: netWorth >= 0 },
-            { label: `${prefix} · Net`,     value: (net >= 0 ? '+' : '−') + formatCompact(animNet), sub: net > 0 ? 'fazla tasarruf' : net < 0 ? 'bütçe açığı' : 'başabaş', ok: net >= 0 },
-          ].map(({ label, value, sub, ok }) => (
-            <Card key={label} className="gap-2">
-              <CardHeader className="pb-2">
-                <CardDescription>{label}</CardDescription>
-                <p className={`text-3xl font-normal tabular-nums ${ok ? 'text-green-600' : 'text-destructive'}`}>{value}</p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-muted-foreground">{sub}</p>
-              </CardContent>
-            </Card>
-          ))}
+          {((): { label: string; value: string; sub: string; ok: boolean; trendDiff: number | null; betterWhenHigher: boolean }[] => [
+            {
+              label: `${prefix} · Gider`,
+              value: formatCompact(animExpense),
+              sub: expense === 0 ? 'işlem yok' : `${formatCompact(income)} gelir`,
+              ok: false,
+              trendDiff: prevFlow ? expense - prevFlow.expense : null,
+              betterWhenHigher: false,
+            },
+            {
+              label: `${prefix} · Gelir`,
+              value: formatCompact(animIncome),
+              sub: income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
+              ok: true,
+              trendDiff: prevFlow ? income - prevFlow.income : null,
+              betterWhenHigher: true,
+            },
+            {
+              label: 'Net Varlık',
+              value: (netWorth < 0 ? '−' : '') + formatCompact(animNetWorth),
+              sub: `${accounts.length} hesap`,
+              ok: netWorth >= 0,
+              trendDiff: prevNetWorth !== null ? netWorth - prevNetWorth : null,
+              betterWhenHigher: true,
+            },
+            {
+              label: `${prefix} · Net`,
+              value: (net >= 0 ? '+' : '−') + formatCompact(animNet),
+              sub: net > 0 ? 'fazla tasarruf' : net < 0 ? 'bütçe açığı' : 'başabaş',
+              ok: net >= 0,
+              trendDiff: prevFlow ? net - prevFlow.net : null,
+              betterWhenHigher: true,
+            },
+          ])().map(({ label, value, sub, ok, trendDiff, betterWhenHigher }) => {
+            const isPositiveTrend = trendDiff !== null && (betterWhenHigher ? trendDiff >= 0 : trendDiff <= 0)
+            return (
+              <Card key={label} className="gap-2">
+                <CardHeader className="pb-2">
+                  <CardDescription>{label}</CardDescription>
+                  <p className={`text-3xl font-normal tabular-nums ${ok ? 'text-green-600' : 'text-destructive'}`}>{value}</p>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  {trendDiff !== null && trendDiff !== 0 && (
+                    <p className={`text-xs font-semibold tabular-nums ${isPositiveTrend ? 'text-green-500' : 'text-destructive'}`}>
+                      {trendDiff > 0 ? '▲' : '▼'} {formatCompact(Math.abs(trendDiff))}
+                      <span className="font-normal text-muted-foreground ml-1">önceki dönemden</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">{sub}</p>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
 
         {/* ── Charts ─────────────────────────────────────────── */}

@@ -1,13 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { usePathname } from 'next/navigation'
-import { useAccountStore, useInvestmentStore, useRecurringStore } from '@/store'
+import { useAccountStore, useInvestmentStore, useRecurringStore, useTransactionStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import { calcNetWorth } from '@/lib/utils/calculations'
-import { today }        from '@/lib/utils/date'
-import { formatCompact } from '@/lib/utils/currency'
+import { calcNetWorth, computeTransactionEffect } from '@/lib/utils/calculations'
+import { computeHoldings } from '@/store/investment.store'
+import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
+import { formatCompact, formatCurrency } from '@/lib/utils/currency'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
@@ -69,14 +70,30 @@ function navCls(active: boolean) {
 }
 
 export function Sidebar() {
-  const pathname    = usePathname()
-  const accounts    = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
-  const investValue = useInvestmentStore(s => s.getPortfolioValue())
-  const prices      = useInvestmentStore(s => s.prices)
-  const totalWealth    = calcNetWorth(accounts, prices) + investValue
+  const pathname       = usePathname()
+  const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
+  const investValue    = useInvestmentStore(s => s.getPortfolioValue())
+  const prices         = useInvestmentStore(s => s.prices)
+  const investTxs      = useInvestmentStore(s => s.transactions)
+  const transactions   = useTransactionStore(useShallow(s => s.transactions))
+  const getDue         = useRecurringStore(s => s.getDue)
+  const dueCount       = getDue(today()).length
+
+  const totalWealth     = calcNetWorth(accounts, prices) + investValue
   const animTotalWealth = useCountUp(totalWealth)
-  const getDue      = useRecurringStore(s => s.getDue)
-  const dueCount    = getDue(today()).length
+
+  const trendAmount = useMemo(() => {
+    const cutoff = monthRange(prevMonth(currentMonthYear())).to
+    const prevTxs = transactions.filter(t => t.date <= cutoff)
+    const prevAccounts = accounts.map(a => ({
+      ...a,
+      balance: a.initialBalance + computeTransactionEffect(a.id, prevTxs),
+    }))
+    const prevAccountNetWorth = calcNetWorth(prevAccounts, prices)
+    const prevInvestTxs = investTxs.filter(t => t.date <= cutoff)
+    const prevInvestValue = computeHoldings(prevInvestTxs, prices).reduce((s, h) => s + h.currentValue, 0)
+    return totalWealth - (prevAccountNetWorth + prevInvestValue)
+  }, [accounts, transactions, investTxs, prices, totalWealth])
 
   const activeAccounts = accounts
 
@@ -184,11 +201,14 @@ export function Sidebar() {
         <div className={`text-2xl font-normal tabular-nums ${totalWealth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
           {formatCompact(animTotalWealth)}
         </div>
-        {investValue > 0 && (
-          <div className="text-xs text-muted-foreground mt-1 font-medium">
-            Yatırım dahil
-          </div>
-        )}
+        <div className="flex items-center gap-1.5 mt-1.5">
+          {trendAmount !== 0 && (
+            <span className={`text-xs font-semibold tabular-nums ${trendAmount >= 0 ? 'text-green-500' : 'text-destructive'}`}>
+              {trendAmount >= 0 ? '▲' : '▼'} {formatCurrency(Math.abs(trendAmount))}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">geçen aya göre</span>
+        </div>
       </div>
 
       {/* ── Settings + theme toggle (bottom) ── */}

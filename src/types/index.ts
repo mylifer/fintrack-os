@@ -104,8 +104,8 @@ export interface Budget {
   categoryId: string
   amount: number            // Planned spending limit
   period: BudgetPeriod
-  year: number
-  month?: number            // 1–12; required when period = 'monthly'
+  year?: number             // Legacy; ignored — budgets now apply to all months
+  month?: number            // Legacy; ignored — budgets now apply to all months
   rollover: boolean         // Carry unused budget forward
   alertThreshold: number    // Warn at X% (default: 80)
 }

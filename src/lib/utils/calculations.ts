@@ -40,10 +40,13 @@ export function calcAvailableCredit(account: Account): number {
 export function calcBudgetSpent(
   budget: Budget,
   transactions: Transaction[],
+  my?: MonthYear,
 ): number {
-  const range = budget.period === 'monthly' && budget.month
-    ? monthRange({ month: budget.month, year: budget.year })
-    : yearRange(budget.year)
+  const range = my
+    ? monthRange(my)
+    : budget.period === 'monthly' && budget.month && budget.year
+      ? monthRange({ month: budget.month, year: budget.year })
+      : yearRange(budget.year ?? new Date().getFullYear())
 
   const raw = transactions
     .filter(tx =>
@@ -58,8 +61,9 @@ export function calcBudgetSpent(
 export function enrichBudget(
   budget: Budget,
   transactions: Transaction[],
+  my?: MonthYear,
 ): BudgetWithSpent {
-  const spent = calcBudgetSpent(budget, transactions)
+  const spent = calcBudgetSpent(budget, transactions, my)
   const remaining = Math.max(0, budget.amount - spent)
   const percentUsed = budget.amount > 0 ? (spent / budget.amount) * 100 : 0
   const status =

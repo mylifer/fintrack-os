@@ -1,7 +1,7 @@
 import {
   format, parseISO, startOfMonth, endOfMonth,
   subMonths, addMonths, isWithinInterval, startOfYear, endOfYear,
-  differenceInDays, isAfter, isBefore, addDays,
+  differenceInDays, isAfter, isBefore, addDays, subDays, subWeeks, subYears,
   startOfWeek, endOfWeek,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -98,6 +98,31 @@ export function getPeriodRange(type: PeriodType): { from: string; to: string } {
       }
     case 'all':
       return { from: '1900-01-01', to: '2099-12-31' }
+  }
+}
+
+export function getPrevPeriodRange(type: PeriodType): { from: string; to: string } | null {
+  const now = new Date()
+  switch (type) {
+    case 'daily':
+      return { from: format(subDays(now, 1), 'yyyy-MM-dd'), to: format(subDays(now, 1), 'yyyy-MM-dd') }
+    case 'weekly': {
+      const prevWeekDay = subWeeks(now, 1)
+      return {
+        from: format(startOfWeek(prevWeekDay, { locale: tr }), 'yyyy-MM-dd'),
+        to:   format(endOfWeek(prevWeekDay,   { locale: tr }), 'yyyy-MM-dd'),
+      }
+    }
+    case 'monthly': {
+      const prev = subMonths(now, 1)
+      return { from: format(startOfMonth(prev), 'yyyy-MM-dd'), to: format(endOfMonth(prev), 'yyyy-MM-dd') }
+    }
+    case 'yearly': {
+      const prev = subYears(now, 1)
+      return { from: format(startOfYear(prev), 'yyyy-MM-dd'), to: format(endOfYear(prev), 'yyyy-MM-dd') }
+    }
+    case 'all':
+      return null
   }
 }
 

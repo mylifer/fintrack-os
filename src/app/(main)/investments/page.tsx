@@ -3,12 +3,14 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Header }            from '@/components/layout/Header'
 import { BuySellModal }      from '@/components/investments/BuySellModal'
-import { PriceHistoryChart, type BuyPoint } from '@/components/investments/PriceHistoryChart'
+import { PriceHistoryChart, type BuyPoint, type QtyPoint } from '@/components/investments/PriceHistoryChart'
 import { useInvestmentStore, useAccountStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { formatDate }        from '@/lib/utils/date'
+import { useCountUp }        from '@/lib/hooks/useCountUp'
+import { AnimatedNumber }    from '@/components/ui/AnimatedNumber'
 import type { InvestmentAsset } from '@/types'
 
 type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP'
@@ -70,68 +72,85 @@ export default function InvestmentsPage() {
   const totalPnl   = totalValue - totalCost
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0
 
-  // Chart groups: one per price family
-  // currentValue from holdings guarantees chart header matches portfolio table
+  const animTotalValue = useCountUp(totalValue)
+  const animTotalCost  = useCountUp(totalCost)
+  const animTotalPnl   = useCountUp(Math.abs(totalPnl))
+
+  // Chart groups: one per price family.
+  // Charts remain visible even after all units are sold (currentValue = 0).
+  // qtyTimeline tracks cumulative quantity at each transaction date so the portfolio
+  // line correctly reflects stepwise increases from multiple purchases.
   const chartGroups = useMemo<{
-    key: AssetGroup; label: string; from: string
-    currentValue?: number; currentPrice?: number; buyPoints: BuyPoint[]
+    key: AssetGroup; label: string
+    currentValue?: number; currentPrice?: number
+    buyPoints: BuyPoint[]; qtyTimeline: QtyPoint[]
   }[]>(() => {
     if (!transactions.length) return []
     const groups: {
-      key: AssetGroup; label: string; from: string
-      currentValue?: number; currentPrice?: number; buyPoints: BuyPoint[]
+      key: AssetGroup; label: string
+      currentValue?: number; currentPrice?: number
+      buyPoints: BuyPoint[]; qtyTimeline: QtyPoint[]
     }[] = []
 
-    // Gold — aggregate all gold types
+    // ── Gold — aggregate all gold types into gram equivalents ─────────
     const goldTxs = transactions.filter(t => GOLD_ASSETS.includes(t.asset))
-    if (goldTxs.length) {
-      const grams = goldTxs.reduce((s, t) => {
+    const goldBuyTxs = goldTxs.filter(t => t.type === 'buy')
+    if (goldBuyTxs.length) {
+      const goldCurrentValue = holdings
+        .filter(h => GOLD_ASSETS.includes(h.asset))
+        .reduce((s, h) => s + h.currentValue, 0)
+      const buyPoints: BuyPoint[] = goldBuyTxs.map(t => ({
+        date: t.date,
+        description: `${t.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} ${ASSET_META[t.asset].label}`,
+        totalCost: t.quantity * t.pricePerUnit,
+      }))
+
+      // Build gram-quantity timeline from all gold txs (buys + sells)
+      const sortedGold = [...goldTxs].sort((a, b) => a.date.localeCompare(b.date))
+      let cumGrams = 0
+      const goldQtyTimeline: QtyPoint[] = sortedGold.map(t => {
         const mult = GRAM_MULT[t.asset] ?? 1
-        return t.type === 'buy' ? s + t.quantity * mult : s - t.quantity * mult
-      }, 0)
-      const earliest = goldTxs.filter(t => t.type === 'buy').map(t => t.date).sort()[0]
-      if (grams > 0.000001 && earliest) {
-        const goldCurrentValue = holdings
-          .filter(h => GOLD_ASSETS.includes(h.asset))
-          .reduce((s, h) => s + h.currentValue, 0)
-        const buyPoints: BuyPoint[] = goldTxs
-          .filter(t => t.type === 'buy')
-          .map(t => ({
-            date: t.date,
-            description: `${t.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} ${ASSET_META[t.asset].label}`,
-            totalCost: t.quantity * t.pricePerUnit,
-          }))
-        groups.push({
-          key: 'GOLD', label: 'Altın Portföyü', from: earliest,
-          currentValue: prices ? goldCurrentValue : undefined,
-          currentPrice: prices?.goldGramTry,
-          buyPoints,
-        })
-      }
+        cumGrams = Math.max(0, cumGrams + (t.type === 'buy' ? t.quantity * mult : -(t.quantity * mult)))
+        return { date: t.date, qty: cumGrams }
+      })
+
+      groups.push({
+        key: 'GOLD', label: 'Altın Portföyü',
+        currentValue: prices ? goldCurrentValue : undefined,
+        currentPrice: prices?.goldGramTry,
+        buyPoints,
+        qtyTimeline: goldQtyTimeline,
+      })
     }
 
+    // ── Currencies ───────────────────────────────────────────────────
     for (const [a, lbl] of [['USD', 'USD Portföyü'], ['EUR', 'EUR Portföyü'], ['GBP', 'GBP Portföyü']] as const) {
       const assetTxs = transactions.filter(t => t.asset === (a as InvestmentAsset))
-      if (!assetTxs.length) continue
-      const netQty = assetTxs.reduce((s, t) => t.type === 'buy' ? s + t.quantity : s - t.quantity, 0)
-      const earliest = assetTxs.filter(t => t.type === 'buy').map(t => t.date).sort()[0]
-      if (netQty > 0.000001 && earliest) {
-        const cp = a === 'USD' ? prices?.usdTry : a === 'EUR' ? prices?.eurTry : prices?.gbpTry
-        const holding = holdings.find(h => h.asset === a)
-        const buyPoints: BuyPoint[] = assetTxs
-          .filter(t => t.type === 'buy')
-          .map(t => ({
-            date: t.date,
-            description: `${t.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} ${a}`,
-            totalCost: t.quantity * t.pricePerUnit,
-          }))
-        groups.push({
-          key: a as AssetGroup, label: lbl, from: earliest,
-          currentValue: prices && holding ? holding.currentValue : undefined,
-          currentPrice: cp,
-          buyPoints,
-        })
-      }
+      const buyTxs   = assetTxs.filter(t => t.type === 'buy')
+      if (!buyTxs.length) continue
+
+      const cp      = a === 'USD' ? prices?.usdTry : a === 'EUR' ? prices?.eurTry : prices?.gbpTry
+      const holding = holdings.find(h => h.asset === a)
+      const buyPoints: BuyPoint[] = buyTxs.map(t => ({
+        date: t.date,
+        description: `${t.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} ${a}`,
+        totalCost: t.quantity * t.pricePerUnit,
+      }))
+
+      const sortedTxs = [...assetTxs].sort((a, b) => a.date.localeCompare(b.date))
+      let cumQty = 0
+      const qtyTimeline: QtyPoint[] = sortedTxs.map(t => {
+        cumQty = Math.max(0, cumQty + (t.type === 'buy' ? t.quantity : -t.quantity))
+        return { date: t.date, qty: cumQty }
+      })
+
+      groups.push({
+        key: a as AssetGroup, label: lbl,
+        currentValue: prices ? (holding?.currentValue ?? 0) : undefined,
+        currentPrice: cp,
+        buyPoints,
+        qtyTimeline,
+      })
     }
 
     return groups
@@ -198,11 +217,11 @@ export default function InvestmentsPage() {
         {/* Summary cards */}
         {(holdings.length > 0 || totalCost > 0) && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-            <SumCard label="Toplam Değer"  value={formatCompact(totalValue)} />
-            <SumCard label="Toplam Maliyet" value={formatCompact(totalCost)} />
+            <SumCard label="Toplam Değer"  value={formatCompact(animTotalValue)} />
+            <SumCard label="Toplam Maliyet" value={formatCompact(animTotalCost)} />
             <SumCard
               label="Kar / Zarar"
-              value={(totalPnl >= 0 ? '+' : '') + formatCompact(totalPnl)}
+              value={(totalPnl >= 0 ? '+' : '−') + formatCompact(animTotalPnl)}
               color={totalPnl > 0 ? 'ok' : totalPnl < 0 ? 'danger' : 'neutral'}
             />
             <SumCard
@@ -220,11 +239,11 @@ export default function InvestmentsPage() {
               <PriceHistoryChart
                 key={g.key}
                 asset={g.key}
-                from={g.from}
                 label={g.label}
                 currentValue={g.currentValue}
                 currentPrice={g.currentPrice}
                 buyPoints={g.buyPoints}
+                qtyTimeline={g.qtyTimeline}
               />
             ))}
           </div>
@@ -262,33 +281,7 @@ export default function InvestmentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {holdings.map(h => {
-                    const meta = ASSET_META[h.asset]
-                    return (
-                      <tr key={h.asset} className="border-b border-border/50 hover:bg-accent transition-colors">
-                        <td className="px-4 py-4 font-medium text-foreground whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-semibold bg-muted/50 text-foreground/60">{meta.icon}</span>
-                            {meta.label}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">{fmtQty(h.quantity, meta.unit)}</td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-muted-foreground">{formatCurrency(h.avgCostPerUnit)}</td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-muted-foreground">
-                          {prices ? formatCurrency(h.currentPrice) : '—'}
-                        </td>
-                        <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">
-                          {prices ? formatCurrency(h.currentValue) : '—'}
-                        </td>
-                        <td className={`px-4 py-4 tabular-nums text-sm font-medium ${prices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
-                          {prices ? ((h.pnl >= 0 ? '+' : '') + formatCurrency(h.pnl)) : '—'}
-                        </td>
-                        <td className={`px-4 py-4 tabular-nums text-sm font-medium ${prices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
-                          {prices ? ((h.pnlPercent >= 0 ? '+' : '') + h.pnlPercent.toFixed(2) + '%') : '—'}
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {holdings.map(h => <HoldingRow key={h.asset} h={h} hasPrices={!!prices} />)}
                 </tbody>
               </table>
             </div>
@@ -436,6 +429,40 @@ function Ticker({ label, value, current, previous }: {
         )}
       </div>
     </div>
+  )
+}
+
+type Holding = { asset: InvestmentAsset; quantity: number; avgCostPerUnit: number; currentPrice: number; currentValue: number; pnl: number; pnlPercent: number }
+
+function HoldingRow({ h, hasPrices }: { h: Holding; hasPrices: boolean }) {
+  const meta        = ASSET_META[h.asset]
+  const animAvgCost = useCountUp(h.avgCostPerUnit)
+  const animPrice   = useCountUp(h.currentPrice)
+  const animValue   = useCountUp(h.currentValue)
+  const animPnl     = useCountUp(Math.abs(h.pnl))
+  return (
+    <tr className="border-b border-border/50 hover:bg-accent transition-colors">
+      <td className="px-4 py-4 font-medium text-foreground whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-semibold bg-muted/50 text-foreground/60">{meta.icon}</span>
+          {meta.label}
+        </span>
+      </td>
+      <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">{fmtQty(h.quantity, meta.unit)}</td>
+      <td className="px-4 py-4 tabular-nums text-sm font-medium text-muted-foreground">{formatCurrency(animAvgCost)}</td>
+      <td className="px-4 py-4 tabular-nums text-sm font-medium text-muted-foreground">
+        {hasPrices ? formatCurrency(animPrice) : '—'}
+      </td>
+      <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">
+        {hasPrices ? formatCurrency(animValue) : '—'}
+      </td>
+      <td className={`px-4 py-4 tabular-nums text-sm font-medium ${hasPrices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
+        {hasPrices ? ((h.pnl >= 0 ? '+' : '−') + formatCurrency(animPnl)) : '—'}
+      </td>
+      <td className={`px-4 py-4 tabular-nums text-sm font-medium ${hasPrices ? pnlColor(h.pnl) : 'text-muted-foreground'}`}>
+        {hasPrices ? ((h.pnlPercent >= 0 ? '+' : '') + h.pnlPercent.toFixed(2) + '%') : '—'}
+      </td>
+    </tr>
   )
 }
 

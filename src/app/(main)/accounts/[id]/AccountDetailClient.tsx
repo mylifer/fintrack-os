@@ -9,6 +9,7 @@ import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore } from
 import { useShallow }         from 'zustand/react/shallow'
 import { formatCurrency }     from '@/lib/utils/currency'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
+import { useCountUp }         from '@/lib/hooks/useCountUp'
 import { getPeriodRange }     from '@/lib/utils/date'
 import { Badge }              from '@/components/ui/Badge'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
@@ -73,6 +74,12 @@ export default function AccountDetailClient({ id }: { id: string }) {
     ? ((account.creditLimit - available) / account.creditLimit) * 100
     : 0
 
+  const animBalance  = useCountUp(Math.abs(account.balance))
+  const animAvail    = useCountUp(available ?? 0)
+  const animLimit    = useCountUp(account.creditLimit ?? 0)
+  const animIncome   = useCountUp(periodIncome)
+  const animExpense  = useCountUp(periodExpense)
+
   return (
     <>
       <Header
@@ -101,15 +108,15 @@ export default function AccountDetailClient({ id }: { id: string }) {
 
         {/* Balance */}
         <div className={`text-3xl font-normal tabular-nums mb-4 ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
-          {formatCurrency(account.balance, account.currency)}
+          {account.balance < 0 ? '−' : ''}{formatCurrency(animBalance, account.currency)}
         </div>
 
         {/* Credit card utilisation bar */}
         {account.type === 'credit_card' && account.creditLimit && (
           <div className="mb-4">
             <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-              <span>Kullanılabilir: {formatCurrency(available ?? 0, account.currency)}</span>
-              <span>Limit: {formatCurrency(account.creditLimit, account.currency)}</span>
+              <span>Kullanılabilir: {formatCurrency(animAvail, account.currency)}</span>
+              <span>Limit: {formatCurrency(animLimit, account.currency)}</span>
             </div>
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
               <div
@@ -124,11 +131,11 @@ export default function AccountDetailClient({ id }: { id: string }) {
         <div className="flex gap-6 pt-4 border-t border-border">
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Gelir</div>
-            <div className="text-sm font-medium tabular-nums text-green-600">+{formatCurrency(periodIncome, account.currency)}</div>
+            <div className="text-sm font-medium tabular-nums text-green-600">+{formatCurrency(animIncome, account.currency)}</div>
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Gider</div>
-            <div className="text-sm font-medium tabular-nums text-destructive">−{formatCurrency(periodExpense, account.currency)}</div>
+            <div className="text-sm font-medium tabular-nums text-destructive">−{formatCurrency(animExpense, account.currency)}</div>
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">İşlem</div>

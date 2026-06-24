@@ -216,9 +216,9 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
           )}
         </div>
 
-        <div className="flex gap-2 pt-1">
-          <Button variant="secondary" onClick={onClose} fullWidth>İptal</Button>
+        <div className="flex flex-col gap-2 pt-1">
           <Button onClick={handleSubmit} loading={loading} fullWidth>Kaydet</Button>
+          <Button variant="secondary" onClick={onClose} fullWidth>İptal</Button>
         </div>
       </div>
     </Modal>

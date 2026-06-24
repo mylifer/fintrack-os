@@ -27,7 +27,7 @@ export const useUIStore = create<UIState>()(
       modal: null,
       modalPayload: null,
       selectedPeriod: currentMonthYear(),
-      periodType: 'monthly',
+      periodType: 'daily',
       txFilters: {},
       sidebarOpen: false,
 
@@ -41,7 +41,6 @@ export const useUIStore = create<UIState>()(
     {
       name: 'fintrack-ui',
       partialize: (state) => ({
-        periodType:     state.periodType,
         selectedPeriod: state.selectedPeriod,
       }),
     },

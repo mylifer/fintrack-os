@@ -22,21 +22,26 @@ const RAW_PRICE_LABEL: Record<AssetGroup, string> = {
 }
 
 // Each series is independently normalized to its own vertical band on a shared Y-axis.
-// This gives both lines the same visual amplitude regardless of their absolute magnitudes.
-// Portfolio occupies the upper band, unit price the lower band, with a gap between.
-const UPPER_MIN = 55   // portfolio band: 55–100
+// Portfolio occupies the upper band (55–100), unit price the lower band (0–45).
+const UPPER_MIN = 55
 const UPPER_MAX = 100
-const LOWER_MIN = 0    // unit-price band: 0–45
+const LOWER_MIN = 0
 const LOWER_MAX = 45
-// gap = 45–55 (10 units) keeps the lines visually separated
 
-const PRICE_COLOR = '#16a34a' // green-600
+const PRICE_COLOR = '#16a34a'
 
 const TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara']
+const TR_DAYS   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cts']
 
-function fmtAxisDate(iso: string) {
-  const p = iso.split('-')
-  return `${parseInt(p[2])} ${TR_MONTHS[parseInt(p[1]) - 1] ?? ''}`
+function fmtAxisDate(iso: string, period: Period): string {
+  const parts = iso.split('-')
+  const y = parseInt(parts[0])
+  const m = parseInt(parts[1])
+  const d = parseInt(parts[2])
+  if (period === '1H') return TR_DAYS[new Date(y, m - 1, d).getDay()] ?? ''
+  if (period === '1A') return `${d} ${TR_MONTHS[m - 1] ?? ''}`
+  if (period === '3A' || period === '1Y') return TR_MONTHS[m - 1] ?? ''
+  return `${y}` // MAX
 }
 
 function fmtTooltipDate(iso: string) {
@@ -54,13 +59,21 @@ const CHART_H = 170
 
 type Period = '1H' | '1A' | '3A' | '1Y' | 'MAX'
 
-const PERIODS: { key: Period; days: number | null }[] = [
-  { key: '1H',  days: 7   },
-  { key: '1A',  days: 30  },
-  { key: '3A',  days: 90  },
-  { key: '1Y',  days: 365 },
-  { key: 'MAX', days: null },
+const PERIODS: { key: Period; days: number }[] = [
+  { key: '1H',  days: 7    },
+  { key: '1A',  days: 30   },
+  { key: '3A',  days: 90   },
+  { key: '1Y',  days: 365  },
+  { key: 'MAX', days: 1095 },
 ]
+
+const TICK_GAP: Record<Period, number> = {
+  '1H':  2,
+  '1A':  28,
+  '3A':  48,
+  '1Y':  25,
+  'MAX': 60,
+}
 
 // ── Public types ───────────────────────────────────────────────────
 
@@ -70,29 +83,36 @@ export interface BuyPoint {
   totalCost:   number
 }
 
+// Cumulative quantity held after all transactions on each date (sorted asc).
+// Used to compute correct portfolio value at every historical point.
+export interface QtyPoint {
+  date: string
+  qty:  number
+}
+
 interface Props {
   asset:         AssetGroup
-  from:          string
   label:         string
   currentValue?: number
   currentPrice?: number
   buyPoints?:    BuyPoint[]
+  qtyTimeline?:  QtyPoint[]
 }
 
 // ── Chart data row ─────────────────────────────────────────────────
 
 interface ChartRow {
   date:         string
-  value:        number   // indexed portfolio (PORTFOLIO_BASE at t₀)
-  rawPrice:     number   // indexed unit price (PRICE_BASE at t₀)
-  realValue:    number   // actual portfolio TRY — used in tooltip
-  realRawPrice: number   // actual unit price TRY — used in tooltip
+  value:        number
+  rawPrice:     number
+  realValue:    number
+  realRawPrice: number
 }
 
 // ── Component ─────────────────────────────────────────────────────
 
 export function PriceHistoryChart({
-  asset, from, label, currentValue, currentPrice, buyPoints = [],
+  asset, label, currentValue, currentPrice, buyPoints = [], qtyTimeline = [],
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [chartW, setChartW] = useState(400)
@@ -111,15 +131,14 @@ export function PriceHistoryChart({
   // ── Period ──────────────────────────────────────────────────────
   const [period, setPeriod] = useState<Period>('3A')
 
+  // Period start is always relative to today — independent of purchase date.
+  // Dates before first purchase show portfolio value = 0 (sold or not yet bought).
   const fetchFrom = useMemo(() => {
-    if (period === 'MAX') return from
-    const days = PERIODS.find(p => p.key === period)!.days!
+    const days = PERIODS.find(p => p.key === period)!.days
     const d = new Date()
     d.setUTCDate(d.getUTCDate() - days)
-    const periodFrom = d.toISOString().split('T')[0]
-    // Never start before the first purchase — chart has no meaning before that date
-    return periodFrom > from ? periodFrom : from
-  }, [from, period])
+    return d.toISOString().split('T')[0]
+  }, [period])
 
   const buyDatesStr = useMemo(
     () => buyPoints.filter(b => b.date >= fetchFrom).map(b => b.date).join(','),
@@ -152,26 +171,43 @@ export function PriceHistoryChart({
       .catch(() => { setError(true); setLoading(false) })
   }, [asset, fetchFrom, buyDatesStr])
 
+  // ── Tick formatter (closed over period) ─────────────────────────
+  const tickFmt = useMemo(() => (iso: string) => fmtAxisDate(iso, period), [period])
+
   // ── Chart data ───────────────────────────────────────────────────
-  // Each series is independently min-max normalized to its own vertical band,
-  // so both lines use the full visual amplitude of their band.
-  // realValue / realRawPrice are stored alongside for the tooltip.
+  // currentValue may be 0 (all sold) — show flat portfolio line at 0.
+  // currentValue undefined means prices not loaded yet — skip drawing.
+  // qtyTimeline drives portfolio value: qty × historicalPrice at every point,
+  // so multiple purchases/sells are reflected correctly.
   const chartData = useMemo((): ChartRow[] => {
-    if (!priceHistory.length || !currentPrice || !currentValue) return []
+    if (!priceHistory.length || !currentPrice || currentValue === undefined) return []
 
     const today = new Date().toISOString().split('T')[0]
 
-    // Build raw real values first (including today's anchor)
-    const allPrices     = priceHistory.map(p => p.price)
-    const allPortfolios = priceHistory.map(p => currentValue * (p.price / currentPrice))
+    // Quantity held at a given date (qtyTimeline sorted asc by date).
+    // Returns 0 before any purchase and tracks each buy/sell accurately.
+    const qtyAt = (date: string): number => {
+      let qty = 0
+      for (const e of qtyTimeline) {
+        if (e.date > date) break
+        qty = e.qty
+      }
+      return qty
+    }
 
-    // Include today's real-time price in domain computation
+    const portfolioAt = (date: string, price: number): number => qtyAt(date) * price
+
+    const allPrices     = priceHistory.map(p => p.price)
+    const allPortfolios = priceHistory.map(p => portfolioAt(p.date, p.price))
+
+    // Today's anchor uses the authoritative current value from the store
+    const todayPortfolio = currentValue
     if (!priceHistory.some(p => p.date === today)) {
       allPrices.push(currentPrice)
-      allPortfolios.push(currentValue)
+      allPortfolios.push(todayPortfolio)
     } else {
-      allPrices[allPrices.length - 1]     = currentPrice
-      allPortfolios[allPortfolios.length - 1] = currentValue
+      allPrices[allPrices.length - 1]        = currentPrice
+      allPortfolios[allPortfolios.length - 1] = todayPortfolio
     }
 
     const minP = Math.min(...allPortfolios), maxP = Math.max(...allPortfolios)
@@ -194,10 +230,10 @@ export function PriceHistoryChart({
     })
 
     const data = priceHistory.map(p =>
-      makeRow(p.date, p.price, currentValue * (p.price / currentPrice))
+      makeRow(p.date, p.price, portfolioAt(p.date, p.price))
     )
 
-    const todayRow = makeRow(today, currentPrice, currentValue)
+    const todayRow = makeRow(today, currentPrice, todayPortfolio)
     const last = data[data.length - 1]
     if (!last || last.date < today) {
       data.push(todayRow)
@@ -206,14 +242,14 @@ export function PriceHistoryChart({
     }
 
     return data
-  }, [priceHistory, currentValue, currentPrice])
+  }, [priceHistory, currentValue, currentPrice, qtyTimeline])
 
   // ── Derived display values ───────────────────────────────────────
   const color  = COLORS[asset]
   const gradId = `grad-${asset}`
 
   const firstRealValue = chartData[0]?.realValue
-  const pct  = firstRealValue && currentValue
+  const pct = firstRealValue && currentValue
     ? ((currentValue - firstRealValue) / firstRealValue) * 100
     : null
   const up = pct !== null && pct >= 0
@@ -233,7 +269,7 @@ export function PriceHistoryChart({
             {label}
           </span>
 
-          {currentValue ? (
+          {currentValue !== undefined ? (
             <div className="text-[22px] font-black tabular tracking-tight text-foreground leading-none">
               ₺{fmtPrice(currentValue)}
             </div>
@@ -330,7 +366,6 @@ export function PriceHistoryChart({
               </linearGradient>
             </defs>
 
-            {/* Single axis covering both indexed series */}
             <YAxis domain={['auto', 'auto']} width={0} />
 
             <XAxis
@@ -338,9 +373,9 @@ export function PriceHistoryChart({
               tick={{ fill: '#71717a', fontSize: 9, fontFamily: 'inherit' }}
               tickLine={false}
               axisLine={false}
-              tickFormatter={fmtAxisDate}
+              tickFormatter={tickFmt}
               interval="preserveStartEnd"
-              minTickGap={52}
+              minTickGap={TICK_GAP[period]}
             />
 
             <Tooltip
@@ -349,8 +384,6 @@ export function PriceHistoryChart({
                 if (!active || !payload?.length) return null
                 const date = lbl as string
                 const buys = buyByDate.get(date)
-
-                // Payload carries indexed display values; pull real values from the data row
                 const row = chartData.find(r => r.date === date)
 
                 return (

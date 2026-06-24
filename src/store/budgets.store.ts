@@ -44,8 +44,8 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   getMonthBudgets: (my, transactions) => {
     return get().budgets
-      .filter(b => b.period === 'monthly' && b.year === my.year && b.month === my.month)
-      .map(b => enrichBudget(b, transactions))
+      .filter(b => b.period === 'monthly')
+      .map(b => enrichBudget(b, transactions, my))
       .sort((a, b) => b.percentUsed - a.percentUsed)
   },
 }))
