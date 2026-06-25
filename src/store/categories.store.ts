@@ -27,6 +27,12 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     const raw = await db.categories.toArray()
     const categories = raw.sort((a, b) => a.sortOrder - b.sortOrder)
     set({ categories, loading: false })
+    // Tüm lokal kategorileri Supabase'e upsert et — transactions FK'sını karşılamak için
+    if (categories.length > 0) {
+      supabase.from('categories').upsert(categories, { onConflict: 'id' }).then(({ error }) => {
+        if (error) console.error('[supabase:categories:sync]', error)
+      })
+    }
   },
 
   initDefaults: async () => {

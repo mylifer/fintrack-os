@@ -27,12 +27,16 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const accounts = await db.accounts.toArray()
-    set({
-      accounts: accounts.map(a => ({ ...a, initialBalance: a.initialBalance ?? a.balance })),
-      loading: false,
-      ready: true,
-    })
+    const raw = await db.accounts.toArray()
+    const accounts = raw.map(a => ({ ...a, initialBalance: a.initialBalance ?? a.balance }))
+    set({ accounts, loading: false, ready: true })
+    // Tüm lokal hesapları Supabase'e upsert et — transactions FK'sını karşılamak için
+    if (accounts.length > 0) {
+      const accountsForDb = accounts.map(({ balance: _b, ...rest }) => rest)
+      supabase.from('accounts').upsert(accountsForDb, { onConflict: 'id' }).then(({ error }) => {
+        if (error) console.error('[supabase:accounts:sync]', error)
+      })
+    }
   },
 
   add: async (account) => {
