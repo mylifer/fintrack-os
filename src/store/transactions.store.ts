@@ -2,12 +2,13 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase' // Supabase'i buradan alıyoruz
 import type { Transaction, TransactionFilters } from '@/types'
 import { isInRange } from '@/lib/utils/date'
-import { addMonths, format } from 'date-fns'
-import { parseISO } from 'date-fns'
+import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
 
+// ... (fonksiyonlar aynen kalıyor)
 function investRank(tx: Transaction): number {
   if (!tx.icon) return 10
   if (tx.description.includes('Alım')) return 0
@@ -16,13 +17,10 @@ function investRank(tx: Transaction): number {
 }
 
 function txSortComparator(a: Transaction, b: Transaction): number {
-  // Primary: date DESC
   const d = b.date.localeCompare(a.date)
   if (d !== 0) return d
-  // Secondary: createdAt DESC — newer additions float to top regardless of type
   const ca = b.createdAt.localeCompare(a.createdAt)
   if (ca !== 0) return ca
-  // Tie-break (same timestamp, e.g. sell + P&L created together): investRank ASC
   return investRank(a) - investRank(b)
 }
 
@@ -54,7 +52,11 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   },
 
   add: async (tx) => {
+    // 1. Yerel veritabanına yaz
     await db.transactions.add(tx)
+    // 2. Buluta gönder
+    supabase.from('transactions').insert(tx).then()
+    
     set(s => {
       const updated = [tx, ...s.transactions]
       updated.sort(txSortComparator)
@@ -67,23 +69,12 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const groupId = crypto.randomUUID()
     const now = new Date().toISOString()
     const txs: Transaction[] = []
-
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
-      txs.push({
-        ...base,
-        id: crypto.randomUUID(),
-        isInstallment: true,
-        installTotal: count,
-        installIndex: i + 1,
-        installGroupId: groupId,
-        date,
-        createdAt: now,
-        updatedAt: now,
-      })
+      txs.push({ ...base, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now })
     }
-
     await db.transactions.bulkAdd(txs)
+    supabase.from('transactions').insert(txs).then()
     set(s => {
       const updated = [...txs, ...s.transactions]
       updated.sort(txSortComparator)
@@ -96,6 +87,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const now = new Date().toISOString()
     const updated = { ...patch, updatedAt: now }
     await db.transactions.update(id, updated)
+    supabase.from('transactions').update(updated).eq('id', id).then()
     set(s => {
       const newTxs = s.transactions.map(t => t.id === id ? { ...t, ...updated } : t)
       useAccountStore.getState().recomputeBalances(newTxs)
@@ -105,6 +97,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   remove: async (id) => {
     await db.transactions.delete(id)
+    supabase.from('transactions').delete().eq('id', id).then()
     set(s => {
       const remaining = s.transactions.filter(t => t.id !== id)
       useAccountStore.getState().recomputeBalances(remaining)
@@ -114,28 +107,14 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   getFiltered: (filters) => {
     let txs = get().transactions
-
-    if (filters.accountIds?.length)
-      txs = txs.filter(t => filters.accountIds!.includes(t.accountId))
-    if (filters.categoryIds?.length)
-      txs = txs.filter(t => t.categoryId && filters.categoryIds!.includes(t.categoryId))
-    if (filters.types?.length)
-      txs = txs.filter(t => filters.types!.includes(t.type))
-    if (filters.dateFrom && filters.dateTo)
-      txs = txs.filter(t => isInRange(t.date, filters.dateFrom!, filters.dateTo!))
+    if (filters.accountIds?.length) txs = txs.filter(t => filters.accountIds!.includes(t.accountId))
+    if (filters.categoryIds?.length) txs = txs.filter(t => t.categoryId && filters.categoryIds!.includes(t.categoryId))
+    if (filters.types?.length) txs = txs.filter(t => filters.types!.includes(t.type))
+    if (filters.dateFrom && filters.dateTo) txs = txs.filter(t => isInRange(t.date, filters.dateFrom!, filters.dateTo!))
     if (filters.search) {
       const q = filters.search.toLowerCase()
-      txs = txs.filter(t =>
-        t.description.toLowerCase().includes(q) ||
-        t.merchant?.toLowerCase().includes(q) ||
-        t.notes?.toLowerCase().includes(q),
-      )
+      txs = txs.filter(t => t.description.toLowerCase().includes(q) || t.merchant?.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q))
     }
-    if (filters.familyMemberIds?.length)
-      txs = txs.filter(t => t.familyMemberId && filters.familyMemberIds!.includes(t.familyMemberId))
-    if (filters.recipientIds?.length)
-      txs = txs.filter(t => t.recipientId && filters.recipientIds!.includes(t.recipientId))
-
     return txs
   },
 }))
