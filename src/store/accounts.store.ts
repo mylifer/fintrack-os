@@ -37,15 +37,17 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   add: async (account) => {
     await db.accounts.add(account)
-    // Supabase'e ekle
-    supabase.from('accounts').insert(account).then() 
+    // Supabase'e ekle — balance runtime'da hesaplanır, DB'de kolonu yok
+    const { balance: _b, ...accountForDb } = account
+    supabase.from('accounts').insert(accountForDb).then()
     set(s => ({ accounts: [...s.accounts, account] }))
   },
 
   update: async (id, patch) => {
     await db.accounts.update(id, patch)
-    // Supabase'de güncelle
-    supabase.from('accounts').update(patch).eq('id', id).then() 
+    // Supabase'de güncelle — balance runtime'da hesaplanır, DB'de kolonu yok
+    const { balance: _b, ...patchForDb } = patch as Partial<Account>
+    supabase.from('accounts').update(patchForDb).eq('id', id).then()
     set(s => ({
       accounts: s.accounts.map(a => a.id === id ? { ...a, ...patch } : a),
     }))
