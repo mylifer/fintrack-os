@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { addDays, addWeeks, addMonths, addYears, format, parseISO } from 'date-fns'
 import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
 import type { RecurringTransaction, RecurringFrequency } from '@/types'
 
 function advanceDueDate(current: string, frequency: RecurringFrequency): string {
@@ -24,9 +25,7 @@ interface RecurringState {
   update: (id: string, patch: Partial<RecurringTransaction>) => Promise<void>
   remove: (id: string) => Promise<void>
   toggleActive: (id: string) => Promise<void>
-  // Returns active items whose nextDueDate <= asOf (today's date string)
   getDue: (asOf: string) => RecurringTransaction[]
-  // Advances nextDueDate to the next occurrence; skips past any overdue cycles
   markGenerated: (id: string, asOf: string) => Promise<void>
 }
 
@@ -44,11 +43,19 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   add: async (r) => {
     await db.recurringTransactions.add(r)
+    
+    // Supabase'e ekle
+    supabase.from('recurring_transactions').insert(r).then()
+    
     set(s => ({ recurring: [...s.recurring, r].sort((a, b) => a.name.localeCompare(b.name, 'tr')) }))
   },
 
   update: async (id, patch) => {
     await db.recurringTransactions.update(id, patch)
+    
+    // Supabase'de güncelle
+    supabase.from('recurring_transactions').update(patch).eq('id', id).then()
+    
     set(s => ({
       recurring: s.recurring.map(r => r.id === id ? { ...r, ...patch } : r),
     }))
@@ -56,6 +63,10 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   remove: async (id) => {
     await db.recurringTransactions.delete(id)
+    
+    // Supabase'den sil
+    supabase.from('recurring_transactions').delete().eq('id', id).then()
+    
     set(s => ({ recurring: s.recurring.filter(r => r.id !== id) }))
   },
 
@@ -64,6 +75,10 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
     if (!r) return
     const isActive = !r.isActive
     await db.recurringTransactions.update(id, { isActive })
+    
+    // Supabase'de aktiflik durumunu güncelle
+    supabase.from('recurring_transactions').update({ isActive }).eq('id', id).then()
+    
     set(s => ({
       recurring: s.recurring.map(x => x.id === id ? { ...x, isActive } : x),
     }))
@@ -81,7 +96,6 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
     const r = get().recurring.find(x => x.id === id)
     if (!r) return
 
-    // Advance nextDueDate until it's past asOf (handles catching up after app was closed)
     let next = advanceDueDate(r.nextDueDate, r.frequency)
     while (next <= asOf) {
       next = advanceDueDate(next, r.frequency)
@@ -92,6 +106,10 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
       lastGeneratedDate: r.nextDueDate,
     }
     await db.recurringTransactions.update(id, patch)
+    
+    // Supabase'de üretilme tarihlerini güncelle
+    supabase.from('recurring_transactions').update(patch).eq('id', id).then()
+    
     set(s => ({
       recurring: s.recurring.map(x => x.id === id ? { ...x, ...patch } : x),
     }))

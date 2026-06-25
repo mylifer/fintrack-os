@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
 import { useTransactionStore } from './transactions.store'
 import type {
   InvestmentTransaction, InvestmentHolding,
@@ -95,13 +96,11 @@ async function cleanLinkedTxs(investTx: InvestmentTransaction): Promise<void> {
 
   const txStore = useTransactionStore.getState()
 
-  // Primary path: remove by stored ID (safe, no accidental collateral deletion)
   if (investTx.linkedTransactionId) {
     await txStore.remove(investTx.linkedTransactionId)
     return
   }
 
-  // Fallback for records created before linkedTransactionId was introduced
   const assetLabel = ASSET_LABELS[investTx.asset]
   const toDelete = txStore.transactions.filter(t =>
     t.type === 'expense' &&
@@ -117,8 +116,8 @@ async function createSellLinkedTxs(
   targetAccountId: string,
   asset: InvestmentAsset,
   quantity: number,
-  total: number,      // qty × sell price (actual proceeds)
-  costBasis: number,  // qty × avg cost per unit at time of sale (0 = unknown)
+  total: number,      
+  costBasis: number,  
   date: string,
   createdAt?: string,
 ): Promise<string> {
@@ -126,8 +125,6 @@ async function createSellLinkedTxs(
   const txStore    = useTransactionStore.getState()
   const assetLabel = ASSET_LABELS[asset]
 
-  // When cost basis is known: split into capital return + P&L.
-  // When unknown: one income tx for full proceeds.
   const hasCost    = costBasis > 0.001
   const saleAmount = hasCost ? costBasis : total
   const pnl        = hasCost ? total - costBasis : 0
@@ -177,9 +174,7 @@ async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void
   const assetLabel = ASSET_LABELS[investTx.asset]
 
   if (investTx.linkedTransactionId) {
-    // Remove capital-return transaction by stored ID
     await txStore.remove(investTx.linkedTransactionId)
-    // P&L transaction has no stored ID — match by exact description (not substring)
     const pnlTx = txStore.transactions.find(t =>
       t.accountId === investTx.targetAccountId &&
       t.date === investTx.date &&
@@ -189,7 +184,6 @@ async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void
     return
   }
 
-  // Fallback for records without linkedTransactionId
   const toDelete = txStore.transactions.filter(t =>
     (t.type === 'income' || t.type === 'expense') &&
     t.accountId === investTx.targetAccountId &&
@@ -280,7 +274,6 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
         tx.sourceAccountId, tx.asset, tx.quantity, total, tx.date, tx.createdAt,
       )
     } else if (tx.type === 'sell' && tx.targetAccountId) {
-      // Cost basis from holdings BEFORE this sell is recorded
       const holdings  = computeHoldings(get().transactions, null)
       const holding   = holdings.find(h => h.asset === tx.asset)
       const costBasis = holding ? tx.quantity * holding.avgCostPerUnit : 0
@@ -291,6 +284,10 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
     const finalTx = { ...tx, linkedTransactionId }
     await db.investmentTransactions.add(finalTx)
+    
+    // Supabase'e ekle
+    supabase.from('investment_transactions').insert(finalTx).then()
+    
     set(s => ({ transactions: [finalTx, ...s.transactions] }))
   },
 
@@ -310,7 +307,6 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
         newTx.sourceAccountId, newTx.asset, newTx.quantity, newTotal, newTx.date, newTx.createdAt,
       )
     } else if (newTx.type === 'sell' && newTx.targetAccountId) {
-      // Cost basis computed as if the old tx never existed
       const txsWithoutOld = get().transactions.filter(t => t.id !== id)
       const holdings      = computeHoldings(txsWithoutOld, null)
       const holding       = holdings.find(h => h.asset === newTx.asset)
@@ -322,6 +318,10 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
     const finalPatch = { ...patch, linkedTransactionId }
     await db.investmentTransactions.update(id, finalPatch)
+    
+    // Supabase'de güncelle
+    supabase.from('investment_transactions').update(finalPatch).eq('id', id).then()
+    
     set(s => ({
       transactions: s.transactions.map(t => t.id === id ? { ...t, ...finalPatch } : t),
     }))
@@ -337,26 +337,26 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     }
 
     await db.investmentTransactions.delete(id)
+    
+    // Supabase'den sil
+    supabase.from('investment_transactions').delete().eq('id', id).then()
+    
     set(s => ({ transactions: s.transactions.filter(t => t.id !== id) }))
   },
 
   reprocessSellLinkedTxs: async () => {
-    // Guard: localStorage key set synchronously prevents concurrent/repeat runs.
-    // Bump version suffix to force a re-run after logic changes.
     const MIGRATION_KEY = 'inv_sell_pnl_v3'
     if (typeof window !== 'undefined') {
       if (localStorage.getItem(MIGRATION_KEY)) return
-      localStorage.setItem(MIGRATION_KEY, '1')  // sync — blocks any concurrent call
+      localStorage.setItem(MIGRATION_KEY, '1')
     }
 
     try {
-      // Sort all investment txs chronologically to reconstruct portfolio state in order
       const sorted = [...get().transactions].sort((a, b) => {
         const d = a.date.localeCompare(b.date)
         return d !== 0 ? d : a.createdAt.localeCompare(b.createdAt)
       })
 
-      // Running portfolio: asset → { qty, totalCost }
       const portfolio = new Map<InvestmentAsset, { qty: number; totalCost: number }>()
 
       for (const tx of sorted) {
@@ -367,7 +367,6 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
           pos.totalCost += tx.quantity * tx.pricePerUnit
           portfolio.set(tx.asset, { ...pos })
         } else {
-          // Sell — compute avg cost BEFORE this sell reduces the position
           const avgCost   = pos.qty > 0 ? pos.totalCost / pos.qty : 0
           const costBasis = tx.quantity * avgCost
 
@@ -377,20 +376,21 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
             const newLinkedId = await createSellLinkedTxs(
               tx.targetAccountId, tx.asset, tx.quantity, total, costBasis, tx.date, tx.createdAt,
             )
-            await db.investmentTransactions.update(tx.id, { linkedTransactionId: newLinkedId })
+            const updatePatch = { linkedTransactionId: newLinkedId }
+            await db.investmentTransactions.update(tx.id, updatePatch)
+            
+            // Supabase'e yansıt (Migration sırasında)
+            supabase.from('investment_transactions').update(updatePatch).eq('id', tx.id).then()
           }
 
-          // Reduce portfolio after sell
           const newQty = Math.max(0, pos.qty - tx.quantity)
           portfolio.set(tx.asset, { qty: newQty, totalCost: newQty * avgCost })
         }
       }
 
-      // Reload to reflect updated linkedTransactionIds
       const txs = await db.investmentTransactions.orderBy('date').reverse().toArray()
       set({ transactions: txs })
     } catch (err) {
-      // On failure, remove key so it can retry on next load
       if (typeof window !== 'undefined') localStorage.removeItem(MIGRATION_KEY)
       throw err
     }

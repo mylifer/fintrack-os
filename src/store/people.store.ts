@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
 import type { Person, PersonRole } from '@/types'
 
 interface PeopleState {
@@ -34,6 +35,10 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
       createdAt: new Date().toISOString(),
     }
     await db.people.add(person)
+    
+    // Supabase'e ekle
+    supabase.from('people').insert(person).then()
+    
     set(s => ({ people: [...s.people, person] }))
     return person
   },
@@ -41,6 +46,10 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
   rename: async (id, name) => {
     const trimmed = name.trim()
     await db.people.update(id, { name: trimmed })
+    
+    // Supabase'de ismini güncelle
+    supabase.from('people').update({ name: trimmed }).eq('id', id).then()
+    
     set(s => ({ people: s.people.map(p => p.id === id ? { ...p, name: trimmed } : p) }))
   },
 
@@ -48,11 +57,19 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
     const value = url?.trim() || undefined
     // Dexie: update with empty string to "clear" since undefined is ignored
     await db.people.update(id, { url: value ?? '' } as Partial<Person>)
+    
+    // Supabase'de URL'yi güncelle (silinmişse null olarak yansıt)
+    supabase.from('people').update({ url: value ?? null }).eq('id', id).then()
+    
     set(s => ({ people: s.people.map(p => p.id === id ? { ...p, url: value } : p) }))
   },
 
   remove: async (id) => {
     await db.people.delete(id)
+    
+    // Supabase'den sil
+    supabase.from('people').delete().eq('id', id).then()
+    
     set(s => ({ people: s.people.filter(p => p.id !== id) }))
   },
 }))

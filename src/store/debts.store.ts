@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
 import type { Debt, DebtWithRemaining } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
 import { isDueSoon } from '@/lib/utils/date'
@@ -31,11 +32,15 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
 
   add: async (debt) => {
     await db.debts.add(debt)
+    // Supabase'e ekle
+    supabase.from('debts').insert(debt).then()
     set(s => ({ debts: [...s.debts, debt] }))
   },
 
   update: async (id, patch) => {
     await db.debts.update(id, patch)
+    // Supabase'de güncelle
+    supabase.from('debts').update(patch).eq('id', id).then()
     set(s => ({
       debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d),
     }))
@@ -43,6 +48,8 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
 
   remove: async (id) => {
     await db.debts.delete(id)
+    // Supabase'den sil
+    supabase.from('debts').delete().eq('id', id).then()
     set(s => ({ debts: s.debts.filter(d => d.id !== id) }))
   },
 
@@ -53,7 +60,11 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     const paidInstallments = (debt.paidInstallments ?? 0) + 1
     const isSettled = paidAmount >= debt.totalAmount
     const patch = { paidAmount, paidInstallments, isSettled }
+    
     await db.debts.update(id, patch)
+    // Supabase'de borç ödemesini güncelle
+    supabase.from('debts').update(patch).eq('id', id).then()
+    
     set(s => ({
       debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d),
     }))
@@ -62,6 +73,9 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
   settle: async (id) => {
     const patch = { isSettled: true }
     await db.debts.update(id, patch)
+    // Supabase'de borcu kapandı olarak işaretle
+    supabase.from('debts').update(patch).eq('id', id).then()
+    
     set(s => ({
       debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d),
     }))

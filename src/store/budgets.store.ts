@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
 import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
 import { enrichBudget } from '@/lib/utils/calculations'
 
@@ -27,11 +28,15 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   add: async (budget) => {
     await db.budgets.add(budget)
+    // Supabase'e ekle
+    supabase.from('budgets').insert(budget).then()
     set(s => ({ budgets: [...s.budgets, budget] }))
   },
 
   update: async (id, patch) => {
     await db.budgets.update(id, patch)
+    // Supabase'de güncelle
+    supabase.from('budgets').update(patch).eq('id', id).then()
     set(s => ({
       budgets: s.budgets.map(b => b.id === id ? { ...b, ...patch } : b),
     }))
@@ -39,6 +44,8 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   remove: async (id) => {
     await db.budgets.delete(id)
+    // Supabase'den sil
+    supabase.from('budgets').delete().eq('id', id).then()
     set(s => ({ budgets: s.budgets.filter(b => b.id !== id) }))
   },
 

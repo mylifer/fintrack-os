@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import type { Account, Transaction } from '@/types'
 
@@ -27,8 +28,6 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
   load: async () => {
     set({ loading: true })
     const accounts = await db.accounts.toArray()
-    // initialBalance may be missing on accounts created before v3 migration runs.
-    // Fall back to balance so they render something reasonable until migration applies.
     set({
       accounts: accounts.map(a => ({ ...a, initialBalance: a.initialBalance ?? a.balance })),
       loading: false,
@@ -38,11 +37,15 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   add: async (account) => {
     await db.accounts.add(account)
+    // Supabase'e ekle
+    supabase.from('accounts').insert(account).then() 
     set(s => ({ accounts: [...s.accounts, account] }))
   },
 
   update: async (id, patch) => {
     await db.accounts.update(id, patch)
+    // Supabase'de güncelle
+    supabase.from('accounts').update(patch).eq('id', id).then() 
     set(s => ({
       accounts: s.accounts.map(a => a.id === id ? { ...a, ...patch } : a),
     }))
@@ -50,6 +53,8 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   remove: async (id) => {
     await db.accounts.delete(id)
+    // Supabase'den sil
+    supabase.from('accounts').delete().eq('id', id).then() 
     set(s => ({ accounts: s.accounts.filter(a => a.id !== id) }))
   },
 
@@ -62,7 +67,6 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     }))
   },
 
-  // No-op stub — call sites will be removed incrementally.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   updateBalance: async (_id, _delta) => {},
 
