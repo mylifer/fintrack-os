@@ -284,10 +284,9 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
     const finalTx = { ...tx, linkedTransactionId }
     await db.investmentTransactions.add(finalTx)
-    
-    // Supabase'e ekle
-    supabase.from('investment_transactions').insert(finalTx).then()
-    
+    supabase.from('investment_transactions').insert(finalTx).then(({ error }) => {
+      if (error) console.error('[supabase:investment_transactions:insert]', error)
+    })
     set(s => ({ transactions: [finalTx, ...s.transactions] }))
   },
 
@@ -318,10 +317,9 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
     const finalPatch = { ...patch, linkedTransactionId }
     await db.investmentTransactions.update(id, finalPatch)
-    
-    // Supabase'de güncelle
-    supabase.from('investment_transactions').update(finalPatch).eq('id', id).then()
-    
+    supabase.from('investment_transactions').update(finalPatch).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:investment_transactions:update]', error)
+    })
     set(s => ({
       transactions: s.transactions.map(t => t.id === id ? { ...t, ...finalPatch } : t),
     }))
@@ -337,10 +335,9 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     }
 
     await db.investmentTransactions.delete(id)
-    
-    // Supabase'den sil
-    supabase.from('investment_transactions').delete().eq('id', id).then()
-    
+    supabase.from('investment_transactions').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:investment_transactions:delete]', error)
+    })
     set(s => ({ transactions: s.transactions.filter(t => t.id !== id) }))
   },
 
@@ -378,9 +375,9 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
             )
             const updatePatch = { linkedTransactionId: newLinkedId }
             await db.investmentTransactions.update(tx.id, updatePatch)
-            
-            // Supabase'e yansıt (Migration sırasında)
-            supabase.from('investment_transactions').update(updatePatch).eq('id', tx.id).then()
+            supabase.from('investment_transactions').update(updatePatch).eq('id', tx.id).then(({ error }) => {
+              if (error) console.error('[supabase:investment_transactions:reprocess]', error)
+            })
           }
 
           const newQty = Math.max(0, pos.qty - tx.quantity)

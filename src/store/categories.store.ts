@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
+import { supabase } from '@/lib/supabase'
 import type { Category, CategoryScope } from '@/types'
 import { DEFAULT_CATEGORIES } from '@/types'
 
@@ -38,28 +38,25 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       id: crypto.randomUUID(),
     }))
     await db.categories.bulkAdd(cats)
-    
-    // Supabase'e varsayılan kategorileri topluca ekle
-    supabase.from('categories').insert(cats).then()
-    
+    supabase.from('categories').insert(cats).then(({ error }) => {
+      if (error) console.error('[supabase:categories:insert-defaults]', error)
+    })
     set({ categories: cats })
   },
 
   add: async (cat) => {
     await db.categories.add(cat)
-    
-    // Supabase'e ekle
-    supabase.from('categories').insert(cat).then()
-    
+    supabase.from('categories').insert(cat).then(({ error }) => {
+      if (error) console.error('[supabase:categories:insert]', error)
+    })
     set(s => ({ categories: [...s.categories, cat].sort((a, b) => a.sortOrder - b.sortOrder) }))
   },
 
   update: async (id, patch) => {
     await db.categories.update(id, patch)
-    
-    // Supabase'de güncelle
-    supabase.from('categories').update(patch).eq('id', id).then()
-    
+    supabase.from('categories').update(patch).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:categories:update]', error)
+    })
     set(s => ({
       categories: s.categories.map(c => c.id === id ? { ...c, ...patch } : c),
     }))
@@ -67,13 +64,12 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
   remove: async (id) => {
     const cat = get().categories.find(c => c.id === id)
-    if (cat?.isSystem) return // Cannot delete system categories
-    
+    if (cat?.isSystem) return
+
     await db.categories.delete(id)
-    
-    // Supabase'den sil
-    supabase.from('categories').delete().eq('id', id).then()
-    
+    supabase.from('categories').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:categories:delete]', error)
+    })
     set(s => ({ categories: s.categories.filter(c => c.id !== id) }))
   },
 

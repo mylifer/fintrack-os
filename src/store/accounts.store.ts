@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
+import { supabase } from '@/lib/supabase'
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import type { Account, Transaction } from '@/types'
 
@@ -37,17 +37,21 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   add: async (account) => {
     await db.accounts.add(account)
-    // Supabase'e ekle — balance runtime'da hesaplanır, DB'de kolonu yok
+    // balance runtime'da hesaplanır, Supabase şemasında kolonu yok
     const { balance: _b, ...accountForDb } = account
-    supabase.from('accounts').insert(accountForDb).then()
+    supabase.from('accounts').insert(accountForDb).then(({ error }) => {
+      if (error) console.error('[supabase:accounts:insert]', error)
+    })
     set(s => ({ accounts: [...s.accounts, account] }))
   },
 
   update: async (id, patch) => {
     await db.accounts.update(id, patch)
-    // Supabase'de güncelle — balance runtime'da hesaplanır, DB'de kolonu yok
+    // balance runtime'da hesaplanır, Supabase şemasında kolonu yok
     const { balance: _b, ...patchForDb } = patch as Partial<Account>
-    supabase.from('accounts').update(patchForDb).eq('id', id).then()
+    supabase.from('accounts').update(patchForDb).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:accounts:update]', error)
+    })
     set(s => ({
       accounts: s.accounts.map(a => a.id === id ? { ...a, ...patch } : a),
     }))
@@ -55,8 +59,9 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   remove: async (id) => {
     await db.accounts.delete(id)
-    // Supabase'den sil
-    supabase.from('accounts').delete().eq('id', id).then() 
+    supabase.from('accounts').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:accounts:delete]', error)
+    })
     set(s => ({ accounts: s.accounts.filter(a => a.id !== id) }))
   },
 

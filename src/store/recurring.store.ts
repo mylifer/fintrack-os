@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import { addDays, addWeeks, addMonths, addYears, format, parseISO } from 'date-fns'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
+import { supabase } from '@/lib/supabase'
 import type { RecurringTransaction, RecurringFrequency } from '@/types'
 
 function advanceDueDate(current: string, frequency: RecurringFrequency): string {
@@ -43,19 +43,17 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   add: async (r) => {
     await db.recurringTransactions.add(r)
-    
-    // Supabase'e ekle
-    supabase.from('recurring_transactions').insert(r).then()
-    
+    supabase.from('recurring_transactions').insert(r).then(({ error }) => {
+      if (error) console.error('[supabase:recurring_transactions:insert]', error)
+    })
     set(s => ({ recurring: [...s.recurring, r].sort((a, b) => a.name.localeCompare(b.name, 'tr')) }))
   },
 
   update: async (id, patch) => {
     await db.recurringTransactions.update(id, patch)
-    
-    // Supabase'de güncelle
-    supabase.from('recurring_transactions').update(patch).eq('id', id).then()
-    
+    supabase.from('recurring_transactions').update(patch).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:recurring_transactions:update]', error)
+    })
     set(s => ({
       recurring: s.recurring.map(r => r.id === id ? { ...r, ...patch } : r),
     }))
@@ -63,10 +61,9 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   remove: async (id) => {
     await db.recurringTransactions.delete(id)
-    
-    // Supabase'den sil
-    supabase.from('recurring_transactions').delete().eq('id', id).then()
-    
+    supabase.from('recurring_transactions').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:recurring_transactions:delete]', error)
+    })
     set(s => ({ recurring: s.recurring.filter(r => r.id !== id) }))
   },
 
@@ -75,10 +72,9 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
     if (!r) return
     const isActive = !r.isActive
     await db.recurringTransactions.update(id, { isActive })
-    
-    // Supabase'de aktiflik durumunu güncelle
-    supabase.from('recurring_transactions').update({ isActive }).eq('id', id).then()
-    
+    supabase.from('recurring_transactions').update({ isActive }).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:recurring_transactions:toggleActive]', error)
+    })
     set(s => ({
       recurring: s.recurring.map(x => x.id === id ? { ...x, isActive } : x),
     }))
@@ -106,10 +102,9 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
       lastGeneratedDate: r.nextDueDate,
     }
     await db.recurringTransactions.update(id, patch)
-    
-    // Supabase'de üretilme tarihlerini güncelle
-    supabase.from('recurring_transactions').update(patch).eq('id', id).then()
-    
+    supabase.from('recurring_transactions').update(patch).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:recurring_transactions:markGenerated]', error)
+    })
     set(s => ({
       recurring: s.recurring.map(x => x.id === id ? { ...x, ...patch } : x),
     }))

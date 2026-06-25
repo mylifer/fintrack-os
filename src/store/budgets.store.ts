@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
+import { supabase } from '@/lib/supabase'
 import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
 import { enrichBudget } from '@/lib/utils/calculations'
 
@@ -28,15 +28,22 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   add: async (budget) => {
     await db.budgets.add(budget)
-    // Supabase'e ekle
-    supabase.from('budgets').insert(budget).then()
+    // spent, remaining, percentUsed, status, category BudgetWithSpent'e ait computed alanlar
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { spent: _s, remaining: _r, percentUsed: _pu, status: _st, category: _c, ...budgetForDb } = budget as BudgetWithSpent
+    supabase.from('budgets').insert(budgetForDb).then(({ error }) => {
+      if (error) console.error('[supabase:budgets:insert]', error)
+    })
     set(s => ({ budgets: [...s.budgets, budget] }))
   },
 
   update: async (id, patch) => {
     await db.budgets.update(id, patch)
-    // Supabase'de güncelle
-    supabase.from('budgets').update(patch).eq('id', id).then()
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { spent: _s, remaining: _r, percentUsed: _pu, status: _st, category: _c, ...patchForDb } = patch as Partial<BudgetWithSpent>
+    supabase.from('budgets').update(patchForDb).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:budgets:update]', error)
+    })
     set(s => ({
       budgets: s.budgets.map(b => b.id === id ? { ...b, ...patch } : b),
     }))
@@ -44,8 +51,9 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   remove: async (id) => {
     await db.budgets.delete(id)
-    // Supabase'den sil
-    supabase.from('budgets').delete().eq('id', id).then()
+    supabase.from('budgets').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:budgets:delete]', error)
+    })
     set(s => ({ budgets: s.budgets.filter(b => b.id !== id) }))
   },
 

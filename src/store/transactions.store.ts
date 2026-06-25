@@ -2,13 +2,12 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase' // Supabase'i buradan alıyoruz
+import { supabase } from '@/lib/supabase'
 import type { Transaction, TransactionFilters } from '@/types'
 import { isInRange } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
 
-// ... (fonksiyonlar aynen kalıyor)
 function investRank(tx: Transaction): number {
   if (!tx.icon) return 10
   if (tx.description.includes('Alım')) return 0
@@ -52,11 +51,10 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   },
 
   add: async (tx) => {
-    // 1. Yerel veritabanına yaz
     await db.transactions.add(tx)
-    // 2. Buluta gönder
-    supabase.from('transactions').insert(tx).then()
-    
+    supabase.from('transactions').insert(tx).then(({ error }) => {
+      if (error) console.error('[supabase:transactions:insert]', error)
+    })
     set(s => {
       const updated = [tx, ...s.transactions]
       updated.sort(txSortComparator)
@@ -74,7 +72,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       txs.push({ ...base, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now })
     }
     await db.transactions.bulkAdd(txs)
-    supabase.from('transactions').insert(txs).then()
+    supabase.from('transactions').insert(txs).then(({ error }) => {
+      if (error) console.error('[supabase:transactions:insert-installments]', error)
+    })
     set(s => {
       const updated = [...txs, ...s.transactions]
       updated.sort(txSortComparator)
@@ -87,7 +87,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const now = new Date().toISOString()
     const updated = { ...patch, updatedAt: now }
     await db.transactions.update(id, updated)
-    supabase.from('transactions').update(updated).eq('id', id).then()
+    supabase.from('transactions').update(updated).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:transactions:update]', error)
+    })
     set(s => {
       const newTxs = s.transactions.map(t => t.id === id ? { ...t, ...updated } : t)
       useAccountStore.getState().recomputeBalances(newTxs)
@@ -97,7 +99,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   remove: async (id) => {
     await db.transactions.delete(id)
-    supabase.from('transactions').delete().eq('id', id).then()
+    supabase.from('transactions').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:transactions:delete]', error)
+    })
     set(s => {
       const remaining = s.transactions.filter(t => t.id !== id)
       useAccountStore.getState().recomputeBalances(remaining)
