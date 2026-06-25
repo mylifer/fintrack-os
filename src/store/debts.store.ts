@@ -28,6 +28,12 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     set({ loading: true })
     const debts = await db.debts.toArray()
     set({ debts, loading: false })
+    // Tüm lokal borçları Supabase'e upsert et — transactions FK'sını karşılamak için
+    if (debts.length > 0) {
+      supabase.from('debts').upsert(debts, { onConflict: 'id' }).then(({ error }) => {
+        if (error) console.error('[supabase:debts:sync]', error)
+      })
+    }
   },
 
   add: async (debt) => {

@@ -25,6 +25,12 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
     set({ loading: true })
     const people = await db.people.toArray()
     set({ people, loading: false, ready: true })
+    // Tüm lokal kişileri Supabase'e upsert et — transactions FK'sını karşılamak için
+    if (people.length > 0) {
+      supabase.from('people').upsert(people, { onConflict: 'id' }).then(({ error }) => {
+        if (error) console.error('[supabase:people:sync]', error)
+      })
+    }
   },
 
   add: async (name, role) => {
