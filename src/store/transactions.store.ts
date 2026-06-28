@@ -45,14 +45,18 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const txs = await db.transactions.toArray()
-    txs.sort(txSortComparator)
-    set({ transactions: txs, loading: false, ready: true })
-    // Mevcut tüm transaction'ları Supabase'e sync et (Phase 2 — parent'lar önceden tamamlandı)
-    if (txs.length > 0) {
-      supabase.from('transactions').upsert(txs, { onConflict: 'id' }).then(({ error }) => {
-        if (error) console.error('[supabase:transactions:sync]', error)
+    const { data, error } = await supabase.from('transactions').select('*')
+    if (!error) {
+      const txs = ((data ?? []) as Transaction[]).sort(txSortComparator)
+      await db.transaction('rw', db.transactions, async () => {
+        await db.transactions.clear()
+        await db.transactions.bulkAdd(txs)
       })
+      set({ transactions: txs, loading: false, ready: true })
+    } else {
+      console.error('[supabase:transactions:load]', error)
+      const txs = (await db.transactions.toArray()).sort(txSortComparator)
+      set({ transactions: txs, loading: false, ready: true })
     }
   },
 

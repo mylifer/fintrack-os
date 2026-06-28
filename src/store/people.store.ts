@@ -23,13 +23,18 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
 
   load: async () => {
     set({ loading: true })
-    const people = await db.people.toArray()
-    set({ people, loading: false, ready: true })
-    // Tüm lokal kişileri Supabase'e upsert et — transactions FK'sını karşılamak için
-    // await: DataProvider Phase 1'de bu bitince child'lar yükleniyor
-    if (people.length > 0) {
-      const { error } = await supabase.from('people').upsert(people, { onConflict: 'id' })
-      if (error) console.error('[supabase:people:sync]', error)
+    const { data, error } = await supabase.from('people').select('*')
+    if (!error) {
+      const people = (data ?? []) as Person[]
+      await db.transaction('rw', db.people, async () => {
+        await db.people.clear()
+        await db.people.bulkAdd(people)
+      })
+      set({ people, loading: false, ready: true })
+    } else {
+      console.error('[supabase:people:load]', error)
+      const people = await db.people.toArray()
+      set({ people, loading: false, ready: true })
     }
   },
 

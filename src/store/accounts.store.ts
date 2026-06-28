@@ -28,15 +28,23 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const raw = await db.accounts.toArray()
-    const accounts = raw.map(a => ({ ...a, initialBalance: a.initialBalance ?? a.balance }))
-    set({ accounts, loading: false, ready: true })
-    // Tüm lokal hesapları Supabase'e upsert et — transactions FK'sını karşılamak için
-    // await: DataProvider Phase 1'de bu bitince child'lar yükleniyor
-    if (accounts.length > 0) {
-      const accountsForDb = accounts.map(({ balance: _b, ...rest }) => rest)
-      const { error } = await supabase.from('accounts').upsert(accountsForDb, { onConflict: 'id' })
-      if (error) console.error('[supabase:accounts:sync]', error)
+    const { data, error } = await supabase.from('accounts').select('*')
+    if (!error) {
+      // balance DB'de yok — placeholder olarak initialBalance kullan, DataProvider'da recomputeBalances düzeltir
+      const accounts: Account[] = (data ?? []).map(a => ({
+        ...a,
+        balance: a.initialBalance ?? 0,
+      }))
+      await db.transaction('rw', db.accounts, async () => {
+        await db.accounts.clear()
+        await db.accounts.bulkAdd(accounts)
+      })
+      set({ accounts, loading: false, ready: true })
+    } else {
+      console.error('[supabase:accounts:load]', error)
+      const raw = await db.accounts.toArray()
+      const accounts = raw.map(a => ({ ...a, initialBalance: a.initialBalance ?? a.balance }))
+      set({ accounts, loading: false, ready: true })
     }
   },
 

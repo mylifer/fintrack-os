@@ -26,13 +26,18 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const debts = await db.debts.toArray()
-    set({ debts, loading: false })
-    // Tüm lokal borçları Supabase'e upsert et — transactions FK'sını karşılamak için
-    // await: DataProvider Phase 1'de bu bitince child'lar yükleniyor
-    if (debts.length > 0) {
-      const { error } = await supabase.from('debts').upsert(debts, { onConflict: 'id' })
-      if (error) console.error('[supabase:debts:sync]', error)
+    const { data, error } = await supabase.from('debts').select('*')
+    if (!error) {
+      const debts = (data ?? []) as Debt[]
+      await db.transaction('rw', db.debts, async () => {
+        await db.debts.clear()
+        await db.debts.bulkAdd(debts)
+      })
+      set({ debts, loading: false })
+    } else {
+      console.error('[supabase:debts:load]', error)
+      const debts = await db.debts.toArray()
+      set({ debts, loading: false })
     }
   },
 

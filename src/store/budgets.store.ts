@@ -22,13 +22,18 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const budgets = await db.budgets.toArray()
-    set({ budgets, loading: false })
-    // Mevcut bütçeleri Supabase'e sync et (Phase 2 — categories önceden tamamlandı)
-    if (budgets.length > 0) {
-      supabase.from('budgets').upsert(budgets, { onConflict: 'id' }).then(({ error }) => {
-        if (error) console.error('[supabase:budgets:sync]', error)
+    const { data, error } = await supabase.from('budgets').select('*')
+    if (!error) {
+      const budgets = (data ?? []) as Budget[]
+      await db.transaction('rw', db.budgets, async () => {
+        await db.budgets.clear()
+        await db.budgets.bulkAdd(budgets)
       })
+      set({ budgets, loading: false })
+    } else {
+      console.error('[supabase:budgets:load]', error)
+      const budgets = await db.budgets.toArray()
+      set({ budgets, loading: false })
     }
   },
 

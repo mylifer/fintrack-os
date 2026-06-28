@@ -261,13 +261,18 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const txs = await db.investmentTransactions.orderBy('date').reverse().toArray()
-    set({ transactions: txs, loading: false })
-    // Mevcut yatırım işlemlerini Supabase'e sync et (Phase 2 — accounts/transactions önceden tamamlandı)
-    if (txs.length > 0) {
-      supabase.from('investment_transactions').upsert(txs, { onConflict: 'id' }).then(({ error }) => {
-        if (error) console.error('[supabase:investment_transactions:sync]', error)
+    const { data, error } = await supabase.from('investment_transactions').select('*')
+    if (!error) {
+      const txs = ((data ?? []) as InvestmentTransaction[]).sort((a, b) => b.date.localeCompare(a.date))
+      await db.transaction('rw', db.investmentTransactions, async () => {
+        await db.investmentTransactions.clear()
+        await db.investmentTransactions.bulkAdd(txs)
       })
+      set({ transactions: txs, loading: false })
+    } else {
+      console.error('[supabase:investment_transactions:load]', error)
+      const txs = await db.investmentTransactions.orderBy('date').reverse().toArray()
+      set({ transactions: txs, loading: false })
     }
   },
 

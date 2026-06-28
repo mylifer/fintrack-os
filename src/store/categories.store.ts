@@ -24,14 +24,18 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const raw = await db.categories.toArray()
-    const categories = raw.sort((a, b) => a.sortOrder - b.sortOrder)
-    set({ categories, loading: false })
-    // Tüm lokal kategorileri Supabase'e upsert et — transactions FK'sını karşılamak için
-    // await: DataProvider Phase 1'de bu bitince child'lar yükleniyor
-    if (categories.length > 0) {
-      const { error } = await supabase.from('categories').upsert(categories, { onConflict: 'id' })
-      if (error) console.error('[supabase:categories:sync]', error)
+    const { data, error } = await supabase.from('categories').select('*')
+    if (!error) {
+      const categories = (data ?? [] as Category[]).sort((a, b) => a.sortOrder - b.sortOrder)
+      await db.transaction('rw', db.categories, async () => {
+        await db.categories.clear()
+        await db.categories.bulkAdd(categories)
+      })
+      set({ categories, loading: false })
+    } else {
+      console.error('[supabase:categories:load]', error)
+      const raw = await db.categories.toArray()
+      set({ categories: raw.sort((a, b) => a.sortOrder - b.sortOrder), loading: false })
     }
   },
 

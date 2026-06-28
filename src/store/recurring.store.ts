@@ -36,14 +36,18 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const rows = await db.recurringTransactions.toArray()
-    rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
-    set({ recurring: rows, loading: false, ready: true })
-    // Mevcut tekrarlayan işlemleri Supabase'e sync et (Phase 2 — accounts/categories önceden tamamlandı)
-    if (rows.length > 0) {
-      supabase.from('recurring_transactions').upsert(rows, { onConflict: 'id' }).then(({ error }) => {
-        if (error) console.error('[supabase:recurring_transactions:sync]', error)
+    const { data, error } = await supabase.from('recurring_transactions').select('*')
+    if (!error) {
+      const recurring = ((data ?? []) as RecurringTransaction[]).sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+      await db.transaction('rw', db.recurringTransactions, async () => {
+        await db.recurringTransactions.clear()
+        await db.recurringTransactions.bulkAdd(recurring)
       })
+      set({ recurring, loading: false, ready: true })
+    } else {
+      console.error('[supabase:recurring_transactions:load]', error)
+      const rows = await db.recurringTransactions.toArray()
+      set({ recurring: rows.sort((a, b) => a.name.localeCompare(b.name, 'tr')), loading: false, ready: true })
     }
   },
 
