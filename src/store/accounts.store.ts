@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import type { Account, Transaction } from '@/types'
+import { useTransactionStore } from './transactions.store'
 
 interface AccountState {
   accounts: Account[]
@@ -62,11 +63,35 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
   },
 
   remove: async (id) => {
+    // 1. Bağlı tüm işlem ID'lerini bul
+    const linkedTxIds = (
+      await db.transactions
+        .filter(t => t.accountId === id || t.toAccountId === id)
+        .primaryKeys()
+    ) as string[]
+
+    // 2. İşlemleri fiziksel olarak sil — önce Supabase (FK zorunluluğu yok, ama temiz sıra)
+    if (linkedTxIds.length > 0) {
+      await db.transactions.bulkDelete(linkedTxIds)
+      const { error: txErr } = await supabase
+        .from('transactions')
+        .delete()
+        .in('id', linkedTxIds)
+      if (txErr) console.error('[supabase:transactions:cascade-delete]', txErr)
+    }
+
+    // 3. Hesabı fiziksel olarak sil
     await db.accounts.delete(id)
-    supabase.from('accounts').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:accounts:delete]', error)
-    })
+    const { error: accErr } = await supabase.from('accounts').delete().eq('id', id)
+    if (accErr) console.error('[supabase:accounts:delete]', accErr)
+
+    // 4. Store'ları güncelle
     set(s => ({ accounts: s.accounts.filter(a => a.id !== id) }))
+    useTransactionStore.setState(s => ({
+      transactions: s.transactions.filter(
+        t => t.accountId !== id && t.toAccountId !== id,
+      ),
+    }))
   },
 
   recomputeBalances: (transactions) => {
