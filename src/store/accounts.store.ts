@@ -31,11 +31,11 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     const accounts = raw.map(a => ({ ...a, initialBalance: a.initialBalance ?? a.balance }))
     set({ accounts, loading: false, ready: true })
     // Tüm lokal hesapları Supabase'e upsert et — transactions FK'sını karşılamak için
+    // await: DataProvider Phase 1'de bu bitince child'lar yükleniyor
     if (accounts.length > 0) {
       const accountsForDb = accounts.map(({ balance: _b, ...rest }) => rest)
-      supabase.from('accounts').upsert(accountsForDb, { onConflict: 'id' }).then(({ error }) => {
-        if (error) console.error('[supabase:accounts:sync]', error)
-      })
+      const { error } = await supabase.from('accounts').upsert(accountsForDb, { onConflict: 'id' })
+      if (error) console.error('[supabase:accounts:sync]', error)
     }
   },
 

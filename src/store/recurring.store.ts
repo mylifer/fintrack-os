@@ -39,6 +39,12 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
     const rows = await db.recurringTransactions.toArray()
     rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
     set({ recurring: rows, loading: false, ready: true })
+    // Mevcut tekrarlayan işlemleri Supabase'e sync et (Phase 2 — accounts/categories önceden tamamlandı)
+    if (rows.length > 0) {
+      supabase.from('recurring_transactions').upsert(rows, { onConflict: 'id' }).then(({ error }) => {
+        if (error) console.error('[supabase:recurring_transactions:sync]', error)
+      })
+    }
   },
 
   add: async (r) => {
