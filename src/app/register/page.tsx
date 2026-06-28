@@ -9,35 +9,50 @@ import { Button } from '@/components/ui/button'
 
 export default function RegisterPage() {
   const router = useRouter()
-  const [email, setEmail]       = useState('')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm]   = useState('')
-  const [error, setError]       = useState('')
-  const [loading, setLoading]   = useState(false)
+  const [email, setEmail]         = useState('')
+  const [password, setPassword]   = useState('')
+  const [confirm, setConfirm]     = useState('')
+  const [error, setError]         = useState('')
+  const [loading, setLoading]     = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
 
-    if (password !== confirm) {
-      setError('Şifreler eşleşmiyor.')
-      return
-    }
-    if (password.length < 6) {
-      setError('Şifre en az 6 karakter olmalıdır.')
-      return
-    }
+    if (password !== confirm) { setError('Şifreler eşleşmiyor.'); return }
+    if (password.length < 6)  { setError('Şifre en az 6 karakter olmalıdır.'); return }
 
     setLoading(true)
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    setLoading(false)
 
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-      return
+    if (error) { setError(error.message); return }
+
+    // session null ise mail onayı bekleniyor
+    if (data.session) {
+      router.push('/dashboard')
+    } else {
+      setEmailSent(true)
     }
+  }
 
-    router.push('/dashboard')
+  if (emailSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="text-4xl mb-4">✉️</div>
+          <h1 className="text-xl font-semibold text-foreground mb-2">E-postanızı doğrulayın</h1>
+          <p className="text-sm text-muted-foreground mb-6">
+            <span className="font-medium text-foreground">{email}</span> adresine bir doğrulama linki gönderdik.
+            Linke tıkladıktan sonra giriş yapabilirsiniz.
+          </p>
+          <Link href="/login" className="text-sm text-foreground font-medium hover:underline">
+            Giriş Yap →
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -77,9 +92,7 @@ export default function RegisterPage() {
             required
           />
 
-          {error && (
-            <p className="text-xs text-destructive">{error}</p>
-          )}
+          {error && <p className="text-xs text-destructive">{error}</p>}
 
           <Button type="submit" loading={loading} fullWidth className="mt-1">
             Hesap Oluştur
