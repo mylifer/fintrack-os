@@ -99,10 +99,13 @@ export default function AccountsPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="default">{TYPE_LABELS[account.type]}</Badge>
-                            <button
+                            <Button
+                              size="sm"
+                              variant="secondary"
                               onClick={() => { setEditingAccount(account); setShowForm(true) }}
-                              className="text-muted-foreground hover:text-foreground text-sm transition-colors"
-                            >✎</button>
+                            >
+                              Düzenle
+                            </Button>
                           </div>
                         </div>
 

@@ -12,6 +12,7 @@ import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
 import { getPeriodRange }     from '@/lib/utils/date'
 import { Badge }              from '@/components/ui/Badge'
+import { Button }             from '@/components/ui/button'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
 import { TransactionList }    from '@/components/transactions/TransactionList'
 import type { Account, PersonRole } from '@/types'
@@ -102,10 +103,13 @@ export default function AccountDetailClient({ id }: { id: string }) {
               <Badge variant="default">{TYPE_LABELS[account.type]}</Badge>
             </div>
           </div>
-          <button
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() => setEditingAccount(account)}
-            className="text-muted-foreground hover:text-foreground text-sm transition-colors mt-1"
-          >✎</button>
+          >
+            Düzenle
+          </Button>
         </div>
 
         {/* Balance */}
