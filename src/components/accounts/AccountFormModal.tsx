@@ -11,10 +11,17 @@ import { parseCurrencyInput } from '@/lib/utils/currency'
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import type { Account, AccountType, CurrencyCode } from '@/types'
 
+interface DeleteConfirmProps {
+  txCount: number
+  onConfirm: () => void
+  onCancel: () => void
+}
+
 interface AccountFormModalProps {
   open: boolean
   onClose: () => void
   account?: Account
+  onDeleted?: () => void
 }
 
 const TYPE_OPTIONS = [
@@ -35,8 +42,8 @@ const CURRENCY_OPTIONS = [
 
 const COLORS = ['#111110','#1A5CA3','#1E7A3E','#B83232','#D4A853','#7B3F9B','#C4732A','#6B6B67']
 
-export function AccountFormModal({ open, onClose, account }: AccountFormModalProps) {
-  const { add, update, recomputeBalances } = useAccountStore()
+export function AccountFormModal({ open, onClose, account, onDeleted }: AccountFormModalProps) {
+  const { add, update, remove, recomputeBalances } = useAccountStore()
 
   const [name, setName]             = useState(account?.name ?? '')
   const [type, setType]             = useState<AccountType>(account?.type ?? 'checking')
@@ -53,6 +60,7 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
   const [iconUrl, setIconUrl]       = useState('')
   const [loading, setLoading]       = useState(false)
   const [errors, setErrors]         = useState<Record<string, string>>({})
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const isCreditCard = type === 'credit_card'
 
@@ -115,6 +123,21 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
     setLoading(false)
     onClose()
   }
+
+  async function handleDelete() {
+    if (!account) return
+    setLoading(true)
+    await remove(account.id)
+    setLoading(false)
+    onClose()
+    onDeleted?.()
+  }
+
+  const txCount = account
+    ? useTransactionStore.getState().transactions.filter(
+        t => t.accountId === account.id || t.toAccountId === account.id,
+      ).length
+    : 0
 
   return (
     <Modal open={open} onClose={onClose} title={account ? 'Hesabı Düzenle' : 'Yeni Hesap'} size="md">
@@ -220,6 +243,35 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
           <Button onClick={handleSubmit} loading={loading} fullWidth>Kaydet</Button>
           <Button variant="secondary" onClick={onClose} fullWidth>İptal</Button>
         </div>
+
+        {account && (
+          <div className="pt-3 border-t border-border">
+            {confirmDelete ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-muted-foreground text-center">
+                  {txCount > 0
+                    ? `Bu hesaba bağlı ${txCount} işlem var. Hesap silinirse bu işlemler hesapsız kalır.`
+                    : 'Bu hesap kalıcı olarak silinecek.'}
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="destructive" onClick={handleDelete} loading={loading} fullWidth>
+                    Evet, Sil
+                  </Button>
+                  <Button variant="secondary" onClick={() => setConfirmDelete(false)} fullWidth>
+                    Vazgeç
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="w-full text-xs text-muted-foreground hover:text-destructive transition-colors py-1"
+              >
+                Hesabı Sil
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
   )

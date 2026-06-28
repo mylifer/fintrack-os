@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { notFound }           from 'next/navigation'
+import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
 import { AccountAvatar }      from '@/components/accounts/AccountAvatar'
@@ -35,6 +35,8 @@ export default function AccountDetailClient({ id }: { id: string }) {
   const accountTxs = useTransactionStore(useShallow(s =>
     s.transactions.filter(t => t.accountId === id || t.toAccountId === id)
   ))
+
+  const router = useRouter()
 
   const [editingAccount, setEditingAccount] = useState<Account | undefined>()
   const [familyFilter, setFamilyFilter]     = useState<PersonFilter>(null)
@@ -179,6 +181,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
         open={!!editingAccount}
         account={editingAccount}
         onClose={() => setEditingAccount(undefined)}
+        onDeleted={() => router.push('/accounts')}
       />
     </>
   )
