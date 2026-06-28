@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/auth'
 import type { Person, PersonRole } from '@/types'
 
 interface PeopleState {
@@ -46,7 +47,8 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
       createdAt: new Date().toISOString(),
     }
     await db.people.add(person)
-    supabase.from('people').insert(person).then(({ error }) => {
+    const userId = await getUserId()
+    supabase.from('people').insert({ ...person, ...(userId && { user_id: userId }) }).then(({ error }) => {
       if (error) console.error('[supabase:people:insert]', error)
     })
     set(s => ({ people: [...s.people, person] }))

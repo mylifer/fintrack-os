@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { addDays, addWeeks, addMonths, addYears, format, parseISO } from 'date-fns'
 import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/auth'
 import type { RecurringTransaction, RecurringFrequency } from '@/types'
 
 function advanceDueDate(current: string, frequency: RecurringFrequency): string {
@@ -53,7 +54,8 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   add: async (r) => {
     await db.recurringTransactions.add(r)
-    supabase.from('recurring_transactions').insert(r).then(({ error }) => {
+    const userId = await getUserId()
+    supabase.from('recurring_transactions').insert({ ...r, ...(userId && { user_id: userId }) }).then(({ error }) => {
       if (error) console.error('[supabase:recurring_transactions:insert]', error)
     })
     set(s => ({ recurring: [...s.recurring, r].sort((a, b) => a.name.localeCompare(b.name, 'tr')) }))

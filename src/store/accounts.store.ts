@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import type { Account, Transaction } from '@/types'
 import { useTransactionStore } from './transactions.store'
+import { getUserId } from '@/lib/auth'
 
 interface AccountState {
   accounts: Account[]
@@ -50,9 +51,9 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   add: async (account) => {
     await db.accounts.add(account)
-    // balance runtime'da hesaplanır, Supabase şemasında kolonu yok
+    const userId = await getUserId()
     const { balance: _b, ...accountForDb } = account
-    supabase.from('accounts').insert(accountForDb).then(({ error }) => {
+    supabase.from('accounts').insert({ ...accountForDb, ...(userId && { user_id: userId }) }).then(({ error }) => {
       if (error) console.error('[supabase:accounts:insert]', error)
     })
     set(s => ({ accounts: [...s.accounts, account] }))

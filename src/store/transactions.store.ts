@@ -7,6 +7,7 @@ import type { Transaction, TransactionFilters } from '@/types'
 import { isInRange } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
+import { getUserId } from '@/lib/auth'
 
 function investRank(tx: Transaction): number {
   if (!tx.icon) return 10
@@ -62,7 +63,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   add: async (tx) => {
     await db.transactions.add(tx)
-    supabase.from('transactions').insert(tx).then(({ error }) => {
+    const userId = await getUserId()
+    supabase.from('transactions').insert({ ...tx, ...(userId && { user_id: userId }) }).then(({ error }) => {
       if (error) console.error('[supabase:transactions:insert]', error)
     })
     set(s => {
@@ -82,7 +84,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       txs.push({ ...base, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now })
     }
     await db.transactions.bulkAdd(txs)
-    supabase.from('transactions').insert(txs).then(({ error }) => {
+    const userId = await getUserId()
+    const txsForDb = userId ? txs.map(t => ({ ...t, user_id: userId })) : txs
+    supabase.from('transactions').insert(txsForDb).then(({ error }) => {
       if (error) console.error('[supabase:transactions:insert-installments]', error)
     })
     set(s => {

@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/auth'
 import type { Category, CategoryScope } from '@/types'
 import { DEFAULT_CATEGORIES } from '@/types'
 
@@ -48,7 +49,9 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       id: crypto.randomUUID(),
     }))
     await db.categories.bulkAdd(cats)
-    supabase.from('categories').insert(cats).then(({ error }) => {
+    const userId = await getUserId()
+    const catsForDb = userId ? cats.map(c => ({ ...c, user_id: userId })) : cats
+    supabase.from('categories').insert(catsForDb).then(({ error }) => {
       if (error) console.error('[supabase:categories:insert-defaults]', error)
     })
     set({ categories: cats })
@@ -56,7 +59,8 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
   add: async (cat) => {
     await db.categories.add(cat)
-    supabase.from('categories').insert(cat).then(({ error }) => {
+    const userId = await getUserId()
+    supabase.from('categories').insert({ ...cat, ...(userId && { user_id: userId }) }).then(({ error }) => {
       if (error) console.error('[supabase:categories:insert]', error)
     })
     set(s => ({ categories: [...s.categories, cat].sort((a, b) => a.sortOrder - b.sortOrder) }))

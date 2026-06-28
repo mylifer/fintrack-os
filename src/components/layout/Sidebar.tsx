@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { useState, useEffect, useMemo } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { clearLocalData } from '@/lib/auth'
 import { useAccountStore, useInvestmentStore, useRecurringStore, useTransactionStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, computeTransactionEffect } from '@/lib/utils/calculations'
@@ -71,6 +73,13 @@ function navCls(active: boolean) {
 
 export function Sidebar() {
   const pathname       = usePathname()
+  const router         = useRouter()
+
+  async function handleSignOut() {
+    await clearLocalData()
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const investValue    = useInvestmentStore(s => s.getPortfolioValue())
   const prices         = useInvestmentStore(s => s.prices)
@@ -211,13 +220,24 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* ── Settings + theme toggle (bottom) ── */}
-      <div className="px-3 pt-4 pb-5 border-t border-border flex-shrink-0 flex items-center gap-1">
-        <Link href="/settings" className={`${navCls(pathname === '/settings')} flex-1`}>
-          <Icon d={IC.settings} />
-          <span>Ayarlar</span>
-        </Link>
-        <ThemeToggle />
+      {/* ── Settings + theme + logout (bottom) ── */}
+      <div className="px-3 pt-4 pb-5 border-t border-border flex-shrink-0 flex flex-col gap-1">
+        <div className="flex items-center gap-1">
+          <Link href="/settings" className={`${navCls(pathname === '/settings')} flex-1`}>
+            <Icon d={IC.settings} />
+            <span>Ayarlar</span>
+          </Link>
+          <ThemeToggle />
+        </div>
+        <button
+          onClick={handleSignOut}
+          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors w-full text-left"
+        >
+          <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" width={18} height={18} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15M12 9l3 3m0 0-3 3m3-3H2.25" />
+          </svg>
+          <span>Çıkış Yap</span>
+        </button>
       </div>
 
     </aside>

@@ -2,7 +2,8 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase' // Supabase bağlantısı eklendi
+import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/auth'
 import { useTransactionStore } from './transactions.store'
 import type {
   InvestmentTransaction, InvestmentHolding,
@@ -295,7 +296,8 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
     const finalTx = { ...tx, linkedTransactionId }
     await db.investmentTransactions.add(finalTx)
-    supabase.from('investment_transactions').insert(finalTx).then(({ error }) => {
+    const userId = await getUserId()
+    supabase.from('investment_transactions').insert({ ...finalTx, ...(userId && { user_id: userId }) }).then(({ error }) => {
       if (error) console.error('[supabase:investment_transactions:insert]', error)
     })
     set(s => ({ transactions: [finalTx, ...s.transactions] }))

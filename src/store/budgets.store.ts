@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/auth'
 import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
 import { enrichBudget } from '@/lib/utils/calculations'
 
@@ -39,10 +40,11 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   add: async (budget) => {
     await db.budgets.add(budget)
+    const userId = await getUserId()
     // spent, remaining, percentUsed, status, category BudgetWithSpent'e ait computed alanlar
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { spent: _s, remaining: _r, percentUsed: _pu, status: _st, category: _c, ...budgetForDb } = budget as BudgetWithSpent
-    supabase.from('budgets').insert(budgetForDb).then(({ error }) => {
+    supabase.from('budgets').insert({ ...budgetForDb, ...(userId && { user_id: userId }) }).then(({ error }) => {
       if (error) console.error('[supabase:budgets:insert]', error)
     })
     set(s => ({ budgets: [...s.budgets, budget] }))

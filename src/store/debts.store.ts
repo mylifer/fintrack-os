@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/auth'
 import type { Debt, DebtWithRemaining } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
 import { isDueSoon } from '@/lib/utils/date'
@@ -43,10 +44,11 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
 
   add: async (debt) => {
     await db.debts.add(debt)
+    const userId = await getUserId()
     // remainingAmount, progressPercent DebtWithRemaining'e ait computed alanlar
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { remainingAmount: _ra, progressPercent: _pp, ...debtForDb } = debt as DebtWithRemaining
-    supabase.from('debts').insert(debtForDb).then(({ error }) => {
+    supabase.from('debts').insert({ ...debtForDb, ...(userId && { user_id: userId }) }).then(({ error }) => {
       if (error) console.error('[supabase:debts:insert]', error)
     })
     set(s => ({ debts: [...s.debts, debt] }))
