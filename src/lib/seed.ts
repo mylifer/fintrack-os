@@ -1,4 +1,6 @@
 import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/auth'
 import type {
   Account, Transaction, Budget, Debt,
   Person, RecurringTransaction, InvestmentTransaction,
@@ -10,8 +12,6 @@ const ACC_CHK  = 'demo-acc-chk'   // Garanti BBVA Vadesiz
 const ACC_SAV  = 'demo-acc-sav'   // Akbank Birikim
 const ACC_CC   = 'demo-acc-cc'    // Yapı Kredi Platinum
 const ACC_CSH  = 'demo-acc-csh'   // Nakit
-const ACC_USD  = 'demo-acc-usd'   // USD Hesabı
-const ACC_LOAN = 'demo-acc-loan'  // Araba Kredisi Hesabı
 
 const PRS_SPOUSE = 'demo-person-spouse'
 const PRS_CHILD  = 'demo-person-child'
@@ -56,16 +56,6 @@ export async function loadDemoData(): Promise<void> {
     {
       id: ACC_CSH, name: 'Nakit', type: 'cash', currency: 'TRY',
       balance: 0, initialBalance: 1200, color: '#C4732A', icon: '💵',
-      isArchived: false, createdAt: now,
-    },
-    {
-      id: ACC_USD, name: 'USD Tasarruf', type: 'savings', currency: 'USD',
-      balance: 0, initialBalance: 1500, color: '#0ea5e9', icon: '💰',
-      isArchived: false, createdAt: now,
-    },
-    {
-      id: ACC_LOAN, name: 'Araba Kredisi', type: 'loan', currency: 'TRY',
-      balance: 0, initialBalance: -180000, color: '#ef4444', icon: '🚗',
       isArchived: false, createdAt: now,
     },
   ]
@@ -156,7 +146,6 @@ export async function loadDemoData(): Promise<void> {
     tx({ date: d(1,26), type: 'expense', amount: 350,  accountId: ACC_CC,  catName: 'Eğlence',       description: 'Sinema', merchant: 'Cinemaximum', familyMemberId: PRS_CHILD }),
     tx({ date: d(1,28), type: 'transfer', amount: 5000, accountId: ACC_CHK, toAccountId: ACC_SAV,    description: 'Aylık Birikim' }),
     tx({ date: d(1,30), type: 'expense', amount: 280,  accountId: ACC_CSH, catName: 'Yemek Dışarı',  description: 'Simitçi & Kahve' }),
-    // Loan payment
     tx({ date: d(1,5),  type: 'expense', amount: 4500, accountId: ACC_CHK, catName: 'Diğer Gider',  description: 'Araba Kredisi Taksiti', tags: ['kredi','sabit-gider'], debtId: 'demo-debt-1' }),
 
     // ══════════════════ FEBRUARY ══════════════════
@@ -169,7 +158,7 @@ export async function loadDemoData(): Promise<void> {
     tx({ date: d(2,11), type: 'expense', amount: 410,  accountId: ACC_CHK, catName: 'Faturalar',     description: 'Doğalgaz Faturası', tags: ['fatura'] }),
     tx({ date: d(2,12), type: 'expense', amount: 350,  accountId: ACC_CHK, catName: 'Faturalar',     description: 'İnternet Faturası', tags: ['fatura'] }),
     tx({ date: d(2,14), type: 'expense', amount: 2400, accountId: ACC_CC,  catName: 'Giyim',         description: 'Mavi & LC Waikiki', merchant: 'Mavi', familyMemberId: PRS_CHILD }),
-    tx({ date: d(2,15), type: 'expense', amount: 5000, accountId: ACC_CHK, catName: 'Diğer Gider',   description: 'Ahmet\'e Ödeme', notes: 'Borç geri ödemesi', recipientId: PRS_MEHMET, debtId: 'demo-debt-2' }),
+    tx({ date: d(2,15), type: 'expense', amount: 5000, accountId: ACC_CHK, catName: 'Diğer Gider',   description: 'Mehmet\'e Ödeme', notes: 'Borç geri ödemesi', recipientId: PRS_MEHMET, debtId: 'demo-debt-2' }),
     tx({ date: d(2,16), type: 'expense', amount: 1050, accountId: ACC_CC,  catName: 'Market',        description: 'Carrefour Market', merchant: 'CarrefourSA' }),
     tx({ date: d(2,18), type: 'expense', amount: 320,  accountId: ACC_CC,  catName: 'Eğlence',       description: 'Netflix & Spotify', tags: ['abonelik'] }),
     tx({ date: d(2,19), type: 'expense', amount: 1100, accountId: ACC_CC,  catName: 'Ulaşım',        description: 'Akaryakıt', merchant: 'BP' }),
@@ -192,7 +181,6 @@ export async function loadDemoData(): Promise<void> {
     tx({ date: d(3,12), type: 'expense', amount: 350,  accountId: ACC_CHK, catName: 'Faturalar',     description: 'İnternet Faturası', tags: ['fatura'] }),
     tx({ date: d(3,14), type: 'expense', amount: 1100, accountId: ACC_CC,  catName: 'Market',        description: 'Carrefour Market', merchant: 'CarrefourSA' }),
     tx({ date: d(3,16), type: 'expense', amount: 320,  accountId: ACC_CC,  catName: 'Eğlence',       description: 'Netflix & Spotify', tags: ['abonelik'] }),
-    // Installment: iPhone 16 - 12 taksit
     tx({ date: d(3,18), type: 'expense', amount: 4500, accountId: ACC_CC,  catName: 'Teknoloji', description: 'iPhone 16 Pro (1/12)', isInstallment: true, installTotal: 12, installIndex: 1, installGroupId: INST_PHONE, merchant: 'Apple' }),
     tx({ date: d(3,19), type: 'expense', amount: 1050, accountId: ACC_CC,  catName: 'Ulaşım',        description: 'Akaryakıt', merchant: 'BP' }),
     tx({ date: d(3,20), type: 'expense', amount: 720,  accountId: ACC_CC,  catName: 'Market',        description: 'BİM Market', merchant: 'BİM' }),
@@ -214,7 +202,6 @@ export async function loadDemoData(): Promise<void> {
     tx({ date: d(4,10), type: 'expense', amount: 540,  accountId: ACC_CHK, catName: 'Faturalar',     description: 'Elektrik Faturası', tags: ['fatura'] }),
     tx({ date: d(4,11), type: 'expense', amount: 180,  accountId: ACC_CHK, catName: 'Faturalar',     description: 'Doğalgaz Faturası', tags: ['fatura'] }),
     tx({ date: d(4,12), type: 'expense', amount: 350,  accountId: ACC_CHK, catName: 'Faturalar',     description: 'İnternet Faturası', tags: ['fatura'] }),
-    // Installment: iPhone 16 - taksit 2
     tx({ date: d(4,18), type: 'expense', amount: 4500, accountId: ACC_CC,  catName: 'Teknoloji', description: 'iPhone 16 Pro (2/12)', isInstallment: true, installTotal: 12, installIndex: 2, installGroupId: INST_PHONE, merchant: 'Apple' }),
     tx({ date: d(4,14), type: 'expense', amount: 820,  accountId: ACC_CC,  catName: 'Market',        description: 'Carrefour Market', merchant: 'CarrefourSA' }),
     tx({ date: d(4,15), type: 'income',  amount: 3500, accountId: ACC_CHK, catName: 'Diğer Gelir',   description: 'Freelance Gelir', recipientId: PRS_AYSE }),
@@ -240,9 +227,7 @@ export async function loadDemoData(): Promise<void> {
     tx({ date: d(5,12), type: 'expense', amount: 350,  accountId: ACC_CHK, catName: 'Faturalar',     description: 'İnternet Faturası', tags: ['fatura'] }),
     tx({ date: d(5,13), type: 'expense', amount: 1200, accountId: ACC_CC,  catName: 'Market',        description: 'Carrefour Market', merchant: 'CarrefourSA', familyMemberId: PRS_SPOUSE }),
     tx({ date: d(5,15), type: 'expense', amount: 320,  accountId: ACC_CC,  catName: 'Eğlence',       description: 'Netflix & Spotify', tags: ['abonelik'] }),
-    // Installment: laptop 6 taksit
     tx({ date: d(5,16), type: 'expense', amount: 4500, accountId: ACC_CC, catName: 'Teknoloji', description: 'MacBook Air M3 (1/6)', isInstallment: true, installTotal: 6, installIndex: 1, installGroupId: INST_LAPTOP, merchant: 'Apple' }),
-    // Installment: iPhone 16 - taksit 3
     tx({ date: d(5,18), type: 'expense', amount: 4500, accountId: ACC_CC,  catName: 'Teknoloji', description: 'iPhone 16 Pro (3/12)', isInstallment: true, installTotal: 12, installIndex: 3, installGroupId: INST_PHONE, merchant: 'Apple' }),
     tx({ date: d(5,18), type: 'expense', amount: 1100, accountId: ACC_CC,  catName: 'Ulaşım',        description: 'Akaryakıt', merchant: 'BP' }),
     tx({ date: d(5,20), type: 'expense', amount: 680,  accountId: ACC_CC,  catName: 'Market',        description: 'BİM Market', merchant: 'BİM' }),
@@ -252,7 +237,6 @@ export async function loadDemoData(): Promise<void> {
     tx({ date: d(5,25), type: 'income',  amount: 15000, accountId: ACC_CHK, catName: 'Maaş',         description: 'Eş Maaşı', familyMemberId: PRS_SPOUSE }),
     tx({ date: d(5,26), type: 'expense', amount: 780,  accountId: ACC_CC,  catName: 'Market',        description: 'Migros Market', merchant: 'Migros' }),
     tx({ date: d(5,28), type: 'transfer', amount: 5000, accountId: ACC_CHK, toAccountId: ACC_SAV,    description: 'Aylık Birikim' }),
-    tx({ date: d(5,28), type: 'income',  amount: 5000,  accountId: ACC_USD, catName: 'Yatırım Geliri', currency: 'USD', description: 'USD Faiz Geliri' }),
     tx({ date: d(5,30), type: 'expense', amount: 420,  accountId: ACC_CC,  catName: 'Yemek Dışarı',  description: 'Nişantaşı Kahvaltı', merchant: 'Gram Kahve', familyMemberId: PRS_SPOUSE }),
 
     // ══════════════════ JUNE ══════════════════
@@ -266,9 +250,7 @@ export async function loadDemoData(): Promise<void> {
     tx({ date: d(6,12), type: 'expense', amount: 350,  accountId: ACC_CHK, catName: 'Faturalar',     description: 'İnternet Faturası', tags: ['fatura'] }),
     tx({ date: d(6,14), type: 'expense', amount: 960,  accountId: ACC_CC,  catName: 'Market',        description: 'Carrefour Market', merchant: 'CarrefourSA' }),
     tx({ date: d(6,15), type: 'expense', amount: 320,  accountId: ACC_CC,  catName: 'Eğlence',       description: 'Netflix & Spotify', tags: ['abonelik'] }),
-    // Installment: iPhone taksit 4
     tx({ date: d(6,18), type: 'expense', amount: 4500, accountId: ACC_CC,  catName: 'Teknoloji', description: 'iPhone 16 Pro (4/12)', isInstallment: true, installTotal: 12, installIndex: 4, installGroupId: INST_PHONE, merchant: 'Apple' }),
-    // Installment: laptop taksit 2
     tx({ date: d(6,16), type: 'expense', amount: 4500, accountId: ACC_CC,  catName: 'Teknoloji', description: 'MacBook Air M3 (2/6)', isInstallment: true, installTotal: 6, installIndex: 2, installGroupId: INST_LAPTOP, merchant: 'Apple' }),
     tx({ date: d(6,17), type: 'expense', amount: 1250, accountId: ACC_CC,  catName: 'Ulaşım',        description: 'Akaryakıt', merchant: 'BP' }),
     tx({ date: d(6,18), type: 'expense', amount: 820,  accountId: ACC_CC,  catName: 'Market',        description: 'Migros Market', merchant: 'Migros' }),
@@ -340,25 +322,6 @@ export async function loadDemoData(): Promise<void> {
       dueDate: '2026-09-01',
       counterparty: 'Ayşe Kaya',
       notes: 'Ortak proje masrafları',
-      isSettled: false,
-      createdAt: now,
-    },
-    {
-      id: 'demo-debt-4',
-      name: 'Konut Kredisi',
-      type: 'bank_loan',
-      direction: 'owe',
-      totalAmount: 2400000,
-      paidAmount: 360000,
-      interestRate: 3.2,
-      startDate: '2024-01-01',
-      dueDate: '2026-07-01',
-      monthlyPayment: 18000,
-      totalInstallments: 180,
-      paidInstallments: 18,
-      counterparty: 'Yapı Kredi',
-      accountId: ACC_CHK,
-      notes: '20 yıl vadeli konut kredisi',
       isSettled: false,
       createdAt: now,
     },
@@ -553,7 +516,7 @@ export async function loadDemoData(): Promise<void> {
     },
   ]
 
-  // ── Write ────────────────────────────────────────────────────────────────
+  // ── Write to Dexie ───────────────────────────────────────────────────────
   await db.accounts.bulkAdd(accounts)
   await db.people.bulkAdd(people)
   await db.transactions.bulkAdd(txs)
@@ -561,11 +524,32 @@ export async function loadDemoData(): Promise<void> {
   await db.debts.bulkAdd(debts)
   await db.recurringTransactions.bulkAdd(recurring)
   await db.investmentTransactions.bulkAdd(investTxs)
+
+  // ── Sync to Supabase ─────────────────────────────────────────────────────
+  const userId = await getUserId()
+  if (userId) {
+    const uid = { user_id: userId }
+    // accounts: strip runtime `balance` field (not in Supabase schema)
+    const accountsForDb = accounts.map(({ balance: _b, ...a }) => ({ ...a, ...uid }))
+    await Promise.all([
+      supabase.from('accounts').insert(accountsForDb),
+      supabase.from('people').insert(people.map(p => ({ ...p, ...uid }))),
+    ])
+    await Promise.all([
+      supabase.from('transactions').insert(txs.map(t => ({ ...t, ...uid }))),
+      supabase.from('budgets').insert(budgets.map(b => ({ ...b, ...uid }))),
+      supabase.from('debts').insert(debts.map(d => ({ ...d, ...uid }))),
+      supabase.from('recurring_transactions').insert(recurring.map(r => ({ ...r, ...uid }))),
+      supabase.from('investment_transactions').insert(investTxs.map(i => ({ ...i, ...uid }))),
+    ])
+  }
 }
 
 // ── Clear ────────────────────────────────────────────────────────────────────
 
 export async function clearAllData(): Promise<void> {
+  const userId = await getUserId()
+
   await db.transactions.clear()
   await db.accounts.clear()
   await db.budgets.clear()
@@ -573,4 +557,16 @@ export async function clearAllData(): Promise<void> {
   await db.investmentTransactions.clear()
   await db.people.clear()
   await db.recurringTransactions.clear()
+
+  if (userId) {
+    await Promise.all([
+      supabase.from('transactions').delete().eq('user_id', userId),
+      supabase.from('accounts').delete().eq('user_id', userId),
+      supabase.from('budgets').delete().eq('user_id', userId),
+      supabase.from('debts').delete().eq('user_id', userId),
+      supabase.from('investment_transactions').delete().eq('user_id', userId),
+      supabase.from('people').delete().eq('user_id', userId),
+      supabase.from('recurring_transactions').delete().eq('user_id', userId),
+    ])
+  }
 }

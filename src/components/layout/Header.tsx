@@ -27,12 +27,14 @@ export function Header({ title, action }: HeaderProps) {
             {action.label}
           </button>
         )}
-        <button
-          onClick={() => openModal('add-transaction')}
-          className="lg:hidden flex items-center gap-1.5 px-4 h-9 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
-        >
-          + İşlem
-        </button>
+        {!action && (
+          <button
+            onClick={() => openModal('add-transaction')}
+            className="lg:hidden flex items-center gap-1.5 px-4 h-9 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            + İşlem
+          </button>
+        )}
       </div>
     </header>
   )
