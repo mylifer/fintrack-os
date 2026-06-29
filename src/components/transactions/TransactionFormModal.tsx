@@ -123,6 +123,7 @@ function DescriptionAutocomplete({
   const [open, setOpen] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const justMountedRef = useRef(true)
   const id = useId()
 
   const filtered = useMemo(() => {
@@ -152,7 +153,10 @@ function DescriptionAutocomplete({
         value={value}
         onChange={e => { onChange(e.target.value); setOpen(true) }}
         onKeyDown={handleKeyDown}
-        onFocus={() => value.trim() && setOpen(true)}
+        onFocus={() => {
+          if (justMountedRef.current) { justMountedRef.current = false; return }
+          value.trim() && setOpen(true)
+        }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Migros, Maaş, Kira..."
         aria-invalid={!!error}
