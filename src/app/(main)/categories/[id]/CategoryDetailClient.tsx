@@ -11,9 +11,9 @@ import { formatCurrency } from '@/lib/utils/currency'
 interface Props { id: string }
 
 export default function CategoryDetailClient({ id }: Props) {
-  const router     = useRouter()
-  const categories = useCategoryStore(s => s.categories)
-  const update     = useCategoryStore(s => s.update)
+  const router       = useRouter()
+  const categories   = useCategoryStore(s => s.categories)
+  const update       = useCategoryStore(s => s.update)
   const transactions = useTransactionStore(s => s.transactions)
 
   const cat = categories.find(c => c.id === id)
@@ -24,12 +24,12 @@ export default function CategoryDetailClient({ id }: Props) {
     return [catId, ...children.flatMap(c => getAllDescendants(c.id))]
   }, [categories])
 
-  const getLevel = (catId: string): 0 | 1 | 2 => {
+  const getLevel = useCallback((catId: string): 0 | 1 | 2 => {
     const c = categories.find(x => x.id === catId)
     if (!c?.parentId) return 0
     const p = categories.find(x => x.id === c.parentId)
     return p?.parentId ? 2 : 1
-  }
+  }, [categories])
 
   /* Ancestor chain */
   const ancestors = useMemo(() => {
@@ -68,43 +68,55 @@ export default function CategoryDetailClient({ id }: Props) {
     return sum
   }, 0)
 
-  /* ── Valid parents for this category ── */
-  const parentOptions = useMemo(() => {
+  /* ── Parent options for the two-dropdown edit form ── */
+  const l0Options = useMemo(() => {
     if (!cat) return []
     const excluded = new Set(getAllDescendants(cat.id))
     return categories
-      .filter(c =>
-        c.scope === cat.scope &&
-        getLevel(c.id) < 2 &&
-        !excluded.has(c.id),
-      )
+      .filter(c => c.scope === cat.scope && getLevel(c.id) === 0 && !excluded.has(c.id))
       .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map(c => ({ id: c.id, label: `${'  ↳ '.repeat(getLevel(c.id))}${c.name}` }))
-  }, [cat, categories, getAllDescendants])
+      .map(c => ({ id: c.id, label: c.name }))
+  }, [cat, categories, getAllDescendants, getLevel])
+
+  const l1Options = useMemo(() => {
+    if (!cat) return []
+    const excluded = new Set(getAllDescendants(cat.id))
+    return categories
+      .filter(c => c.scope === cat.scope && getLevel(c.id) === 1 && !excluded.has(c.id))
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(c => {
+        const parent = categories.find(p => p.id === c.parentId)
+        return { id: c.id, label: `${c.name} (${parent?.name ?? ''})` }
+      })
+  }, [cat, categories, getAllDescendants, getLevel])
 
   /* ── Edit state ── */
-  const [editing,    setEditing]    = useState(false)
-  const [editName,   setEditName]   = useState('')
-  const [editIcon,   setEditIcon]   = useState('')
-  const [editColor,  setEditColor]  = useState('')
-  const [editParent, setEditParent] = useState('')
+  const [editing,      setEditing]      = useState(false)
+  const [editName,     setEditName]     = useState('')
+  const [editIcon,     setEditIcon]     = useState('')
+  const [editParentL0, setEditParentL0] = useState('')
+  const [editParentL1, setEditParentL1] = useState('')
 
   function startEdit() {
     if (!cat) return
+    const level = getLevel(cat.id)
     setEditName(cat.name)
     setEditIcon(cat.icon)
-    setEditColor(cat.color)
-    setEditParent(cat.parentId ?? '')
+    setEditParentL0(level === 1 ? (cat.parentId ?? '') : '')
+    setEditParentL1(level === 2 ? (cat.parentId ?? '') : '')
     setEditing(true)
   }
 
+  function pickL0(id: string) { setEditParentL0(id); setEditParentL1('') }
+  function pickL1(id: string) { setEditParentL1(id); setEditParentL0('') }
+
   async function saveEdit() {
     if (!cat || !editName.trim()) return
+    const parentId = editParentL1 || editParentL0 || undefined
     await update(cat.id, {
       name:     editName.trim(),
-      icon:     editIcon || 'Package',
-      color:    editColor,
-      parentId: editParent || undefined,
+      icon:     editIcon || 'noto:package',
+      parentId,
     })
     setEditing(false)
   }
@@ -171,37 +183,38 @@ export default function CategoryDetailClient({ id }: Props) {
       {/* ── Edit form ── */}
       {editing && (
         <div className="flex items-center gap-2 px-6 py-3 bg-accent/20 border-b border-border flex-shrink-0 flex-wrap">
-          {/* Icon picker */}
-          <CategoryIconPicker
-            value={editIcon}
-            color={editColor}
-            onChange={setEditIcon}
-          />
+          <CategoryIconPicker value={editIcon} onChange={setEditIcon} />
 
-          {/* Name */}
           <input type="text" value={editName} autoFocus
             onChange={e => setEditName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') saveEdit() }}
             className="flex-1 min-w-[140px] text-sm border border-border rounded-lg px-3 h-9 bg-background focus:outline-none focus:border-primary" />
 
-          {/* Parent dropdown */}
-          <select
-            value={editParent}
-            onChange={e => setEditParent(e.target.value)}
-            className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[200px]"
-          >
-            <option value="">Kök (üst yok)</option>
-            {parentOptions.map(o => (
-              <option key={o.id} value={o.id}>{o.label}</option>
-            ))}
-          </select>
+          {/* Üst Kategori (L0) */}
+          {l0Options.length > 0 && (
+            <select
+              value={editParentL0}
+              onChange={e => pickL0(e.target.value)}
+              className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[160px]"
+              title="Üst kategori"
+            >
+              <option value="">Üst kategori</option>
+              {l0Options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          )}
 
-          {/* Color */}
-          <label className="relative cursor-pointer flex-shrink-0" title="Renk seç">
-            <div className="w-9 h-9 rounded-xl border-2 border-border" style={{ background: editColor }} />
-            <input type="color" value={editColor} onChange={e => setEditColor(e.target.value)}
-              className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
-          </label>
+          {/* Alt Kategori (L1) */}
+          {l1Options.length > 0 && (
+            <select
+              value={editParentL1}
+              onChange={e => pickL1(e.target.value)}
+              className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[160px]"
+              title="Alt kategori altına ekle"
+            >
+              <option value="">Alt kategori</option>
+              {l1Options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          )}
 
           <button onClick={saveEdit} disabled={!editName.trim()}
             className="px-3 h-9 bg-primary text-white rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-primary/85 transition-colors flex-shrink-0">
@@ -241,8 +254,7 @@ export default function CategoryDetailClient({ id }: Props) {
           <div className="flex flex-wrap gap-1.5">
             {children.map(child => (
               <button key={child.id} onClick={() => router.push(`/categories/${child.id}`)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-accent transition-colors"
-                style={{ borderColor: `${child.color}40` }}>
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-accent transition-colors">
                 <CategoryIcon icon={child.icon} color={child.color} size={11} />
                 {child.name}
               </button>

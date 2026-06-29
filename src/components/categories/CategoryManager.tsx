@@ -10,8 +10,8 @@ import type { Category, CategoryScope } from '@/types'
 const SCOPE_LABELS: Record<CategoryScope, string> = { expense: 'Gider', income: 'Gelir' }
 
 /* ── Form state ──────────────────────────────────────────────────── */
-type FormState = { name: string; icon: string; color: string; parentId: string }
-function emptyForm(): FormState { return { name: '', icon: 'ShoppingCart', color: '#6B8F80', parentId: '' } }
+type FormState = { name: string; icon: string; parentL0: string; parentL1: string }
+function emptyForm(): FormState { return { name: '', icon: 'noto:package', parentL0: '', parentL1: '' } }
 
 /* ── Inline form ─────────────────────────────────────────────────── */
 interface InlineFormProps {
@@ -20,11 +20,15 @@ interface InlineFormProps {
   onSave: () => void
   onCancel: () => void
   label: string
-  parentOptions: { id: string; label: string }[]
+  l0Options: { id: string; label: string }[]
+  l1Options: { id: string; label: string }[]
   indentPx?: number
 }
 
-function InlineForm({ form, onChange, onSave, onCancel, label, parentOptions, indentPx = 16 }: InlineFormProps) {
+function InlineForm({ form, onChange, onSave, onCancel, label, l0Options, l1Options, indentPx = 16 }: InlineFormProps) {
+  function pickL0(id: string) { onChange({ ...form, parentL0: id, parentL1: '' }) }
+  function pickL1(id: string) { onChange({ ...form, parentL1: id, parentL0: '' }) }
+
   return (
     <div
       className="flex items-center gap-2 py-2 pr-4 bg-accent/25 border-b border-border flex-wrap"
@@ -33,7 +37,6 @@ function InlineForm({ form, onChange, onSave, onCancel, label, parentOptions, in
       {/* Icon picker */}
       <CategoryIconPicker
         value={form.icon}
-        color={form.color}
         onChange={icon => onChange({ ...form, icon })}
       />
 
@@ -45,24 +48,31 @@ function InlineForm({ form, onChange, onSave, onCancel, label, parentOptions, in
         className="flex-1 min-w-[120px] text-sm border border-border rounded-lg px-3 h-9 bg-background text-foreground focus:outline-none focus:border-primary"
       />
 
-      {/* Parent dropdown */}
-      <select
-        value={form.parentId}
-        onChange={e => onChange({ ...form, parentId: e.target.value })}
-        className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[180px]"
-      >
-        <option value="">Kök (üst yok)</option>
-        {parentOptions.map(o => (
-          <option key={o.id} value={o.id}>{o.label}</option>
-        ))}
-      </select>
+      {/* Üst Kategori (L0) */}
+      {l0Options.length > 0 && (
+        <select
+          value={form.parentL0}
+          onChange={e => pickL0(e.target.value)}
+          className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[160px]"
+          title="Üst kategori"
+        >
+          <option value="">Üst kategori</option>
+          {l0Options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+      )}
 
-      {/* Color */}
-      <label className="relative cursor-pointer flex-shrink-0" title="Renk seç">
-        <div className="w-9 h-9 rounded-xl border-2 border-border" style={{ background: form.color }} />
-        <input type="color" value={form.color} onChange={e => onChange({ ...form, color: e.target.value })}
-          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
-      </label>
+      {/* Alt Kategori (L1) */}
+      {l1Options.length > 0 && (
+        <select
+          value={form.parentL1}
+          onChange={e => pickL1(e.target.value)}
+          className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[160px]"
+          title="Alt kategori altına ekle"
+        >
+          <option value="">Alt kategori</option>
+          {l1Options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+      )}
 
       <button onClick={onSave} disabled={!form.name.trim()}
         className="px-3 h-9 bg-primary text-white rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-primary/85 transition-colors flex-shrink-0">
@@ -117,7 +127,6 @@ export function CategoryManager() {
     return [catId, ...ch.flatMap(c => getAllDescendants(c.id))]
   }, [categories])
 
-  /* Transaction count including all descendants */
   const txCount = useCallback((catId: string) => {
     const ids = new Set(getAllDescendants(catId))
     return transactions.filter(t => t.categoryId && ids.has(t.categoryId)).length
@@ -128,16 +137,24 @@ export function CategoryManager() {
     [categories, tab],
   )
 
-  /* Valid parents: L0 and L1 of same scope, excluding self+descendants */
-  function buildParentOptions(excludeId?: string): { id: string; label: string }[] {
+  /* L0 options: root categories of current tab, optionally excluding a subtree */
+  function buildL0Options(excludeId?: string): { id: string; label: string }[] {
     const excluded = new Set(excludeId ? getAllDescendants(excludeId) : [])
     return categories
-      .filter(c => c.scope === tab && getLevel(c.id) < 2 && !excluded.has(c.id))
+      .filter(c => c.scope === tab && getLevel(c.id) === 0 && !excluded.has(c.id))
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(c => ({ id: c.id, label: c.name }))
+  }
+
+  /* L1 options: first-level children of current tab, optionally excluding a subtree */
+  function buildL1Options(excludeId?: string): { id: string; label: string }[] {
+    const excluded = new Set(excludeId ? getAllDescendants(excludeId) : [])
+    return categories
+      .filter(c => c.scope === tab && getLevel(c.id) === 1 && !excluded.has(c.id))
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map(c => {
-        const lvl    = getLevel(c.id)
-        const indent = lvl === 1 ? '  ↳ ' : ''
-        return { id: c.id, label: `${indent}${c.name}` }
+        const parent = categories.find(p => p.id === c.parentId)
+        return { id: c.id, label: `${c.name} (${parent?.name ?? ''})` }
       })
   }
 
@@ -152,13 +169,14 @@ export function CategoryManager() {
   async function saveAdd() {
     if (!addForm.name.trim()) return
     const maxSort = categories.reduce((m, c) => Math.max(m, c.sortOrder), 0)
+    const parentId = addForm.parentL1 || addForm.parentL0 || undefined
     const cat: Category = {
       id:        crypto.randomUUID(),
       name:      addForm.name.trim(),
-      icon:      addForm.icon || 'Package',
-      color:     addForm.color,
+      icon:      addForm.icon || 'noto:package',
+      color:     '#6B8F80',
       scope:     tab,
-      parentId:  addForm.parentId || undefined,
+      parentId,
       isSystem:  false,
       sortOrder: maxSort + 1,
     }
@@ -168,19 +186,25 @@ export function CategoryManager() {
   }
 
   function startEdit(cat: Category) {
+    const level = getLevel(cat.id)
     setEditingId(cat.id)
-    setEditForm({ name: cat.name, icon: cat.icon, color: cat.color, parentId: cat.parentId ?? '' })
+    setEditForm({
+      name:     cat.name,
+      icon:     cat.icon,
+      parentL0: level === 1 ? (cat.parentId ?? '') : '',
+      parentL1: level === 2 ? (cat.parentId ?? '') : '',
+    })
     setAdding(false)
     setConfirmDeleteId(null)
   }
 
   async function saveEdit() {
     if (!editingId || !editForm.name.trim()) return
+    const parentId = editForm.parentL1 || editForm.parentL0 || undefined
     await update(editingId, {
       name:     editForm.name.trim(),
-      icon:     editForm.icon || 'Package',
-      color:    editForm.color,
-      parentId: editForm.parentId || undefined,
+      icon:     editForm.icon || 'noto:package',
+      parentId,
     })
     setEditingId(null)
   }
@@ -216,7 +240,8 @@ export function CategoryManager() {
           onSave={saveEdit}
           onCancel={() => setEditingId(null)}
           label="Kaydet"
-          parentOptions={buildParentOptions(cat.id)}
+          l0Options={buildL0Options(cat.id)}
+          l1Options={buildL1Options(cat.id)}
           indentPx={pl}
         />
       )
@@ -238,10 +263,8 @@ export function CategoryManager() {
           <span className="text-muted-foreground/40 text-[10px] flex-shrink-0 -ml-1">↳</span>
         )}
 
-        {/* Colored icon */}
         <CategoryIcon icon={cat.icon} color={cat.color} size={ICON_SIZE[level]} className="flex-shrink-0" />
 
-        {/* Name */}
         <span className={`flex-1 truncate min-w-0 text-foreground ${LEVEL_TEXT[level]}`}>
           {cat.name}
         </span>
@@ -256,7 +279,6 @@ export function CategoryManager() {
           <span className="text-[9px] text-muted-foreground/40 flex-shrink-0 hidden group-hover:inline">sistem</span>
         )}
 
-        {/* Actions */}
         <div
           className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
           onClick={e => e.stopPropagation()}
@@ -271,12 +293,11 @@ export function CategoryManager() {
             </svg>
           </button>
 
-          {/* Add sub — only L0 and L1 */}
           {level < 2 && (
             <button
               onClick={() => {
                 setAdding(true)
-                setAddForm({ ...emptyForm(), parentId: cat.id, color: cat.color })
+                setAddForm({ ...emptyForm(), parentL0: getLevel(cat.id) === 0 ? cat.id : '', parentL1: getLevel(cat.id) === 1 ? cat.id : '' })
                 setEditingId(null)
               }}
               className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-colors font-bold text-sm leading-none"
@@ -310,7 +331,6 @@ export function CategoryManager() {
     )
   }
 
-  /* ── 3-level tree ── */
   function renderTree(cats: Category[], level: 0 | 1 | 2) {
     return cats.map(cat => (
       <div key={cat.id}>
@@ -352,7 +372,8 @@ export function CategoryManager() {
           onSave={saveAdd}
           onCancel={() => setAdding(false)}
           label="Ekle"
-          parentOptions={buildParentOptions()}
+          l0Options={buildL0Options()}
+          l1Options={buildL1Options()}
         />
       )}
 

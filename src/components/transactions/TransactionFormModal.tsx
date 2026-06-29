@@ -18,6 +18,7 @@ import { Check, X, Plus } from 'lucide-react'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/Select'
+import { CategoryCascadeSelect } from '@/components/categories/CategoryCascadeSelect'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -392,7 +393,6 @@ export function TransactionFormModal() {
 
   const filteredCategories = categories.filter(c => c.scope === tab)
   const accountOptions     = accounts.map(a => ({ value: a.id, label: a.name }))
-  const categoryOptions    = filteredCategories.map(c => ({ value: c.id, label: `${c.icon} ${c.name}` }))
 
   function validate(): boolean {
     const e: Record<string, string> = {}
@@ -533,13 +533,11 @@ export function TransactionFormModal() {
               </Field>
             ) : (
               <Field label="Kategori" error={errors.categoryId}>
-                <AppSelect
+                <CategoryCascadeSelect
+                  categories={filteredCategories}
                   value={form.categoryId ?? ''}
                   onChange={v => patch({ categoryId: v })}
-                  options={categoryOptions}
-                  placeholder="Seçin..."
                   error={!!errors.categoryId}
-                  onOpenChange={onSelectOpen}
                 />
               </Field>
             )}
