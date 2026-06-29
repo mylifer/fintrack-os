@@ -7,6 +7,7 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { formatDateShort } from '@/lib/utils/date'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 
 export function RecentTransactions() {
   const transactions = useTransactionStore(useShallow(s => s.transactions.slice(0, 10)))
@@ -43,9 +44,16 @@ export function RecentTransactions() {
                 <div key={tx.id} className="flex items-center gap-3 px-6 py-3.5 hover:bg-secondary/50 transition-colors">
                   {person ? (
                     <PersonAvatar person={person} size="sm" className="flex-shrink-0" />
+                  ) : cat ? (
+                    <span
+                      className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+                      style={{ background: cat.color ? `${cat.color}20` : 'rgba(255,255,255,0.06)' }}
+                    >
+                      <CategoryIcon icon={cat.icon} color={cat.color} size={15} />
+                    </span>
                   ) : (
                     <span className="text-base w-7 text-center flex-shrink-0 select-none">
-                      {tx.icon ?? cat?.icon ?? (isXfer ? '↔' : '·')}
+                      {tx.icon ?? (isXfer ? '↔' : '·')}
                     </span>
                   )}
                   <div className="flex-1 min-w-0">

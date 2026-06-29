@@ -5,6 +5,7 @@ import { useAccountStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { formatCurrency } from '@/lib/utils/currency'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
+import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 
 const TYPE_LABELS: Record<string, string> = {
   cash:        'Nakit',
@@ -43,19 +44,7 @@ export function AccountsWidget() {
                 href={`/accounts/${account.id}`}
                 className="flex items-center gap-3 px-6 py-3.5 hover:bg-secondary/50 transition-colors"
               >
-                {account.icon ? (
-                  <span
-                    className="w-7 h-7 rounded-md flex items-center justify-center text-base flex-shrink-0"
-                    style={{ background: account.color + '22' }}
-                  >
-                    {account.icon}
-                  </span>
-                ) : (
-                  <span
-                    className="w-7 h-7 rounded-md flex-shrink-0"
-                    style={{ background: account.color + '33' }}
-                  />
-                )}
+                <AccountAvatar account={account} size="sm" />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate text-foreground">{account.name}</div>
                   <div className="text-xs text-muted-foreground">{TYPE_LABELS[account.type]}</div>
