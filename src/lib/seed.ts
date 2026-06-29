@@ -22,7 +22,10 @@ const PRS_MEHMET = 'demo-person-mehmet' // recipient
 
 export async function isDemoLoaded(): Promise<boolean> {
   const acc = await db.accounts.get(ACC_CHK)
-  return !!acc
+  if (!acc) return false
+  // Partial loads (e.g. from a previous failed attempt) should re-run
+  const txCount = await db.transactions.where('accountId').equals(ACC_CHK).count()
+  return txCount > 5
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -516,32 +519,39 @@ export async function loadDemoData(): Promise<void> {
     },
   ]
 
-  // ── Write to Dexie ───────────────────────────────────────────────────────
-  await db.accounts.bulkAdd(accounts)
-  await db.people.bulkAdd(people)
-  await db.transactions.bulkAdd(txs)
-  await db.budgets.bulkAdd(budgets)
-  await db.debts.bulkAdd(debts)
-  await db.recurringTransactions.bulkAdd(recurring)
-  await db.investmentTransactions.bulkAdd(investTxs)
+  // ── Write to Dexie (upsert — handles partial previous loads) ─────────────
+  await db.accounts.bulkPut(accounts)
+  await db.people.bulkPut(people)
+  await db.transactions.bulkPut(txs)
+  await db.budgets.bulkPut(budgets)
+  await db.debts.bulkPut(debts)
+  await db.recurringTransactions.bulkPut(recurring)
+  await db.investmentTransactions.bulkPut(investTxs)
 
-  // ── Sync to Supabase ─────────────────────────────────────────────────────
+  // ── Sync to Supabase (upsert — handles partial previous loads) ───────────
   const userId = await getUserId()
   if (userId) {
     const uid = { user_id: userId }
     // accounts: strip runtime `balance` field (not in Supabase schema)
     const accountsForDb = accounts.map(({ balance: _b, ...a }) => ({ ...a, ...uid }))
-    await Promise.all([
-      supabase.from('accounts').insert(accountsForDb),
-      supabase.from('people').insert(people.map(p => ({ ...p, ...uid }))),
+    const [r1, r2] = await Promise.all([
+      supabase.from('accounts').upsert(accountsForDb, { onConflict: 'id' }),
+      supabase.from('people').upsert(people.map(p => ({ ...p, ...uid })), { onConflict: 'id' }),
     ])
-    await Promise.all([
-      supabase.from('transactions').insert(txs.map(t => ({ ...t, ...uid }))),
-      supabase.from('budgets').insert(budgets.map(b => ({ ...b, ...uid }))),
-      supabase.from('debts').insert(debts.map(d => ({ ...d, ...uid }))),
-      supabase.from('recurring_transactions').insert(recurring.map(r => ({ ...r, ...uid }))),
-      supabase.from('investment_transactions').insert(investTxs.map(i => ({ ...i, ...uid }))),
+    if (r1.error) console.error('[seed:accounts]', r1.error)
+    if (r2.error) console.error('[seed:people]', r2.error)
+    const [r3, r4, r5, r6, r7] = await Promise.all([
+      supabase.from('transactions').upsert(txs.map(t => ({ ...t, ...uid })), { onConflict: 'id' }),
+      supabase.from('budgets').upsert(budgets.map(b => ({ ...b, ...uid })), { onConflict: 'id' }),
+      supabase.from('debts').upsert(debts.map(d => ({ ...d, ...uid })), { onConflict: 'id' }),
+      supabase.from('recurring_transactions').upsert(recurring.map(r => ({ ...r, ...uid })), { onConflict: 'id' }),
+      supabase.from('investment_transactions').upsert(investTxs.map(i => ({ ...i, ...uid })), { onConflict: 'id' }),
     ])
+    if (r3.error) console.error('[seed:transactions]', r3.error)
+    if (r4.error) console.error('[seed:budgets]', r4.error)
+    if (r5.error) console.error('[seed:debts]', r5.error)
+    if (r6.error) console.error('[seed:recurring]', r6.error)
+    if (r7.error) console.error('[seed:investments]', r7.error)
   }
 }
 
