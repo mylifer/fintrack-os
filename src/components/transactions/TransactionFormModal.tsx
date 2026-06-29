@@ -315,7 +315,7 @@ export function TransactionFormModal() {
   const addGroup     = useTransactionStore(s => s.addInstallmentGroup)
   const updateTx     = useTransactionStore(s => s.update)
   const allPeople    = usePeopleStore(s => s.people)
-  const activeDebts  = useDebtStore(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe'))
+  const activeDebts  = useDebtStore(useShallow(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe')))
 
   const open = modal === 'add-transaction' || modal === 'edit-transaction'
   const isEdit = modal === 'edit-transaction'
