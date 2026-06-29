@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { AlertDialog } from 'radix-ui'
 import { useCategoryStore, useAccountStore, useUIStore, usePeopleStore, useTransactionStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
@@ -10,6 +11,63 @@ import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import type { Transaction, PersonRole } from '@/types'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
+
+const PencilIcon = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" width={13} height={13}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
+  </svg>
+)
+const TrashIcon = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" width={13} height={13}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+  </svg>
+)
+
+function DeleteConfirmDialog({ tx, onDelete }: { tx: Transaction; onDelete: () => void }) {
+  return (
+    <AlertDialog.Root>
+      <AlertDialog.Trigger asChild>
+        <button
+          className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          title="Sil"
+        >
+          <TrashIcon />
+        </button>
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
+        <AlertDialog.Content className={[
+          'fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
+          'w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-background p-6 shadow-xl',
+          'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+          'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+        ].join(' ')}>
+          <AlertDialog.Title className="text-base font-semibold text-foreground mb-1">
+            İşlemi sil
+          </AlertDialog.Title>
+          <AlertDialog.Description className="text-sm text-muted-foreground mb-5">
+            <span className="font-medium text-foreground">&ldquo;{tx.description}&rdquo;</span> işlemi kalıcı olarak silinecek. Bu işlem geri alınamaz.
+          </AlertDialog.Description>
+          <div className="flex justify-end gap-2">
+            <AlertDialog.Cancel asChild>
+              <button className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-accent transition-colors">
+                İptal
+              </button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action asChild>
+              <button
+                onClick={onDelete}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors"
+              >
+                Sil
+              </button>
+            </AlertDialog.Action>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  )
+}
 
 const PERSON_BADGE: Record<PersonRole, { bg: string; color: string }> = {
   family_member: { bg: 'rgba(125,211,252,0.12)', color: '#7DD3FC' },
@@ -46,8 +104,6 @@ export function TransactionList({
   const openModal   = useUIStore(s => s.openModal)
   const removeTx    = useTransactionStore(s => s.remove)
   const allTxs      = useTransactionStore(s => s.transactions)
-
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const grouped     = useMemo(() => groupByDate(transactions), [transactions])
   const sortedDates = useMemo(() => [...grouped.keys()].sort((a, b) => b.localeCompare(a)), [grouped])
@@ -163,15 +219,10 @@ export function TransactionList({
                   const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
                   const iconIsText  = !cat?.icon && !!tx.icon
                   const balanceAfter = runningBalances.get(tx.id)
-                  const isConfirming = confirmDeleteId === tx.id
-
                   return (
                     <div
                       key={tx.id}
-                      className={[
-                        'group grid border-t border-border transition-colors',
-                        isConfirming ? 'bg-destructive/5' : 'hover:bg-accent',
-                      ].join(' ')}
+                      className="grid border-t border-border transition-colors hover:bg-accent"
                       style={{ gridTemplateColumns: TABLE_COLS }}
                     >
                       {/* Açıklama — single line, installment number inlined */}
@@ -290,33 +341,14 @@ export function TransactionList({
 
                       {/* Actions */}
                       <div className="px-2 py-3.5 flex items-center justify-end gap-0.5 flex-shrink-0">
-                        {isConfirming ? (
-                          <>
-                            <button
-                              onClick={() => { removeTx(tx.id); setConfirmDeleteId(null) }}
-                              className="w-6 h-6 flex items-center justify-center text-xs font-medium text-green-600 hover:bg-accent rounded transition-colors"
-                              title="Evet, sil"
-                            >✓</button>
-                            <button
-                              onClick={() => setConfirmDeleteId(null)}
-                              className="w-6 h-6 flex items-center justify-center text-xs font-medium text-muted-foreground hover:bg-accent rounded transition-colors"
-                              title="İptal"
-                            >✕</button>
-                          </>
-                        ) : (
-                          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                            <button
-                              onClick={() => openModal('edit-transaction', { id: tx.id })}
-                              className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-sm rounded"
-                              title="Düzenle"
-                            >⋯</button>
-                            <button
-                              onClick={() => setConfirmDeleteId(tx.id)}
-                              className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent transition-colors text-sm rounded"
-                              title="Sil"
-                            >×</button>
-                          </div>
-                        )}
+                        <button
+                          onClick={() => openModal('edit-transaction', { id: tx.id })}
+                          className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                          title="Düzenle"
+                        >
+                          <PencilIcon />
+                        </button>
+                        <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} />
                       </div>
                     </div>
                   )
@@ -368,7 +400,7 @@ export function TransactionList({
                 <div
                   key={tx.id}
                   className={[
-                    'group flex items-center gap-3 px-4 py-3.5',
+                    'flex items-center gap-3 px-4 py-3.5',
                     'hover:bg-accent transition-colors',
                     txIdx > 0 ? 'border-t border-border' : '',
                   ].join(' ')}
@@ -460,34 +492,16 @@ export function TransactionList({
                   </span>
 
                   {/* Row actions */}
-                  {confirmDeleteId === tx.id ? (
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <span className="text-xs text-destructive font-semibold mr-0.5">Sil?</span>
-                      <button
-                        onClick={() => { removeTx(tx.id); setConfirmDeleteId(null) }}
-                        className="w-6 h-6 flex items-center justify-center text-xs font-medium text-green-600 hover:bg-accent rounded transition-colors"
-                        title="Evet, sil"
-                      >✓</button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="w-6 h-6 flex items-center justify-center text-xs font-medium text-muted-foreground hover:bg-accent rounded transition-colors"
-                        title="İptal"
-                      >✕</button>
-                    </div>
-                  ) : (
-                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0 transition-opacity">
-                      <button
-                        onClick={() => openModal('edit-transaction', { id: tx.id })}
-                        className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-sm rounded"
-                        title="Düzenle"
-                      >⋯</button>
-                      <button
-                        onClick={() => setConfirmDeleteId(tx.id)}
-                        className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent transition-colors text-sm rounded"
-                        title="Sil"
-                      >×</button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button
+                      onClick={() => openModal('edit-transaction', { id: tx.id })}
+                      className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                      title="Düzenle"
+                    >
+                      <PencilIcon />
+                    </button>
+                    <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} />
+                  </div>
                 </div>
               )
             })}
