@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { AlertDialog } from 'radix-ui'
 import { useCategoryStore, useAccountStore, useUIStore, usePeopleStore, useTransactionStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -77,9 +77,9 @@ const PERSON_BADGE: Record<PersonRole, { bg: string; color: string }> = {
 // CSS grid template columns for table layout.
 // All fr-based so every column shares available space proportionally;
 // description gets 1.4fr (slightly more for icon+text), money columns get 0.9fr.
-const TABLE_COLS = 'minmax(130px,1.4fr) minmax(96px,1fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(72px,0.85fr) minmax(84px,0.9fr) 52px'
+const TABLE_COLS = 'minmax(130px,1.4fr) minmax(96px,1fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(72px,0.85fr) minmax(84px,0.9fr) 76px'
 // Minimum container width = sum of column minimums + 24px (mx-3 margins on sticky header)
-const TABLE_MIN_W = 130 + 96 + 76 + 76 + 76 + 72 + 84 + 52 + 24 // = 686px
+const TABLE_MIN_W = 130 + 96 + 76 + 76 + 76 + 72 + 84 + 76 + 24 // = 710px
 
 interface Props {
   transactions: Transaction[]
