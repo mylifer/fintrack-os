@@ -34,6 +34,22 @@ function CustomTooltip({ active, payload }: TooltipProps) {
   )
 }
 
+// Returns tick values as multiples of 50K covering [minVal, maxVal], capped at 6 ticks
+function niceYTicks(minVal: number, maxVal: number): number[] {
+  const BASE = 50_000
+  const lo = Math.floor(minVal / BASE) * BASE
+  const hi = Math.ceil(maxVal / BASE) * BASE
+  const rawSteps = Math.round((hi - lo) / BASE) + 1
+  // Scale step up in multiples of BASE so we never exceed 6 ticks
+  const mult = Math.max(1, Math.ceil(rawSteps / 6))
+  const step = BASE * mult
+  const lo2 = Math.floor(minVal / step) * step
+  const hi2 = Math.ceil(maxVal / step) * step
+  const ticks: number[] = []
+  for (let v = lo2; v <= hi2; v += step) ticks.push(v)
+  return ticks
+}
+
 interface Props {
   data: NWDataPoint[]
   tickInterval?: number
@@ -49,13 +65,10 @@ export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
   }
 
   const values = data.map(d => d.netWorth)
-  const minVal  = Math.min(...values)
-  const maxVal  = Math.max(...values)
-  const range   = maxVal - minVal || Math.abs(maxVal) || 10_000
-  const pad     = range * 0.15
-  const yMin    = Math.floor((Math.min(0, minVal) - pad) / 1000) * 1000
-  const yMax    = Math.ceil((maxVal + pad) / 1000) * 1000
-  const showRef = yMin < 0
+  const minVal = Math.min(...values)
+  const maxVal = Math.max(...values)
+  const ticks  = niceYTicks(minVal, maxVal)
+  const showRef = ticks[0] < 0
 
   return (
     <div className="w-full overflow-hidden">
@@ -80,8 +93,8 @@ export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
             tickLine={false}
             axisLine={false}
             width={44}
-            tickCount={4}
-            domain={[yMin, yMax]}
+            ticks={ticks}
+            domain={[ticks[0] ?? 0, ticks[ticks.length - 1] ?? 1]}
             tickFormatter={v => formatCompact(v)}
             tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.5 }}
           />

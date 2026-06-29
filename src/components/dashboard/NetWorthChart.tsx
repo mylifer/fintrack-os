@@ -17,13 +17,45 @@ const Chart = dynamic(() => import('./_NetWorthChart'), {
   loading: () => <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">Yükleniyor…</div>,
 })
 
-type Range = 'monthly' | 'yearly' | 'all'
+type Range = 'weekly' | 'monthly' | 'yearly' | 'all'
 
 const RANGES: { key: Range; label: string }[] = [
-  { key: 'monthly', label: 'Aylık'        },
-  { key: 'yearly',  label: 'Yıllık'       },
-  { key: 'all',     label: 'Tüm Zamanlar' },
+  { key: 'weekly',  label: 'Haftalık'      },
+  { key: 'monthly', label: 'Aylık'         },
+  { key: 'yearly',  label: 'Yıllık'        },
+  { key: 'all',     label: 'Tüm Zamanlar'  },
 ]
+
+// Local date string YYYY-MM-DD (avoids UTC offset issues)
+function localDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// Last n weeks as date-range buckets, newest last
+function lastNWeeks(n: number) {
+  const today = new Date()
+  const result: { from: string; to: string; label: string; fullLabel: string }[] = []
+  for (let i = n - 1; i >= 0; i--) {
+    const to = new Date(today)
+    to.setDate(today.getDate() - i * 7)
+    const from = new Date(to)
+    from.setDate(to.getDate() - 6)
+
+    const fmt = (d: Date) =>
+      `${d.getDate()} ${d.toLocaleDateString('tr-TR', { month: 'short' })}`
+
+    result.push({
+      from:      localDateStr(from),
+      to:        localDateStr(to),
+      label:     fmt(from),
+      fullLabel: `${fmt(from)} – ${fmt(to)}`,
+    })
+  }
+  return result
+}
 
 function monthsSince(start: MonthYear): MonthYear[] {
   const now = currentMonthYear()
@@ -39,9 +71,9 @@ function monthsSince(start: MonthYear): MonthYear[] {
 type RawPoint = {
   month: number
   year: number
-  shortLabel: string  // "Oca"
-  longLabel: string   // "Oca '24"
-  fullLabel: string   // "Ocak 2024" (tooltip)
+  shortLabel: string
+  longLabel: string
+  fullLabel: string
   netWorth: number
   delta: number
 }
@@ -57,6 +89,7 @@ export function NetWorthChart() {
 
   const currentNW = calcNetWorth(accounts, prices) + investValue
 
+  // Full monthly history — used by monthly / yearly / all ranges
   const allData = useMemo<RawPoint[]>(() => {
     let startMY = currentMonthYear()
     for (const tx of transactions) {
@@ -81,15 +114,7 @@ export function NetWorthChart() {
       const longLabel  = `${shortLabel} '${String(my.year).slice(2)}`
       const fullLabel  = d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
 
-      points[i] = {
-        month: my.month,
-        year:  my.year,
-        shortLabel,
-        longLabel,
-        fullLabel,
-        netWorth: Math.round(nw),
-        delta:    0,
-      }
+      points[i] = { month: my.month, year: my.year, shortLabel, longLabel, fullLabel, netWorth: Math.round(nw), delta: 0 }
 
       const { net } = calcMonthlyFlow(transactions, my)
       nw -= net
@@ -114,18 +139,53 @@ export function NetWorthChart() {
     return points
   }, [transactions, currentNW, investTxs, prices])
 
+  // Weekly data — computed independently, same backward pattern
+  const weeklyData = useMemo<NWDataPoint[]>(() => {
+    const weeks = lastNWeeks(8)
+    const points: NWDataPoint[] = new Array(weeks.length)
+    let nw = currentNW
+
+    for (let i = weeks.length - 1; i >= 0; i--) {
+      const week = weeks[i]
+
+      points[i] = { label: week.label, fullLabel: week.fullLabel, netWorth: Math.round(nw), delta: 0 }
+
+      const inRange = transactions.filter(tx => isInRange(tx.date, week.from, week.to))
+      const income  = inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+      const expense = inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+      nw -= (income - expense)
+
+      if (prices) {
+        const investDelta = investTxs
+          .filter(tx => isInRange(tx.date, week.from, week.to))
+          .reduce((sum, tx) => {
+            const unitPrice    = getAssetPrice(tx.asset, prices)
+            const currentValue = tx.quantity * unitPrice
+            return tx.type === 'buy' ? sum - currentValue : sum + currentValue
+          }, 0)
+        nw += investDelta
+      }
+    }
+
+    for (let i = 1; i < points.length; i++) {
+      points[i].delta = points[i].netWorth - points[i - 1].netWorth
+    }
+
+    return points
+  }, [transactions, currentNW, investTxs, prices])
+
   const { data, tickInterval, trendLabel } = useMemo(() => {
+    if (range === 'weekly') {
+      return { data: weeklyData, tickInterval: 0, trendLabel: 'son 8 haftada' }
+    }
+
     const now = currentMonthYear()
 
     if (range === 'monthly') {
-      // Current year only — short month labels, show all ticks
       const yearPoints = allData.filter(p => p.year === now.year)
       return {
         data: yearPoints.map((p): NWDataPoint => ({
-          label:     p.shortLabel,
-          fullLabel: p.fullLabel,
-          netWorth:  p.netWorth,
-          delta:     p.delta,
+          label: p.shortLabel, fullLabel: p.fullLabel, netWorth: p.netWorth, delta: p.delta,
         })),
         tickInterval: 0,
         trendLabel: `${now.year} yılında`,
@@ -133,38 +193,29 @@ export function NetWorthChart() {
     }
 
     if (range === 'yearly') {
-      // All data — show only year label for first point of each year, empty otherwise
       const seenYears = new Set<number>()
       return {
         data: allData.map((p): NWDataPoint => {
-          const isFirstOfYear = !seenYears.has(p.year)
-          if (isFirstOfYear) seenYears.add(p.year)
-          return {
-            label:     isFirstOfYear ? String(p.year) : '',
-            fullLabel: p.fullLabel,
-            netWorth:  p.netWorth,
-            delta:     p.delta,
-          }
+          const first = !seenYears.has(p.year)
+          if (first) seenYears.add(p.year)
+          return { label: first ? String(p.year) : '', fullLabel: p.fullLabel, netWorth: p.netWorth, delta: p.delta }
         }),
         tickInterval: 0,
         trendLabel: 'tüm zamanlarda',
       }
     }
 
-    // all: smart tick count (~6 visible labels), long labels if > 12 months
+    // all
     const useYear = allData.length > 12
     const autoInterval = Math.max(0, Math.ceil(allData.length / 6) - 1)
     return {
       data: allData.map((p): NWDataPoint => ({
-        label:     useYear ? p.longLabel : p.shortLabel,
-        fullLabel: p.fullLabel,
-        netWorth:  p.netWorth,
-        delta:     p.delta,
+        label: useYear ? p.longLabel : p.shortLabel, fullLabel: p.fullLabel, netWorth: p.netWorth, delta: p.delta,
       })),
       tickInterval: autoInterval,
       trendLabel: 'tüm zamanlarda',
     }
-  }, [allData, range])
+  }, [allData, weeklyData, range])
 
   const first   = data[0]?.netWorth ?? currentNW
   const trend   = currentNW - first
@@ -175,7 +226,6 @@ export function NetWorthChart() {
   return (
     <Card className="overflow-hidden min-w-0">
       <CardHeader className="pb-2">
-        {/* Row 1: title + filter buttons */}
         <div className="flex items-center justify-between gap-2 mb-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Net Varlık</p>
           <div className="flex gap-1">
@@ -195,7 +245,6 @@ export function NetWorthChart() {
           </div>
         </div>
 
-        {/* Row 2: big number + trend */}
         <div className="flex items-end justify-between gap-2">
           <p className="text-2xl font-semibold tabular-nums leading-none">
             {formatCurrency(currentNW)}
