@@ -29,9 +29,17 @@ interface Props {
   placeholder?: string
 }
 
-const ITEM      = 'flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm select-none transition-colors'
-const ITEM_DEF  = `${ITEM} hover:bg-accent hover:text-accent-foreground`
-const ITEM_ACT  = `${ITEM} bg-primary text-primary-foreground`
+const ITEM     = 'flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm select-none transition-colors'
+const ITEM_DEF = `${ITEM} hover:bg-accent hover:text-accent-foreground`
+const ITEM_ACT = `${ITEM} bg-primary text-primary-foreground`
+
+// react-remove-scroll in Dialog calls preventDefault() on wheel events for
+// portal content rendered outside the Dialog DOM subtree. This bypasses that:
+// scrollTop manipulation is not affected by preventDefault().
+function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
+  const el = e.currentTarget
+  el.scrollTop += e.deltaY
+}
 
 export function CategoryCascadeSelect({ categories, value, onChange, error, placeholder }: Props) {
   const [open,      setOpen]      = useState(false)
@@ -53,6 +61,35 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   }
   function hoverL0(id: string) { setHoveredL0(id); setHoveredL1(null) }
 
+  function ItemList({ items, activeId, onHover, onSelect, iconSize }: {
+    items: Category[]
+    activeId?: string | null
+    onHover?: (id: string) => void
+    onSelect: (id: string) => void
+    iconSize: number
+  }) {
+    return (
+      <>
+        {items.map(cat => {
+          const hasChildren = getChildren(cat.id).length > 0
+          const active = cat.id === activeId
+          return (
+            <div
+              key={cat.id}
+              className={active ? ITEM_ACT : ITEM_DEF}
+              onMouseEnter={() => onHover?.(cat.id)}
+              onClick={() => onSelect(cat.id)}
+            >
+              <CategoryIcon icon={cat.icon} color={cat.color} size={iconSize} className="shrink-0" />
+              <span className="flex-1 truncate">{cat.name}</span>
+              {hasChildren && <span className={active ? 'opacity-70' : 'opacity-40'}><ChevronRight /></span>}
+            </div>
+          )
+        })}
+      </>
+    )
+  }
+
   return (
     <Popover.Root open={open} onOpenChange={v => { setOpen(v); if (!v) { setHoveredL0(null); setHoveredL1(null) } }}>
 
@@ -64,7 +101,9 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
           className={[
             'flex w-full items-center justify-between gap-1.5 rounded-lg border bg-transparent px-2.5 py-2 text-sm transition-colors outline-none',
             'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-            error ? 'border-destructive ring-3 ring-destructive/20' : 'border-input hover:border-ring/50 data-[state=open]:border-ring',
+            error
+              ? 'border-destructive ring-3 ring-destructive/20'
+              : 'border-input hover:border-ring/50 data-[state=open]:border-ring',
           ].join(' ')}
         >
           {selected ? (
@@ -79,7 +118,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
         </button>
       </Popover.Trigger>
 
-      {/* ── Content portal — Radix handles z-index & outside-click ── */}
+      {/* ── Portaled content ── */}
       <Popover.Portal>
         <Popover.Content
           sideOffset={GAP}
@@ -95,55 +134,54 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
           ].join(' ')}
           style={{ width: COL_W, minWidth: 'var(--radix-popover-trigger-width)' }}
         >
-          {/* L0 — plain block div: max-height + overflow-y scroll always works */}
-          <div style={{ padding: 4, maxHeight: MAX_H, overflowY: 'auto' }}>
-            {roots.map(cat => {
-              const hasL1  = getChildren(cat.id).length > 0
-              const active = hoveredL0 === cat.id
-              return (
-                <div key={cat.id} className={active ? ITEM_ACT : ITEM_DEF}
-                  onMouseEnter={() => hoverL0(cat.id)} onClick={() => select(cat.id)}>
-                  <CategoryIcon icon={cat.icon} color={cat.color} size={13} className="shrink-0" />
-                  <span className="flex-1 truncate">{cat.name}</span>
-                  {hasL1 && <span className={active ? 'opacity-70' : 'opacity-40'}><ChevronRight /></span>}
-                </div>
-              )
-            })}
+          {/* L0 — onWheel bypasses react-remove-scroll's preventDefault() */}
+          <div
+            style={{ padding: 4, maxHeight: MAX_H, overflowY: 'auto' }}
+            onWheel={handleWheel}
+          >
+            <ItemList
+              items={roots}
+              activeId={hoveredL0}
+              onHover={hoverL0}
+              onSelect={select}
+              iconSize={13}
+            />
           </div>
 
-          {/* L1 — absolutely positioned card to the right, height = content (up to MAX_H) */}
+          {/* L1 */}
           {hoveredL0 && l1List.length > 0 && (
             <div
               className={`absolute ${CARD_CLS}`}
-              style={{ top: 0, left: COL_W + GAP, width: COL_W, padding: 4, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
+              style={{ top: 0, left: COL_W + GAP, width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
+              onWheel={handleWheel}
             >
-              {l1List.map(l1cat => {
-                const hasL2  = getChildren(l1cat.id).length > 0
-                const active = hoveredL1 === l1cat.id
-                return (
-                  <div key={l1cat.id} className={active ? ITEM_ACT : ITEM_DEF}
-                    onMouseEnter={() => setHoveredL1(l1cat.id)} onClick={() => select(l1cat.id)}>
-                    <CategoryIcon icon={l1cat.icon} color={l1cat.color} size={11} className="shrink-0" />
-                    <span className="flex-1 truncate">{l1cat.name}</span>
-                    {hasL2 && <span className={active ? 'opacity-70' : 'opacity-40'}><ChevronRight /></span>}
-                  </div>
-                )
-              })}
+              <div style={{ padding: 4 }}>
+                <ItemList
+                  items={l1List}
+                  activeId={hoveredL1}
+                  onHover={id => setHoveredL1(id)}
+                  onSelect={select}
+                  iconSize={11}
+                />
+              </div>
             </div>
           )}
 
-          {/* L2 — absolutely positioned card further right */}
+          {/* L2 */}
           {hoveredL1 && l2List.length > 0 && (
             <div
               className={`absolute ${CARD_CLS}`}
-              style={{ top: 0, left: (COL_W + GAP) * 2, width: COL_W, padding: 4, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
+              style={{ top: 0, left: (COL_W + GAP) * 2, width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
+              onWheel={handleWheel}
             >
-              {l2List.map(l2cat => (
-                <div key={l2cat.id} className={ITEM_DEF} onClick={() => select(l2cat.id)}>
-                  <CategoryIcon icon={l2cat.icon} color={l2cat.color} size={10} className="shrink-0" />
-                  <span className="flex-1 truncate">{l2cat.name}</span>
-                </div>
-              ))}
+              <div style={{ padding: 4 }}>
+                <ItemList
+                  items={l2List}
+                  activeId={null}
+                  onSelect={select}
+                  iconSize={10}
+                />
+              </div>
             </div>
           )}
         </Popover.Content>
