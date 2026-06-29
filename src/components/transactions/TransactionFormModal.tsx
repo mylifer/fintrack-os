@@ -368,7 +368,7 @@ export function TransactionFormModal() {
         isDebtPayment:  editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId,
         debtId:         editingTx.type === 'transfer' && !editingTx.toAccountId ? editingTx.debtId : undefined,
       })
-      setAmountStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(editingTx.amount))
+      setAmountStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2, useGrouping: false }).format(editingTx.amount))
       setInstallments(editingTx.installTotal ?? 1)
     } else {
       setTab('expense')

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Header } from '@/components/layout/Header'
-import { useDebtStore, useAccountStore } from '@/store'
+import { useDebtStore, useAccountStore, useTransactionStore } from '@/store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/Modal'
@@ -40,11 +40,13 @@ export default function DebtsPage() {
   const { getActive, add, update, settle, remove } = useDebtStore()
   const accounts = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const debts = getActive()
+  const transactions = useTransactionStore(useShallow(s => s.transactions))
 
   const [showForm, setShowForm]       = useState(false)
   const [editingDebt, setEditingDebt] = useState<Debt | undefined>()
   const [loading, setLoading]         = useState(false)
   const [form, setForm]               = useState(emptyForm())
+  const [selectedDebt, setSelectedDebt] = useState<ReturnType<typeof getActive>[0] | undefined>()
 
   const owe   = debts.filter(d => d.direction === 'owe')
   const owed  = debts.filter(d => d.direction === 'owed')
@@ -134,12 +136,15 @@ export default function DebtsPage() {
     return (
       <div className="p-5 border-b border-border last:border-0">
         <div className="flex items-start justify-between gap-2 mb-3">
-          <div>
-            <div className="font-semibold text-sm">{debt.name}</div>
+          <button
+            className="text-left"
+            onClick={() => setSelectedDebt(debt)}
+          >
+            <div className="font-semibold text-sm hover:text-primary transition-colors">{debt.name}</div>
             {debt.counterparty && (
               <div className="text-xs text-muted-foreground mt-0.5">{debt.counterparty}</div>
             )}
-          </div>
+          </button>
           <div className="flex items-center gap-2 flex-shrink-0">
             {overdue ? (
               <Badge variant="danger">Gecikmiş</Badge>
@@ -214,6 +219,52 @@ export default function DebtsPage() {
           </Card>
         )}
       </div>
+
+      <Modal open={!!selectedDebt} onClose={() => setSelectedDebt(undefined)} title={selectedDebt?.name ?? ''} size="md">
+        {selectedDebt && (() => {
+          const debtTxs = transactions
+            .filter(t => t.debtId === selectedDebt.id)
+            .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+          return (
+            <div className="flex flex-col gap-4">
+              <div>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-2xl font-medium tabular-nums">{formatCurrency(selectedDebt.remainingAmount)}</span>
+                  <span className="text-sm text-muted-foreground">/ {formatCurrency(selectedDebt.totalAmount)} toplam</span>
+                </div>
+                <div className="h-[2px] bg-muted mb-1">
+                  <div className="h-full bg-green-600" style={{ width: `${selectedDebt.progressPercent}%` }} />
+                </div>
+                <div className="text-xs text-muted-foreground">{formatCurrency(selectedDebt.paidAmount)} ödendi (%{Math.round(selectedDebt.progressPercent)})</div>
+              </div>
+
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">İşlemler</div>
+                {debtTxs.length === 0 ? (
+                  <div className="text-sm text-muted-foreground py-4 text-center">Bu borca ait işlem yok.</div>
+                ) : (
+                  <div className="flex flex-col divide-y divide-border border border-border rounded-lg overflow-hidden">
+                    {debtTxs.map(tx => (
+                      <div key={tx.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                        <div className="flex flex-col gap-0.5">
+                          <span>{tx.description}</span>
+                          <span className="text-xs text-muted-foreground">{formatDate(tx.date, 'd MMM yyyy')}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {tx.type === 'transfer' ? 'Transfer' : 'Ödeme'}
+                          </span>
+                          <span className="tabular-nums font-medium">{formatCurrency(tx.amount, tx.currency)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+      </Modal>
 
       <Modal open={showForm} onClose={closeForm} title={editingDebt ? 'Borcu Düzenle' : 'Borç / Alacak Ekle'} size="md">
         <div className="flex flex-col gap-3">
