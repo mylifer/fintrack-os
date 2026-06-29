@@ -19,10 +19,10 @@ const Chart = dynamic(() => import('./_NetWorthChart'), {
 
 type Range = 'monthly' | 'yearly' | 'all'
 
-const RANGES: { key: Range; label: string; limit: number | null; trendLabel: string }[] = [
-  { key: 'monthly', label: 'Aylık',        limit: 12,   trendLabel: 'son 12 ayda'    },
-  { key: 'yearly',  label: 'Yıllık',       limit: 24,   trendLabel: 'son 2 yılda'    },
-  { key: 'all',     label: 'Tüm Zamanlar', limit: null,  trendLabel: 'tüm zamanlarda' },
+const RANGES: { key: Range; label: string }[] = [
+  { key: 'monthly', label: 'Aylık'        },
+  { key: 'yearly',  label: 'Yıllık'       },
+  { key: 'all',     label: 'Tüm Zamanlar' },
 ]
 
 function monthsSince(start: MonthYear): MonthYear[] {
@@ -36,7 +36,15 @@ function monthsSince(start: MonthYear): MonthYear[] {
   return result
 }
 
-type RawPoint = NWDataPoint & { shortLabel: string; longLabel: string }
+type RawPoint = {
+  month: number
+  year: number
+  shortLabel: string  // "Oca"
+  longLabel: string   // "Oca '24"
+  fullLabel: string   // "Ocak 2024" (tooltip)
+  netWorth: number
+  delta: number
+}
 
 export function NetWorthChart() {
   const [range, setRange] = useState<Range>('all')
@@ -74,7 +82,8 @@ export function NetWorthChart() {
       const fullLabel  = d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
 
       points[i] = {
-        label: shortLabel,
+        month: my.month,
+        year:  my.year,
         shortLabel,
         longLabel,
         fullLabel,
@@ -105,16 +114,55 @@ export function NetWorthChart() {
     return points
   }, [transactions, currentNW, investTxs, prices])
 
-  const { data, trendLabel } = useMemo(() => {
-    const cfg = RANGES.find(r => r.key === range)!
-    const sliced = cfg.limit ? allData.slice(-cfg.limit) : allData
-    const useYear = sliced.length > 12
+  const { data, tickInterval, trendLabel } = useMemo(() => {
+    const now = currentMonthYear()
+
+    if (range === 'monthly') {
+      // Current year only — short month labels, show all ticks
+      const yearPoints = allData.filter(p => p.year === now.year)
+      return {
+        data: yearPoints.map((p): NWDataPoint => ({
+          label:     p.shortLabel,
+          fullLabel: p.fullLabel,
+          netWorth:  p.netWorth,
+          delta:     p.delta,
+        })),
+        tickInterval: 0,
+        trendLabel: `${now.year} yılında`,
+      }
+    }
+
+    if (range === 'yearly') {
+      // All data — show only year label for first point of each year, empty otherwise
+      const seenYears = new Set<number>()
+      return {
+        data: allData.map((p): NWDataPoint => {
+          const isFirstOfYear = !seenYears.has(p.year)
+          if (isFirstOfYear) seenYears.add(p.year)
+          return {
+            label:     isFirstOfYear ? String(p.year) : '',
+            fullLabel: p.fullLabel,
+            netWorth:  p.netWorth,
+            delta:     p.delta,
+          }
+        }),
+        tickInterval: 0,
+        trendLabel: 'tüm zamanlarda',
+      }
+    }
+
+    // all: smart tick count (~6 visible labels), long labels if > 12 months
+    const useYear = allData.length > 12
+    const autoInterval = Math.max(0, Math.ceil(allData.length / 6) - 1)
     return {
-      data: sliced.map(({ shortLabel, longLabel, ...p }): NWDataPoint => ({
-        ...p,
-        label: useYear ? longLabel : shortLabel,
+      data: allData.map((p): NWDataPoint => ({
+        label:     useYear ? p.longLabel : p.shortLabel,
+        fullLabel: p.fullLabel,
+        netWorth:  p.netWorth,
+        delta:     p.delta,
       })),
-      trendLabel: cfg.trendLabel,
+      tickInterval: autoInterval,
+      trendLabel: 'tüm zamanlarda',
     }
   }, [allData, range])
 
@@ -147,12 +195,11 @@ export function NetWorthChart() {
           </div>
         </div>
 
-        {/* Row 2: big number + trend badge */}
+        {/* Row 2: big number + trend */}
         <div className="flex items-end justify-between gap-2">
           <p className="text-2xl font-semibold tabular-nums leading-none">
             {formatCurrency(currentNW)}
           </p>
-
           {hasData && trend !== 0 && (
             <div className={`text-right shrink-0 ${up ? 'text-green-500' : 'text-destructive'}`}>
               <p className="text-sm font-semibold tabular-nums">
@@ -168,7 +215,7 @@ export function NetWorthChart() {
       </CardHeader>
 
       <CardContent className="p-0">
-        <Chart data={data} />
+        <Chart data={data} tickInterval={tickInterval} />
       </CardContent>
     </Card>
   )

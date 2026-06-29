@@ -7,10 +7,10 @@ import {
 import { formatCompact, formatCurrency } from '@/lib/utils/currency'
 
 export interface NWDataPoint {
-  label: string      // axis tick  ("Oca" or "Oca '23")
-  fullLabel: string  // tooltip    ("Ocak 2023")
+  label: string      // axis tick — empty string = invisible tick
+  fullLabel: string  // tooltip ("Ocak 2024")
   netWorth: number
-  delta: number      // change vs. previous month
+  delta: number
 }
 
 interface TooltipProps {
@@ -36,9 +36,10 @@ function CustomTooltip({ active, payload }: TooltipProps) {
 
 interface Props {
   data: NWDataPoint[]
+  tickInterval?: number
 }
 
-export default function NetWorthLineChart({ data }: Props) {
+export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
   if (data.length < 2) {
     return (
       <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
@@ -47,21 +48,19 @@ export default function NetWorthLineChart({ data }: Props) {
     )
   }
 
-  const tickInterval = Math.max(0, Math.ceil(data.length / 6) - 1)
-
   const values = data.map(d => d.netWorth)
   const minVal  = Math.min(...values)
   const maxVal  = Math.max(...values)
   const range   = maxVal - minVal || Math.abs(maxVal) || 10_000
-  const pad     = range * 0.12
+  const pad     = range * 0.15
   const yMin    = Math.floor((Math.min(0, minVal) - pad) / 1000) * 1000
   const yMax    = Math.ceil((maxVal + pad) / 1000) * 1000
   const showRef = yMin < 0
 
   return (
-    <div className="w-full min-w-0">
+    <div className="w-full overflow-hidden">
       <ResponsiveContainer width="100%" height={240}>
-        <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <LineChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 4 }}>
           <CartesianGrid
             vertical={false}
             stroke="currentColor"
@@ -73,13 +72,14 @@ export default function NetWorthLineChart({ data }: Props) {
             axisLine={false}
             dy={6}
             interval={tickInterval}
+            padding={{ left: 16, right: 16 }}
             tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.5 }}
           />
           <YAxis
             orientation="right"
             tickLine={false}
             axisLine={false}
-            width={46}
+            width={44}
             tickCount={4}
             domain={[yMin, yMax]}
             tickFormatter={v => formatCompact(v)}
