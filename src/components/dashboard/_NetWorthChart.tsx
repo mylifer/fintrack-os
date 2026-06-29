@@ -35,40 +35,43 @@ export default function NetWorthLineChart({ data }: Props) {
   }
 
   return (
-    <ChartContainer config={chartConfig} className="aspect-auto h-[220px] w-full">
-      <AreaChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-        <defs>
-          <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%"   stopColor="var(--color-netWorth)" stopOpacity={0.8} />
-            <stop offset="95%"  stopColor="var(--color-netWorth)" stopOpacity={0.1} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid vertical={false} />
-        <XAxis
-          dataKey="label"
-          tickLine={false}
-          tickMargin={10}
-          axisLine={false}
-        />
-        <ChartTooltip
-          cursor={false}
-          content={
-            <ChartTooltipContent
-              formatter={(value) => [formatCompact(Number(value)), 'Net Varlık']}
-              hideLabel
-            />
-          }
-        />
-        <Area
-          type="monotone"
-          dataKey="netWorth"
-          stroke="var(--color-netWorth)"
-          strokeWidth={2}
-          fill="url(#nwGrad)"
-          dot={false}
-          activeDot={{ r: 4, strokeWidth: 0 }}
-        />
-      </AreaChart>
-    </ChartContainer>
+    <div className="chart-reveal-ltr">
+      <ChartContainer config={chartConfig} className="aspect-auto h-[220px] w-full">
+        <AreaChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+          <defs>
+            <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%"   stopColor="var(--color-netWorth)" stopOpacity={0.8} />
+              <stop offset="95%"  stopColor="var(--color-netWorth)" stopOpacity={0.1} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} />
+          <XAxis
+            dataKey="label"
+            tickLine={false}
+            tickMargin={10}
+            axisLine={false}
+          />
+          <ChartTooltip
+            cursor={false}
+            content={
+              <ChartTooltipContent
+                formatter={(value) => [formatCompact(Number(value)), 'Net Varlık']}
+                hideLabel
+              />
+            }
+          />
+          <Area
+            type="monotone"
+            dataKey="netWorth"
+            stroke="var(--color-netWorth)"
+            strokeWidth={2}
+            fill="url(#nwGrad)"
+            dot={false}
+            activeDot={{ r: 4, strokeWidth: 0 }}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ChartContainer>
+    </div>
   )
 }
