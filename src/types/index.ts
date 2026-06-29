@@ -89,7 +89,7 @@ export interface Category {
   icon: string              // Emoji: "🛒", "🚗", "🏠"
   color: string             // Hex
   scope: CategoryScope
-  parentId?: string         // Subcategory (max 1 level)
+  parentId?: string         // Supports up to 3 levels deep
   isSystem: boolean         // Cannot be deleted
   sortOrder: number
 }
