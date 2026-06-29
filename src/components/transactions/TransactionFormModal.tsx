@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useId } from 'react'
-import { useUIStore, useAccountStore, useCategoryStore, useTransactionStore, usePeopleStore } from '@/store'
+import { useUIStore, useAccountStore, useCategoryStore, useTransactionStore, usePeopleStore, useDebtStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/Input'
@@ -44,6 +44,8 @@ function newForm() {
     isInstallment: false,
     familyMemberId: undefined as string | null | undefined,
     recipientId:    undefined as string | null | undefined,
+    isDebtPayment: false,
+    debtId: undefined as string | undefined,
   }
 }
 
@@ -313,6 +315,7 @@ export function TransactionFormModal() {
   const addGroup     = useTransactionStore(s => s.addInstallmentGroup)
   const updateTx     = useTransactionStore(s => s.update)
   const allPeople    = usePeopleStore(s => s.people)
+  const activeDebts  = useDebtStore(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe'))
 
   const open = modal === 'add-transaction' || modal === 'edit-transaction'
   const isEdit = modal === 'edit-transaction'
@@ -362,6 +365,8 @@ export function TransactionFormModal() {
         isInstallment:  editingTx.isInstallment,
         familyMemberId: editingTx.familyMemberId ?? undefined,
         recipientId:    editingTx.recipientId    ?? undefined,
+        isDebtPayment:  editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId,
+        debtId:         editingTx.type === 'transfer' && !editingTx.toAccountId ? editingTx.debtId : undefined,
       })
       setAmountStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(editingTx.amount))
       setInstallments(editingTx.installTotal ?? 1)
@@ -404,8 +409,9 @@ export function TransactionFormModal() {
     if (!amount || amount <= 0)                      e.amount      = 'Geçerli bir tutar girin'
     if (!form.accountId)                             e.accountId   = 'Hesap seçin'
     if (!form.date)                                  e.date        = 'Tarih seçin'
-    if (tab !== 'transfer' && !form.categoryId)      e.categoryId  = 'Kategori seçin'
-    if (tab === 'transfer' && !form.toAccountId)     e.toAccountId = 'Hedef hesap seçin'
+    if (tab !== 'transfer' && !form.categoryId)                         e.categoryId  = 'Kategori seçin'
+    if (tab === 'transfer' && !form.isDebtPayment && !form.toAccountId) e.toAccountId = 'Hedef hesap seçin'
+    if (tab === 'transfer' && form.isDebtPayment && !form.debtId)       e.debtId      = 'Borç seçin'
     if (!form.description.trim())                    e.description = 'Açıklama girin'
     setErrors(e)
     return Object.keys(e).length === 0
@@ -419,18 +425,45 @@ export function TransactionFormModal() {
     const currency = (account?.currency ?? 'TRY') as CurrencyCode
     const now      = new Date().toISOString()
 
+    // Strip UI-only fields before building the stored transaction
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { isDebtPayment: _idp, ...formData } = form
+
     if (editingTx) {
       await updateTx(editingTx.id, {
-        ...form, type: tab as TransactionType, amount, currency, updatedAt: now,
-        familyMemberId: form.familyMemberId ?? null,
-        recipientId:    form.recipientId    ?? null,
+        ...formData, type: tab as TransactionType, amount, currency, updatedAt: now,
+        familyMemberId: formData.familyMemberId ?? null,
+        recipientId:    formData.recipientId    ?? null,
       })
+
+      // Reconcile debt paidAmount for edit
+      const wasDebtPayment = editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId
+      const isDebtPaymentNow = tab === 'transfer' && form.isDebtPayment && !!formData.debtId
+      const { recordPayment } = useDebtStore.getState()
+
+      if (wasDebtPayment && isDebtPaymentNow) {
+        if (editingTx.debtId === formData.debtId) {
+          const delta = Math.round((amount - editingTx.amount) * 100) / 100
+          if (delta !== 0) await recordPayment(formData.debtId!, delta)
+        } else {
+          // Debt changed: reverse old debt, apply to new debt
+          await recordPayment(editingTx.debtId!, -editingTx.amount)
+          await recordPayment(formData.debtId!, amount)
+        }
+      } else if (wasDebtPayment && !isDebtPaymentNow) {
+        await recordPayment(editingTx.debtId!, -editingTx.amount)
+      } else if (!wasDebtPayment && isDebtPaymentNow) {
+        await recordPayment(formData.debtId!, amount)
+      }
     } else {
-      const base = { ...form, type: tab as TransactionType, amount, currency }
-      if (form.isInstallment && installments > 1) {
+      const base = { ...formData, type: tab as TransactionType, amount, currency }
+      if (formData.isInstallment && installments > 1) {
         await addGroup(base, installments)
       } else {
         await addTx({ ...base, id: crypto.randomUUID(), isInstallment: false, createdAt: now, updatedAt: now })
+      }
+      if (tab === 'transfer' && form.isDebtPayment && formData.debtId) {
+        await useDebtStore.getState().recordPayment(formData.debtId, amount)
       }
     }
     setLoading(false)
@@ -470,7 +503,7 @@ export function TransactionFormModal() {
                 type="button"
                 onClick={() => {
                   setTab(key)
-                  patch({ type: key, categoryId: '', toAccountId: undefined })
+                  patch({ type: key, categoryId: '', toAccountId: undefined, isDebtPayment: false, debtId: undefined })
                 }}
                 className={cn(
                   "rounded-md py-1.5 text-sm font-medium transition-all",
@@ -525,16 +558,69 @@ export function TransactionFormModal() {
             </Field>
 
             {tab === 'transfer' ? (
-              <Field label="Hedef Hesap" error={errors.toAccountId}>
-                <AppSelect
-                  value={form.toAccountId ?? ''}
-                  onChange={v => patch({ toAccountId: v })}
-                  options={accountOptions.filter(a => a.value !== form.accountId)}
-                  placeholder="Seçin..."
-                  error={!!errors.toAccountId}
-                  onOpenChange={onSelectOpen}
-                />
-              </Field>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className={cn("text-sm font-medium", (errors.toAccountId || errors.debtId) && "text-destructive")}>
+                    Hedef
+                  </span>
+                  <div className="flex rounded border border-input overflow-hidden text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => patch({ isDebtPayment: false, debtId: undefined })}
+                      className={cn(
+                        "px-2 py-0.5 transition-colors",
+                        !form.isDebtPayment ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Hesap
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => patch({ isDebtPayment: true, toAccountId: undefined })}
+                      className={cn(
+                        "px-2 py-0.5 transition-colors border-l border-input",
+                        form.isDebtPayment ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Borç
+                    </button>
+                  </div>
+                </div>
+                {form.isDebtPayment ? (
+                  <>
+                    {activeDebts.length === 0 ? (
+                      <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground select-none">
+                        Aktif borcunuz bulunmuyor
+                      </div>
+                    ) : (
+                      <AppSelect
+                        value={form.debtId ?? ''}
+                        onChange={v => {
+                          const debt = activeDebts.find(d => d.id === v)
+                          patch({ debtId: v, ...(debt && !form.description.trim() ? { description: debt.name } : {}) })
+                        }}
+                        options={activeDebts.map(d => ({ value: d.id, label: d.name }))}
+                        placeholder="Borç seçin..."
+                        error={!!errors.debtId}
+                        onOpenChange={onSelectOpen}
+                      />
+                    )}
+                    {errors.debtId && <p className="text-xs text-destructive">{errors.debtId}</p>}
+                  </>
+                ) : (
+                  <>
+                    <AppSelect
+                      value={form.toAccountId ?? ''}
+                      onChange={v => patch({ toAccountId: v })}
+                      options={accountOptions.filter(a => a.value !== form.accountId)}
+                      placeholder="Seçin..."
+                      error={!!errors.toAccountId}
+                      onOpenChange={onSelectOpen}
+                    />
+                    {errors.toAccountId && <p className="text-xs text-destructive">{errors.toAccountId}</p>}
+                  </>
+                )}
+              </div>
             ) : (
               <Field label="Kategori" error={errors.categoryId}>
                 <CategoryCascadeSelect
