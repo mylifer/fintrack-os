@@ -432,6 +432,8 @@ export function TransactionFormModal() {
     if (editingTx) {
       await updateTx(editingTx.id, {
         ...formData, type: tab as TransactionType, amount, currency, updatedAt: now,
+        categoryId:     formData.categoryId     || undefined,
+        toAccountId:    formData.toAccountId    || undefined,
         familyMemberId: formData.familyMemberId ?? null,
         recipientId:    formData.recipientId    ?? null,
       })
@@ -456,7 +458,14 @@ export function TransactionFormModal() {
         await recordPayment(formData.debtId!, amount)
       }
     } else {
-      const base = { ...formData, type: tab as TransactionType, amount, currency }
+      const base = {
+        ...formData,
+        type:        tab as TransactionType,
+        amount,
+        currency,
+        categoryId:  formData.categoryId  || undefined,
+        toAccountId: formData.toAccountId || undefined,
+      }
       if (formData.isInstallment && installments > 1) {
         await addGroup(base, installments)
       } else {
