@@ -57,7 +57,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
     setHoveredL1(null)
   }
 
-  const colCls = 'flex flex-col overflow-y-auto max-h-[320px] p-1'
+  const colCls = 'overflow-y-auto max-h-[320px] p-1'
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -94,7 +94,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
           avoidCollisions
           onOpenAutoFocus={e => e.preventDefault()}
           className={[
-            'z-[9999] flex rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10',
+            'z-[9999] flex items-start rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10',
             'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
             'data-[side=bottom]:slide-in-from-top-2',
