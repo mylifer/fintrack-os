@@ -71,9 +71,9 @@ export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
   const showRef = ticks[0] < 0
 
   return (
-    <div className="w-full overflow-hidden">
+    <div className="w-full overflow-hidden px-6">
       <ResponsiveContainer width="100%" height={240}>
-        <LineChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 4 }}>
+        <LineChart data={data} margin={{ top: 8, right: 0, left: 0, bottom: 4 }}>
           <CartesianGrid
             vertical={false}
             stroke="currentColor"
