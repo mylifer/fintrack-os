@@ -1,103 +1,90 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Card, CardHeader, CardContent } from '@/components/ui/card'
-import { useCategoryStore } from '@/store'
+import { useRouter } from 'next/navigation'
+import { useCategoryStore, useTransactionStore } from '@/store'
 import type { Category, CategoryScope } from '@/types'
 
-/* ── Form state ────────────────────────────────────────────────── */
+const SCOPE_LABELS: Record<CategoryScope, string> = { expense: 'Gider', income: 'Gelir' }
 
-type Form = { name: string; icon: string; color: string; scope: CategoryScope }
-
-function emptyForm(scope?: CategoryScope): Form {
-  return { name: '', icon: '📦', color: '#6B8F80', scope: scope ?? 'expense' }
+/* ── SVG helpers ─────────────────────────────────────────────────── */
+function PencilIcon() {
+  return (
+    <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" width={13} height={13}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+    </svg>
+  )
+}
+function ChevronRightIcon() {
+  return (
+    <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" width={13} height={13}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+    </svg>
+  )
 }
 
-const SCOPE_LABELS: Record<CategoryScope, string> = {
-  expense: 'Gider', income: 'Gelir',
+/* ── Add form ────────────────────────────────────────────────────── */
+interface AddFormState { name: string; icon: string; color: string; parentId: string }
+
+function emptyAddForm(): AddFormState {
+  return { name: '', icon: '📦', color: '#6B8F80', parentId: '' }
 }
 
-const SCOPE_COLORS: Record<CategoryScope, string> = {
-  expense: '#DC2626', income: '#16A34A',
-}
-
-/* ── CategoryFormRow — defined at module level so reference is stable ── */
-
-interface FormRowProps {
-  form: Form
-  onChange: (f: Form) => void
+interface AddFormProps {
+  form: AddFormState
+  onChange: (f: AddFormState) => void
   onSave: () => void
   onCancel: () => void
-  label: string
-  indent?: boolean
+  parentOptions: Category[]
 }
 
-function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: FormRowProps) {
+function AddForm({ form, onChange, onSave, onCancel, parentOptions }: AddFormProps) {
   return (
-    <div
-      className={[
-        'flex items-center gap-2 px-5 py-3 bg-background border-b border-border',
-        indent ? 'pl-14' : '',
-      ].join(' ')}
-    >
+    <div className="flex items-center gap-2 px-4 py-2.5 bg-accent/30 border-b border-border flex-shrink-0 flex-wrap">
       {/* Icon */}
       <input
-        type="text"
-        value={form.icon}
+        type="text" value={form.icon} maxLength={2}
         onChange={e => onChange({ ...form, icon: e.target.value })}
-        placeholder="📦"
-        maxLength={2}
-        className="w-10 h-9 text-center text-xl border border-border rounded-lg bg-background text-foreground focus:outline-none focus:border-primary"
+        className="w-9 h-8 text-center text-base border border-border rounded-lg bg-background text-foreground focus:outline-none focus:border-primary flex-shrink-0"
       />
-
       {/* Name */}
       <input
-        type="text"
-        value={form.name}
+        type="text" value={form.name} autoFocus
         onChange={e => onChange({ ...form, name: e.target.value })}
         onKeyDown={e => { if (e.key === 'Enter' && form.name.trim()) onSave() }}
         placeholder="Kategori adı"
-        autoFocus
-        className="flex-1 text-sm border border-border rounded-lg px-3 h-9 bg-background text-foreground focus:outline-none focus:border-primary"
+        className="flex-1 min-w-[120px] text-sm border border-border rounded-lg px-3 h-8 bg-background text-foreground focus:outline-none focus:border-primary"
       />
-
-      {/* Scope */}
-      <select
-        value={form.scope}
-        onChange={e => onChange({ ...form, scope: e.target.value as CategoryScope })}
-        className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0"
-      >
-        <option value="expense">Gider</option>
-        <option value="income">Gelir</option>
-      </select>
-
-      {/* Color picker */}
-      <label className="relative flex-shrink-0 cursor-pointer" title="Renk seç">
-        <div
-          className="w-9 h-9 rounded-lg border border-border overflow-hidden"
-          style={{ background: form.color }}
-        />
-        <input
-          type="color"
-          value={form.color}
-          onChange={e => onChange({ ...form, color: e.target.value })}
-          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-        />
+      {/* Parent dropdown */}
+      {parentOptions.length > 0 && (
+        <select
+          value={form.parentId}
+          onChange={e => onChange({ ...form, parentId: e.target.value })}
+          className="text-xs border border-border rounded-lg px-2 h-8 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[160px]"
+        >
+          <option value="">Üst kategori yok</option>
+          {parentOptions.map(p => (
+            <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
+          ))}
+        </select>
+      )}
+      {/* Color */}
+      <label className="relative cursor-pointer flex-shrink-0" title="Renk seç">
+        <div className="w-8 h-8 rounded-lg border border-border" style={{ background: form.color }} />
+        <input type="color" value={form.color} onChange={e => onChange({ ...form, color: e.target.value })}
+          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
       </label>
-
       {/* Save */}
       <button
-        onClick={onSave}
-        disabled={!form.name.trim()}
-        className="px-3 h-9 rounded-lg bg-primary text-white text-xs font-semibold disabled:opacity-40 hover:bg-primary/85 transition-colors flex-shrink-0"
+        onClick={onSave} disabled={!form.name.trim()}
+        className="px-3 h-8 bg-primary text-white rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-primary/85 transition-colors flex-shrink-0"
       >
-        {label}
+        Ekle
       </button>
-
       {/* Cancel */}
       <button
         onClick={onCancel}
-        className="px-3 h-9 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+        className="px-2.5 h-8 border border-border rounded-lg text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
       >
         İptal
       </button>
@@ -105,29 +92,106 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
   )
 }
 
-/* ── CategoryManager ────────────────────────────────────────────── */
+/* ── Edit form row ───────────────────────────────────────────────── */
+interface EditFormState { name: string; icon: string; color: string }
+
+interface EditRowProps {
+  form: EditFormState
+  onChange: (f: EditFormState) => void
+  onSave: () => void
+  onCancel: () => void
+  isChild: boolean
+}
+
+function EditRow({ form, onChange, onSave, onCancel, isChild }: EditRowProps) {
+  return (
+    <div className={`flex items-center gap-2 px-4 py-2 border-b border-border bg-accent/20 ${isChild ? 'pl-10' : ''}`}>
+      <input type="text" value={form.icon} maxLength={2}
+        onChange={e => onChange({ ...form, icon: e.target.value })}
+        className="w-9 h-8 text-center text-base border border-border rounded-lg bg-background focus:outline-none focus:border-primary flex-shrink-0" />
+      <input type="text" value={form.name} autoFocus
+        onChange={e => onChange({ ...form, name: e.target.value })}
+        onKeyDown={e => { if (e.key === 'Enter' && form.name.trim()) onSave() }}
+        className="flex-1 text-sm border border-border rounded-lg px-3 h-8 bg-background focus:outline-none focus:border-primary" />
+      <label className="relative cursor-pointer flex-shrink-0" title="Renk seç">
+        <div className="w-8 h-8 rounded-lg border border-border" style={{ background: form.color }} />
+        <input type="color" value={form.color} onChange={e => onChange({ ...form, color: e.target.value })}
+          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
+      </label>
+      <button onClick={onSave} disabled={!form.name.trim()}
+        className="px-3 h-8 bg-primary text-white rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-primary/85 transition-colors flex-shrink-0">
+        Kaydet
+      </button>
+      <button onClick={onCancel}
+        className="px-2.5 h-8 border border-border rounded-lg text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
+        İptal
+      </button>
+    </div>
+  )
+}
+
+/* ── CategoryManager ─────────────────────────────────────────────── */
 
 export function CategoryManager() {
-  const categories = useCategoryStore(s => s.categories)
-  const add        = useCategoryStore(s => s.add)
-  const update     = useCategoryStore(s => s.update)
-  const remove     = useCategoryStore(s => s.remove)
+  const router       = useRouter()
+  const categories   = useCategoryStore(s => s.categories)
+  const add          = useCategoryStore(s => s.add)
+  const update       = useCategoryStore(s => s.update)
+  const remove       = useCategoryStore(s => s.remove)
+  const transactions = useTransactionStore(s => s.transactions)
 
-  const [editingId,      setEditingId]      = useState<string | null>(null)
-  const [editForm,       setEditForm]       = useState<Form>(emptyForm())
-  const [addingFor,      setAddingFor]      = useState<'root' | string | null>(null)
-  const [addForm,        setAddForm]        = useState<Form>(emptyForm())
-  const [confirmDeleteId, setConfirmDelete] = useState<string | null>(null)
+  const [tab,             setTab]             = useState<CategoryScope>('expense')
+  const [adding,          setAdding]          = useState(false)
+  const [addForm,         setAddForm]         = useState<AddFormState>(emptyAddForm())
+  const [editingId,       setEditingId]       = useState<string | null>(null)
+  const [editForm,        setEditForm]        = useState<EditFormState>({ name: '', icon: '', color: '' })
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
-  const parents     = useMemo(() => categories.filter(c => !c.parentId), [categories])
-  const getChildren = (pid: string) => categories.filter(c => c.parentId === pid)
+  const parents = useMemo(
+    () => categories.filter(c => c.scope === tab && !c.parentId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [categories, tab],
+  )
 
-  /* handlers */
+  const getChildren = (pid: string) =>
+    categories.filter(c => c.parentId === pid).sort((a, b) => a.sortOrder - b.sortOrder)
+
+  const txCount = (catId: string, withChildren: boolean) => {
+    const childIds = withChildren ? categories.filter(c => c.parentId === catId).map(c => c.id) : []
+    return transactions.filter(t =>
+      t.categoryId === catId || (withChildren && childIds.includes(t.categoryId ?? '')),
+    ).length
+  }
+
+  function startAdd() {
+    setAdding(true)
+    setAddForm(emptyAddForm())
+    setEditingId(null)
+    setConfirmDeleteId(null)
+  }
+
+  async function saveAdd() {
+    if (!addForm.name.trim()) return
+    const maxSort = categories.reduce((m, c) => Math.max(m, c.sortOrder), 0)
+    const cat: Category = {
+      id:        crypto.randomUUID(),
+      name:      addForm.name.trim(),
+      icon:      addForm.icon || '📦',
+      color:     addForm.color,
+      scope:     tab,
+      parentId:  addForm.parentId || undefined,
+      isSystem:  false,
+      sortOrder: maxSort + 1,
+    }
+    await add(cat)
+    setAdding(false)
+    setAddForm(emptyAddForm())
+  }
+
   function startEdit(cat: Category) {
     setEditingId(cat.id)
-    setEditForm({ name: cat.name, icon: cat.icon, color: cat.color, scope: cat.scope })
-    setAddingFor(null)
-    setConfirmDelete(null)
+    setEditForm({ name: cat.name, icon: cat.icon, color: cat.color })
+    setAdding(false)
+    setConfirmDeleteId(null)
   }
 
   async function saveEdit() {
@@ -136,203 +200,199 @@ export function CategoryManager() {
     setEditingId(null)
   }
 
-  function startAdd(parentId: 'root' | string, scope?: CategoryScope) {
-    setAddingFor(parentId)
-    setAddForm(emptyForm(scope))
-    setEditingId(null)
-    setConfirmDelete(null)
-  }
-
-  async function saveAdd() {
-    if (!addingFor || !addForm.name.trim()) return
-    const maxSort = categories.reduce((m, c) => Math.max(m, c.sortOrder), 0)
-    const cat: Category = {
-      id:        crypto.randomUUID(),
-      name:      addForm.name.trim(),
-      icon:      addForm.icon || '📦',
-      color:     addForm.color,
-      scope:     addForm.scope,
-      parentId:  addingFor === 'root' ? undefined : addingFor,
-      isSystem:  false,
-      sortOrder: maxSort + 1,
-    }
-    await add(cat)
-    setAddingFor(null)
-  }
-
   async function handleDelete(cat: Category) {
-    if (confirmDeleteId !== cat.id) { setConfirmDelete(cat.id); return }
+    if (confirmDeleteId !== cat.id) { setConfirmDeleteId(cat.id); return }
     for (const sub of getChildren(cat.id)) await remove(sub.id)
     await remove(cat.id)
-    setConfirmDelete(null)
+    setConfirmDeleteId(null)
   }
 
-  /* row renderer (inlined to avoid component-type changes) */
-  function renderRow(cat: Category, indent: boolean) {
+  function handleTabChange(s: CategoryScope) {
+    setTab(s)
+    setAdding(false)
+    setEditingId(null)
+    setConfirmDeleteId(null)
+  }
+
+  /* ── Row renderer ── */
+  function renderRow(cat: Category, isChild: boolean) {
     if (editingId === cat.id) {
       return (
-        <CategoryFormRow
+        <EditRow
           key={cat.id}
           form={editForm}
           onChange={setEditForm}
           onSave={saveEdit}
           onCancel={() => setEditingId(null)}
-          label="Kaydet"
-          indent={indent}
+          isChild={isChild}
         />
       )
     }
 
-    const subs = getChildren(cat.id)
+    const count     = txCount(cat.id, !isChild)
     const isConfirm = confirmDeleteId === cat.id
+    const children  = isChild ? [] : getChildren(cat.id)
 
     return (
       <div
         key={cat.id}
         className={[
-          'flex items-center gap-3 px-5 py-3 border-b border-border hover:bg-accent group transition-colors',
-          indent ? 'pl-14' : '',
+          'group flex items-center gap-2.5 border-b border-border transition-colors cursor-pointer',
+          isChild ? 'pl-10 pr-4 py-1.5 bg-muted/30 hover:bg-accent/40' : 'px-4 py-2 hover:bg-accent/40',
         ].join(' ')}
+        onClick={() => !isConfirm && router.push(`/categories/${cat.id}`)}
       >
-        {/* Icon container */}
+        {isChild && (
+          <span className="text-muted-foreground/50 text-xs flex-shrink-0 -ml-1">↳</span>
+        )}
+
+        {/* Icon bubble */}
         <div
-          className="w-8 h-8 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+          className={`rounded-lg flex items-center justify-center flex-shrink-0 ${isChild ? 'w-6 h-6 text-xs' : 'w-7 h-7 text-sm'}`}
           style={{ background: `${cat.color}22` }}
         >
           {cat.icon}
         </div>
 
         {/* Name */}
-        <span className="flex-1 text-sm font-medium text-foreground min-w-0 truncate">{cat.name}</span>
-
-        {/* Scope pill */}
-        <span
-          className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-          style={{
-            color:      SCOPE_COLORS[cat.scope],
-            background: `${SCOPE_COLORS[cat.scope]}14`,
-          }}
-        >
-          {SCOPE_LABELS[cat.scope]}
+        <span className={`flex-1 text-foreground truncate min-w-0 ${isChild ? 'text-[13px]' : 'text-sm font-medium'}`}>
+          {cat.name}
         </span>
+
+        {/* Children badge (root only) */}
+        {!isChild && children.length > 0 && (
+          <span className="text-[11px] text-muted-foreground flex-shrink-0">
+            {children.length} alt
+          </span>
+        )}
+
+        {/* Tx count */}
+        {count > 0 && (
+          <span className="text-[11px] text-muted-foreground flex-shrink-0">
+            {count} işlem
+          </span>
+        )}
 
         {/* System badge */}
         {cat.isSystem && (
-          <span className="text-[10px] font-medium text-muted-foreground flex-shrink-0">Sistem</span>
+          <span className="text-[10px] text-muted-foreground/50 flex-shrink-0 hidden group-hover:inline">
+            sistem
+          </span>
         )}
 
-        {/* Sub-count */}
-        {subs.length > 0 && (
-          <span className="text-[10px] text-muted-foreground flex-shrink-0">{subs.length} alt</span>
-        )}
-
-        {/* Action buttons */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          {/* Edit */}
+        {/* Actions */}
+        <div
+          className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+          onClick={e => e.stopPropagation()}
+        >
           <button
             onClick={() => startEdit(cat)}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-xs"
+            className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             title="Düzenle"
-          >✎</button>
+          >
+            <PencilIcon />
+          </button>
 
-          {/* Add sub (only root level) */}
-          {!indent && (
-            <button
-              onClick={() => startAdd(cat.id, cat.scope)}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-accent transition-colors font-bold text-sm leading-none"
-              title="Alt kategori ekle"
-            >+</button>
-          )}
-
-          {/* Delete (non-system only) */}
           {!cat.isSystem && (
             isConfirm ? (
-              <div className="flex items-center gap-1">
+              <>
                 <button
                   onClick={() => handleDelete(cat)}
-                  className="px-2 h-7 rounded-lg bg-destructive text-white text-[10px] font-semibold hover:bg-destructive/80 transition-colors"
+                  className="px-2 h-6 bg-destructive text-white text-[10px] font-semibold rounded-md"
                 >
                   Sil
                 </button>
                 <button
-                  onClick={() => setConfirmDelete(null)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center border border-border text-muted-foreground text-xs hover:text-foreground transition-colors"
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="w-6 h-6 flex items-center justify-center border border-border rounded-md text-muted-foreground text-xs hover:text-foreground transition-colors"
                 >
                   ✕
                 </button>
-              </div>
+              </>
             ) : (
               <button
                 onClick={() => handleDelete(cat)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent transition-colors text-base leading-none"
+                className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-accent transition-colors text-base leading-none"
                 title="Sil"
-              >×</button>
+              >
+                ×
+              </button>
             )
           )}
         </div>
+
+        {/* Navigate chevron */}
+        {!isConfirm && (
+          <span className="text-muted-foreground/40 flex-shrink-0 group-hover:text-muted-foreground transition-colors">
+            <ChevronRightIcon />
+          </span>
+        )}
       </div>
     )
   }
 
-  return (
-    <Card className="overflow-hidden gap-0 py-0">
-      {/* Header */}
-      <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Kategoriler
-        </span>
-        <button
-          onClick={() => startAdd('root')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/85 transition-colors"
-        >
-          <span className="text-base leading-none">+</span> Yeni Kategori
-        </button>
-      </CardHeader>
+  const expenseCount = categories.filter(c => c.scope === 'expense' && !c.parentId).length
+  const incomeCount  = categories.filter(c => c.scope === 'income'  && !c.parentId).length
 
-      {/* Category list */}
-      <CardContent className="p-0">
+  return (
+    <div className="flex flex-col h-full">
+      {/* ── Tabs + add button ── */}
+      <div className="flex items-center gap-1 px-4 py-3 border-b border-border flex-shrink-0">
+        {(['expense', 'income'] as CategoryScope[]).map(s => (
+          <button
+            key={s}
+            onClick={() => handleTabChange(s)}
+            className={[
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              tab === s ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+            ].join(' ')}
+          >
+            {SCOPE_LABELS[s]}
+            <span className={`text-[10px] tabular-nums ${tab === s ? 'text-primary/70' : 'text-muted-foreground/60'}`}>
+              {s === 'expense' ? expenseCount : incomeCount}
+            </span>
+          </button>
+        ))}
+
+        <div className="flex-1" />
+
+        <button
+          onClick={startAdd}
+          className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/85 transition-colors"
+        >
+          <span className="text-sm leading-none">+</span> Yeni Kategori
+        </button>
+      </div>
+
+      {/* ── Add form ── */}
+      {adding && (
+        <AddForm
+          form={addForm}
+          onChange={setAddForm}
+          onSave={saveAdd}
+          onCancel={() => setAdding(false)}
+          parentOptions={parents}
+        />
+      )}
+
+      {/* ── Category list ── */}
+      <div className="overflow-y-auto flex-1">
         {parents.map(parent => {
-          const subs = getChildren(parent.id)
+          const children = getChildren(parent.id)
           return (
             <div key={parent.id}>
               {renderRow(parent, false)}
-
-              {/* Sub-categories */}
-              {subs.map(sub => renderRow(sub, true))}
-
-              {/* Add sub-category form */}
-              {addingFor === parent.id && (
-                <CategoryFormRow
-                  form={addForm}
-                  onChange={setAddForm}
-                  onSave={saveAdd}
-                  onCancel={() => setAddingFor(null)}
-                  label="Ekle"
-                  indent
-                />
-              )}
+              {children.map(child => renderRow(child, true))}
             </div>
           )
         })}
 
-        {/* Add root category form */}
-        {addingFor === 'root' && (
-          <CategoryFormRow
-            form={addForm}
-            onChange={setAddForm}
-            onSave={saveAdd}
-            onCancel={() => setAddingFor(null)}
-            label="Ekle"
-          />
-        )}
-
-        {/* Empty state */}
-        {parents.length === 0 && addingFor !== 'root' && (
-          <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-            Henüz kategori yok.
+        {parents.length === 0 && !adding && (
+          <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+            Bu kapsamda henüz kategori yok.
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

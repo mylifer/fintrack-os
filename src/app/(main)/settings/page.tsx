@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { CategoryManager } from '@/components/categories/CategoryManager'
 import { BackupManager }  from '@/components/backup/BackupManager'
 import { loadDemoData, clearAllData } from '@/lib/seed'
 
@@ -98,9 +97,6 @@ export default function SettingsPage() {
 
         {/* Backup */}
         <BackupManager />
-
-        {/* Categories */}
-        <CategoryManager />
 
       </div>
     </>
