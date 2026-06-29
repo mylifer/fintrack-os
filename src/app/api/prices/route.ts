@@ -33,7 +33,7 @@ async function fetchUsdRates(dateTag: string): Promise<Record<string, number> | 
       if (!res.ok) continue
       const data = await res.json()
       const usd = data?.usd
-      if (usd?.try && usd?.eur && usd?.gbp && usd?.xau) return usd
+      if (usd?.try && usd?.eur && usd?.gbp) return usd
     } catch {}
   }
   return null
@@ -56,37 +56,74 @@ async function prevRates(): Promise<Record<string, number> | null> {
   return null
 }
 
+// Yahoo Finance GC=F (gold futures) — free, no key, real-time
+// Returns { current, prev } in USD per troy ounce
+async function fetchGoldUsd(): Promise<{ current: number; prev: number } | null> {
+  const url = 'https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=2d'
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const meta = data?.chart?.result?.[0]?.meta
+    const current = meta?.regularMarketPrice
+    const prev = meta?.chartPreviousClose
+    if (typeof current === 'number' && current > 0) {
+      return { current, prev: typeof prev === 'number' && prev > 0 ? prev : current }
+    }
+  } catch {}
+  return null
+}
+
 // usd.* fields: value = units of that currency per 1 USD
 // e.g. usd.try = 34.5  →  1 USD = 34.5 TRY
-// e.g. usd.eur = 0.92  →  1 USD = 0.92 EUR  →  1 EUR = 34.5/0.92 TRY
-// e.g. usd.xau = 0.00048  →  1 USD = 0.00048 oz gold  →  1 gram gold = usdTry/(xau*31.1035) TRY
-function parse(r: Record<string, number>) {
-  return {
-    usdTry:      r.try,
-    eurTry:      r.try / r.eur,
-    gbpTry:      r.try / r.gbp,
-    goldGramTry: r.try / (r.xau * 31.1035),
-  }
+// goldUsd = USD per troy ounce  →  gram = troy oz / 31.1035
+// goldGramTry = (goldUsd / 31.1035) * usdTry
+function goldGram(goldUsdPerOz: number, usdTry: number): number {
+  return (goldUsdPerOz / 31.1035) * usdTry
 }
 
 export async function GET() {
-  const [cur, prev] = await Promise.all([currentRates(), prevRates()])
+  const [cur, prev, gold] = await Promise.all([currentRates(), prevRates(), fetchGoldUsd()])
 
   if (!cur) {
     return NextResponse.json({ error: 'Fiyatlar alınamadı' }, { status: 502 })
   }
 
-  const c = parse(cur)
-  const p = prev ? parse(prev) : null
+  const usdTry     = cur.try
+  const eurTry     = cur.try / cur.eur
+  const gbpTry     = cur.try / cur.gbp
+  const prevUsdTry = prev?.try
+  const prevEurTry = prev ? prev.try / prev.eur : undefined
+  const prevGbpTry = prev ? prev.try / prev.gbp : undefined
+
+  // Gold: use Yahoo Finance live price; fall back to fawazahmed0 xau if unavailable
+  const goldGramTry = gold
+    ? goldGram(gold.current, usdTry)
+    : cur.xau
+      ? cur.try / (cur.xau * 31.1035)
+      : 0
+
+  const prevGoldGramTry = gold && prevUsdTry
+    ? goldGram(gold.prev, prevUsdTry)
+    : prev?.xau
+      ? prev.try / (prev.xau * 31.1035)
+      : undefined
 
   return NextResponse.json(
     {
-      ...c,
-      prevUsdTry:      p?.usdTry,
-      prevEurTry:      p?.eurTry,
-      prevGbpTry:      p?.gbpTry,
-      prevGoldGramTry: p?.goldGramTry,
-      updatedAt:       Date.now(),
+      usdTry,
+      eurTry,
+      gbpTry,
+      goldGramTry,
+      prevUsdTry,
+      prevEurTry,
+      prevGbpTry,
+      prevGoldGramTry,
+      updatedAt: Date.now(),
     },
     { headers: { 'Cache-Control': 'no-store' } },
   )
