@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
-import type { Category, CategoryScope } from '@/types'
+import type { Category, CategoryScope, DefaultCategoryDef } from '@/types'
 import { DEFAULT_CATEGORIES } from '@/types'
 
 interface CategoryState {
@@ -41,20 +41,43 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
   },
 
   initDefaults: async () => {
-    const existing = await db.categories.count()
-    if (existing > 0) return
+    const existing = await db.categories.toArray()
+    const byName   = new Map(existing.map(c => [c.name, c.id]))
 
-    const cats: Category[] = DEFAULT_CATEGORIES.map(c => ({
-      ...c,
-      id: crypto.randomUUID(),
-    }))
-    await db.categories.bulkAdd(cats)
+    // Phase 1: üst kategoriler — _parentName olmayanlar
+    const nameToId = new Map<string, string>(byName)
+    const toInsert: Category[] = []
+
+    for (const def of DEFAULT_CATEGORIES.filter((d: DefaultCategoryDef) => !d._parentName)) {
+      if (byName.has(def.name)) continue
+      const id = crypto.randomUUID()
+      nameToId.set(def.name, id)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _parentName, ...cat } = def
+      toInsert.push({ ...cat, id })
+    }
+
+    // Phase 2: alt kategoriler — _parentName olanlar
+    for (const def of DEFAULT_CATEGORIES.filter((d: DefaultCategoryDef) => !!d._parentName)) {
+      if (byName.has(def.name)) continue
+      const parentId = nameToId.get(def._parentName!)
+      const id = crypto.randomUUID()
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _parentName, ...cat } = def
+      toInsert.push({ ...cat, id, ...(parentId && { parentId }) })
+    }
+
+    if (toInsert.length === 0) return
+
+    await db.categories.bulkAdd(toInsert)
     const userId = await getUserId()
-    const catsForDb = userId ? cats.map(c => ({ ...c, user_id: userId })) : cats
-    supabase.from('categories').insert(catsForDb).then(({ error }) => {
+    const forDb = userId ? toInsert.map(c => ({ ...c, user_id: userId })) : toInsert
+    supabase.from('categories').insert(forDb).then(({ error }) => {
       if (error) console.error('[supabase:categories:insert-defaults]', error)
     })
-    set({ categories: cats })
+    set(s => ({
+      categories: [...s.categories, ...toInsert].sort((a, b) => a.sortOrder - b.sortOrder),
+    }))
   },
 
   add: async (cat) => {

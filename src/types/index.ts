@@ -271,20 +271,68 @@ export interface RecurringTransaction {
 
 // ─── Default categories ────────────────────────────────────────────────────
 
-export const DEFAULT_CATEGORIES: Omit<Category, 'id'>[] = [
-  { name: 'Market',        icon: '🛒', color: '#2D7D3E', scope: 'expense', isSystem: true, sortOrder: 1 },
-  { name: 'Kira & Konut',  icon: '🏠', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 2 },
-  { name: 'Ulaşım',        icon: '🚗', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 3 },
-  { name: 'Yemek Dışarı',  icon: '🍽️', color: '#C4732A', scope: 'expense', isSystem: true, sortOrder: 4 },
-  { name: 'Sağlık',        icon: '💊', color: '#B83232', scope: 'expense', isSystem: true, sortOrder: 5 },
-  { name: 'Eğlence',       icon: '🎬', color: '#7B3F9B', scope: 'expense', isSystem: true, sortOrder: 6 },
-  { name: 'Giyim',         icon: '👕', color: '#D4A853', scope: 'expense', isSystem: true, sortOrder: 7 },
-  { name: 'Teknoloji',     icon: '📱', color: '#111110', scope: 'expense', isSystem: true, sortOrder: 8 },
-  { name: 'Eğitim',        icon: '📚', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 9 },
-  { name: 'Faturalar',     icon: '⚡', color: '#C4732A', scope: 'expense', isSystem: true, sortOrder: 10 },
-  { name: 'Diğer Gider',   icon: '📦', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 11 },
-  { name: 'Maaş',          icon: '💰', color: '#1E7A3E', scope: 'income',  isSystem: true, sortOrder: 20 },
-  { name: 'Yatırım Geliri',icon: '📈', color: '#1E7A3E', scope: 'income',  isSystem: true, sortOrder: 21 },
-  { name: 'Kira Geliri',   icon: '🏢', color: '#1E7A3E', scope: 'income',  isSystem: true, sortOrder: 22 },
-  { name: 'Diğer Gelir',   icon: '🎁', color: '#1E7A3E', scope: 'income',  isSystem: true, sortOrder: 23 },
+// _parentName: resolved to parentId during initDefaults — stripped before DB insert
+export type DefaultCategoryDef = Omit<Category, 'id'> & { _parentName?: string }
+
+export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
+  // ── Gider: üst kategoriler ────────────────────────────────────────────────
+  { name: 'Yemek',            icon: '🍽️', color: '#C4732A', scope: 'expense', isSystem: true, sortOrder:  1 },
+  { name: 'Market',           icon: '🛒', color: '#2D7D3E', scope: 'expense', isSystem: true, sortOrder:  2 },
+  { name: 'Kahve ve Cafe',    icon: '☕', color: '#8B5E3C', scope: 'expense', isSystem: true, sortOrder:  3 },
+  { name: 'Ulaşım',           icon: '🚆', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder:  4 },
+  { name: 'Ev',               icon: '🏠', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder:  5 },
+  { name: 'Alışveriş',        icon: '🛍️', color: '#7B3F9B', scope: 'expense', isSystem: true, sortOrder:  6 },
+  { name: 'Faturalar',        icon: '📋', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder:  7 },
+  { name: 'Abonelikler',      icon: '🔄', color: '#111110', scope: 'expense', isSystem: true, sortOrder:  8 },
+  { name: 'Sağlık',           icon: '🏥', color: '#B83232', scope: 'expense', isSystem: true, sortOrder:  9 },
+  { name: 'Sigorta',          icon: '🛡️', color: '#4A90D9', scope: 'expense', isSystem: true, sortOrder: 10 },
+  { name: 'Yatırım',          icon: '📈', color: '#2D7D3E', scope: 'expense', isSystem: true, sortOrder: 11 },
+  { name: 'Vergi',            icon: '💼', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 12 },
+  { name: 'Banka Giderleri',  icon: '🏦', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 13 },
+  { name: 'Şarj',             icon: '⚡', color: '#D4A853', scope: 'expense', isSystem: true, sortOrder: 14 },
+  { name: 'Legal',            icon: '⚖️', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 15 },
+  { name: 'Çeşitli Hizmetler',icon: '🔧', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 16 },
+  { name: 'Tütün',            icon: '🚬', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 17 },
+  { name: 'Duty Free',        icon: '✈️', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 18 },
+  { name: 'Kişisel Bakım',    icon: '💆', color: '#7B3F9B', scope: 'expense', isSystem: true, sortOrder: 19 },
+  { name: 'Araç Yıkama',      icon: '🚿', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 20 },
+  { name: 'Alkol',            icon: '🍺', color: '#D4A853', scope: 'expense', isSystem: true, sortOrder: 21 },
+  { name: 'Kırtasiye',        icon: '✏️', color: '#111110', scope: 'expense', isSystem: true, sortOrder: 22 },
+  { name: 'Yazılım',          icon: '💻', color: '#111110', scope: 'expense', isSystem: true, sortOrder: 23 },
+  { name: 'Diğer Gider',      icon: '📦', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 24 },
+
+  // ── Gider: Ulaşım alt kategorileri ───────────────────────────────────────
+  { name: 'HGS',              icon: '🛣️', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 41, _parentName: 'Ulaşım' },
+  { name: 'Otopark',          icon: '🅿️', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 42, _parentName: 'Ulaşım' },
+  { name: 'Taksi',            icon: '🚕', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 43, _parentName: 'Ulaşım' },
+  { name: 'Otomobil Bakım',   icon: '🔩', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 44, _parentName: 'Ulaşım' },
+  { name: 'Yakıt',            icon: '⛽', color: '#6B6B67', scope: 'expense', isSystem: true, sortOrder: 45, _parentName: 'Ulaşım' },
+
+  // ── Gider: Ev alt kategorileri ────────────────────────────────────────────
+  { name: 'Mobilya',          icon: '🪑', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 51, _parentName: 'Ev' },
+  { name: 'Tadilat',          icon: '🏗️', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 52, _parentName: 'Ev' },
+  { name: 'Kira',             icon: '🔑', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 53, _parentName: 'Ev' },
+  { name: 'Mutfak',           icon: '🍳', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 54, _parentName: 'Ev' },
+  { name: 'Elektronik',       icon: '📺', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 55, _parentName: 'Ev' },
+  { name: 'Temizlik',         icon: '🧹', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 56, _parentName: 'Ev' },
+
+  // ── Gider: Alışveriş alt kategorileri ────────────────────────────────────
+  { name: 'Teknoloji',        icon: '📱', color: '#7B3F9B', scope: 'expense', isSystem: true, sortOrder: 61, _parentName: 'Alışveriş' },
+  { name: 'Giyim',            icon: '👕', color: '#7B3F9B', scope: 'expense', isSystem: true, sortOrder: 62, _parentName: 'Alışveriş' },
+
+  // ── Gider: Faturalar alt kategorileri ─────────────────────────────────────
+  { name: 'Aidat',            icon: '🏢', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 71, _parentName: 'Faturalar' },
+  { name: 'Doğalgaz',         icon: '🔥', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 72, _parentName: 'Faturalar' },
+  { name: 'Mobil Hat',        icon: '📶', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 73, _parentName: 'Faturalar' },
+  { name: 'Su',               icon: '💧', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 74, _parentName: 'Faturalar' },
+  { name: 'Elektrik',         icon: '💡', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 75, _parentName: 'Faturalar' },
+  { name: 'İnternet',         icon: '🌐', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 76, _parentName: 'Faturalar' },
+  { name: 'Telefon',          icon: '📞', color: '#1A5CA3', scope: 'expense', isSystem: true, sortOrder: 77, _parentName: 'Faturalar' },
+
+  // ── Gelir kategorileri ────────────────────────────────────────────────────
+  { name: 'Maaş',             icon: '💰', color: '#1E7A3E', scope: 'income',  isSystem: true, sortOrder: 100 },
+  { name: 'Cashback',         icon: '💸', color: '#1E7A3E', scope: 'income',  isSystem: true, sortOrder: 101 },
+  { name: 'Yatırım Geliri',   icon: '📊', color: '#1E7A3E', scope: 'income',  isSystem: true, sortOrder: 102 },
+  { name: 'Kira Geliri',      icon: '🏢', color: '#1E7A3E', scope: 'income',  isSystem: true, sortOrder: 103 },
+  { name: 'Diğer Gelir',      icon: '🎁', color: '#1E7A3E', scope: 'income',  isSystem: true, sortOrder: 104 },
 ]
