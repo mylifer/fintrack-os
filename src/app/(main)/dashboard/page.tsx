@@ -6,7 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   useTransactionStore, useAccountStore, useUIStore,
   useInvestmentStore, useBudgetStore, useCategoryStore,
-  useDebtStore, useRecurringStore,
+  useDebtStore, useRecurringStore, usePeopleStore,
 } from '@/store'
 import { calcNetWorth, calcPeriodFlow, computeTransactionEffect } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
@@ -21,6 +21,9 @@ import { Separator } from '@/components/ui/separator'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Header } from '@/components/layout/Header'
 import { PeriodTabs } from '@/components/ui/PeriodTabs'
+import { AccountAvatar } from '@/components/accounts/AccountAvatar'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
+import { PersonAvatar } from '@/components/people/PersonAvatar'
 import type { PeriodType } from '@/types'
 
 const CashflowChart = dynamic(
@@ -60,6 +63,7 @@ export default function DashboardPage() {
   const getDue       = useRecurringStore(s => s.getDue)
   const markGenerated  = useRecurringStore(s => s.markGenerated)
   const addTransaction = useTransactionStore(s => s.add)
+  const people         = usePeopleStore(s => s.people)
 
   const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
   const { income, expense, net } = useMemo(
@@ -238,15 +242,29 @@ export default function DashboardPage() {
               ) : (
                 <ul className="divide-y divide-border">
                   {recent.map(tx => {
-                    const cat     = categories.find(c => c.id === tx.categoryId)
-                    const account = allAccounts.find(a => a.id === tx.accountId)
+                    const cat       = categories.find(c => c.id === tx.categoryId)
+                    const account   = allAccounts.find(a => a.id === tx.accountId)
+                    const recipient = tx.recipientId    ? people.find(p => p.id === tx.recipientId)    : null
+                    const family    = tx.familyMemberId ? people.find(p => p.id === tx.familyMemberId) : null
+                    const person    = recipient ?? family
                     const isIncome   = tx.type === 'income'
                     const isTransfer = tx.type === 'transfer'
                     return (
                       <li key={tx.id} className="flex items-center gap-3 px-6 py-3">
-                        <span className="text-base w-6 text-center shrink-0 select-none">
-                          {cat?.icon ?? (isTransfer ? '↔' : '·')}
-                        </span>
+                        {person ? (
+                          <PersonAvatar person={person} size="sm" className="shrink-0" />
+                        ) : cat ? (
+                          <span
+                            className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                            style={{ background: cat.color ? `${cat.color}20` : 'rgba(255,255,255,0.06)' }}
+                          >
+                            <CategoryIcon icon={cat.icon} color={cat.color} size={15} />
+                          </span>
+                        ) : (
+                          <span className="text-base w-7 text-center shrink-0 select-none">
+                            {tx.icon ?? (isTransfer ? '↔' : '·')}
+                          </span>
+                        )}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{tx.description}</p>
                           <p className="text-xs text-muted-foreground">
@@ -327,7 +345,7 @@ export default function DashboardPage() {
                   {accounts.map(a => (
                     <li key={a.id}>
                       <Link href={`/accounts/${a.id}`} className="flex items-center gap-3 px-6 py-3 hover:bg-muted/50 transition-colors">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: a.color }} />
+                        <AccountAvatar account={a} size="sm" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{a.name}</p>
                           <p className="text-xs text-muted-foreground">{ACCOUNT_TYPE[a.type] ?? a.type}</p>
