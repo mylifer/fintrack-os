@@ -114,7 +114,7 @@ export function NetWorthChart() {
       const longLabel  = `${shortLabel} '${String(my.year).slice(2)}`
       const fullLabel  = d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
 
-      points[i] = { month: my.month, year: my.year, shortLabel, longLabel, fullLabel, netWorth: Math.round(nw), delta: 0 }
+      points[i] = { month: my.month, year: my.year, shortLabel, longLabel, fullLabel, netWorth: Math.round(nw * 100) / 100, delta: 0 }
 
       const { net } = calcMonthlyFlow(transactions, my)
       nw -= net
@@ -133,7 +133,7 @@ export function NetWorthChart() {
     }
 
     for (let i = 1; i < points.length; i++) {
-      points[i].delta = points[i].netWorth - points[i - 1].netWorth
+      points[i].delta = Math.round((points[i].netWorth - points[i - 1].netWorth) * 100) / 100
     }
 
     return points
@@ -148,7 +148,7 @@ export function NetWorthChart() {
     for (let i = weeks.length - 1; i >= 0; i--) {
       const week = weeks[i]
 
-      points[i] = { label: week.label, fullLabel: week.fullLabel, netWorth: Math.round(nw), delta: 0 }
+      points[i] = { label: week.label, fullLabel: week.fullLabel, netWorth: Math.round(nw * 100) / 100, delta: 0 }
 
       const inRange = transactions.filter(tx => isInRange(tx.date, week.from, week.to))
       const income  = inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
@@ -168,7 +168,7 @@ export function NetWorthChart() {
     }
 
     for (let i = 1; i < points.length; i++) {
-      points[i].delta = points[i].netWorth - points[i - 1].netWorth
+      points[i].delta = Math.round((points[i].netWorth - points[i - 1].netWorth) * 100) / 100
     }
 
     return points
