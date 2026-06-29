@@ -62,8 +62,9 @@ export default function NetWorthLineChart({ data }: Props) {
   const showRef = yMin < 0  // reference line at 0 only if chart dips negative
 
   return (
+    <div className="w-full min-w-0 overflow-hidden">
     <ResponsiveContainer width="100%" height={260}>
-      <LineChart data={data} margin={{ top: 12, right: 62, left: 0, bottom: 0 }}>
+      <LineChart data={data} margin={{ top: 12, right: 4, left: 0, bottom: 0 }}>
         <CartesianGrid
           vertical={false}
           stroke="currentColor"
@@ -115,5 +116,6 @@ export default function NetWorthLineChart({ data }: Props) {
         />
       </LineChart>
     </ResponsiveContainer>
+    </div>
   )
 }

@@ -107,7 +107,7 @@ export function NetWorthChart() {
   const hasData = data.length >= 2
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden min-w-0">
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-4">
           {/* Left: title + big number */}
