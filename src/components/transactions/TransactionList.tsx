@@ -6,6 +6,7 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { groupByDate } from '@/lib/utils/calculations'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import type { Transaction, PersonRole } from '@/types'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
@@ -250,7 +251,7 @@ export function TransactionList({
                       <div className="px-2 py-3.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
                         {cat ? (
                           <>
-                            <span className="text-xs leading-none flex-shrink-0">{cat.icon}</span>
+                            <CategoryIcon icon={cat.icon} color={cat.color} size={11} className="flex-shrink-0" />
                             <span className="text-xs text-muted-foreground truncate min-w-0">{cat.name}</span>
                           </>
                         ) : (
