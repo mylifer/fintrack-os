@@ -14,11 +14,11 @@ function emptyForm(scope?: CategoryScope): Form {
 }
 
 const SCOPE_LABELS: Record<CategoryScope, string> = {
-  expense: 'Gider', income: 'Gelir', both: 'Her ikisi',
+  expense: 'Gider', income: 'Gelir',
 }
 
 const SCOPE_COLORS: Record<CategoryScope, string> = {
-  expense: '#DC2626', income: '#16A34A', both: '#2563EB',
+  expense: '#DC2626', income: '#16A34A',
 }
 
 /* ── CategoryFormRow — defined at module level so reference is stable ── */
@@ -69,7 +69,6 @@ function CategoryFormRow({ form, onChange, onSave, onCancel, label, indent }: Fo
       >
         <option value="expense">Gider</option>
         <option value="income">Gelir</option>
-        <option value="both">Her ikisi</option>
       </select>
 
       {/* Color picker */}

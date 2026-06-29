@@ -112,7 +112,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
   getByScope: (scope) => {
     return get().categories.filter(c =>
-      c.scope === scope || c.scope === 'both',
+      c.scope === scope,
     )
   },
 

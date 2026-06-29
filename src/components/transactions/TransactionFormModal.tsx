@@ -390,7 +390,7 @@ export function TransactionFormModal() {
       ({ description, categoryId, familyMemberId, recipientId }))
   }, [transactions, tab])
 
-  const filteredCategories = categories.filter(c => c.scope === tab || c.scope === 'both')
+  const filteredCategories = categories.filter(c => c.scope === tab)
   const accountOptions     = accounts.map(a => ({ value: a.id, label: a.name }))
   const categoryOptions    = filteredCategories.map(c => ({ value: c.id, label: `${c.icon} ${c.name}` }))
 

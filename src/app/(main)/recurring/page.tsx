@@ -97,7 +97,7 @@ export default function RecurringPage() {
   const accountOptions  = accounts.map(a => ({ value: a.id, label: a.name }))
   const categoryOptions = useMemo(
     () => categories
-      .filter(c => c.scope === form.type || c.scope === 'both')
+      .filter(c => c.scope === form.type)
       .map(c => ({ value: c.id, label: `${c.icon} ${c.name}` })),
     [categories, form.type],
   )

@@ -81,7 +81,7 @@ export interface Transaction {
 
 // ─── Category ──────────────────────────────────────────────────────────────
 
-export type CategoryScope = 'expense' | 'income' | 'both'
+export type CategoryScope = 'expense' | 'income'
 
 export interface Category {
   id: string
