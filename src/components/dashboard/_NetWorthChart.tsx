@@ -35,7 +35,7 @@ export default function NetWorthLineChart({ data }: Props) {
   }
 
   return (
-    <div className="chart-reveal-ltr">
+    <div className="chart-reveal">
       <ChartContainer config={chartConfig} className="aspect-auto h-[220px] w-full">
         <AreaChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
           <defs>

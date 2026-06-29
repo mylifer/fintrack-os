@@ -133,12 +133,12 @@
 /* ─────────────────────────────────────────────────────────────────
    CHART ANIMATIONS
    ───────────────────────────────────────────────────────────────── */
-@keyframes chart-reveal-ltr {
-  from { clip-path: inset(0 100% 0 0); }
-  to   { clip-path: inset(0 0% 0 0); }
+@keyframes chart-reveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-.chart-reveal-ltr {
-  animation: chart-reveal-ltr 1.2s cubic-bezier(0, 0, 0.2, 1) both;
+.chart-reveal {
+  animation: chart-reveal 0.5s cubic-bezier(0, 0, 0.2, 1) both;
 }
 
 /* ─────────────────────────────────────────────────────────────────
