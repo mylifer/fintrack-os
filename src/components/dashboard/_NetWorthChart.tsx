@@ -1,6 +1,5 @@
 'use client'
 
-import { useMemo } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer,
@@ -42,16 +41,14 @@ interface Props {
 export default function NetWorthLineChart({ data }: Props) {
   if (data.length < 2) {
     return (
-      <div className="h-[260px] flex items-center justify-center text-sm text-muted-foreground">
+      <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
         Grafik için en az 2 aylık veri gerekli
       </div>
     )
   }
 
-  // Smart tick interval: show ~6-8 labels regardless of data length
-  const tickInterval = Math.max(0, Math.ceil(data.length / 7) - 1)
+  const tickInterval = Math.max(0, Math.ceil(data.length / 6) - 1)
 
-  // Y domain with breathing room
   const values = data.map(d => d.netWorth)
   const minVal  = Math.min(...values)
   const maxVal  = Math.max(...values)
@@ -59,63 +56,63 @@ export default function NetWorthLineChart({ data }: Props) {
   const pad     = range * 0.12
   const yMin    = Math.floor((Math.min(0, minVal) - pad) / 1000) * 1000
   const yMax    = Math.ceil((maxVal + pad) / 1000) * 1000
-  const showRef = yMin < 0  // reference line at 0 only if chart dips negative
+  const showRef = yMin < 0
 
   return (
-    <div className="w-full min-w-0 overflow-hidden">
-    <ResponsiveContainer width="100%" height={260}>
-      <LineChart data={data} margin={{ top: 12, right: 4, left: 0, bottom: 0 }}>
-        <CartesianGrid
-          vertical={false}
-          stroke="currentColor"
-          strokeOpacity={0.07}
-        />
-        <XAxis
-          dataKey="label"
-          tickLine={false}
-          axisLine={false}
-          dy={8}
-          interval={tickInterval}
-          className="text-[11px] fill-muted-foreground"
-        />
-        <YAxis
-          orientation="right"
-          tickLine={false}
-          axisLine={false}
-          width={58}
-          tickCount={5}
-          domain={[yMin, yMax]}
-          tickFormatter={v => formatCompact(v)}
-          className="text-[11px] fill-muted-foreground"
-        />
-        {showRef && (
-          <ReferenceLine
-            y={0}
+    <div className="w-full min-w-0">
+      <ResponsiveContainer width="100%" height={240}>
+        <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid
+            vertical={false}
             stroke="currentColor"
-            strokeOpacity={0.2}
-            strokeDasharray="4 4"
+            strokeOpacity={0.07}
           />
-        )}
-        <Tooltip
-          content={<CustomTooltip />}
-          cursor={{ stroke: 'currentColor', strokeOpacity: 0.12, strokeWidth: 1 }}
-        />
-        <Line
-          type="monotone"
-          dataKey="netWorth"
-          stroke="var(--primary)"
-          strokeWidth={2}
-          dot={false}
-          activeDot={{
-            r: 4,
-            fill: 'var(--primary)',
-            stroke: 'var(--background)',
-            strokeWidth: 2.5,
-          }}
-          isAnimationActive={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+          <XAxis
+            dataKey="label"
+            tickLine={false}
+            axisLine={false}
+            dy={6}
+            interval={tickInterval}
+            tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.5 }}
+          />
+          <YAxis
+            orientation="right"
+            tickLine={false}
+            axisLine={false}
+            width={46}
+            tickCount={4}
+            domain={[yMin, yMax]}
+            tickFormatter={v => formatCompact(v)}
+            tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.5 }}
+          />
+          {showRef && (
+            <ReferenceLine
+              y={0}
+              stroke="currentColor"
+              strokeOpacity={0.2}
+              strokeDasharray="4 4"
+            />
+          )}
+          <Tooltip
+            content={<CustomTooltip />}
+            cursor={{ stroke: 'currentColor', strokeOpacity: 0.12, strokeWidth: 1 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="netWorth"
+            stroke="var(--primary)"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{
+              r: 4,
+              fill: 'var(--primary)',
+              stroke: 'var(--background)',
+              strokeWidth: 2.5,
+            }}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   )
 }

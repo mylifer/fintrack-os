@@ -1,11 +1,11 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTransactionStore, useAccountStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, calcMonthlyFlow } from '@/lib/utils/calculations'
-import { monthRange, isInRange, currentMonthYear, prevMonth } from '@/lib/utils/date'
+import { monthRange, isInRange, currentMonthYear } from '@/lib/utils/date'
 import { getAssetPrice } from '@/store/investment.store'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
@@ -14,10 +14,17 @@ import type { NWDataPoint } from './_NetWorthChart'
 
 const Chart = dynamic(() => import('./_NetWorthChart'), {
   ssr: false,
-  loading: () => <div className="h-[260px] flex items-center justify-center text-sm text-muted-foreground">Yükleniyor…</div>,
+  loading: () => <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">Yükleniyor…</div>,
 })
 
-// Build MonthYear list from a starting month to the current month (inclusive)
+type Range = 'monthly' | 'yearly' | 'all'
+
+const RANGES: { key: Range; label: string; limit: number | null; trendLabel: string }[] = [
+  { key: 'monthly', label: 'Aylık',        limit: 12,   trendLabel: 'son 12 ayda'    },
+  { key: 'yearly',  label: 'Yıllık',       limit: 24,   trendLabel: 'son 2 yılda'    },
+  { key: 'all',     label: 'Tüm Zamanlar', limit: null,  trendLabel: 'tüm zamanlarda' },
+]
+
 function monthsSince(start: MonthYear): MonthYear[] {
   const now = currentMonthYear()
   const result: MonthYear[] = []
@@ -29,7 +36,11 @@ function monthsSince(start: MonthYear): MonthYear[] {
   return result
 }
 
+type RawPoint = NWDataPoint & { shortLabel: string; longLabel: string }
+
 export function NetWorthChart() {
+  const [range, setRange] = useState<Range>('all')
+
   const transactions = useTransactionStore(s => s.transactions)
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const prices       = useInvestmentStore(s => s.prices)
@@ -38,8 +49,7 @@ export function NetWorthChart() {
 
   const currentNW = calcNetWorth(accounts, prices) + investValue
 
-  const data = useMemo<NWDataPoint[]>(() => {
-    // Find earliest transaction month — fall back to current month if no data
+  const allData = useMemo<RawPoint[]>(() => {
     let startMY = currentMonthYear()
     for (const tx of transactions) {
       const d = new Date(tx.date)
@@ -52,32 +62,29 @@ export function NetWorthChart() {
     const months = monthsSince(startMY)
     if (months.length === 0) return []
 
-    // Determine label format based on span length
-    const useYear = months.length > 12
-
-    // Backward pass: start from current NW, subtract each month's net going back
-    const points: NWDataPoint[] = new Array(months.length)
+    const points: RawPoint[] = new Array(months.length)
     let nw = currentNW
 
     for (let i = months.length - 1; i >= 0; i--) {
       const my = months[i]
       const d  = new Date(my.year, my.month - 1)
 
-      const shortMonth = d.toLocaleDateString('tr-TR', { month: 'short' })
-      const yearSuffix = `'${String(my.year).slice(2)}`
+      const shortLabel = d.toLocaleDateString('tr-TR', { month: 'short' })
+      const longLabel  = `${shortLabel} '${String(my.year).slice(2)}`
       const fullLabel  = d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
 
       points[i] = {
-        label:     useYear ? `${shortMonth} ${yearSuffix}` : shortMonth,
+        label: shortLabel,
+        shortLabel,
+        longLabel,
         fullLabel,
-        netWorth:  Math.round(nw),
-        delta:     0, // filled in second pass
+        netWorth: Math.round(nw),
+        delta:    0,
       }
 
       const { net } = calcMonthlyFlow(transactions, my)
       nw -= net
 
-      // Adjust for investment portfolio changes in this month
       if (prices) {
         const { from, to } = monthRange(my)
         const investDelta = investTxs
@@ -91,7 +98,6 @@ export function NetWorthChart() {
       }
     }
 
-    // Second pass: compute month-over-month delta
     for (let i = 1; i < points.length; i++) {
       points[i].delta = points[i].netWorth - points[i - 1].netWorth
     }
@@ -99,7 +105,19 @@ export function NetWorthChart() {
     return points
   }, [transactions, currentNW, investTxs, prices])
 
-  // Stats
+  const { data, trendLabel } = useMemo(() => {
+    const cfg = RANGES.find(r => r.key === range)!
+    const sliced = cfg.limit ? allData.slice(-cfg.limit) : allData
+    const useYear = sliced.length > 12
+    return {
+      data: sliced.map(({ shortLabel, longLabel, ...p }): NWDataPoint => ({
+        ...p,
+        label: useYear ? longLabel : shortLabel,
+      })),
+      trendLabel: cfg.trendLabel,
+    }
+  }, [allData, range])
+
   const first   = data[0]?.netWorth ?? currentNW
   const trend   = currentNW - first
   const pct     = first !== 0 ? (trend / Math.abs(first)) * 100 : 0
@@ -109,16 +127,32 @@ export function NetWorthChart() {
   return (
     <Card className="overflow-hidden min-w-0">
       <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-4">
-          {/* Left: title + big number */}
-          <div>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Net Varlık</p>
-            <p className="text-3xl font-semibold tabular-nums leading-none">
-              {formatCurrency(currentNW)}
-            </p>
+        {/* Row 1: title + filter buttons */}
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Net Varlık</p>
+          <div className="flex gap-1">
+            {RANGES.map(r => (
+              <button
+                key={r.key}
+                onClick={() => setRange(r.key)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                  range === r.key
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
           </div>
+        </div>
 
-          {/* Right: trend badge */}
+        {/* Row 2: big number + trend badge */}
+        <div className="flex items-end justify-between gap-2">
+          <p className="text-2xl font-semibold tabular-nums leading-none">
+            {formatCurrency(currentNW)}
+          </p>
+
           {hasData && trend !== 0 && (
             <div className={`text-right shrink-0 ${up ? 'text-green-500' : 'text-destructive'}`}>
               <p className="text-sm font-semibold tabular-nums">
@@ -127,7 +161,7 @@ export function NetWorthChart() {
               <p className="text-xs opacity-75">
                 {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
               </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">tüm zamanlarda</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{trendLabel}</p>
             </div>
           )}
         </div>
