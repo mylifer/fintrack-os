@@ -102,13 +102,13 @@ export default function NetWorthLineChart({ data }: Props) {
         <Line
           type="monotone"
           dataKey="netWorth"
-          stroke="hsl(var(--primary))"
+          stroke="var(--primary)"
           strokeWidth={2}
           dot={false}
           activeDot={{
             r: 4,
-            fill: 'hsl(var(--primary))',
-            stroke: 'hsl(var(--background))',
+            fill: 'var(--primary)',
+            stroke: 'var(--background)',
             strokeWidth: 2.5,
           }}
           isAnimationActive={false}
