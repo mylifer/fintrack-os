@@ -71,21 +71,22 @@ export default function AccountDetailClient({ id }: { id: string }) {
     }
   }
 
+  // These must be called unconditionally before any early return (Rules of Hooks)
+  const { income: periodIncome, expense: periodExpense } =
+    account ? calcPeriodFlow(accountTxs, from, to) : { income: 0, expense: 0 }
+  const available   = account?.type === 'credit_card' ? calcAvailableCredit(account) : null
+  const animBalance = useCountUp(account ? Math.abs(account.balance) : 0)
+  const animAvail   = useCountUp(available ?? 0)
+  const animLimit   = useCountUp(account?.creditLimit ?? 0)
+  const animIncome  = useCountUp(periodIncome)
+  const animExpense = useCountUp(periodExpense)
+
   if (!accountsReady || !txsReady) return null
   if (!account) return notFound()
 
-  const { income: periodIncome, expense: periodExpense } = calcPeriodFlow(accountTxs, from, to)
-
-  const available = account.type === 'credit_card' ? calcAvailableCredit(account) : null
-  const usedPct   = account.creditLimit && available !== null
+  const usedPct = account.creditLimit && available !== null
     ? ((account.creditLimit - available) / account.creditLimit) * 100
     : 0
-
-  const animBalance  = useCountUp(Math.abs(account.balance))
-  const animAvail    = useCountUp(available ?? 0)
-  const animLimit    = useCountUp(account.creditLimit ?? 0)
-  const animIncome   = useCountUp(periodIncome)
-  const animExpense  = useCountUp(periodExpense)
 
   return (
     <>
