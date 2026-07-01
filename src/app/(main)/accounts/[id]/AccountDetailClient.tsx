@@ -42,19 +42,23 @@ export default function AccountDetailClient({ id }: { id: string }) {
   const [editingAccount, setEditingAccount] = useState<Account | undefined>()
   const [familyFilter, setFamilyFilter]     = useState<PersonFilter>(null)
   const [recipientFilter, setRecipientFilter] = useState<PersonFilter>(null)
+  const [search, setSearch]                 = useState('')
+  const [typeFilter, setTypeFilter]         = useState('')
 
   const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
 
-  // Transactions filtered by period + active person filters
+  // Transactions filtered by period + person + search + type
   const filteredTxs = useMemo(
     () => accountTxs.filter(t => {
       if (from && t.date < from) return false
       if (to   && t.date > to)   return false
       if (familyFilter    && t.familyMemberId !== familyFilter.id)   return false
       if (recipientFilter && t.recipientId    !== recipientFilter.id) return false
+      if (typeFilter && t.type !== typeFilter) return false
+      if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false
       return true
     }),
-    [accountTxs, from, to, familyFilter, recipientFilter],
+    [accountTxs, from, to, familyFilter, recipientFilter, typeFilter, search],
   )
 
   function handlePersonClick(role: PersonRole, pid: string) {
@@ -150,6 +154,27 @@ export default function AccountDetailClient({ id }: { id: string }) {
         </div>
       </div>
 
+      {/* Search + type filter */}
+      <div className="flex items-center gap-2 px-6 py-3 border-b border-border flex-shrink-0">
+        <input
+          type="text"
+          placeholder="İşlem ara..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 min-w-32 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
+        />
+        <select
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+          className="text-xs border border-border bg-card text-foreground px-3 py-2 rounded-xl focus:outline-none cursor-pointer"
+        >
+          <option value="">Tüm Türler</option>
+          <option value="expense">Gider</option>
+          <option value="income">Gelir</option>
+          <option value="transfer">Transfer</option>
+        </select>
+      </div>
+
       {/* Active person filter chips */}
       {(familyFilter || recipientFilter) && (
         <div className="flex gap-2 px-6 py-2 bg-card border-b border-border flex-wrap flex-shrink-0">
@@ -168,11 +193,10 @@ export default function AccountDetailClient({ id }: { id: string }) {
         </div>
       )}
 
-      {/* Transaction list filtered by selected period */}
+      {/* Transaction list */}
       <div className="flex-1 overflow-auto">
         <TransactionList
           transactions={filteredTxs}
-          layout="table"
           showAccount={false}
           emptyTitle="Bu dönemde işlem yok"
           emptyDescription="Farklı bir dönem seçin veya İşlem Ekle ile kayıt oluşturun."

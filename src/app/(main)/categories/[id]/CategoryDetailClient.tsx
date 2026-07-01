@@ -18,6 +18,10 @@ export default function CategoryDetailClient({ id }: Props) {
 
   const cat = categories.find(c => c.id === id)
 
+  /* ── Filter state ── */
+  const [search,     setSearch]     = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+
   /* ── Helpers ── */
   const getAllDescendants = useCallback((catId: string): string[] => {
     const children = categories.filter(c => c.parentId === catId)
@@ -57,9 +61,14 @@ export default function CategoryDetailClient({ id }: Props) {
   /* Transactions */
   const catTxs = useMemo(
     () => transactions
-      .filter(t => t.categoryId && descendantIds.has(t.categoryId))
+      .filter(t => {
+        if (!t.categoryId || !descendantIds.has(t.categoryId)) return false
+        if (typeFilter && t.type !== typeFilter) return false
+        if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false
+        return true
+      })
       .sort((a, b) => b.date.localeCompare(a.date)),
-    [transactions, descendantIds],
+    [transactions, descendantIds, typeFilter, search],
   )
 
   const totalAmount = catTxs.reduce((sum, t) => {
@@ -263,13 +272,34 @@ export default function CategoryDetailClient({ id }: Props) {
         </div>
       )}
 
+      {/* ── Search + type filter ── */}
+      <div className="flex items-center gap-2 px-6 py-3 border-b border-border flex-shrink-0">
+        <input
+          type="text"
+          placeholder="İşlem ara..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 min-w-32 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
+        />
+        <select
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+          className="text-xs border border-border bg-card text-foreground px-3 py-2 rounded-xl focus:outline-none cursor-pointer"
+        >
+          <option value="">Tüm Türler</option>
+          <option value="expense">Gider</option>
+          <option value="income">Gelir</option>
+          <option value="transfer">Transfer</option>
+        </select>
+      </div>
+
       {/* ── Transactions ── */}
       <div className="flex-1 overflow-y-auto">
         <TransactionList
           transactions={catTxs}
           showAccount
           emptyTitle="İşlem bulunamadı"
-          emptyDescription="Bu kategoriye ait henüz işlem yok."
+          emptyDescription={search || typeFilter ? 'Filtreyle eşleşen işlem yok.' : 'Bu kategoriye ait henüz işlem yok.'}
         />
       </div>
     </div>

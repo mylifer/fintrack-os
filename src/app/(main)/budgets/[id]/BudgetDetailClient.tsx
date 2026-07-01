@@ -316,7 +316,6 @@ export default function BudgetDetailClient({ id }: { id: string }) {
       <div className="flex-1 overflow-auto">
         <TransactionList
           transactions={filtered}
-          layout="table"
           emptyTitle="İşlem bulunamadı"
           emptyDescription={
             search

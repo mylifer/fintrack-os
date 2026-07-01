@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { notFound, useRouter } from 'next/navigation'
 import { usePeopleStore, useTransactionStore } from '@/store'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
@@ -22,17 +22,29 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
   const transactions = useTransactionStore(s => s.transactions)
   const txsReady    = useTransactionStore(s => s.ready)
 
+  const [search,     setSearch]     = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+
   const person = people.find(p => p.id === id && p.role === role)
 
-  const filteredTxs = useMemo(
+  const allTxs = useMemo(
     () => transactions.filter(t =>
       role === 'family_member' ? t.familyMemberId === id : t.recipientId === id,
     ),
     [transactions, id, role],
   )
 
-  const totalIncome  = filteredTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const totalExpense = filteredTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+  const filteredTxs = useMemo(
+    () => allTxs.filter(t => {
+      if (typeFilter && t.type !== typeFilter) return false
+      if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false
+      return true
+    }),
+    [allTxs, typeFilter, search],
+  )
+
+  const totalIncome  = allTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const totalExpense = allTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
 
   if (!peopleReady || !txsReady) return null
   if (!person) return notFound()
@@ -80,13 +92,34 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
         </div>
       </div>
 
+      {/* Search + type filter */}
+      <div className="flex items-center gap-2 px-6 py-3 border-b border-border flex-shrink-0">
+        <input
+          type="text"
+          placeholder="İşlem ara..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 min-w-32 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
+        />
+        <select
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+          className="text-xs border border-border bg-card text-foreground px-3 py-2 rounded-xl focus:outline-none cursor-pointer"
+        >
+          <option value="">Tüm Türler</option>
+          <option value="expense">Gider</option>
+          <option value="income">Gelir</option>
+          <option value="transfer">Transfer</option>
+        </select>
+      </div>
+
       {/* Transaction list */}
       <div className="flex-1 overflow-auto">
         <TransactionList
           transactions={filteredTxs}
           showAccount
           emptyTitle="İşlem bulunamadı"
-          emptyDescription={`${person.name} için henüz işlem eklenmemiş.`}
+          emptyDescription={search || typeFilter ? 'Filtreyle eşleşen işlem yok.' : `${person.name} için henüz işlem eklenmemiş.`}
         />
       </div>
     </>
