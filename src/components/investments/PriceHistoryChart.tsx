@@ -174,6 +174,22 @@ export function PriceHistoryChart({
   // ── Tick formatter (closed over period) ─────────────────────────
   const tickFmt = useMemo(() => (iso: string) => fmtAxisDate(iso, period), [period])
 
+  // For month-labeled periods, pin one tick per calendar month to prevent duplicates
+  const xAxisTicks = useMemo(() => {
+    if (period !== '3A' && period !== '1Y') return undefined
+    if (!chartData.length) return undefined
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const row of chartData) {
+      const monthKey = row.date.slice(0, 7)
+      if (!seen.has(monthKey)) {
+        seen.add(monthKey)
+        result.push(row.date)
+      }
+    }
+    return result
+  }, [period, chartData])
+
   // ── Chart data ───────────────────────────────────────────────────
   // currentValue may be 0 (all sold) — show flat portfolio line at 0.
   // currentValue undefined means prices not loaded yet — skip drawing.
@@ -374,8 +390,10 @@ export function PriceHistoryChart({
               tickLine={false}
               axisLine={false}
               tickFormatter={tickFmt}
-              interval="preserveStartEnd"
-              minTickGap={TICK_GAP[period]}
+              {...(xAxisTicks
+                ? { ticks: xAxisTicks, interval: 0 }
+                : { interval: 'preserveStartEnd' as const, minTickGap: TICK_GAP[period] }
+              )}
             />
 
             <Tooltip
