@@ -34,6 +34,20 @@ function CustomTooltip({ active, payload }: TooltipProps) {
   )
 }
 
+function formatAxisTick(v: number): string {
+  const abs = Math.abs(v)
+  const sign = v < 0 ? '-' : ''
+  if (abs >= 1_000_000) {
+    const n = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(abs / 1_000_000)
+    return `${sign}₺${n}Mn`
+  }
+  if (abs >= 1_000) {
+    const n = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(abs / 1_000)
+    return `${sign}₺${n}B`
+  }
+  return `${sign}₺${abs}`
+}
+
 // Returns tick values as multiples of 50K covering [minVal, maxVal], capped at 6 ticks
 function niceYTicks(minVal: number, maxVal: number): number[] {
   const BASE = 50_000
@@ -71,9 +85,9 @@ export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
   const showRef = ticks[0] < 0
 
   return (
-    <div className="w-full overflow-hidden px-6">
+    <div className="w-full px-4">
       <ResponsiveContainer width="100%" height={240}>
-        <LineChart data={data} margin={{ top: 8, right: 0, left: 0, bottom: 4 }}>
+        <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
           <CartesianGrid
             vertical={false}
             stroke="currentColor"
@@ -92,10 +106,10 @@ export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
             orientation="right"
             tickLine={false}
             axisLine={false}
-            width={44}
+            width={52}
             ticks={ticks}
             domain={[ticks[0] ?? 0, ticks[ticks.length - 1] ?? 1]}
-            tickFormatter={v => formatCompact(v)}
+            tickFormatter={formatAxisTick}
             tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.5 }}
           />
           {showRef && (
