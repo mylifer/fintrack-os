@@ -199,6 +199,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
           transactions={filteredTxs}
           layout="table"
           showAccount={false}
+          primaryAccountId={id}
           emptyTitle="Bu dönemde işlem yok"
           emptyDescription="Farklı bir dönem seçin veya İşlem Ekle ile kayıt oluşturun."
           onPersonClick={handlePersonClick}

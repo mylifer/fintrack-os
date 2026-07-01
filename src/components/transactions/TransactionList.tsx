@@ -91,6 +91,9 @@ interface Props {
   emptyTitle?: string
   emptyDescription?: string
   onPersonClick?: (role: PersonRole, id: string) => void
+  /** When viewing a single account's detail page, pass the account id so running
+   *  balances are always computed for that account (including incoming transfers). */
+  primaryAccountId?: string
 }
 
 export function TransactionList({
@@ -100,6 +103,7 @@ export function TransactionList({
   emptyTitle = 'İşlem bulunamadı',
   emptyDescription = 'Filtrelerinizi değiştirin veya yeni işlem ekleyin.',
   onPersonClick,
+  primaryAccountId,
 }: Props) {
   const categories = useCategoryStore(s => s.categories)
   const accounts   = useAccountStore(s => s.accounts)
@@ -114,7 +118,13 @@ export function TransactionList({
   const runningBalances = useMemo(() => {
     if (layout !== 'table') return new Map<string, number>()
     const map = new Map<string, number>()
-    const neededIds = new Set(transactions.map(t => t.accountId))
+
+    // Which accounts need a running balance?
+    // If a primaryAccountId is given (account detail page) we only track that one account,
+    // which lets us correctly show the balance for incoming transfers too.
+    const neededIds: string[] = primaryAccountId
+      ? [primaryAccountId]
+      : [...new Set(transactions.map(t => t.accountId))]
 
     for (const accountId of neededIds) {
       const account = accounts.find(a => a.id === accountId)
@@ -134,11 +144,14 @@ export function TransactionList({
           if (tx.accountId   === accountId) balance -= tx.amount
           if (tx.toAccountId === accountId) balance += tx.amount
         }
-        if (tx.accountId === accountId) map.set(tx.id, balance)
+        // Store balance entry for any transaction that involves this account
+        if (tx.accountId === accountId || tx.toAccountId === accountId) {
+          map.set(tx.id, balance)
+        }
       }
     }
     return map
-  }, [layout, transactions, allTxs, accounts])
+  }, [layout, primaryAccountId, transactions, allTxs, accounts])
 
   if (sortedDates.length === 0) {
     return <EmptyState icon="↕" title={emptyTitle} description={emptyDescription} />
