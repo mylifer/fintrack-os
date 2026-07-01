@@ -171,29 +171,6 @@ export function PriceHistoryChart({
       .catch(() => { setError(true); setLoading(false) })
   }, [asset, fetchFrom, buyDatesStr])
 
-  // For month-labeled periods, only the first date of each calendar month gets a label
-  const labelDates = useMemo((): Set<string> => {
-    if (period !== '3A' && period !== '1Y') return new Set()
-    const seen = new Set<string>()
-    const result = new Set<string>()
-    for (const row of chartData) {
-      const monthKey = row.date.slice(0, 7)
-      if (!seen.has(monthKey)) {
-        seen.add(monthKey)
-        result.add(row.date)
-      }
-    }
-    return result
-  }, [period, chartData])
-
-  // ── Tick formatter (closed over period) ─────────────────────────
-  const tickFmt = useMemo(() => {
-    if (period !== '3A' && period !== '1Y') {
-      return (iso: string) => fmtAxisDate(iso, period)
-    }
-    return (iso: string) => labelDates.has(iso) ? fmtAxisDate(iso, period) : ''
-  }, [period, labelDates])
-
   // ── Chart data ───────────────────────────────────────────────────
   // currentValue may be 0 (all sold) — show flat portfolio line at 0.
   // currentValue undefined means prices not loaded yet — skip drawing.
@@ -263,6 +240,29 @@ export function PriceHistoryChart({
 
     return data
   }, [priceHistory, currentValue, currentPrice, qtyTimeline])
+
+  // For month-labeled periods, only the first date of each calendar month gets a label
+  const labelDates = useMemo((): Set<string> => {
+    if (period !== '3A' && period !== '1Y') return new Set()
+    const seen = new Set<string>()
+    const result = new Set<string>()
+    for (const row of chartData) {
+      const monthKey = row.date.slice(0, 7)
+      if (!seen.has(monthKey)) {
+        seen.add(monthKey)
+        result.add(row.date)
+      }
+    }
+    return result
+  }, [period, chartData])
+
+  // ── Tick formatter (closed over period) ─────────────────────────
+  const tickFmt = useMemo(() => {
+    if (period !== '3A' && period !== '1Y') {
+      return (iso: string) => fmtAxisDate(iso, period)
+    }
+    return (iso: string) => labelDates.has(iso) ? fmtAxisDate(iso, period) : ''
+  }, [period, labelDates])
 
   // ── Derived display values ───────────────────────────────────────
   const color  = COLORS[asset]
