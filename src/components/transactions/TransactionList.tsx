@@ -82,6 +82,8 @@ function DeleteConfirmDialog({
 const TABLE_COLS = 'minmax(130px,1.4fr) minmax(96px,1fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(72px,0.85fr) minmax(84px,0.9fr) 76px'
 const TABLE_MIN_W = 130 + 96 + 76 + 76 + 76 + 72 + 84 + 76 + 24
 
+type MetaItem = { text: string; href?: string }
+
 interface Props {
   transactions: Transaction[]
   layout?: 'cards' | 'table'
@@ -372,7 +374,6 @@ export function TransactionList({
               const iconIsText  = !cat?.icon && !!tx.icon
 
               // Build meta items — each can have an href for navigation
-              type MetaItem = { text: string; href?: string }
               const metaItems: MetaItem[] = []
               if (showAccount && account) metaItems.push({ text: account.name, href: `/accounts/${tx.accountId}` })
               if (cat) metaItems.push({ text: cat.name, href: `/categories/${tx.categoryId}` })
