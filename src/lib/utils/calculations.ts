@@ -37,6 +37,18 @@ export function calcAvailableCredit(account: Account): number {
   return account.creditLimit + account.balance
 }
 
+// categoryId can hold a plain UUID or a JSON-encoded string[] for multi-category budgets
+export function getBudgetCategoryIds(budget: Budget): string[] {
+  const raw = budget.categoryId
+  if (raw && raw.trimStart().startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.every(x => typeof x === 'string')) return parsed
+    } catch {}
+  }
+  return raw ? [raw] : []
+}
+
 export function calcBudgetSpent(
   budget: Budget,
   transactions: Transaction[],
@@ -48,10 +60,12 @@ export function calcBudgetSpent(
       ? monthRange({ month: budget.month, year: budget.year })
       : yearRange(budget.year ?? new Date().getFullYear())
 
+  const categoryIds = getBudgetCategoryIds(budget)
   const raw = transactions
     .filter(tx =>
       tx.type === 'expense' &&
-      tx.categoryId === budget.categoryId &&
+      tx.categoryId !== undefined &&
+      categoryIds.includes(tx.categoryId) &&
       isInRange(tx.date, range.from, range.to),
     )
     .reduce((sum, tx) => sum + tx.amount, 0)

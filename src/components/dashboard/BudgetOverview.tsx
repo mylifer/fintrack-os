@@ -5,6 +5,7 @@ import { useBudgetStore, useTransactionStore, useCategoryStore, useUIStore } fro
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { formatCurrency } from '@/lib/utils/currency'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
+import { getBudgetCategoryIds } from '@/lib/utils/calculations'
 
 export function BudgetOverview() {
   const transactions   = useTransactionStore(s => s.transactions)
@@ -34,15 +35,15 @@ export function BudgetOverview() {
         ) : (
           <div className="divide-y divide-border/50">
             {budgets.map(b => {
-              const cat = categories.find(c => c.id === b.categoryId)
+              const cats = getBudgetCategoryIds(b).map(id => categories.find(c => c.id === id)).filter(Boolean)
               return (
                 <div key={b.id} className="px-6 py-4">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">{cat?.icon}</span>
-                      <span className="text-sm font-medium text-foreground">{cat?.name}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-base">{cats.map(c => c!.icon).join('')}</span>
+                      <span className="text-sm font-medium text-foreground truncate">{cats.map(c => c!.name).join(', ')}</span>
                       {b.status !== 'ok' && (
-                        <span className={`text-xs font-medium ${
+                        <span className={`text-xs font-medium flex-shrink-0 ${
                           b.status === 'exceeded' ? 'text-destructive' : 'text-orange-500'
                         }`}>
                           {b.status === 'exceeded' ? 'Aşıldı' : 'Uyarı'}
