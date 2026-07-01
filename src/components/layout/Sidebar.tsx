@@ -5,9 +5,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { clearLocalData } from '@/lib/auth'
-import { useAccountStore, useInvestmentStore, useRecurringStore, useTransactionStore } from '@/store'
+import { useAccountStore, useInvestmentStore, useRecurringStore, useTransactionStore, useBudgetStore, useCategoryStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import { calcNetWorth, computeTransactionEffect } from '@/lib/utils/calculations'
+import { calcNetWorth, computeTransactionEffect, getBudgetCategoryIds } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
 import { formatCompact, formatCurrency } from '@/lib/utils/currency'
@@ -55,14 +55,16 @@ const MAIN_NAV = [
   { href: '/categories',   label: 'Kategoriler', icon: IC.categories },
 ]
 
-const LOWER_NAV = [
-  { href: '/investments',  label: 'Yatırımlar',      icon: IC.investments },
-  { href: '/reports',      label: 'Raporlar',        icon: IC.reports },
-  { href: '/budgets',      label: 'Bütçeler',        icon: IC.budgets },
-  { href: '/debts',        label: 'Borçlar',         icon: IC.debts },
-  { href: '/recurring',    label: 'Tekrarlayan',     icon: IC.recurring },
-  { href: '/aile-uyeleri', label: 'Aile Üyeleri',   icon: IC.family },
-  { href: '/alicilar',     label: 'Alıcılar',        icon: IC.recipient },
+const LOWER_NAV_TOP = [
+  { href: '/investments',  label: 'Yatırımlar', icon: IC.investments },
+  { href: '/reports',      label: 'Raporlar',   icon: IC.reports },
+]
+
+const LOWER_NAV_BOTTOM = [
+  { href: '/debts',        label: 'Borçlar',       icon: IC.debts },
+  { href: '/recurring',    label: 'Tekrarlayan',   icon: IC.recurring },
+  { href: '/aile-uyeleri', label: 'Aile Üyeleri', icon: IC.family },
+  { href: '/alicilar',     label: 'Alıcılar',      icon: IC.recipient },
 ]
 
 const itemBase = 'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors duration-100'
@@ -106,6 +108,9 @@ export function Sidebar() {
     return totalWealth - (prevAccountNetWorth + prevInvestValue)
   }, [accounts, transactions, investTxs, prices, totalWealth])
 
+  const budgets      = useBudgetStore(s => s.budgets.filter(b => b.period === 'monthly'))
+  const allCategories = useCategoryStore(s => s.categories)
+
   const activeAccounts = accounts
 
   const isOnAccounts = pathname === '/accounts' || pathname.startsWith('/accounts/')
@@ -114,6 +119,13 @@ export function Sidebar() {
   useEffect(() => {
     if (isOnAccounts) setAccountsOpen(true)
   }, [isOnAccounts])
+
+  const isOnBudgets = pathname === '/budgets' || pathname.startsWith('/budgets/')
+  const [budgetsOpen, setBudgetsOpen] = useState(isOnBudgets)
+
+  useEffect(() => {
+    if (isOnBudgets) setBudgetsOpen(true)
+  }, [isOnBudgets])
 
   return (
     <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 shrink-0 bg-background border-r border-border">
@@ -190,7 +202,71 @@ export function Sidebar() {
           </div>
         )}
 
-        {LOWER_NAV.map(({ href, label, icon }) => (
+        {LOWER_NAV_TOP.map(({ href, label, icon }) => (
+          <Link key={href} href={href} className={navCls(pathname === href)}>
+            <Icon d={icon} />
+            <span>{label}</span>
+          </Link>
+        ))}
+
+        {/* Bütçeler — expandable */}
+        <button
+          type="button"
+          onClick={() => setBudgetsOpen(o => !o)}
+          className={navCls(isOnBudgets)}
+        >
+          <Icon d={IC.budgets} />
+          <span className="flex-1 text-left">Bütçeler</span>
+          <svg
+            fill="none" stroke="currentColor" strokeWidth={2}
+            viewBox="0 0 24 24" width={14} height={14}
+            className="opacity-40 transition-transform duration-200"
+            style={{ transform: budgetsOpen ? 'rotate(90deg)' : 'none' }}
+            aria-hidden
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d={IC.chevron} />
+          </svg>
+        </button>
+
+        {budgetsOpen && (
+          <div className="ml-[42px] flex flex-col gap-0.5 py-0.5">
+            <Link
+              href="/budgets"
+              className={[
+                'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                pathname === '/budgets'
+                  ? 'text-foreground font-semibold'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+              ].join(' ')}
+            >
+              Tüm Bütçeler
+            </Link>
+            {budgets.map(budget => {
+              const cats = getBudgetCategoryIds(budget)
+                .map(id => allCategories.find(c => c.id === id))
+                .filter(Boolean)
+              const label = cats.map(c => c!.name).join(', ')
+              const icons = cats.map(c => c!.icon).join('')
+              return (
+                <Link
+                  key={budget.id}
+                  href={`/budgets/${budget.id}`}
+                  className={[
+                    'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                    pathname === `/budgets/${budget.id}`
+                      ? 'text-foreground font-semibold'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+                  ].join(' ')}
+                >
+                  <span className="text-sm leading-none flex-shrink-0">{icons}</span>
+                  <span className="truncate">{label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        )}
+
+        {LOWER_NAV_BOTTOM.map(({ href, label, icon }) => (
           <Link key={href} href={href} className={navCls(pathname === href)}>
             <Icon d={icon} />
             <span className="flex-1">{label}</span>
