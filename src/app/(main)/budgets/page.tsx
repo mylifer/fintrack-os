@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { useBudgetStore, useTransactionStore, useCategoryStore, useUIStore } from '@/store'
 import { ProgressBar } from '@/components/ui/ProgressBar'
@@ -12,16 +13,10 @@ import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
-import { formatMonthYear, prevMonth, nextMonth, lastNMonths } from '@/lib/utils/date'
-import { getBudgetCategoryIds, calcBudgetSpent, enrichBudget } from '@/lib/utils/calculations'
-import type { Budget, BudgetWithSpent, MonthYear } from '@/types'
+import { formatMonthYear, prevMonth, nextMonth } from '@/lib/utils/date'
+import { getBudgetCategoryIds, enrichBudget } from '@/lib/utils/calculations'
+import type { Budget, BudgetWithSpent } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
-
-const TR_MONTHS_SHORT = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara']
-
-function shortLabel(my: MonthYear) {
-  return `${TR_MONTHS_SHORT[my.month - 1]} '${String(my.year).slice(2)}`
-}
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -42,12 +37,10 @@ function BudgetCard({
   b,
   onEdit,
   onDelete,
-  onDetail,
 }: {
   b: BudgetWithSpent
   onEdit: (b: Budget) => void
   onDelete: (id: string) => void
-  onDetail: (b: BudgetWithSpent) => void
 }) {
   const categories = useCategoryStore(s => s.categories)
   const cats = getBudgetCategoryIds(b).map(id => categories.find(c => c.id === id)).filter(Boolean)
@@ -114,8 +107,13 @@ function BudgetCard({
         <span>%{b.alertThreshold} uyarı</span>
       </div>
 
-      {/* Detail */}
-      <Button size="sm" fullWidth onClick={() => onDetail(b)}>Detay</Button>
+      {/* Detail link → sub-page */}
+      <Link
+        href={`/budgets/${b.id}`}
+        className="w-full flex items-center justify-center h-9 rounded-xl border border-border text-sm font-medium hover:bg-accent transition-colors"
+      >
+        Detay
+      </Link>
     </div>
   )
 }
@@ -123,9 +121,8 @@ function BudgetCard({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BudgetsPage() {
-  const transactions          = useTransactionStore(s => s.transactions)
-  const categories            = useCategoryStore(useShallow(s => s.getByScope('expense')))
-  const allCategories         = useCategoryStore(s => s.categories)
+  const transactions  = useTransactionStore(s => s.transactions)
+  const categories    = useCategoryStore(useShallow(s => s.getByScope('expense')))
   const { selectedPeriod, setPeriod } = useUIStore()
   const { budgets: rawBudgets, add, update, remove } = useBudgetStore(
     useShallow(s => ({ budgets: s.budgets, add: s.add, update: s.update, remove: s.remove }))
@@ -140,30 +137,13 @@ export default function BudgetsPage() {
     [rawBudgets, transactions, selectedPeriod],
   )
 
-  // ── Detail modal ──────────────────────────────────────────────────────────
-  const [selectedBudget, setSelectedBudget] = useState<BudgetWithSpent | undefined>()
-
-  const HISTORY_MONTHS = 12
-  const historyData = useMemo(() => {
-    if (!selectedBudget) return []
-    const months = lastNMonths(HISTORY_MONTHS)
-    return months
-      .map(my => {
-        const spent = calcBudgetSpent(selectedBudget, transactions, my)
-        const pct   = selectedBudget.amount > 0 ? Math.min(100, (spent / selectedBudget.amount) * 100) : 0
-        const status = pct >= 100 ? 'exceeded' : pct >= selectedBudget.alertThreshold ? 'warning' : 'ok'
-        return { my, label: shortLabel(my), fullLabel: formatMonthYear(my), spent, pct, status }
-      })
-      .reverse()
-  }, [selectedBudget, transactions])
-
   // ── Form modal ────────────────────────────────────────────────────────────
-  const [showForm, setShowForm]           = useState(false)
-  const [editingBudget, setEditingBudget] = useState<Budget | undefined>()
+  const [showForm, setShowForm]             = useState(false)
+  const [editingBudget, setEditingBudget]   = useState<Budget | undefined>()
   const [selectedCatIds, setSelectedCatIds] = useState<string[]>([])
-  const [amtStr, setAmtStr]               = useState('')
-  const [threshold, setThreshold]         = useState('80')
-  const [loading, setLoading]             = useState(false)
+  const [amtStr, setAmtStr]                 = useState('')
+  const [threshold, setThreshold]           = useState('80')
+  const [loading, setLoading]               = useState(false)
 
   function startAdd() {
     setEditingBudget(undefined)
@@ -224,7 +204,6 @@ export default function BudgetsPage() {
     setLoading(false)
   }
 
-  // Categories already assigned to other budgets (excluding the one being edited)
   const usedCatIds = useMemo(
     () =>
       rawBudgets
@@ -234,15 +213,6 @@ export default function BudgetsPage() {
   )
 
   const availableCategories = categories.filter(c => !usedCatIds.includes(c.id))
-
-  // Detail modal title
-  const detailTitle = useMemo(() => {
-    if (!selectedBudget) return ''
-    const cats = getBudgetCategoryIds(selectedBudget)
-      .map(id => allCategories.find(c => c.id === id))
-      .filter(Boolean)
-    return cats.map(c => c!.name).join(', ')
-  }, [selectedBudget, allCategories])
 
   return (
     <>
@@ -280,94 +250,11 @@ export default function BudgetsPage() {
                 b={b}
                 onEdit={startEdit}
                 onDelete={remove}
-                onDetail={setSelectedBudget}
               />
             ))}
           </div>
         )}
       </div>
-
-      {/* ── Detail modal ────────────────────────────────────────────────────── */}
-      <Modal
-        open={!!selectedBudget}
-        onClose={() => setSelectedBudget(undefined)}
-        title={detailTitle}
-        size="md"
-      >
-        {selectedBudget && (
-          <div className="flex flex-col gap-6">
-            {/* Current month summary */}
-            <div className="rounded-xl border border-border p-4 flex flex-col gap-3">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {formatMonthYear(selectedPeriod)}
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className={`text-2xl font-semibold tabular-nums ${
-                  selectedBudget.status === 'exceeded' ? 'text-destructive'
-                  : selectedBudget.status === 'warning' ? 'text-orange-500' : ''
-                }`}>
-                  {formatCurrency(selectedBudget.spent)}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  / {formatCurrency(selectedBudget.amount)}
-                </span>
-              </div>
-              <ProgressBar percent={selectedBudget.percentUsed} status={selectedBudget.status} showLabel />
-              <div className="text-xs text-muted-foreground">
-                {selectedBudget.status === 'exceeded'
-                  ? `${formatCurrency(selectedBudget.spent - selectedBudget.amount)} aşım`
-                  : `${formatCurrency(selectedBudget.remaining)} kaldı`}
-              </div>
-            </div>
-
-            {/* Monthly history */}
-            <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
-                Son {HISTORY_MONTHS} Ay
-              </div>
-              <div className="flex flex-col gap-2">
-                {historyData.map(row => (
-                  <div key={`${row.my.year}-${row.my.month}`} className="flex items-center gap-3">
-                    <div className="text-[11px] text-muted-foreground w-14 text-right shrink-0">
-                      {row.label}
-                    </div>
-                    <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden">
-                      <div
-                        className={`h-full rounded-sm transition-all ${
-                          row.status === 'exceeded' ? 'bg-destructive'
-                          : row.status === 'warning' ? 'bg-orange-500'
-                          : 'bg-primary'
-                        }`}
-                        style={{ width: `${row.pct}%` }}
-                      />
-                    </div>
-                    <div className="text-[11px] tabular-nums text-right shrink-0 w-24">
-                      {row.spent > 0 ? (
-                        <span className={
-                          row.status === 'exceeded' ? 'text-destructive'
-                          : row.status === 'warning' ? 'text-orange-500'
-                          : 'text-foreground'
-                        }>
-                          {formatCurrency(row.spent)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 pt-3 border-t border-border/50 flex items-center gap-3">
-                <div className="text-[11px] text-muted-foreground w-14 text-right shrink-0">Limit</div>
-                <div className="flex-1 h-5 bg-primary/20 rounded-sm" />
-                <div className="text-[11px] tabular-nums text-right shrink-0 w-24 text-muted-foreground">
-                  {formatCurrency(selectedBudget.amount)}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
 
       {/* ── Add / Edit form modal ────────────────────────────────────────────── */}
       <Modal
@@ -391,7 +278,12 @@ export default function BudgetsPage() {
                   Tüm kategoriler başka bütçelere atanmış.
                 </div>
               ) : (
-                [...availableCategories, ...categories.filter(c => selectedCatIds.includes(c.id) && !availableCategories.some(a => a.id === c.id))].map(cat => (
+                [
+                  ...availableCategories,
+                  ...categories.filter(
+                    c => selectedCatIds.includes(c.id) && !availableCategories.some(a => a.id === c.id)
+                  ),
+                ].map(cat => (
                   <label
                     key={cat.id}
                     className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent cursor-pointer transition-colors"
