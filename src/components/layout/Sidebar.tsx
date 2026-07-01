@@ -108,8 +108,8 @@ export function Sidebar() {
     return totalWealth - (prevAccountNetWorth + prevInvestValue)
   }, [accounts, transactions, investTxs, prices, totalWealth])
 
-  const budgets      = useBudgetStore(s => s.budgets.filter(b => b.period === 'monthly'))
-  const allCategories = useCategoryStore(s => s.categories)
+  const budgets       = useBudgetStore(useShallow(s => s.budgets.filter(b => b.period === 'monthly')))
+  const allCategories = useCategoryStore(useShallow(s => s.categories))
 
   const activeAccounts = accounts
 
