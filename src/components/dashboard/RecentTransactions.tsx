@@ -30,7 +30,7 @@ export function RecentTransactions() {
             <p className="text-sm text-muted-foreground">Henüz işlem yok.</p>
           </div>
         ) : (
-          <div className="divide-y divide-border/50">
+          <div className="divide-y divide-border/40">
             {transactions.map(tx => {
               const cat       = categories.find(c => c.id === tx.categoryId)
               const account   = accounts.find(a => a.id === tx.accountId)
@@ -40,40 +40,37 @@ export function RecentTransactions() {
               const isPos     = tx.type === 'income'
               const isXfer    = tx.type === 'transfer'
 
+              const metaParts: string[] = []
+              metaParts.push(formatDateShort(tx.date))
+              if (account) metaParts.push(account.name)
+              if (tx.isInstallment) metaParts.push(`${tx.installIndex}/${tx.installTotal}`)
+
               return (
-                <div key={tx.id} className="flex items-center gap-3 px-6 py-3.5 hover:bg-secondary/50 transition-colors">
+                <div key={tx.id} className="flex items-center gap-2.5 px-5 py-2 hover:bg-secondary/40 transition-colors">
                   {person ? (
-                    <PersonAvatar person={person} size="sm" className="flex-shrink-0" />
+                    <PersonAvatar person={person} size="xs" className="flex-shrink-0" />
                   ) : cat ? (
                     <span
-                      className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
-                      style={{ background: cat.color ? `${cat.color}20` : 'rgba(255,255,255,0.06)' }}
+                      className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+                      style={{ background: cat.color ? `${cat.color}18` : 'rgba(255,255,255,0.06)' }}
                     >
-                      <CategoryIcon icon={cat.icon} color={cat.color} size={15} />
+                      <CategoryIcon icon={cat.icon} color={cat.color} size={11} />
                     </span>
                   ) : (
-                    <span className="text-base w-7 text-center flex-shrink-0 select-none">
+                    <span className="text-xs w-5 text-center flex-shrink-0 select-none text-muted-foreground">
                       {tx.icon ?? (isXfer ? '↔' : '·')}
                     </span>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate text-foreground">{tx.description}</div>
-                    <div className="text-xs text-muted-foreground flex gap-1.5 mt-0.5">
-                      <span>{formatDateShort(tx.date)}</span>
-                      <span>·</span>
-                      <span className="truncate">{account?.name ?? '—'}</span>
-                      {tx.isInstallment && (
-                        <>
-                          <span>·</span>
-                          <span className="text-orange-500">{tx.installIndex}/{tx.installTotal}</span>
-                        </>
-                      )}
+                    <div className="text-[13px] font-medium truncate text-foreground leading-snug">{tx.description}</div>
+                    <div className="text-[11px] text-muted-foreground/60 truncate leading-snug">
+                      {metaParts.join(' · ')}
                     </div>
                   </div>
-                  <span className={`text-sm tabular-nums flex-shrink-0 font-medium ${
-                    isPos ? 'text-green-600' : isXfer ? 'text-primary' : 'text-foreground'
+                  <span className={`text-[13px] tabular-nums flex-shrink-0 font-medium ${
+                    isPos ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground'
                   }`}>
-                    {isPos ? '+' : isXfer ? '↔' : '−'}{formatCurrency(tx.amount, tx.currency)}
+                    {isPos ? '+' : isXfer ? '' : '−'}{formatCurrency(tx.amount, tx.currency)}
                   </span>
                 </div>
               )
