@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const PUBLIC_PATHS = ['/login', '/register']
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -23,13 +23,11 @@ export async function middleware(request: NextRequest) {
     },
   )
 
-  // Refresh session — must happen before any redirect logic
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
 
   if (PUBLIC_PATHS.includes(pathname)) {
-    // Authenticated users don't need the auth pages
     if (user) return NextResponse.redirect(new URL('/dashboard', request.url))
     return response
   }
@@ -43,7 +41,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match everything except Next.js internals and static assets
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
