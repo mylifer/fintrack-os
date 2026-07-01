@@ -5,13 +5,18 @@ import { useRouter } from 'next/navigation'
 import { useBudgetStore, useTransactionStore, useCategoryStore } from '@/store'
 import { ProgressBar }     from '@/components/ui/ProgressBar'
 import { TransactionList } from '@/components/transactions/TransactionList'
-import { formatCurrency }  from '@/lib/utils/currency'
+import { Modal }           from '@/components/ui/Modal'
+import { Button }          from '@/components/ui/button'
+import { CurrencyInput }   from '@/components/ui/CurrencyInput'
+import { Input }           from '@/components/ui/Input'
+import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import {
   formatMonthYear, prevMonth, nextMonth, currentMonthYear, lastNMonths, monthRange,
 } from '@/lib/utils/date'
 import {
   getBudgetCategoryIds, enrichBudget, calcBudgetSpent,
 } from '@/lib/utils/calculations'
+import { useShallow } from 'zustand/react/shallow'
 import type { MonthYear } from '@/types'
 
 const TR_MONTHS_SHORT = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara']
@@ -25,18 +30,58 @@ const ChevronLeft = () => (
   </svg>
 )
 
+const PencilIcon = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" width={14} height={14}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
+  </svg>
+)
+
 export default function BudgetDetailClient({ id }: { id: string }) {
   const router       = useRouter()
   const budget       = useBudgetStore(s => s.budgets.find(b => b.id === id))
   const loading      = useBudgetStore(s => s.loading)
+  const update       = useBudgetStore(s => s.update)
   const transactions = useTransactionStore(s => s.transactions)
   const categories   = useCategoryStore(s => s.categories)
+  const expenseCategories = useCategoryStore(useShallow(s => s.getByScope('expense')))
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [search,        setSearch]        = useState('')
   const [selectedMonth, setSelectedMonth] = useState<MonthYear>(currentMonthYear())
   const [allTime,       setAllTime]       = useState(false)
   const [catFilter,     setCatFilter]     = useState<string | null>(null)
+
+  // ── Edit modal state ──────────────────────────────────────────────────────
+  const [showEdit,       setShowEdit]       = useState(false)
+  const [editCatIds,     setEditCatIds]     = useState<string[]>([])
+  const [editAmtStr,     setEditAmtStr]     = useState('')
+  const [editThreshold,  setEditThreshold]  = useState('80')
+  const [editLoading,    setEditLoading]    = useState(false)
+
+  function openEdit() {
+    if (!budget) return
+    setEditCatIds(getBudgetCategoryIds(budget))
+    setEditAmtStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(budget.amount))
+    setEditThreshold(String(budget.alertThreshold))
+    setShowEdit(true)
+  }
+
+  function toggleEditCat(cid: string) {
+    setEditCatIds(prev => prev.includes(cid) ? prev.filter(x => x !== cid) : [...prev, cid])
+  }
+
+  async function handleSave() {
+    if (!budget || editCatIds.length === 0 || !parseCurrencyInput(editAmtStr)) return
+    setEditLoading(true)
+    const categoryId = editCatIds.length === 1 ? editCatIds[0] : JSON.stringify(editCatIds)
+    await update(budget.id, {
+      categoryId,
+      amount: parseCurrencyInput(editAmtStr),
+      alertThreshold: Number(editThreshold) || 80,
+    })
+    setEditLoading(false)
+    setShowEdit(false)
+  }
 
   // ── Derived (all before conditional returns — Rules of Hooks) ─────────────
   const budgetCatIds = useMemo(
@@ -121,7 +166,13 @@ export default function BudgetDetailClient({ id }: { id: string }) {
           <ChevronLeft /> Bütçeler
         </button>
         <span className="text-muted-foreground/40 select-none">/</span>
-        <span className="text-sm font-semibold text-foreground truncate">{title}</span>
+        <span className="text-sm font-semibold text-foreground truncate flex-1">{title}</span>
+        <button
+          onClick={openEdit}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
+        >
+          <PencilIcon /> Düzenle
+        </button>
       </div>
 
       {/* ── Budget summary ─────────────────────────────────────────────────── */}
@@ -274,6 +325,54 @@ export default function BudgetDetailClient({ id }: { id: string }) {
           }
         />
       </div>
+
+      {/* ── Edit modal ─────────────────────────────────────────────────────── */}
+      <Modal open={showEdit} onClose={() => setShowEdit(false)} title="Bütçeyi Düzenle" size="sm">
+        <div className="flex flex-col gap-4">
+          <div>
+            <div className="text-xs font-medium text-muted-foreground mb-1.5">
+              Kategoriler
+              {editCatIds.length > 0 && (
+                <span className="ml-1.5 text-primary">({editCatIds.length} seçili)</span>
+              )}
+            </div>
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-border divide-y divide-border/50">
+              {expenseCategories.map(cat => (
+                <label
+                  key={cat.id}
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent cursor-pointer transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={editCatIds.includes(cat.id)}
+                    onChange={() => toggleEditCat(cat.id)}
+                    className="rounded accent-primary"
+                  />
+                  <span className="text-base">{cat.icon}</span>
+                  <span className="text-sm">{cat.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <CurrencyInput label="Aylık Limit" value={editAmtStr} onChange={setEditAmtStr} />
+          <Input
+            label="Uyarı Eşiği (%)"
+            type="number"
+            min={50}
+            max={100}
+            value={editThreshold}
+            onChange={e => setEditThreshold(e.target.value)}
+          />
+
+          <div className="flex flex-col gap-2">
+            <Button onClick={handleSave} loading={editLoading} fullWidth disabled={editCatIds.length === 0}>
+              Güncelle
+            </Button>
+            <Button variant="secondary" onClick={() => setShowEdit(false)} fullWidth>İptal</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
