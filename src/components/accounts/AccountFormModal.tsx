@@ -7,7 +7,7 @@ import { Input }  from '@/components/ui/Input'
 import { SelectField as Select } from '@/components/ui/Select'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { useAccountStore, useTransactionStore } from '@/store'
-import { parseCurrencyInput } from '@/lib/utils/currency'
+import { parseCurrencyInput, formatCurrency } from '@/lib/utils/currency'
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import type { Account, AccountType, CurrencyCode } from '@/types'
 
@@ -41,13 +41,13 @@ const CONFIRM_WORD = 'Onaylıyorum'
 export function AccountFormModal({ open, onClose, account, onDeleted }: AccountFormModalProps) {
   const { add, update, remove, recomputeBalances } = useAccountStore()
 
-  const [name, setName]             = useState(account?.name ?? '')
-  const [type, setType]             = useState<AccountType>(account?.type ?? 'checking')
-  const [currency, setCurrency]     = useState<CurrencyCode>(account?.currency ?? 'TRY')
-  const [balanceStr, setBalanceStr] = useState(
-    account ? (account.type === 'credit_card' ? String(Math.abs(account.balance)) : String(account.balance)) : ''
+  const [name, setName]               = useState(account?.name ?? '')
+  const [type, setType]               = useState<AccountType>(account?.type ?? 'checking')
+  const [currency, setCurrency]       = useState<CurrencyCode>(account?.currency ?? 'TRY')
+  const [initialBalStr, setInitialBalStr] = useState(
+    account ? String(Math.abs(account.initialBalance)) : ''
   )
-  const [color, setColor]           = useState(account?.color ?? '#1A5CA3')
+  const [color, setColor]             = useState(account?.color ?? '#1A5CA3')
   const [limitStr, setLimitStr]     = useState(account?.creditLimit ? String(account.creditLimit) : '')
   const [stmtDay, setStmtDay]       = useState(account?.statementDay ?? 1)
   const [icon, setIcon]             = useState(account?.icon ?? '')
@@ -80,6 +80,11 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
     e.target.value = ''
   }
 
+  const txs            = useTransactionStore(s => s.transactions)
+  const txEffect       = account ? computeTransactionEffect(account.id, txs) : 0
+  const initialBalNum  = parseCurrencyInput(initialBalStr) * (isCreditCard ? -1 : 1)
+  const computedBalance = initialBalNum + txEffect
+
   async function handleSubmit() {
     const e: Record<string, string> = {}
     if (!name.trim()) e.name = 'Ad girin'
@@ -88,19 +93,15 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
     if (Object.keys(e).length > 0) return
 
     setLoading(true)
-    const desiredBalance = parseCurrencyInput(balanceStr) * (isCreditCard ? -1 : 1)
-
-    const txs = useTransactionStore.getState().transactions
-    const initialBalance = account
-      ? desiredBalance - computeTransactionEffect(account.id, txs)
-      : desiredBalance
+    const initialBalance = initialBalNum
+    const balance        = computedBalance
 
     const data: Account = {
       id:           account?.id ?? crypto.randomUUID(),
       name:         name.trim(),
       type,
       currency,
-      balance:      desiredBalance,
+      balance,
       initialBalance,
       color,
       icon:         icon || undefined,
@@ -117,7 +118,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
     if (account) { await update(account.id, data) }
     else         { await add(data) }
 
-    recomputeBalances(txs)
+    recomputeBalances(useTransactionStore.getState().transactions)
     setLoading(false)
     onClose()
   }
@@ -148,12 +149,23 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
           <div className="grid grid-cols-2 gap-3">
             <Select label="Para Birimi" value={currency} onChange={e => setCurrency(e.target.value as CurrencyCode)} options={CURRENCY_OPTIONS} />
             <CurrencyInput
-              label={isCreditCard ? 'Güncel Borç' : 'Güncel Bakiye'}
-              value={balanceStr}
-              onChange={setBalanceStr}
+              label={isCreditCard ? 'Açılış Borcu' : 'Açılış Bakiyesi'}
+              value={initialBalStr}
+              onChange={setInitialBalStr}
               currency={currency}
             />
           </div>
+
+          {account && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/50 border border-border/60">
+              <span className="text-xs text-muted-foreground">
+                {isCreditCard ? 'Güncel Borç' : 'Güncel Bakiye'}
+              </span>
+              <span className={`text-sm font-semibold tabular-nums ${computedBalance < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                {computedBalance < 0 ? '−' : ''}{formatCurrency(Math.abs(computedBalance), currency)}
+              </span>
+            </div>
+          )}
 
           {isCreditCard && (
             <>
