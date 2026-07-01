@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import Link from 'next/link'
 import { AlertDialog } from 'radix-ui'
 import { useCategoryStore, useAccountStore, useUIStore, usePeopleStore, useTransactionStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -245,27 +246,23 @@ export function TransactionList({
 
                         {/* Hesap */}
                         <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
-                          {account && (
-                            <>
+                          {account ? (
+                            <Link href={`/accounts/${tx.accountId}`} className="flex items-center gap-1.5 min-w-0 group/link">
                               <AccountAvatar account={account} size="xs" className="flex-shrink-0" />
-                              <span className="text-xs text-muted-foreground truncate min-w-0">{account.name}</span>
-                            </>
-                          )}
+                              <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{account.name}</span>
+                            </Link>
+                          ) : null}
                         </div>
 
                         {/* Alıcı */}
                         <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
                           {recipient ? (
-                            <>
+                            <Link href={`/alicilar/${tx.recipientId}`} className="flex items-center gap-1.5 min-w-0 group/link">
                               <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
-                              <button
-                                type="button"
-                                onClick={() => onPersonClick?.('recipient', tx.recipientId!)}
-                                className="text-xs text-muted-foreground truncate min-w-0 hover:text-primary transition-colors text-left"
-                              >
+                              <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">
                                 {recipient.name}
-                              </button>
-                            </>
+                              </span>
+                            </Link>
                           ) : (
                             <span className="text-xs text-muted-foreground/25">—</span>
                           )}
@@ -274,16 +271,12 @@ export function TransactionList({
                         {/* Aile Üyesi */}
                         <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
                           {family ? (
-                            <>
+                            <Link href={`/aile-uyeleri/${tx.familyMemberId}`} className="flex items-center gap-1.5 min-w-0 group/link">
                               <PersonAvatar person={family} size="xs" className="flex-shrink-0" />
-                              <button
-                                type="button"
-                                onClick={() => onPersonClick?.('family_member', tx.familyMemberId!)}
-                                className="text-xs text-muted-foreground truncate min-w-0 hover:text-primary transition-colors text-left"
-                              >
+                              <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">
                                 {family.name}
-                              </button>
-                            </>
+                              </span>
+                            </Link>
                           ) : (
                             <span className="text-xs text-muted-foreground/25">—</span>
                           )}
@@ -292,10 +285,10 @@ export function TransactionList({
                         {/* Kategori */}
                         <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
                           {cat ? (
-                            <>
+                            <Link href={`/categories/${tx.categoryId}`} className="flex items-center gap-1.5 min-w-0 group/link">
                               <CategoryIcon icon={cat.icon} color={cat.color} size={10} className="flex-shrink-0" />
-                              <span className="text-xs text-muted-foreground truncate min-w-0">{cat.name}</span>
-                            </>
+                              <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{cat.name}</span>
+                            </Link>
                           ) : (
                             <span className="text-xs text-muted-foreground/25">—</span>
                           )}
@@ -378,20 +371,16 @@ export function TransactionList({
               const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
               const iconIsText  = !cat?.icon && !!tx.icon
 
-              // Build meta string: account · category · installment
-              const metaParts: string[] = []
-              if (showAccount && account) metaParts.push(account.name)
-              if (cat) metaParts.push(cat.name)
-              if (tx.isInstallment) metaParts.push(`${tx.installIndex}/${tx.installTotal}`)
-              const metaText = metaParts.join(' · ')
+              // Build meta items — each can have an href for navigation
+              type MetaItem = { text: string; href?: string }
+              const metaItems: MetaItem[] = []
+              if (showAccount && account) metaItems.push({ text: account.name, href: `/accounts/${tx.accountId}` })
+              if (cat) metaItems.push({ text: cat.name, href: `/categories/${tx.categoryId}` })
+              if (tx.isInstallment) metaItems.push({ text: `${tx.installIndex}/${tx.installTotal}` })
+              if (recipient) metaItems.push({ text: recipient.name, href: `/alicilar/${tx.recipientId}` })
+              if (family)    metaItems.push({ text: family.name,    href: `/aile-uyeleri/${tx.familyMemberId}` })
 
-              // Person entries (clickable in meta line)
-              const personEntries = [
-                recipient ? { role: 'recipient' as PersonRole, id: tx.recipientId!, name: recipient.name } : null,
-                family    ? { role: 'family_member' as PersonRole, id: tx.familyMemberId!, name: family.name } : null,
-              ].filter(Boolean) as { role: PersonRole; id: string; name: string }[]
-
-              const hasSubline = metaText || personEntries.length > 0
+              const hasSubline = metaItems.length > 0
 
               return (
                 <div
@@ -420,19 +409,18 @@ export function TransactionList({
                     </div>
                     {hasSubline && (
                       <div className="text-[11px] text-muted-foreground/60 truncate leading-snug">
-                        {metaText}
-                        {personEntries.map((p, i) => (
-                          <span key={p.id}>
-                            {(metaText || i > 0) && ' · '}
-                            {onPersonClick ? (
-                              <button
-                                type="button"
-                                onClick={e => { e.stopPropagation(); onPersonClick(p.role, p.id) }}
+                        {metaItems.map((item, i) => (
+                          <span key={i}>
+                            {i > 0 && <span className="opacity-40"> · </span>}
+                            {item.href ? (
+                              <Link
+                                href={item.href}
+                                onClick={e => e.stopPropagation()}
                                 className="hover:text-foreground transition-colors"
                               >
-                                {p.name}
-                              </button>
-                            ) : p.name}
+                                {item.text}
+                              </Link>
+                            ) : item.text}
                           </span>
                         ))}
                       </div>
