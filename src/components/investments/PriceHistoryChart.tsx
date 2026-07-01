@@ -171,24 +171,28 @@ export function PriceHistoryChart({
       .catch(() => { setError(true); setLoading(false) })
   }, [asset, fetchFrom, buyDatesStr])
 
-  // ── Tick formatter (closed over period) ─────────────────────────
-  const tickFmt = useMemo(() => (iso: string) => fmtAxisDate(iso, period), [period])
-
-  // For month-labeled periods, pin one tick per calendar month to prevent duplicates
-  const xAxisTicks = useMemo(() => {
-    if (period !== '3A' && period !== '1Y') return undefined
-    if (!chartData.length) return undefined
+  // For month-labeled periods, only the first date of each calendar month gets a label
+  const labelDates = useMemo((): Set<string> => {
+    if (period !== '3A' && period !== '1Y') return new Set()
     const seen = new Set<string>()
-    const result: string[] = []
+    const result = new Set<string>()
     for (const row of chartData) {
       const monthKey = row.date.slice(0, 7)
       if (!seen.has(monthKey)) {
         seen.add(monthKey)
-        result.push(row.date)
+        result.add(row.date)
       }
     }
     return result
   }, [period, chartData])
+
+  // ── Tick formatter (closed over period) ─────────────────────────
+  const tickFmt = useMemo(() => {
+    if (period !== '3A' && period !== '1Y') {
+      return (iso: string) => fmtAxisDate(iso, period)
+    }
+    return (iso: string) => labelDates.has(iso) ? fmtAxisDate(iso, period) : ''
+  }, [period, labelDates])
 
   // ── Chart data ───────────────────────────────────────────────────
   // currentValue may be 0 (all sold) — show flat portfolio line at 0.
@@ -390,10 +394,8 @@ export function PriceHistoryChart({
               tickLine={false}
               axisLine={false}
               tickFormatter={tickFmt}
-              {...(xAxisTicks
-                ? { ticks: xAxisTicks, interval: 0 }
-                : { interval: 'preserveStartEnd' as const, minTickGap: TICK_GAP[period] }
-              )}
+              interval={period === '3A' || period === '1Y' ? 0 : 'preserveStartEnd'}
+              minTickGap={period === '3A' || period === '1Y' ? 0 : TICK_GAP[period]}
             />
 
             <Tooltip
