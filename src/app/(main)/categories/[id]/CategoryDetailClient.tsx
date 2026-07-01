@@ -297,6 +297,7 @@ export default function CategoryDetailClient({ id }: Props) {
       <div className="flex-1 overflow-y-auto">
         <TransactionList
           transactions={catTxs}
+          layout="table"
           showAccount
           emptyTitle="İşlem bulunamadı"
           emptyDescription={search || typeFilter ? 'Filtreyle eşleşen işlem yok.' : 'Bu kategoriye ait henüz işlem yok.'}

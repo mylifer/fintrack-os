@@ -197,6 +197,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
       <div className="flex-1 overflow-auto">
         <TransactionList
           transactions={filteredTxs}
+          layout="table"
           showAccount={false}
           emptyTitle="Bu dönemde işlem yok"
           emptyDescription="Farklı bir dönem seçin veya İşlem Ekle ile kayıt oluşturun."

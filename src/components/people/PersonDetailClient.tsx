@@ -117,6 +117,7 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
       <div className="flex-1 overflow-auto">
         <TransactionList
           transactions={filteredTxs}
+          layout="table"
           showAccount
           emptyTitle="İşlem bulunamadı"
           emptyDescription={search || typeFilter ? 'Filtreyle eşleşen işlem yok.' : `${person.name} için henüz işlem eklenmemiş.`}
