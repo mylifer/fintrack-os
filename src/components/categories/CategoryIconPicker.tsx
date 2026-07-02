@@ -12,18 +12,6 @@ interface Props {
   onChange: (icon: string, color: string) => void
 }
 
-/* ── Curated groups shown when not searching ─────────────────────── */
-const CURATED: { group: string; icons: string[] }[] = [
-  { group: 'Finans',      icons: ['wallet','credit-card','cash','pig-money','coin','moneybag','receipt','trending-up','building-bank','briefcase','gift','heart-handshake','scale','chart-bar','package'] },
-  { group: 'Yemek',       icons: ['tools-kitchen-2','shopping-cart','coffee','beer','pizza','salad','meat','fish','bottle'] },
-  { group: 'Ulaşım',      icons: ['car','bus','train','plane','bike','motorbike','gas-station','parking','road','sailboat'] },
-  { group: 'Ev',          icons: ['home','key','hammer','tool','settings','bolt','droplet','flame','wifi','phone','device-tv','sofa','building','shield','spray'] },
-  { group: 'Sağlık',      icons: ['building-hospital','stethoscope','pill','brain','dental','baby-carriage','barbell','run','heart','activity'] },
-  { group: 'Eğlence',     icons: ['device-gamepad-2','music','movie','book','ticket','headphones','camera','confetti','sun'] },
-  { group: 'Alışveriş',   icons: ['shopping-bag','hanger','device-laptop','device-desktop','pencil','sparkles','smoking','diamond','backpack'] },
-  { group: 'Diğer',       icons: ['school','star','leaf','tree','refresh','phone-call','wand','fish'] },
-]
-
 /* ── Convert kebab name to readable label ────────────────────────── */
 function toLabel(name: string): string {
   return name.replace(/-/g, ' ')
@@ -35,8 +23,6 @@ function getIcon(name: string): TablerIcon | null {
   const ic = (TablerIcons as unknown as Record<string, unknown>)[cn]
   return ic != null ? (ic as TablerIcon) : null
 }
-
-const MAX_SEARCH_RESULTS = 300
 
 export function CategoryIconPicker({ icon, color, onChange }: Props) {
   const [open,   setOpen]   = useState(false)
@@ -54,11 +40,11 @@ export function CategoryIconPicker({ icon, color, onChange }: Props) {
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [open])
 
-  /* Search across all 6146 icon names */
-  const searchResults = useMemo(() => {
+  /* Filter by search query, show all when empty */
+  const visibleIcons = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return []
-    return TABLER_ICON_NAMES.filter(n => n.includes(q) || toLabel(n).includes(q)).slice(0, MAX_SEARCH_RESULTS)
+    if (!q) return TABLER_ICON_NAMES as unknown as string[]
+    return (TABLER_ICON_NAMES as unknown as string[]).filter(n => n.includes(q))
   }, [search])
 
   const TriggerIcon = TABLER_MAP[currentIcon] || getIcon(currentIcon)
@@ -94,10 +80,13 @@ export function CategoryIconPicker({ icon, color, onChange }: Props) {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="6000+ ikon ara… (ör: car, home, food)"
+              placeholder="İkon ara… (ör: car, home, pizza)"
               autoFocus
               className="w-full text-xs px-3 h-8 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
             />
+            <div className="text-[10px] text-muted-foreground mt-1 px-1">
+              {visibleIcons.length.toLocaleString()} ikon
+            </div>
           </div>
 
           {/* Color palette */}
@@ -121,53 +110,22 @@ export function CategoryIconPicker({ icon, color, onChange }: Props) {
             </div>
           </div>
 
-          {/* Icon grid */}
-          <div className="overflow-y-auto flex-1" style={{ maxHeight: 300 }}>
-            {search.trim() ? (
-              <div className="p-2">
-                {searchResults.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-6 text-center">Sonuç bulunamadı</p>
-                ) : (
-                  <>
-                    {searchResults.length >= MAX_SEARCH_RESULTS && (
-                      <p className="text-[10px] text-muted-foreground px-1 mb-2">
-                        İlk {MAX_SEARCH_RESULTS} sonuç gösteriliyor — aramayı daraltın
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-1">
-                      {searchResults.map(name => (
-                        <IconButton
-                          key={name}
-                          name={name}
-                          selected={currentIcon === name}
-                          color={currentColor}
-                          onSelect={selectIcon}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="p-2">
-                {CURATED.map(group => (
-                  <div key={group.group} className="mb-3">
-                    <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">{group.group}</div>
-                    <div className="flex flex-wrap gap-1">
-                      {group.icons.map(name => (
-                        <IconButton
-                          key={name}
-                          name={name}
-                          selected={currentIcon === name}
-                          color={currentColor}
-                          onSelect={selectIcon}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          {/* Icon grid — all icons, scrollable */}
+          <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
+            <div className="p-2 flex flex-wrap gap-1">
+              {visibleIcons.map(name => (
+                <IconButton
+                  key={name}
+                  name={name}
+                  selected={currentIcon === name}
+                  color={currentColor}
+                  onSelect={selectIcon}
+                />
+              ))}
+              {visibleIcons.length === 0 && (
+                <p className="text-xs text-muted-foreground py-6 w-full text-center">Sonuç bulunamadı</p>
+              )}
+            </div>
           </div>
         </div>
       )}
