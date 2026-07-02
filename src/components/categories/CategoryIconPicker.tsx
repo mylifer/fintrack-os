@@ -33,7 +33,7 @@ function toLabel(name: string): string {
 function getIcon(name: string): TablerIcon | null {
   const cn = tablerComponentName(name)
   const ic = (TablerIcons as unknown as Record<string, unknown>)[cn]
-  return typeof ic === 'function' ? (ic as TablerIcon) : null
+  return ic != null ? (ic as TablerIcon) : null
 }
 
 const MAX_SEARCH_RESULTS = 300

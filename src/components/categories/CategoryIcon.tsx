@@ -171,8 +171,11 @@ export function tablerComponentName(kebab: string): string {
 }
 
 export function resolveTablerIcon(name: string): TablerIcon | null {
-  if (TABLER_MAP[name]) return TABLER_MAP[name]
-  if (allTablerIcons) return (allTablerIcons[tablerComponentName(name)] as TablerIcon) || null
+  if (name in TABLER_MAP) return TABLER_MAP[name]
+  if (allTablerIcons) {
+    const ic = allTablerIcons[tablerComponentName(name)]
+    return ic != null ? ic : null
+  }
   return null
 }
 
