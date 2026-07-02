@@ -7,6 +7,7 @@ import { today } from '@/lib/utils/date'
 import { useShallow } from 'zustand/react/shallow'
 import { useState } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 
 export function PendingRecurringCard() {
   const getDue          = useRecurringStore(s => s.getDue)
@@ -72,9 +73,9 @@ export function PendingRecurringCard() {
             return (
               <div key={r.id} className="flex items-center gap-3 px-6 py-3.5">
                 {category ? (
-                  <span className="text-xl flex-shrink-0">{category.icon}</span>
+                  <CategoryIcon icon={category.icon} color={category.color} size={18} />
                 ) : (
-                  <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm bg-secondary text-muted-foreground flex-shrink-0">↻</span>
+                  <span className="w-[28px] h-[28px] rounded-xl flex items-center justify-center text-sm bg-secondary text-muted-foreground flex-shrink-0">↻</span>
                 )}
 
                 <div className="flex-1 min-w-0">

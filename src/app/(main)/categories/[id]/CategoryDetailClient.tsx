@@ -103,6 +103,7 @@ export default function CategoryDetailClient({ id }: Props) {
   const [editing,      setEditing]      = useState(false)
   const [editName,     setEditName]     = useState('')
   const [editIcon,     setEditIcon]     = useState('')
+  const [editColor,    setEditColor]    = useState('')
   const [editParentL0, setEditParentL0] = useState('')
   const [editParentL1, setEditParentL1] = useState('')
 
@@ -111,6 +112,7 @@ export default function CategoryDetailClient({ id }: Props) {
     const level = getLevel(cat.id)
     setEditName(cat.name)
     setEditIcon(cat.icon)
+    setEditColor(cat.color)
     setEditParentL0(level === 1 ? (cat.parentId ?? '') : '')
     setEditParentL1(level === 2 ? (cat.parentId ?? '') : '')
     setEditing(true)
@@ -124,7 +126,8 @@ export default function CategoryDetailClient({ id }: Props) {
     const parentId = editParentL1 || editParentL0 || undefined
     await update(cat.id, {
       name:     editName.trim(),
-      icon:     editIcon || 'noto:package',
+      icon:     editIcon || 'package',
+      color:    editColor || '#6366F1',
       parentId,
     })
     setEditing(false)
@@ -192,7 +195,7 @@ export default function CategoryDetailClient({ id }: Props) {
       {/* ── Edit form ── */}
       {editing && (
         <div className="flex items-center gap-2 px-6 py-3 bg-accent/20 border-b border-border flex-shrink-0 flex-wrap">
-          <CategoryIconPicker value={editIcon} onChange={setEditIcon} />
+          <CategoryIconPicker icon={editIcon} color={editColor} onChange={(ico, col) => { setEditIcon(ico); setEditColor(col) }} />
 
           <input type="text" value={editName} autoFocus
             onChange={e => setEditName(e.target.value)}

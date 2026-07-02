@@ -10,8 +10,8 @@ import type { Category, CategoryScope } from '@/types'
 const SCOPE_LABELS: Record<CategoryScope, string> = { expense: 'Gider', income: 'Gelir' }
 
 /* ── Form state ──────────────────────────────────────────────────── */
-type FormState = { name: string; icon: string; parentL0: string; parentL1: string }
-function emptyForm(): FormState { return { name: '', icon: 'noto:package', parentL0: '', parentL1: '' } }
+type FormState = { name: string; icon: string; color: string; parentL0: string; parentL1: string }
+function emptyForm(): FormState { return { name: '', icon: 'package', color: '#6366F1', parentL0: '', parentL1: '' } }
 
 /* ── Inline form ─────────────────────────────────────────────────── */
 interface InlineFormProps {
@@ -36,8 +36,9 @@ function InlineForm({ form, onChange, onSave, onCancel, label, l0Options, l1Opti
     >
       {/* Icon picker */}
       <CategoryIconPicker
-        value={form.icon}
-        onChange={icon => onChange({ ...form, icon })}
+        icon={form.icon}
+        color={form.color}
+        onChange={(icon, color) => onChange({ ...form, icon, color })}
       />
 
       {/* Name */}
@@ -173,8 +174,8 @@ export function CategoryManager() {
     const cat: Category = {
       id:        crypto.randomUUID(),
       name:      addForm.name.trim(),
-      icon:      addForm.icon || 'noto:package',
-      color:     '#6B8F80',
+      icon:      addForm.icon || 'package',
+      color:     addForm.color || '#6366F1',
       scope:     tab,
       parentId,
       isSystem:  false,
@@ -191,6 +192,7 @@ export function CategoryManager() {
     setEditForm({
       name:     cat.name,
       icon:     cat.icon,
+      color:    cat.color,
       parentL0: level === 1 ? (cat.parentId ?? '') : '',
       parentL1: level === 2 ? (cat.parentId ?? '') : '',
     })
@@ -203,7 +205,8 @@ export function CategoryManager() {
     const parentId = editForm.parentL1 || editForm.parentL0 || undefined
     await update(editingId, {
       name:     editForm.name.trim(),
-      icon:     editForm.icon || 'noto:package',
+      icon:     editForm.icon || 'package',
+      color:    editForm.color || '#6366F1',
       parentId,
     })
     setEditingId(null)

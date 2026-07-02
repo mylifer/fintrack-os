@@ -1,20 +1,23 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Icon } from '@iconify/react'
-import { NOTO_ICON_LIST } from './CategoryIcon'
+import { TABLER_ICON_LIST, TABLER_MAP, COLOR_PALETTE, DEFAULT_ICON, DEFAULT_COLOR } from './CategoryIcon'
 
 interface Props {
-  value: string
-  onChange: (icon: string) => void
+  icon: string
+  color: string
+  onChange: (icon: string, color: string) => void
 }
 
-const GROUPS = Array.from(new Set(NOTO_ICON_LIST.map(i => i.group)))
+const GROUPS = Array.from(new Set(TABLER_ICON_LIST.map(i => i.group)))
 
-export function CategoryIconPicker({ value, onChange }: Props) {
+export function CategoryIconPicker({ icon, color, onChange }: Props) {
   const [open,   setOpen]   = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
+
+  const currentIcon  = icon  || DEFAULT_ICON
+  const currentColor = color || DEFAULT_COLOR
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -25,13 +28,13 @@ export function CategoryIconPicker({ value, onChange }: Props) {
   }, [open])
 
   const filtered = search.trim()
-    ? NOTO_ICON_LIST.filter(i =>
+    ? TABLER_ICON_LIST.filter(i =>
         i.label.toLowerCase().includes(search.toLowerCase()) ||
         i.name.toLowerCase().includes(search.toLowerCase()),
       )
-    : NOTO_ICON_LIST
+    : TABLER_ICON_LIST
 
-  const currentIcon = value || 'noto:package'
+  const TriggerIcon = TABLER_MAP[currentIcon]
 
   return (
     <div ref={ref} className="relative flex-shrink-0">
@@ -39,15 +42,19 @@ export function CategoryIconPicker({ value, onChange }: Props) {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-10 h-10 rounded-xl border-2 border-border hover:border-primary transition-colors flex items-center justify-center bg-muted/40"
-        title="İkon seç"
+        className="w-10 h-10 rounded-xl border-2 border-border hover:border-primary transition-colors flex items-center justify-center overflow-hidden"
+        style={{ background: currentColor }}
+        title="İkon ve renk seç"
       >
-        <Icon icon={currentIcon} width={22} height={22} />
+        {TriggerIcon
+          ? <TriggerIcon size={20} style={{ color: 'white' }} stroke={1.75} />
+          : <span className="text-white text-base">?</span>
+        }
       </button>
 
       {/* Popover */}
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-[320px] rounded-xl border border-border bg-background shadow-xl overflow-hidden">
+        <div className="absolute left-0 top-full mt-1 z-50 w-[340px] rounded-xl border border-border bg-background shadow-xl overflow-hidden">
           {/* Search */}
           <div className="p-2 border-b border-border">
             <input
@@ -60,13 +67,39 @@ export function CategoryIconPicker({ value, onChange }: Props) {
             />
           </div>
 
-          {/* Grid */}
-          <div className="overflow-y-auto max-h-[320px] p-2">
+          {/* Color palette */}
+          <div className="px-3 pt-2.5 pb-2 border-b border-border">
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Renk</div>
+            <div className="flex flex-wrap gap-1.5">
+              {COLOR_PALETTE.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => onChange(currentIcon, c)}
+                  title={c}
+                  className="w-6 h-6 rounded-lg transition-all hover:scale-110 flex-shrink-0"
+                  style={{
+                    background: c,
+                    outline: currentColor === c ? '2px solid white' : 'none',
+                    boxShadow: currentColor === c ? `0 0 0 3px ${c}` : 'none',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Icon grid */}
+          <div className="overflow-y-auto max-h-[280px] p-2">
             {search.trim() ? (
               <div className="flex flex-wrap gap-1">
-                {filtered.map(icon => (
-                  <IconButton key={icon.name} icon={icon} selected={value === icon.name}
-                    onSelect={n => { onChange(n); setOpen(false) }} />
+                {filtered.map(item => (
+                  <IconButton
+                    key={item.name}
+                    item={item}
+                    selected={currentIcon === item.name}
+                    color={currentColor}
+                    onSelect={n => { onChange(n, currentColor); setOpen(false) }}
+                  />
                 ))}
                 {filtered.length === 0 && (
                   <p className="text-xs text-muted-foreground py-4 w-full text-center">Sonuç bulunamadı</p>
@@ -74,14 +107,19 @@ export function CategoryIconPicker({ value, onChange }: Props) {
               </div>
             ) : (
               GROUPS.map(group => {
-                const items = NOTO_ICON_LIST.filter(i => i.group === group)
+                const items = TABLER_ICON_LIST.filter(i => i.group === group)
                 return (
                   <div key={group} className="mb-3">
                     <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">{group}</div>
                     <div className="flex flex-wrap gap-1">
-                      {items.map(icon => (
-                        <IconButton key={icon.name} icon={icon} selected={value === icon.name}
-                          onSelect={n => { onChange(n); setOpen(false) }} />
+                      {items.map(item => (
+                        <IconButton
+                          key={item.name}
+                          item={item}
+                          selected={currentIcon === item.name}
+                          color={currentColor}
+                          onSelect={n => { onChange(n, currentColor); setOpen(false) }}
+                        />
                       ))}
                     </div>
                   </div>
@@ -96,25 +134,39 @@ export function CategoryIconPicker({ value, onChange }: Props) {
 }
 
 function IconButton({
-  icon, selected, onSelect,
+  item, selected, color, onSelect,
 }: {
-  icon: { name: string; label: string }
+  item: { name: string; label: string }
   selected: boolean
+  color: string
   onSelect: (name: string) => void
 }) {
+  const TIcon = TABLER_MAP[item.name]
+  if (!TIcon) return null
+
   return (
     <button
       type="button"
-      onClick={() => onSelect(icon.name)}
-      title={icon.label}
-      className={[
-        'w-9 h-9 rounded-xl flex items-center justify-center transition-all',
-        selected
-          ? 'ring-2 ring-primary scale-110 bg-primary/10'
-          : 'hover:scale-110 hover:ring-2 hover:ring-border bg-muted/30 hover:bg-muted/60',
-      ].join(' ')}
+      onClick={() => onSelect(item.name)}
+      title={item.label}
+      className="w-9 h-9 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+      style={selected ? {
+        background: color,
+        transform: 'scale(1.1)',
+        outline: `2px solid ${color}`,
+        outlineOffset: 2,
+      } : undefined}
     >
-      <Icon icon={icon.name} width={20} height={20} />
+      {selected
+        ? <TIcon size={18} style={{ color: 'white' }} stroke={1.75} />
+        : (
+          <span
+            className="w-9 h-9 rounded-xl flex items-center justify-center hover:scale-110 transition-transform bg-muted/40 hover:bg-muted/70"
+          >
+            <TIcon size={18} className="text-foreground/70" stroke={1.75} />
+          </span>
+        )
+      }
     </button>
   )
 }
