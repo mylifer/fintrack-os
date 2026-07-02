@@ -67,17 +67,105 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       toInsert.push({ ...cat, id, ...(parentId && { parentId }) })
     }
 
-    if (toInsert.length === 0) return
+    if (toInsert.length > 0) {
+      await db.categories.bulkAdd(toInsert)
+      const userId = await getUserId()
+      const forDb = userId ? toInsert.map(c => ({ ...c, user_id: userId })) : toInsert
+      supabase.from('categories').insert(forDb).then(({ error }) => {
+        if (error) console.error('[supabase:categories:insert-defaults]', error)
+      })
+      set(s => ({
+        categories: [...s.categories, ...toInsert].sort((a, b) => a.sortOrder - b.sortOrder),
+      }))
+    }
 
-    await db.categories.bulkAdd(toInsert)
-    const userId = await getUserId()
-    const forDb = userId ? toInsert.map(c => ({ ...c, user_id: userId })) : toInsert
-    supabase.from('categories').insert(forDb).then(({ error }) => {
-      if (error) console.error('[supabase:categories:insert-defaults]', error)
-    })
-    set(s => ({
-      categories: [...s.categories, ...toInsert].sort((a, b) => a.sortOrder - b.sortOrder),
-    }))
+    // Phase 3: noto: / legacy icon migration — updates Supabase + Dexie + Zustand
+    const NOTO_MAP: Record<string, { icon: string; color: string }> = {
+      'noto:money-bag':                      { icon: 'moneybag',          color: '#6366F1' },
+      'noto:credit-card':                    { icon: 'credit-card',       color: '#6366F1' },
+      'noto:dollar-banknote':                { icon: 'cash',              color: '#6366F1' },
+      'noto:chart-increasing':               { icon: 'trending-up',       color: '#6366F1' },
+      'noto:bank':                           { icon: 'building-bank',     color: '#1D4ED8' },
+      'noto:briefcase':                      { icon: 'briefcase',         color: '#10B981' },
+      'noto:wrapped-gift':                   { icon: 'gift',              color: '#10B981' },
+      'noto:red-heart':                      { icon: 'heart-handshake',   color: '#10B981' },
+      'noto:receipt':                        { icon: 'receipt',           color: '#F97316' },
+      'noto:money-with-wings':               { icon: 'arrow-up-right',    color: '#10B981' },
+      'noto:balance-scale':                  { icon: 'scale',             color: '#78716C' },
+      'noto:scales':                         { icon: 'scale',             color: '#6B7280' },
+      'noto:package':                        { icon: 'package',           color: '#6B7280' },
+      'noto:fork-and-knife-with-plate':      { icon: 'tools-kitchen-2',   color: '#F97316' },
+      'noto:shopping-cart':                  { icon: 'shopping-cart',     color: '#10B981' },
+      'noto:hot-beverage':                   { icon: 'coffee',            color: '#F59E0B' },
+      'noto:beer-mug':                       { icon: 'beer',              color: '#F59E0B' },
+      'noto:fork-and-knife':                 { icon: 'tools-kitchen-2',   color: '#EAB308' },
+      'noto:pizza':                          { icon: 'pizza',             color: '#F97316' },
+      'noto:birthday-cake':                  { icon: 'cake',              color: '#F97316' },
+      'noto:tropical-drink':                 { icon: 'bottle',            color: '#F97316' },
+      'noto:automobile':                     { icon: 'car',               color: '#3B82F6' },
+      'noto:bus':                            { icon: 'bus',               color: '#3B82F6' },
+      'noto:taxi':                           { icon: 'car',               color: '#3B82F6' },
+      'noto:train':                          { icon: 'train',             color: '#3B82F6' },
+      'noto:airplane':                       { icon: 'plane',             color: '#0EA5E9' },
+      'noto:fuel-pump':                      { icon: 'gas-station',       color: '#3B82F6' },
+      'noto:p-button':                       { icon: 'parking',           color: '#3B82F6' },
+      'noto:motorway':                       { icon: 'road',              color: '#3B82F6' },
+      'noto:bicycle':                        { icon: 'bike',              color: '#3B82F6' },
+      'noto:ferry':                          { icon: 'sailboat',          color: '#3B82F6' },
+      'noto:house':                          { icon: 'home',              color: '#EAB308' },
+      'noto:key':                            { icon: 'key',               color: '#EAB308' },
+      'noto:hammer':                         { icon: 'hammer',            color: '#EAB308' },
+      'noto:wrench':                         { icon: 'tool',              color: '#6B7280' },
+      'noto:high-voltage':                   { icon: 'bolt',              color: '#EAB308' },
+      'noto:droplet':                        { icon: 'droplet',           color: '#06B6D4' },
+      'noto:fire':                           { icon: 'flame',             color: '#F97316' },
+      'noto:globe-with-meridians':           { icon: 'wifi',              color: '#F97316' },
+      'noto:mobile-phone':                   { icon: 'phone',             color: '#F97316' },
+      'noto:telephone-receiver':             { icon: 'phone-call',        color: '#F97316' },
+      'noto:television':                     { icon: 'device-tv',         color: '#EAB308' },
+      'noto:couch-and-lamp':                 { icon: 'sofa',              color: '#EAB308' },
+      'noto:office-building':                { icon: 'building',          color: '#F97316' },
+      'noto:sparkles':                       { icon: 'sparkles',          color: '#EC4899' },
+      'noto:shield':                         { icon: 'shield',            color: '#64748B' },
+      'noto:hospital':                       { icon: 'building-hospital', color: '#EF4444' },
+      'noto:stethoscope':                    { icon: 'stethoscope',       color: '#EF4444' },
+      'noto:pill':                           { icon: 'pill',              color: '#EF4444' },
+      'noto:brain':                          { icon: 'brain',             color: '#EF4444' },
+      'noto:tooth':                          { icon: 'dental',            color: '#EF4444' },
+      'noto:baby':                           { icon: 'baby-carriage',     color: '#EF4444' },
+      'noto:person-running':                 { icon: 'run',               color: '#EF4444' },
+      'noto:dumbbell':                       { icon: 'barbell',           color: '#EF4444' },
+      'noto:video-game':                     { icon: 'device-gamepad-2',  color: '#A855F7' },
+      'noto:musical-notes':                  { icon: 'music',             color: '#A855F7' },
+      'noto:clapper-board':                  { icon: 'movie',             color: '#A855F7' },
+      'noto:books':                          { icon: 'book',              color: '#A855F7' },
+      'noto:ticket':                         { icon: 'ticket',            color: '#A855F7' },
+      'noto:headphone':                      { icon: 'headphones',        color: '#A855F7' },
+      'noto:camera':                         { icon: 'camera',            color: '#A855F7' },
+      'noto:party-popper':                   { icon: 'confetti',          color: '#A855F7' },
+      'noto:sun':                            { icon: 'sun',               color: '#A855F7' },
+      'noto:shopping-bags':                  { icon: 'shopping-bag',      color: '#EC4899' },
+      'noto:t-shirt':                        { icon: 'hanger',            color: '#EC4899' },
+      'noto:laptop-computer':                { icon: 'device-laptop',     color: '#EC4899' },
+      'noto:desktop-computer':               { icon: 'device-desktop',    color: '#3B82F6' },
+      'noto:pencil':                         { icon: 'pencil',            color: '#6366F1' },
+      'noto:lipstick':                       { icon: 'sparkles',          color: '#EC4899' },
+      'noto:cigarette':                      { icon: 'smoking',           color: '#78716C' },
+      'noto:ring':                           { icon: 'diamond',           color: '#EC4899' },
+      'noto:graduation-cap':                 { icon: 'school',            color: '#6B7280' },
+      'noto:star':                           { icon: 'star',              color: '#6B7280' },
+      'noto:leaf-fluttering-in-wind':        { icon: 'leaf',              color: '#6B7280' },
+      'noto:counterclockwise-arrows-button': { icon: 'refresh',           color: '#8B5CF6' },
+    }
+    const OLD_COLOR = '#6B8F80'
+
+    const toMigrate = existing.filter(c => c.icon in NOTO_MAP)
+    for (const cat of toMigrate) {
+      const m = NOTO_MAP[cat.icon]
+      const patch: Partial<Category> = { icon: m.icon }
+      if (cat.color === OLD_COLOR) patch.color = m.color
+      await get().update(cat.id, patch)
+    }
   },
 
   add: async (cat) => {
