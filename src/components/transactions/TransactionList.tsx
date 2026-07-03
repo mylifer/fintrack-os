@@ -236,6 +236,8 @@ export function TransactionList({
                         <div className="px-3 py-2 flex items-center gap-2 min-w-0 overflow-hidden">
                           {recipient ? (
                             <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
+                          ) : cat ? (
+                            <CategoryIcon icon={cat.icon} color={cat.color} size={9} className="flex-shrink-0" />
                           ) : (
                             <div
                               className={[
@@ -404,6 +406,8 @@ export function TransactionList({
                   {/* Icon / Avatar */}
                   {recipient ? (
                     <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
+                  ) : cat ? (
+                    <CategoryIcon icon={cat.icon} color={cat.color} size={9} className="flex-shrink-0" />
                   ) : (
                     <div
                       className={[
