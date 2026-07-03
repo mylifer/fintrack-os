@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import type { Account, Transaction } from '@/types'
 import { useTransactionStore } from './transactions.store'
+import { useDebtStore } from './debts.store'
 import { getUserId } from '@/lib/auth'
 
 interface AccountState {
@@ -72,35 +73,41 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
   },
 
   remove: async (id) => {
-    // 1. Bağlı tüm işlem ID'lerini bul
-    const linkedTxIds = (
-      await db.transactions
-        .filter(t => t.accountId === id || t.toAccountId === id)
-        .primaryKeys()
-    ) as string[]
+    // 1. Bağlı tüm işlemleri tam olarak çek (debtId kontrolü için obje gerekiyor)
+    const linkedTxs = await db.transactions
+      .filter(t => t.accountId === id || t.toAccountId === id)
+      .toArray() as Transaction[]
+    const linkedTxIds = linkedTxs.map(t => t.id)
 
-    // 2. İşlemleri fiziksel olarak sil — önce Supabase (FK zorunluluğu yok, ama temiz sıra)
-    if (linkedTxIds.length > 0) {
-      await db.transactions.bulkDelete(linkedTxIds)
-      const { error: txErr } = await supabase
-        .from('transactions')
-        .delete()
-        .in('id', linkedTxIds)
-      if (txErr) console.error('[supabase:transactions:cascade-delete]', txErr)
+    // 2. Borç bağlantılı işlemlerin ödeme miktarlarını geri al
+    for (const tx of linkedTxs) {
+      if (tx.debtId) {
+        await useDebtStore.getState().adjustPaidAmount(tx.debtId, -tx.amount)
+      }
     }
 
-    // 3. Hesabı fiziksel olarak sil
-    await db.accounts.delete(id)
-    const { error: accErr } = await supabase.from('accounts').delete().eq('id', id)
-    if (accErr) console.error('[supabase:accounts:delete]', accErr)
+    // 3. İşlemleri fiziksel olarak sil
+    if (linkedTxIds.length > 0) {
+      await db.transactions.bulkDelete(linkedTxIds)
+      supabase.from('transactions').delete().in('id', linkedTxIds).then(({ error }) => {
+        if (error) console.error('[supabase:transactions:cascade-delete]', error)
+      })
+    }
 
-    // 4. Store'ları güncelle
+    // 4. Hesabı fiziksel olarak sil
+    await db.accounts.delete(id)
+    supabase.from('accounts').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:accounts:delete]', error)
+    })
+
+    // 5. Store'ları güncelle
+    const remainingTxs = useTransactionStore.getState().transactions.filter(
+      t => t.accountId !== id && t.toAccountId !== id,
+    )
+    useTransactionStore.setState({ transactions: remainingTxs })
     set(s => ({ accounts: s.accounts.filter(a => a.id !== id) }))
-    useTransactionStore.setState(s => ({
-      transactions: s.transactions.filter(
-        t => t.accountId !== id && t.toAccountId !== id,
-      ),
-    }))
+    // 6. Kalan hesapların bakiyelerini yeniden hesapla (transfer işlemleri etkilenmiş olabilir)
+    get().recomputeBalances(remainingTxs)
   },
 
   recomputeBalances: (transactions) => {

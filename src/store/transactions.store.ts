@@ -7,6 +7,7 @@ import type { Transaction, TransactionFilters } from '@/types'
 import { isInRange } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
+import { useDebtStore } from './debts.store'
 import { getUserId } from '@/lib/auth'
 
 function investRank(tx: Transaction): number {
@@ -98,12 +99,18 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   },
 
   update: async (id, patch) => {
+    const oldTx = get().transactions.find(t => t.id === id)
     const now = new Date().toISOString()
     const updated = { ...patch, updatedAt: now }
     await db.transactions.update(id, updated)
     supabase.from('transactions').update(updated).eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:transactions:update]', error)
     })
+    // If the amount changed on a debt-linked transaction, adjust the debt's paidAmount
+    const effectiveDebtId = patch.debtId ?? oldTx?.debtId
+    if (effectiveDebtId && oldTx && patch.amount !== undefined && patch.amount !== oldTx.amount) {
+      await useDebtStore.getState().adjustPaidAmount(effectiveDebtId, patch.amount - oldTx.amount)
+    }
     set(s => {
       const newTxs = s.transactions.map(t => t.id === id ? { ...t, ...updated } : t)
       useAccountStore.getState().recomputeBalances(newTxs)
@@ -112,10 +119,15 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   },
 
   remove: async (id) => {
+    const tx = get().transactions.find(t => t.id === id)
     await db.transactions.delete(id)
     supabase.from('transactions').delete().eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:transactions:delete]', error)
     })
+    // Revert this transaction's contribution to the linked debt's paidAmount
+    if (tx?.debtId) {
+      await useDebtStore.getState().adjustPaidAmount(tx.debtId, -tx.amount)
+    }
     set(s => {
       const remaining = s.transactions.filter(t => t.id !== id)
       useAccountStore.getState().recomputeBalances(remaining)

@@ -16,6 +16,8 @@ interface DebtState {
   update: (id: string, patch: Partial<Debt>) => Promise<void>
   remove: (id: string) => Promise<void>
   recordPayment: (id: string, amount: number) => Promise<void>
+  /** Adjusts paidAmount by delta (negative to revert). Recomputes isSettled. */
+  adjustPaidAmount: (id: string, delta: number) => Promise<void>
   settle: (id: string) => Promise<void>
   getActive: () => DebtWithRemaining[]
   getDueSoon: (days?: number) => DebtWithRemaining[]
@@ -89,6 +91,19 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     set(s => ({
       debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d),
     }))
+  },
+
+  adjustPaidAmount: async (id, delta) => {
+    const debt = get().debts.find(d => d.id === id)
+    if (!debt) return
+    const paidAmount = Math.round(Math.max(0, debt.paidAmount + delta) * 100) / 100
+    const isSettled = paidAmount >= debt.totalAmount
+    const patch = { paidAmount, isSettled }
+    await db.debts.update(id, patch)
+    supabase.from('debts').update(patch).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:debts:adjust-paid]', error)
+    })
+    set(s => ({ debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d) }))
   },
 
   settle: async (id) => {
