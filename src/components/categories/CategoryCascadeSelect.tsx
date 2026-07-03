@@ -1,25 +1,16 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { Popover } from 'radix-ui'
+import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { CategoryIcon } from './CategoryIcon'
+import { cn } from '@/lib/utils'
 import type { Category } from '@/types'
 
 const COL_W    = 220
 const MAX_H    = 300
 const GAP      = 4
 const CARD_CLS = 'rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10'
-
-const ChevronDown = () => (
-  <svg fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" width={14} height={14}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-  </svg>
-)
-const ChevronRight = () => (
-  <svg fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" width={11} height={11}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-  </svg>
-)
 
 interface Props {
   categories: Category[]
@@ -45,6 +36,8 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   const [open,      setOpen]      = useState(false)
   const [hoveredL0, setHoveredL0] = useState<string | null>(null)
   const [hoveredL1, setHoveredL1] = useState<string | null>(null)
+  const [query,     setQuery]     = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const active = categories.filter(c => !c.isArchived)
 
@@ -58,8 +51,14 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   const l1List   = hoveredL0 ? getChildren(hoveredL0) : []
   const l2List   = hoveredL1 ? getChildren(hoveredL1) : []
 
+  const searchResults = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    return active.filter(c => c.name.toLowerCase().includes(q)).slice(0, 25)
+  }, [query, active])
+
   function select(id: string) {
-    onChange(id); setOpen(false); setHoveredL0(null); setHoveredL1(null)
+    onChange(id); setOpen(false); setHoveredL0(null); setHoveredL1(null); setQuery('')
   }
   function hoverL0(id: string) { setHoveredL0(id); setHoveredL1(null) }
 
@@ -84,7 +83,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
             >
               <CategoryIcon icon={cat.icon} color={cat.color} size={iconSize} className="shrink-0" />
               <span className="flex-1 truncate">{cat.name}</span>
-              {hasChildren && <span className={active ? 'opacity-70' : 'opacity-40'}><ChevronRight /></span>}
+              {hasChildren && <ChevronRightIcon className={cn('size-3 shrink-0', active ? 'opacity-70' : 'opacity-40')} />}
             </div>
           )
         })}
@@ -93,20 +92,21 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   }
 
   return (
-    <Popover.Root open={open} onOpenChange={v => { setOpen(v); if (!v) { setHoveredL0(null); setHoveredL1(null) } }}>
+    <Popover.Root open={open} onOpenChange={v => { setOpen(v); if (!v) { setHoveredL0(null); setHoveredL1(null); setQuery('') } }}>
 
       {/* ── Trigger ── */}
       <Popover.Trigger asChild>
         <button
           type="button"
           aria-invalid={error || undefined}
-          className={[
-            'flex w-full items-center justify-between gap-1.5 rounded-lg border bg-transparent px-2.5 py-2 text-sm transition-colors outline-none',
+          className={cn(
+            'flex h-8 w-full items-center justify-between gap-1.5 rounded-md border bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none',
             'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+            'dark:bg-input/30',
             error
               ? 'border-destructive ring-3 ring-destructive/20'
-              : 'border-input hover:border-ring/50 data-[state=open]:border-ring',
-          ].join(' ')}
+              : 'border-input data-[state=open]:border-ring',
+          )}
         >
           {selected ? (
             <span className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -114,9 +114,9 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
               <span className="truncate">{selected.name}</span>
             </span>
           ) : (
-            <span className="flex-1 text-muted-foreground">{placeholder ?? 'Seçin...'}</span>
+            <span className="flex-1 text-left text-muted-foreground">{placeholder ?? 'Seçin...'}</span>
           )}
-          <span className="opacity-50 shrink-0"><ChevronDown /></span>
+          <ChevronDownIcon className="pointer-events-none size-4 shrink-0 text-muted-foreground" />
         </button>
       </Popover.Trigger>
 
@@ -126,7 +126,8 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
           sideOffset={GAP}
           align="start"
           avoidCollisions
-          onOpenAutoFocus={e => e.preventDefault()}
+          onOpenAutoFocus={e => { e.preventDefault(); searchRef.current?.focus() }}
+          onCloseAutoFocus={e => e.preventDefault()}
           className={[
             'z-[9999] relative',
             CARD_CLS,
@@ -136,55 +137,65 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
           ].join(' ')}
           style={{ width: COL_W, minWidth: 'var(--radix-popover-trigger-width)' }}
         >
-          {/* L0 — onWheel bypasses react-remove-scroll's preventDefault() */}
-          <div
-            style={{ padding: 4, maxHeight: MAX_H, overflowY: 'auto' }}
-            onWheel={handleWheel}
-          >
-            <ItemList
-              items={roots}
-              activeId={hoveredL0}
-              onHover={hoverL0}
-              onSelect={select}
-              iconSize={13}
+          {/* Search input */}
+          <div style={{ padding: '4px 4px 0' }}>
+            <input
+              ref={searchRef}
+              type="text"
+              value={query}
+              onChange={e => { setQuery(e.target.value); setHoveredL0(null); setHoveredL1(null) }}
+              placeholder="Kategori ara..."
+              className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
             />
           </div>
 
-          {/* L1 */}
-          {hoveredL0 && l1List.length > 0 && (
-            <div
-              className={`absolute ${CARD_CLS}`}
-              style={{ top: 0, left: COL_W + GAP, width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
-              onWheel={handleWheel}
-            >
-              <div style={{ padding: 4 }}>
-                <ItemList
-                  items={l1List}
-                  activeId={hoveredL1}
-                  onHover={id => setHoveredL1(id)}
-                  onSelect={select}
-                  iconSize={11}
-                />
-              </div>
+          {query.trim() ? (
+            /* ── Search results (flat list) ── */
+            <div style={{ padding: 4, maxHeight: MAX_H, overflowY: 'auto' }} onWheel={handleWheel}>
+              {searchResults.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">Sonuç bulunamadı</p>
+              ) : searchResults.map(cat => {
+                const parent = active.find(p => p.id === cat.parentId)
+                return (
+                  <div key={cat.id} className={cat.id === value ? ITEM_ACT : ITEM_DEF} onClick={() => select(cat.id)}>
+                    <CategoryIcon icon={cat.icon} color={cat.color} size={13} className="shrink-0" />
+                    <span className="flex-1 truncate">{cat.name}</span>
+                    {parent && <span className="shrink-0 text-xs opacity-40">{parent.name}</span>}
+                  </div>
+                )
+              })}
             </div>
-          )}
+          ) : (
+            /* ── Cascade (default) ── */
+            <>
+              <div style={{ padding: 4, maxHeight: MAX_H, overflowY: 'auto' }} onWheel={handleWheel}>
+                <ItemList items={roots} activeId={hoveredL0} onHover={hoverL0} onSelect={select} iconSize={13} />
+              </div>
 
-          {/* L2 */}
-          {hoveredL1 && l2List.length > 0 && (
-            <div
-              className={`absolute ${CARD_CLS}`}
-              style={{ top: 0, left: (COL_W + GAP) * 2, width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
-              onWheel={handleWheel}
-            >
-              <div style={{ padding: 4 }}>
-                <ItemList
-                  items={l2List}
-                  activeId={null}
-                  onSelect={select}
-                  iconSize={10}
-                />
-              </div>
-            </div>
+              {hoveredL0 && l1List.length > 0 && (
+                <div
+                  className={`absolute ${CARD_CLS}`}
+                  style={{ top: 0, left: COL_W + GAP, width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
+                  onWheel={handleWheel}
+                >
+                  <div style={{ padding: 4 }}>
+                    <ItemList items={l1List} activeId={hoveredL1} onHover={id => setHoveredL1(id)} onSelect={select} iconSize={11} />
+                  </div>
+                </div>
+              )}
+
+              {hoveredL1 && l2List.length > 0 && (
+                <div
+                  className={`absolute ${CARD_CLS}`}
+                  style={{ top: 0, left: (COL_W + GAP) * 2, width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
+                  onWheel={handleWheel}
+                >
+                  <div style={{ padding: 4 }}>
+                    <ItemList items={l2List} activeId={null} onSelect={select} iconSize={10} />
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </Popover.Content>
       </Popover.Portal>

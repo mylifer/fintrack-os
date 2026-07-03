@@ -163,6 +163,13 @@
    ───────────────────────────────────────────────────────────────── */
 .tabular { font-variant-numeric: tabular-nums; }
 
+@keyframes caret-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+.amount-caret { animation: caret-blink 1.1s step-end infinite; }
+
+
 ::-webkit-scrollbar         { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track   { background: transparent; }
 ::-webkit-scrollbar-thumb   { background: var(--border); border-radius: 4px; }

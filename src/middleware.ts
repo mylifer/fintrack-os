@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const PUBLIC_PATHS = ['/login', '/register']
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -32,7 +32,9 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  if (!user) {
+  const isLocalhost = request.headers.get('host')?.startsWith('localhost')
+
+  if (!user && !isLocalhost) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 

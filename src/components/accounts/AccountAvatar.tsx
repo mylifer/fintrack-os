@@ -45,7 +45,6 @@ export function AccountAvatar({ account, size = 'md', className = '' }: Props) {
   const s       = SIZES[size]
   const initial = account.name.trim()[0]?.toUpperCase() ?? '?'
 
-  // Resolve icon source: custom icon takes priority over bank detection
   const iconSrc = account.icon
     ?? (getBankDomain(account.name)
         ? `https://www.google.com/s2/favicons?domain=${getBankDomain(account.name)}&sz=64`
@@ -53,7 +52,7 @@ export function AccountAvatar({ account, size = 'md', className = '' }: Props) {
 
   return (
     <div className={`${s.box} flex-shrink-0 relative overflow-hidden rounded-md ${className}`}>
-      {/* Base: colored initial — always rendered, serves as fallback */}
+      {/* Base: colored initial — always visible, serves as fallback */}
       <div
         className={`absolute inset-0 flex items-center justify-center ${s.text} font-bold text-white`}
         style={{ background: account.color }}
@@ -61,13 +60,17 @@ export function AccountAvatar({ account, size = 'md', className = '' }: Props) {
         {initial}
       </div>
 
-      {/* Overlay: icon with white card — hidden via onError if load fails */}
+      {/* Overlay: transparent until image loads, so initial shows immediately */}
       {iconSrc && (
-        <div className={`absolute inset-0 bg-card flex items-center justify-center ${s.pad}`}>
+        <div className={`absolute inset-0 bg-card flex items-center justify-center ${s.pad} opacity-0`}>
           <img
             src={iconSrc}
             alt={account.name}
             className="max-w-full max-h-full object-contain"
+            onLoad={e => {
+              const overlay = e.currentTarget.parentElement
+              if (overlay) overlay.style.opacity = '1'
+            }}
             onError={e => {
               const overlay = e.currentTarget.parentElement
               if (overlay) overlay.style.display = 'none'

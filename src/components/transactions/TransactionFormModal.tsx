@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo, useId } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useId } from 'react'
 import { useUIStore, useAccountStore, useCategoryStore, useTransactionStore, usePeopleStore, useDebtStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -9,12 +9,13 @@ import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
-import { parseCurrencyInput } from '@/lib/utils/currency'
+import { parseCurrencyInput, getCurrencySymbol } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
 import { Check, X, Plus } from 'lucide-react'
+import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/Select'
@@ -83,7 +84,7 @@ function AppSelect({
 }: {
   value: string
   onChange: (v: string) => void
-  options: { value: string; label: string }[]
+  options: { value: string; label: string; icon?: React.ReactNode }[]
   placeholder?: string
   error?: boolean
   disabled?: boolean
@@ -102,7 +103,14 @@ function AppSelect({
       </SelectTrigger>
       <SelectContent>
         {options.map(o => (
-          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+          <SelectItem key={o.value} value={o.value}>
+            {o.icon ? (
+              <span className="flex items-center gap-2">
+                <span>{o.icon}</span>
+                <span>{o.label}</span>
+              </span>
+            ) : o.label}
+          </SelectItem>
         ))}
       </SelectContent>
     </Select>
@@ -304,6 +312,19 @@ function PersonField({
   )
 }
 
+// ── Turkish amount formatter ──────────────────────────────────────────────────
+// amountStr stores raw digits + optional single comma (e.g. "1250,50")
+// Display adds dots as thousands separators (e.g. "1.250,50")
+
+function formatTurkishDisplay(raw: string): string {
+  if (!raw) return '0'
+  const commaIdx = raw.indexOf(',')
+  const intPart  = commaIdx === -1 ? raw : raw.slice(0, commaIdx)
+  const decPart  = commaIdx === -1 ? '' : raw.slice(commaIdx)          // includes the comma
+  const grouped  = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return grouped + decPart
+}
+
 // ── Main modal ────────────────────────────────────────────────────────────────
 
 export function TransactionFormModal() {
@@ -331,6 +352,13 @@ export function TransactionFormModal() {
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
 
+  const [isFocused, setIsFocused] = useState(false)
+  const [cursorX, setCursorX]    = useState(0)
+  const amountInputRef    = useRef<HTMLInputElement>(null)
+  const mirrorRef         = useRef<HTMLSpanElement>(null)
+  const numberContainerRef = useRef<HTMLDivElement>(null)
+  const oldContainerLeftRef = useRef(0)
+
   // Track Select open state to prevent dialog from closing while a dropdown is open.
   // Radix DismissableLayer defers dialog's onInteractOutside to the "click" event,
   // by which time the Select has already closed. Snapshot the state on pointerdown
@@ -348,6 +376,7 @@ export function TransactionFormModal() {
   useEffect(() => {
     if (!open) {
       setForm(newForm()); setAmountStr(''); setInstallments(1); setErrors({})
+      setCursorX(0)
       return
     }
     if (isEdit && editingTx) {
@@ -400,8 +429,24 @@ export function TransactionFormModal() {
       ({ description, categoryId, familyMemberId, recipientId }))
   }, [transactions, tab])
 
+  // FLIP slide-left animation: fires after React paints the new (wider) number,
+  // offsets back to old position instantly, then transitions to the natural position.
+  useLayoutEffect(() => {
+    const el = numberContainerRef.current
+    if (!el || !amountStr) return
+    const newLeft = el.getBoundingClientRect().left
+    const delta   = oldContainerLeftRef.current - newLeft   // positive = shifted left
+    if (delta < 0.5) return                                  // deleted or no change
+    el.style.transition = 'none'
+    el.style.transform  = `translateX(${delta}px)`
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el.style.transition = 'transform 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+      el.style.transform  = 'translateX(0)'
+    }))
+  }, [amountStr])
+
   const filteredCategories = categories.filter(c => c.scope === tab)
-  const accountOptions     = accounts.map(a => ({ value: a.id, label: a.name }))
+  const accountOptions     = accounts.map(a => ({ value: a.id, label: a.name, icon: <AccountAvatar account={a} size="xs" /> }))
 
   function validate(): boolean {
     const e: Record<string, string> = {}
@@ -527,8 +572,94 @@ export function TransactionFormModal() {
           </div>
         </DialogHeader>
 
+        {/* ── Amount hero ────────────────────────────────────────────────── */}
+        <div className="relative h-24 flex items-center justify-center border-b bg-muted/50">
+          <div className="flex items-center gap-2 select-none pointer-events-none">
+            {tab !== 'transfer' && (
+              <span className={cn(
+                "text-2xl font-semibold leading-none transition-colors duration-200",
+                amountStr ? "text-muted-foreground/50" : "text-muted-foreground/25",
+              )}>
+                {tab === 'income' ? '+' : '−'}
+              </span>
+            )}
+            <span className={cn(
+              "text-2xl font-semibold leading-none transition-colors duration-200",
+              amountStr ? "text-muted-foreground/50" : "text-muted-foreground/25",
+            )}>
+              {getCurrencySymbol((accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode)}
+            </span>
+
+            {/* Number + custom smooth caret */}
+            <div ref={numberContainerRef} className="relative leading-none">
+              <span className={cn(
+                "text-5xl font-bold tabular-nums leading-none",
+                amountStr ? "text-foreground" : "text-muted-foreground/25",
+                errors.amount && "!text-destructive",
+              )}>
+                {formatTurkishDisplay(amountStr)}
+              </span>
+
+              {/* Hidden mirror — measures rendered text width for caret positioning */}
+              <span
+                ref={mirrorRef}
+                aria-hidden
+                className="invisible absolute left-0 top-0 whitespace-pre text-5xl font-bold tabular-nums leading-none pointer-events-none"
+              >
+                {formatTurkishDisplay(amountStr)}
+              </span>
+
+              {/* Smooth caret */}
+              {isFocused && amountStr && (
+                <div
+                  className="amount-caret absolute top-[1px] bottom-[1px] w-[2.5px] rounded-full bg-foreground"
+                  style={{ left: 0, transform: `translateX(${cursorX}px)`, transition: 'transform 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Error floats at bottom, doesn't affect centering */}
+          {errors.amount && (
+            <p className="absolute bottom-2 left-0 right-0 text-center text-xs text-destructive">{errors.amount}</p>
+          )}
+
+          {/* Invisible input overlay captures typing */}
+          <input
+            ref={amountInputRef}
+            type="text"
+            inputMode="decimal"
+            value={amountStr}
+            onFocus={() => {
+              setIsFocused(true)
+              requestAnimationFrame(() => {
+                if (mirrorRef.current) setCursorX(mirrorRef.current.offsetWidth)
+              })
+            }}
+            onBlur={() => setIsFocused(false)}
+            onChange={e => {
+              // Capture position BEFORE state update for FLIP animation
+              oldContainerLeftRef.current = numberContainerRef.current?.getBoundingClientRect().left ?? 0
+
+              let raw = e.target.value.replace(/[^0-9,]/g, '')
+              const firstComma = raw.indexOf(',')
+              if (firstComma !== -1) {
+                raw = raw.slice(0, firstComma + 1) + raw.slice(firstComma + 1).replace(/,/g, '')
+              }
+              setAmountStr(raw)
+              if (errors.amount) setErrors(prev => ({ ...prev, amount: '' }))
+              requestAnimationFrame(() => {
+                if (mirrorRef.current) setCursorX(mirrorRef.current.offsetWidth)
+              })
+            }}
+            aria-label="Tutar"
+            aria-invalid={!!errors.amount}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-text"
+          />
+        </div>
+
         {/* ── Form body ──────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[65vh]">
+        <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[55vh]">
 
           {/* Description */}
           <Field label="Açıklama" error={errors.description}>
@@ -546,11 +677,6 @@ export function TransactionFormModal() {
               people={allPeople}
               error={errors.description}
             />
-          </Field>
-
-          {/* Amount */}
-          <Field label="Tutar" error={errors.amount}>
-            <CurrencyInput value={amountStr} onChange={setAmountStr} error={errors.amount} />
           </Field>
 
           {/* Account + Category/Target */}
