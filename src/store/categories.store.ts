@@ -210,7 +210,8 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     } else {
       console.error('[supabase:categories:load]', error)
       const raw = await db.categories.toArray()
-      set({ categories: raw.sort((a, b) => a.sortOrder - b.sortOrder), loading: false })
+      const { categories } = applyIconMigration(raw.sort((a, b) => a.sortOrder - b.sortOrder))
+      set({ categories, loading: false })
     }
   },
 
@@ -253,6 +254,37 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       }))
     }
 
+    // Phase 3: name-based icon sync — covers ALL legacy formats (emoji, Lucide, noto:).
+    // Matches system categories by name to the current DEFAULT_CATEGORIES definition and
+    // force-writes the correct icon + color to Dexie, Supabase, and Zustand.
+    const defByName = new Map(
+      DEFAULT_CATEGORIES.map(d => [d.name, { icon: d.icon, color: d.color }])
+    )
+    const toSync = existing.filter(c => {
+      if (!c.isSystem) return false
+      const def = defByName.get(c.name)
+      return def !== undefined && (c.icon !== def.icon || c.color !== def.color)
+    })
+    if (toSync.length > 0) {
+      for (const cat of toSync) {
+        const def = defByName.get(cat.name)!
+        const patch = { icon: def.icon, color: def.color }
+        await db.categories.update(cat.id, patch)
+        supabase.from('categories')
+          .update(patch)
+          .eq('id', cat.id)
+          .then(({ error: e }) => {
+            if (e) console.error('[supabase:categories:sync-icon]', cat.name, e)
+          })
+      }
+      set(s => ({
+        categories: s.categories.map(c => {
+          if (!c.isSystem) return c
+          const def = defByName.get(c.name)
+          return def ? { ...c, icon: def.icon, color: def.color } : c
+        }),
+      }))
+    }
   },
 
   add: async (cat) => {
