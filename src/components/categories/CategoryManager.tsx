@@ -100,17 +100,26 @@ export function CategoryManager() {
   const add          = useCategoryStore(s => s.add)
   const update       = useCategoryStore(s => s.update)
   const remove       = useCategoryStore(s => s.remove)
+  const restore      = useCategoryStore(s => s.restore)
   const transactions = useTransactionStore(s => s.transactions)
 
-  const [tab,             setTab]             = useState<CategoryScope>('expense')
-  const [adding,          setAdding]          = useState(false)
-  const [addForm,         setAddForm]         = useState<FormState>(emptyForm())
-  const [editingId,       setEditingId]       = useState<string | null>(null)
-  const [editForm,        setEditForm]        = useState<FormState>(emptyForm())
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [tab,              setTab]             = useState<CategoryScope>('expense')
+  const [adding,           setAdding]          = useState(false)
+  const [addForm,          setAddForm]         = useState<FormState>(emptyForm())
+  const [editingId,        setEditingId]       = useState<string | null>(null)
+  const [editForm,         setEditForm]        = useState<FormState>(emptyForm())
+  const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null)
+  const [showArchived,     setShowArchived]    = useState(false)
 
   /* ── Tree helpers ── */
+  // Active-only children for the live tree
   const getChildren = useCallback(
+    (pid: string) => categories.filter(c => c.parentId === pid && !c.isArchived).sort((a, b) => a.sortOrder - b.sortOrder),
+    [categories],
+  )
+
+  // All children including archived (used when cascading archive/restore)
+  const getAllChildren = useCallback(
     (pid: string) => categories.filter(c => c.parentId === pid).sort((a, b) => a.sortOrder - b.sortOrder),
     [categories],
   )
@@ -134,24 +143,29 @@ export function CategoryManager() {
   }, [transactions, getAllDescendants])
 
   const roots = useMemo(
-    () => categories.filter(c => c.scope === tab && !c.parentId).sort((a, b) => a.sortOrder - b.sortOrder),
+    () => categories.filter(c => c.scope === tab && !c.parentId && !c.isArchived).sort((a, b) => a.sortOrder - b.sortOrder),
     [categories, tab],
   )
 
-  /* L0 options: root categories of current tab, optionally excluding a subtree */
+  const archivedList = useMemo(
+    () => categories.filter(c => c.scope === tab && c.isArchived).sort((a, b) => a.sortOrder - b.sortOrder),
+    [categories, tab],
+  )
+
+  /* L0 options: active root categories of current tab, optionally excluding a subtree */
   function buildL0Options(excludeId?: string): { id: string; label: string }[] {
     const excluded = new Set(excludeId ? getAllDescendants(excludeId) : [])
     return categories
-      .filter(c => c.scope === tab && getLevel(c.id) === 0 && !excluded.has(c.id))
+      .filter(c => c.scope === tab && !c.isArchived && getLevel(c.id) === 0 && !excluded.has(c.id))
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map(c => ({ id: c.id, label: c.name }))
   }
 
-  /* L1 options: first-level children of current tab, optionally excluding a subtree */
+  /* L1 options: active first-level children of current tab, optionally excluding a subtree */
   function buildL1Options(excludeId?: string): { id: string; label: string }[] {
     const excluded = new Set(excludeId ? getAllDescendants(excludeId) : [])
     return categories
-      .filter(c => c.scope === tab && getLevel(c.id) === 1 && !excluded.has(c.id))
+      .filter(c => c.scope === tab && !c.isArchived && getLevel(c.id) === 1 && !excluded.has(c.id))
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map(c => {
         const parent = categories.find(p => p.id === c.parentId)
@@ -164,7 +178,7 @@ export function CategoryManager() {
     setAdding(true)
     setAddForm(emptyForm())
     setEditingId(null)
-    setConfirmDeleteId(null)
+    setConfirmArchiveId(null)
   }
 
   async function saveAdd() {
@@ -197,7 +211,7 @@ export function CategoryManager() {
       parentL1: level === 2 ? (cat.parentId ?? '') : '',
     })
     setAdding(false)
-    setConfirmDeleteId(null)
+    setConfirmArchiveId(null)
   }
 
   async function saveEdit() {
@@ -212,25 +226,34 @@ export function CategoryManager() {
     setEditingId(null)
   }
 
-  async function handleDelete(cat: Category) {
-    if (confirmDeleteId !== cat.id) { setConfirmDeleteId(cat.id); return }
-    const children = getChildren(cat.id)
+  async function handleArchive(cat: Category) {
+    if (confirmArchiveId !== cat.id) { setConfirmArchiveId(cat.id); return }
+    const children = getAllChildren(cat.id)
     for (const child of children) {
-      for (const gc of getChildren(child.id)) await remove(gc.id)
+      for (const gc of getAllChildren(child.id)) await remove(gc.id)
       await remove(child.id)
     }
     await remove(cat.id)
-    setConfirmDeleteId(null)
+    setConfirmArchiveId(null)
+  }
+
+  async function handleRestore(cat: Category) {
+    const children = getAllChildren(cat.id)
+    for (const child of children) {
+      for (const gc of getAllChildren(child.id)) await restore(gc.id)
+      await restore(child.id)
+    }
+    await restore(cat.id)
   }
 
   function handleTabChange(s: CategoryScope) {
-    setTab(s); setAdding(false); setEditingId(null); setConfirmDeleteId(null)
+    setTab(s); setAdding(false); setEditingId(null); setConfirmArchiveId(null)
   }
 
   /* ── Row renderer ── */
   function renderRow(cat: Category, level: 0 | 1 | 2) {
     const isEdit = editingId === cat.id
-    const isConf = confirmDeleteId === cat.id
+    const isConf = confirmArchiveId === cat.id
     const count  = txCount(cat.id)
     const pl     = LEVEL_PL[level]
 
@@ -311,15 +334,19 @@ export function CategoryManager() {
           {!cat.isSystem && (
             isConf ? (
               <>
-                <button onClick={() => handleDelete(cat)}
-                  className="px-2 h-6 bg-destructive text-white text-[10px] font-semibold rounded-md">Sil</button>
-                <button onClick={() => setConfirmDeleteId(null)}
+                <button onClick={() => handleArchive(cat)}
+                  className="px-2 h-6 bg-destructive text-white text-[10px] font-semibold rounded-md">Arşivle</button>
+                <button onClick={() => setConfirmArchiveId(null)}
                   className="w-6 h-6 flex items-center justify-center border border-border rounded-md text-muted-foreground text-xs">✕</button>
               </>
             ) : (
-              <button onClick={() => handleDelete(cat)}
+              <button onClick={() => handleArchive(cat)}
                 className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-accent transition-colors text-base leading-none"
-                title="Sil">×</button>
+                title="Arşivle">
+                <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" width={12} height={12}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-.375c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v.375c0 .621.504 1.125 1.125 1.125Z" />
+                </svg>
+              </button>
             )
           )}
         </div>
@@ -330,6 +357,44 @@ export function CategoryManager() {
             <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
           </svg>
         )}
+      </div>
+    )
+  }
+
+  /* ── Archived row renderer ── */
+  function renderArchivedRow(cat: Category) {
+    const count  = txCount(cat.id)
+    const parent = cat.parentId ? categories.find(c => c.id === cat.parentId) : undefined
+
+    return (
+      <div
+        key={cat.id}
+        className="group flex items-center gap-2.5 border-b border-border/50 bg-muted/20 opacity-60 hover:opacity-100 transition-opacity"
+        style={{ paddingLeft: 16, paddingRight: 12, paddingTop: 6, paddingBottom: 6 }}
+      >
+        <CategoryIcon icon={cat.icon} color={cat.color} size={16} className="flex-shrink-0 grayscale" />
+
+        <span className="flex-1 truncate min-w-0 text-muted-foreground text-sm line-through">
+          {cat.name}
+        </span>
+
+        {parent && (
+          <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">{parent.name}</span>
+        )}
+        {count > 0 && (
+          <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">{count} işlem</span>
+        )}
+
+        <button
+          onClick={() => handleRestore(cat)}
+          className="flex items-center gap-1 px-2 h-6 text-[10px] font-medium border border-border rounded-md text-muted-foreground hover:text-primary hover:border-primary transition-colors flex-shrink-0"
+          title="Geri Yükle"
+        >
+          <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" width={10} height={10}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+          </svg>
+          Geri Yükle
+        </button>
       </div>
     )
   }
@@ -356,7 +421,7 @@ export function CategoryManager() {
           >
             {SCOPE_LABELS[s]}
             <span className={`text-[10px] tabular-nums ${tab === s ? 'text-primary/70' : 'text-muted-foreground/60'}`}>
-              {categories.filter(c => c.scope === s && !c.parentId).length}
+              {categories.filter(c => c.scope === s && !c.parentId && !c.isArchived).length}
             </span>
           </button>
         ))}
@@ -380,12 +445,35 @@ export function CategoryManager() {
         />
       )}
 
-      {/* Tree */}
+      {/* Active tree */}
       <div className="overflow-y-auto flex-1">
         {renderTree(roots, 0)}
         {roots.length === 0 && !adding && (
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">
             Bu kapsamda henüz kategori yok.
+          </div>
+        )}
+
+        {/* Archived section */}
+        {archivedList.length > 0 && (
+          <div className="border-t border-border/50 mt-2">
+            <button
+              onClick={() => setShowArchived(v => !v)}
+              className="flex items-center gap-2 w-full px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <svg
+                fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" width={12} height={12}
+                className={`transition-transform ${showArchived ? 'rotate-90' : ''}`}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+              </svg>
+              <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" width={12} height={12}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-.375c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v.375c0 .621.504 1.125 1.125 1.125Z" />
+              </svg>
+              Arşivlenenler ({archivedList.length})
+            </button>
+
+            {showArchived && archivedList.map(cat => renderArchivedRow(cat))}
           </div>
         )}
       </div>

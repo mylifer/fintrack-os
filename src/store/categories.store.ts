@@ -219,6 +219,7 @@ interface CategoryState {
   add: (cat: Category) => Promise<void>
   update: (id: string, patch: Partial<Category>) => Promise<void>
   remove: (id: string) => Promise<void>
+  restore: (id: string) => Promise<void>
   getByScope: (scope: CategoryScope) => Category[]
   getById: (id: string) => Category | undefined
 }
@@ -272,7 +273,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       nameToId.set(def.name, id)
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { _parentName, ...cat } = def
-      toInsert.push({ ...cat, id })
+      toInsert.push({ ...cat, id, isArchived: false })
     }
 
     // Phase 2: alt kategoriler — _parentName olanlar
@@ -282,7 +283,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       const id = crypto.randomUUID()
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { _parentName, ...cat } = def
-      toInsert.push({ ...cat, id, ...(parentId && { parentId }) })
+      toInsert.push({ ...cat, id, isArchived: false, ...(parentId && { parentId }) })
     }
 
     if (toInsert.length > 0) {
@@ -353,12 +354,13 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
   },
 
   add: async (cat) => {
-    await db.categories.add(cat)
+    const entry: Category = { ...cat, isArchived: false }
+    await db.categories.add(entry)
     const userId = await getUserId()
-    supabase.from('categories').insert({ ...cat, ...(userId && { user_id: userId }) }).then(({ error }) => {
+    supabase.from('categories').insert({ ...entry, ...(userId && { user_id: userId }) }).then(({ error }) => {
       if (error) console.error('[supabase:categories:insert]', error)
     })
-    set(s => ({ categories: [...s.categories, cat].sort((a, b) => a.sortOrder - b.sortOrder) }))
+    set(s => ({ categories: [...s.categories, entry].sort((a, b) => a.sortOrder - b.sortOrder) }))
   },
 
   update: async (id, patch) => {
@@ -375,17 +377,27 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     const cat = get().categories.find(c => c.id === id)
     if (cat?.isSystem) return
 
-    await db.categories.delete(id)
-    supabase.from('categories').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:categories:delete]', error)
+    await db.categories.update(id, { isArchived: true })
+    supabase.from('categories').update({ isArchived: true }).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:categories:archive]', error)
     })
-    set(s => ({ categories: s.categories.filter(c => c.id !== id) }))
+    set(s => ({
+      categories: s.categories.map(c => c.id === id ? { ...c, isArchived: true } : c),
+    }))
+  },
+
+  restore: async (id) => {
+    await db.categories.update(id, { isArchived: false })
+    supabase.from('categories').update({ isArchived: false }).eq('id', id).then(({ error }) => {
+      if (error) console.error('[supabase:categories:restore]', error)
+    })
+    set(s => ({
+      categories: s.categories.map(c => c.id === id ? { ...c, isArchived: false } : c),
+    }))
   },
 
   getByScope: (scope) => {
-    return get().categories.filter(c =>
-      c.scope === scope,
-    )
+    return get().categories.filter(c => c.scope === scope && !c.isArchived)
   },
 
   getById: (id) => get().categories.find(c => c.id === id),

@@ -91,6 +91,7 @@ export interface Category {
   scope: CategoryScope
   parentId?: string         // Supports up to 3 levels deep
   isSystem: boolean         // Cannot be deleted
+  isArchived?: boolean      // Soft-deleted; hidden from pickers but kept for historical data
   sortOrder: number
 }
 

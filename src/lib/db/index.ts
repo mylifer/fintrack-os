@@ -191,6 +191,20 @@ class FinTrackDB extends Dexie {
         }
       }
     })
+
+    // v7: add isArchived index on categories; backfill existing rows with isArchived: false
+    this.version(7).stores({
+      accounts:               '&id, type, currency, isArchived',
+      transactions:           '&id, type, accountId, toAccountId, categoryId, date, installGroupId, debtId, familyMemberId, recipientId',
+      categories:             '&id, scope, parentId, isSystem, isArchived',
+      budgets:                '&id, categoryId, period, year, month',
+      debts:                  '&id, type, direction, isSettled, dueDate',
+      investmentTransactions: '&id, type, asset, date',
+      people:                 '&id, role',
+      recurringTransactions:  '&id, type, frequency, nextDueDate, isActive',
+    }).upgrade(async (trans) => {
+      await trans.table('categories').toCollection().modify({ isArchived: false })
+    })
   }
 }
 
