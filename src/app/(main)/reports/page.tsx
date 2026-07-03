@@ -5,7 +5,7 @@ import { useCountUp } from '@/lib/hooks/useCountUp'
 import { useShallow } from 'zustand/react/shallow'
 import {
   format, parseISO, startOfMonth, endOfMonth,
-  subMonths, startOfYear, endOfYear,
+  subMonths, subDays, startOfYear, endOfYear,
   differenceInDays, addMonths, addWeeks,
   startOfWeek, endOfWeek,
 } from 'date-fns'
@@ -13,14 +13,16 @@ import { tr } from 'date-fns/locale'
 import { Header }           from '@/components/layout/Header'
 import { useTransactionStore, useAccountStore, useCategoryStore } from '@/store'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
-import { formatCurrency }   from '@/lib/utils/currency'
+import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
+import { CategoryTrendChart }  from '@/components/reports/CategoryTrendChart'
 import { TransactionList }     from '@/components/transactions/TransactionList'
-import type { CashFlowPoint } from '@/components/reports/_CashFlowBarChart'
-import type { CategorySlice } from '@/components/reports/_CategoryDonutChart'
-import type { TrendPoint }    from '@/components/reports/_BalanceTrendChart'
+import type { CashFlowPoint }       from '@/components/reports/_CashFlowBarChart'
+import type { CategorySlice }       from '@/components/reports/_CategoryDonutChart'
+import type { TrendPoint }          from '@/components/reports/_BalanceTrendChart'
+import type { CategoryTrendPoint }  from '@/components/reports/_CategoryTrendChart'
 import type { Account, Transaction } from '@/types'
 
 /* ── Types ────────────────────────────────────────────────────────── */
@@ -156,6 +158,94 @@ function buildTrendData(
   return pts
 }
 
+/* ── amountTry helper ─────────────────────────────────────────────
+   Uses amountTry if present (future field) for consistent TRY
+   comparisons across multi-currency transactions; falls back to amount.
+ ─────────────────────────────────────────────────────────────────── */
+
+function getTryAmount(tx: Transaction): number {
+  return (tx as any).amountTry ?? tx.amount
+}
+
+/* ── Period comparison ────────────────────────────────────────────── */
+
+type ComparisonRow = {
+  categoryId: string | null
+  name: string
+  color: string
+  current: number
+  prev: number
+  pct: number
+}
+
+function buildPeriodComparison(
+  transactions: Transaction[],
+  categories: Array<{ id: string; name: string; color: string }>,
+  dateRange: { from: string; to: string },
+  accountId: string,
+): ComparisonRow[] {
+  const from = parseISO(dateRange.from)
+  const to   = parseISO(dateRange.to)
+  const days = differenceInDays(to, from) + 1
+  const prevTo   = format(subDays(from, 1),    'yyyy-MM-dd')
+  const prevFrom = format(subDays(from, days), 'yyyy-MM-dd')
+
+  const catMap = new Map<string, { current: number; prev: number }>()
+
+  for (const tx of transactions) {
+    if (tx.type !== 'expense' || tx.icon) continue
+    if (accountId !== 'all' && tx.accountId !== accountId) continue
+    const key = tx.categoryId ?? '__none__'
+    if (!catMap.has(key)) catMap.set(key, { current: 0, prev: 0 })
+    const entry = catMap.get(key)!
+    const amt = getTryAmount(tx)
+    if (tx.date >= dateRange.from && tx.date <= dateRange.to) {
+      entry.current += amt
+    } else if (tx.date >= prevFrom && tx.date <= prevTo) {
+      entry.prev += amt
+    }
+  }
+
+  return [...catMap.entries()]
+    .map(([key, { current, prev }]) => {
+      const cat = categories.find(c => c.id === key)
+      const pct = prev > 0 ? ((current - prev) / prev) * 100 : current > 0 ? 100 : 0
+      return {
+        categoryId: key === '__none__' ? null : key,
+        name:       cat?.name  ?? 'Kategorisiz',
+        color:      cat?.color ?? '#8C8C8C',
+        current,
+        prev,
+        pct,
+      }
+    })
+    .filter(r => r.current > 0 || r.prev > 0)
+    .sort((a, b) => b.current - a.current)
+    .slice(0, 6)
+}
+
+/* ── Category 6-month trend ───────────────────────────────────────── */
+
+function buildCategoryTrendData(
+  transactions: Transaction[],
+  categoryId: string | null,
+): CategoryTrendPoint[] {
+  const now = new Date()
+  return Array.from({ length: 6 }, (_, i) => {
+    const mDate = subMonths(now, 5 - i)
+    const mFrom = format(startOfMonth(mDate), 'yyyy-MM-dd')
+    const mTo   = format(endOfMonth(mDate),   'yyyy-MM-dd')
+    const amount = transactions
+      .filter(tx => {
+        if (tx.type !== 'expense' || tx.icon) return false
+        if (tx.date < mFrom || tx.date > mTo) return false
+        return categoryId === null ? !tx.categoryId : tx.categoryId === categoryId
+      })
+      .reduce((s, tx) => s + getTryAmount(tx), 0)
+    return { label: format(mDate, 'MMM yy', { locale: tr }), amount }
+  })
+}
+
 /* ── Page ────────────────────────────────────────────────────────── */
 
 export default function ReportsPage() {
@@ -169,8 +259,9 @@ export default function ReportsPage() {
   const [customFrom,   setCustomFrom]   = useState('')
   const [customTo,     setCustomTo]     = useState('')
   const [accountId,    setAccountId]    = useState('all')
-  const [selectedCat,  setSelectedCat]  = useState<CategorySlice | null>(null)
+  const [selectedCat,   setSelectedCat]   = useState<CategorySlice | null>(null)
   const [activeSliceIdx, setActiveSliceIdx] = useState<number | null>(null)
+  const [trendCatKey,   setTrendCatKey]   = useState<string>('')  // '' = auto (first in comparison list)
 
   const dateRange = useMemo(
     () => getPresetRange(preset, customFrom, customTo),
@@ -196,9 +287,28 @@ export default function ReportsPage() {
     return { income, expense, net, rate }
   }, [filteredTxs])
 
-  const cashFlowData = useMemo(() => buildCashFlowData(filteredTxs, dateRange),                    [filteredTxs, dateRange])
-  const categoryData = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
-  const trendData    = useMemo(() => buildTrendData(accounts, transactions, dateRange, accountId),  [accounts, transactions, dateRange, accountId])
+  const cashFlowData    = useMemo(() => buildCashFlowData(filteredTxs, dateRange),                    [filteredTxs, dateRange])
+  const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
+  const trendData       = useMemo(() => buildTrendData(accounts, transactions, dateRange, accountId),  [accounts, transactions, dateRange, accountId])
+  const comparisonData  = useMemo(() => buildPeriodComparison(transactions, categories, dateRange, accountId), [transactions, categories, dateRange, accountId])
+
+  const activeTrendCat  = useMemo(() => {
+    if (!trendCatKey) return comparisonData[0] ?? null
+    return comparisonData.find(r => (r.categoryId ?? '__none__') === trendCatKey) ?? comparisonData[0] ?? null
+  }, [trendCatKey, comparisonData])
+
+  const catTrendData    = useMemo(
+    () => activeTrendCat ? buildCategoryTrendData(transactions, activeTrendCat.categoryId) : [],
+    [transactions, activeTrendCat],
+  )
+
+  const prevPeriodLabel = useMemo(() => {
+    const from  = parseISO(dateRange.from)
+    const days  = differenceInDays(parseISO(dateRange.to), from) + 1
+    const pFrom = subDays(from, days)
+    const pTo   = subDays(from, 1)
+    return `${format(pFrom, 'd MMM', { locale: tr })} – ${format(pTo, 'd MMM yy', { locale: tr })}`
+  }, [dateRange])
 
   const catFilteredTxs = useMemo(() => {
     if (!selectedCat) return []
@@ -208,10 +318,10 @@ export default function ReportsPage() {
     })
   }, [filteredTxs, selectedCat])
 
-  // Clear selection when filters change
   useEffect(() => {
     setSelectedCat(null)
     setActiveSliceIdx(null)
+    setTrendCatKey('')
   }, [preset, customFrom, customTo, accountId])
 
   const isLoading = !txsReady || !accountsReady
@@ -434,6 +544,93 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
+        {/* ── Advanced Analytics ────────────────────────────────────── */}
+        <Card className="overflow-hidden gap-0 py-0">
+          <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
+            <span className="text-sm font-semibold text-foreground/90">Gelişmiş Analiz</span>
+            {!isLoading && (
+              <span className="text-xs text-muted-foreground">
+                Önceki dönem: {prevPeriodLabel}
+              </span>
+            )}
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border/50">
+                <AdvancedSkeleton />
+                <AdvancedSkeleton />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border/50">
+
+                {/* Period comparison table */}
+                <div className="p-5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                    Dönem Karşılaştırması
+                  </div>
+                  {comparisonData.length === 0 ? (
+                    <div className="h-[160px] flex items-center justify-center text-sm text-muted-foreground">
+                      Gider verisi bulunamadı
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-0.5">
+                      {comparisonData.map((row, idx) => {
+                        const key = row.categoryId ?? '__none__'
+                        const isActive = trendCatKey ? trendCatKey === key : idx === 0
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => setTrendCatKey(isActive && !!trendCatKey ? '' : key)}
+                            className={[
+                              'flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-colors w-full',
+                              isActive ? 'bg-muted' : 'hover:bg-accent',
+                            ].join(' ')}
+                          >
+                            <span
+                              className="w-2 h-2 rounded-sm flex-shrink-0"
+                              style={{ background: row.color }}
+                            />
+                            <span className="text-[13px] text-foreground/80 flex-1 truncate min-w-0">
+                              {row.name}
+                            </span>
+                            <span className="text-[13px] tabular-nums text-foreground/70 font-medium">
+                              {formatCompact(row.current)}
+                            </span>
+                            <PctBadge pct={row.pct} />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 6-month category trend */}
+                <div className="p-5">
+                  {activeTrendCat ? (
+                    <>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span
+                          className="w-2 h-2 rounded-sm flex-shrink-0"
+                          style={{ background: activeTrendCat.color }}
+                        />
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Son 6 Ay — {activeTrendCat.name}
+                        </span>
+                      </div>
+                      <CategoryTrendChart data={catTrendData} color={activeTrendCat.color} />
+                    </>
+                  ) : (
+                    <div className="h-[180px] flex items-center justify-center text-sm text-muted-foreground">
+                      Kategori seçin
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
       </div>
     </>
   )
@@ -496,5 +693,28 @@ function DonutSkeleton() {
         ))}
       </div>
     </div>
+  )
+}
+
+function AdvancedSkeleton() {
+  return (
+    <div className="p-5 flex flex-col gap-2">
+      <div className="h-2.5 w-28 bg-muted rounded animate-pulse mb-2" />
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="h-9 bg-muted rounded-xl animate-pulse" />
+      ))}
+    </div>
+  )
+}
+
+function PctBadge({ pct }: { pct: number }) {
+  if (!isFinite(pct) || Math.abs(pct) < 0.5) {
+    return <span className="text-[11px] text-muted-foreground tabular-nums w-12 text-right">—</span>
+  }
+  const up = pct > 0
+  return (
+    <span className={['text-[11px] font-semibold tabular-nums w-12 text-right', up ? 'text-destructive' : 'text-green-600'].join(' ')}>
+      {up ? '+' : ''}{pct.toFixed(0)}%
+    </span>
   )
 }
