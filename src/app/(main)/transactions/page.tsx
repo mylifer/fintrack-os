@@ -4,9 +4,10 @@ import { useState, useMemo } from 'react'
 import { Header }          from '@/components/layout/Header'
 import { PeriodTabs }      from '@/components/ui/PeriodTabs'
 import { TransactionList } from '@/components/transactions/TransactionList'
-import { useTransactionStore, useUIStore, usePeopleStore } from '@/store'
+import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore } from '@/store'
 import { getPeriodRange }  from '@/lib/utils/date'
 import { formatCurrency }  from '@/lib/utils/currency'
+import { transactionsToCsvString, downloadCsv } from '@/lib/utils/csv'
 import type { TransactionFilters, PersonRole } from '@/types'
 
 type PersonFilter = { id: string; name: string } | null
@@ -17,6 +18,7 @@ export default function TransactionsPage() {
   const openModal    = useUIStore(s => s.openModal)
   const periodType   = useUIStore(s => s.periodType)
   const people       = usePeopleStore(s => s.people)
+  const categories   = useCategoryStore(s => s.categories)
 
   const [search, setSearch]         = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
@@ -54,6 +56,12 @@ export default function TransactionsPage() {
 
   const hasPersonFilter = familyFilter || recipientFilter
 
+  function handleExportCsv() {
+    const csv = transactionsToCsvString(filtered, categories)
+    const date = new Date().toISOString().slice(0, 10)
+    downloadCsv(csv, `islemler-${date}.csv`)
+  }
+
   return (
     <>
       <Header title="İşlemler" action={{ label: 'Ekle', onClick: () => openModal('add-transaction') }} />
@@ -79,6 +87,14 @@ export default function TransactionsPage() {
           <option value="income">Gelir</option>
           <option value="transfer">Transfer</option>
         </select>
+        <button
+          onClick={handleExportCsv}
+          disabled={filtered.length === 0}
+          title="İşlemleri Dışa Aktar (CSV)"
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-semibold text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          ↓ CSV
+        </button>
       </div>
 
       {/* Active person filter chips */}
