@@ -12,6 +12,49 @@ import { DEFAULT_CATEGORIES } from '@/types'
 // Run every load() so Supabase is always corrected on fetch, regardless of
 // whether prior async Supabase writes succeeded.
 const NOTO_TO_TABLER: Record<string, { icon: string; color: string }> = {
+  // ── Original emoji → Tabler (era: first commits, e.g. 🛒 🏠 🚗) ──────
+  '🛒': { icon: 'shopping-cart',    color: '#10B981' },
+  '🏠': { icon: 'home',             color: '#EAB308' },
+  '🚗': { icon: 'car',              color: '#3B82F6' },
+  '🍽': { icon: 'tools-kitchen-2',  color: '#F97316' },
+  '🍽️': { icon: 'tools-kitchen-2', color: '#F97316' },
+  '💊': { icon: 'pill',             color: '#EF4444' },
+  '🎬': { icon: 'movie',            color: '#A855F7' },
+  '👕': { icon: 'hanger',           color: '#EC4899' },
+  '📱': { icon: 'device-mobile',    color: '#3B82F6' },
+  '📚': { icon: 'book',             color: '#A855F7' },
+  '⚡': { icon: 'bolt',             color: '#EAB308' },
+  '📦': { icon: 'package',          color: '#6B7280' },
+  '💰': { icon: 'moneybag',         color: '#6366F1' },
+  '📈': { icon: 'trending-up',      color: '#6366F1' },
+  '🏢': { icon: 'building',         color: '#F97316' },
+  '🎁': { icon: 'gift',             color: '#10B981' },
+  '🎵': { icon: 'music',            color: '#A855F7' },
+  '🎮': { icon: 'device-gamepad-2', color: '#A855F7' },
+  '📖': { icon: 'book',             color: '#A855F7' },
+  '🏋': { icon: 'barbell',          color: '#EF4444' },
+  '🏋️': { icon: 'barbell',         color: '#EF4444' },
+  '💉': { icon: 'pill',             color: '#EF4444' },
+  '🧴': { icon: 'sparkles',         color: '#EC4899' },
+  '✈': { icon: 'plane',             color: '#0EA5E9' },
+  '✈️': { icon: 'plane',            color: '#0EA5E9' },
+  '🚌': { icon: 'bus',              color: '#3B82F6' },
+  '🚇': { icon: 'train',            color: '#3B82F6' },
+  '⛽': { icon: 'gas-station',      color: '#3B82F6' },
+  '🔧': { icon: 'tool',             color: '#6B7280' },
+  '🏥': { icon: 'building-hospital',color: '#EF4444' },
+  '💡': { icon: 'bulb',             color: '#EAB308' },
+  '🌿': { icon: 'leaf',             color: '#6B7280' },
+  '🎓': { icon: 'school',           color: '#6B7280' },
+  '💼': { icon: 'briefcase',        color: '#10B981' },
+  '🏦': { icon: 'building-bank',    color: '#1D4ED8' },
+  '🛡': { icon: 'shield',           color: '#64748B' },
+  '🛡️': { icon: 'shield',          color: '#64748B' },
+  '🔑': { icon: 'key',              color: '#EAB308' },
+  '💻': { icon: 'device-laptop',    color: '#EC4899' },
+  '🖥': { icon: 'device-desktop',   color: '#3B82F6' },
+  '🖥️': { icon: 'device-desktop',  color: '#3B82F6' },
+
   // ── Lucide PascalCase → Tabler (era: commit 1b769c8) ──────────────────
   'UtensilsCrossed': { icon: 'tools-kitchen-2',   color: '#F97316' },
   'ShoppingCart':    { icon: 'shopping-cart',      color: '#10B981' },
@@ -254,34 +297,56 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       }))
     }
 
-    // Phase 3: name-based icon sync — covers ALL legacy formats (emoji, Lucide, noto:).
-    // Matches system categories by name to the current DEFAULT_CATEGORIES definition and
-    // force-writes the correct icon + color to Dexie, Supabase, and Zustand.
+    // Phase 3: icon sync for ALL system categories.
+    // Pass A — name match: update categories whose name is in current DEFAULT_CATEGORIES.
+    // Pass B — format detect: update any remaining system category whose icon is still a
+    //          legacy format (emoji, Lucide PascalCase, noto:) using NOTO_TO_TABLER map.
     const defByName = new Map(
       DEFAULT_CATEGORIES.map(d => [d.name, { icon: d.icon, color: d.color }])
     )
+
+    const isLegacyIcon = (icon: string) =>
+      icon in NOTO_TO_TABLER ||          // known legacy format
+      icon.includes(':') ||              // noto: / iconify
+      /^[A-Z]/.test(icon) ||            // Lucide PascalCase
+      !/^[a-z]/.test(icon)              // emoji or any non-kebab start
+
     const toSync = existing.filter(c => {
       if (!c.isSystem) return false
       const def = defByName.get(c.name)
-      return def !== undefined && (c.icon !== def.icon || c.color !== def.color)
+      if (def) return c.icon !== def.icon || c.color !== def.color  // Pass A
+      return isLegacyIcon(c.icon)                                    // Pass B
     })
+
     if (toSync.length > 0) {
+      const updates: Array<{ id: string; patch: Partial<Category> }> = []
       for (const cat of toSync) {
-        const def = defByName.get(cat.name)!
-        const patch = { icon: def.icon, color: def.color }
+        const def = defByName.get(cat.name)
+        let patch: Partial<Category>
+        if (def) {
+          patch = { icon: def.icon, color: def.color }
+        } else {
+          const m = NOTO_TO_TABLER[cat.icon]
+          patch = m
+            ? { icon: m.icon }
+            : { icon: 'package' }  // last-resort fallback for unknown icons
+        }
         await db.categories.update(cat.id, patch)
+        updates.push({ id: cat.id, patch })
+      }
+      updates.forEach(({ id, patch }) => {
         supabase.from('categories')
           .update(patch)
-          .eq('id', cat.id)
+          .eq('id', id)
           .then(({ error: e }) => {
-            if (e) console.error('[supabase:categories:sync-icon]', cat.name, e)
+            if (e) console.error('[supabase:categories:sync-icon]', e)
           })
-      }
+      })
       set(s => ({
         categories: s.categories.map(c => {
           if (!c.isSystem) return c
-          const def = defByName.get(c.name)
-          return def ? { ...c, icon: def.icon, color: def.color } : c
+          const u = updates.find(x => x.id === c.id)
+          return u ? { ...c, ...u.patch } : c
         }),
       }))
     }
