@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { usePeopleStore, useTransactionStore } from '@/store'
-import { PersonTransactionsOverlay } from './PersonTransactionsOverlay'
 import { PersonAvatar } from './PersonAvatar'
-import type { Person, PersonRole } from '@/types'
+import type { PersonRole } from '@/types'
 
 interface Props {
   role: PersonRole
@@ -12,6 +12,7 @@ interface Props {
 }
 
 export function PeopleManager({ role, emptyText }: Props) {
+  const router       = useRouter()
   const allPeople    = usePeopleStore(s => s.people)
   const addPerson    = usePeopleStore(s => s.add)
   const renamePerson = usePeopleStore(s => s.rename)
@@ -30,7 +31,11 @@ export function PeopleManager({ role, emptyText }: Props) {
   const [editName, setEditName]     = useState('')
   const [editUrl, setEditUrl]       = useState('')
   const [deleteId, setDeleteId]     = useState<string | null>(null)
-  const [overlay, setOverlay]       = useState<Person | null>(null)
+
+  function navigateToDetail(id: string) {
+    const base = role === 'family_member' ? '/aile-uyeleri' : '/alicilar'
+    router.push(`${base}/${id}`)
+  }
 
   function txCount(personId: string): number {
     return role === 'family_member'
@@ -63,7 +68,6 @@ export function PeopleManager({ role, emptyText }: Props) {
 
   return (
     <>
-    <PersonTransactionsOverlay person={overlay} onClose={() => setOverlay(null)} />
     <div className="flex-1 overflow-auto">
       <div className="p-6 max-w-2xl mx-auto">
 
@@ -195,7 +199,7 @@ export function PeopleManager({ role, emptyText }: Props) {
                       <PersonAvatar person={person} size="sm" className="flex-shrink-0" />
                       <button
                         type="button"
-                        onClick={() => setOverlay(person)}
+                        onClick={() => navigateToDetail(person.id)}
                         className="flex-1 min-w-0 text-sm font-medium text-foreground text-left truncate hover:text-primary transition-colors"
                       >
                         {person.name}
@@ -203,7 +207,7 @@ export function PeopleManager({ role, emptyText }: Props) {
                       {count > 0 && (
                         <button
                           type="button"
-                          onClick={() => setOverlay(person)}
+                          onClick={() => navigateToDetail(person.id)}
                           className="text-[10px] font-mono text-muted-foreground bg-background px-2 py-0.5 rounded-full flex-shrink-0 hover:bg-accent transition-colors"
                         >
                           {count} işlem
