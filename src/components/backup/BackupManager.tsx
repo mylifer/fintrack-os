@@ -200,27 +200,42 @@ export function BackupManager() {
     setError('')
 
     // Cloud-first restore needs a signed-in user; abort before touching anything.
-    const userId = await getUserId()
+    let userId: string | undefined
+    try { userId = await getUserId() } catch { userId = undefined }
     if (!userId) {
       setError('Oturum bulunamadı. Buluta geri yükleme için lütfen giriş yapın.')
       return
     }
 
     const data = preview.data as BackupData
-    const snapshot = await readSnapshot()
 
+    let snapshot: BackupData
+    try {
+      snapshot = await readSnapshot()
+    } catch (e) {
+      console.error('[backup:snapshot]', e)
+      setError('Mevcut veriler okunamadı. Geri yükleme iptal edildi.')
+      return
+    }
+
+    // Once BOTH the Dexie write and the atomic cloud RPC succeed, the restore is
+    // committed and consistent (local == cloud). A failure AFTER this point (only
+    // the in-memory refresh) must NEVER trigger a rollback, or a successful
+    // restore would be silently discarded.
+    let committed = false
     try {
       // 1. Write the restored data to Dexie (atomic).
       setImportPhase('local')
       await writeDexie(data)
 
-      // 2. Push it to Supabase. The stores are cloud-authoritative, so the
-      //    cloud MUST hold the restored data before any load() runs — otherwise
-      //    load() would overwrite the restore with stale cloud rows.
+      // 2. Push it to Supabase in one atomic RPC. Stores are cloud-authoritative,
+      //    so the cloud MUST hold the restored data before any load() runs.
       setImportPhase('cloud')
       await cloudReplaceAll(data, userId)
+      committed = true
 
-      // 3. Rehydrate stores from the now-consistent cloud.
+      // 3. Rehydrate stores from the now-consistent cloud. Non-fatal: if this
+      //    throws, the data is already safely restored in both Dexie and cloud.
       await reloadStores()
 
       setPreview(null)
@@ -228,16 +243,23 @@ export function BackupManager() {
       flash('success', 'Yedek geri yüklendi ve buluta senkronize edildi.')
     } catch (err) {
       console.error('[backup:restore]', err)
-      // Cloud sync failed → roll back local to the pre-restore snapshot, and
-      // best-effort restore the cloud to it too so a later load() stays consistent.
-      try {
-        await writeDexie(snapshot)
-        await cloudReplaceAll(snapshot, userId).catch(e => console.error('[backup:cloud-rollback]', e))
-        await reloadStores().catch(e => console.error('[backup:reload-after-rollback]', e))
-      } catch (rollbackErr) {
-        console.error('[backup:rollback]', rollbackErr)
+      if (committed) {
+        // Restore succeeded; only the in-memory refresh failed. Don't roll back.
+        setPreview(null)
+        setFileName('')
+        flash('success', 'Yedek geri yüklendi. Görünümü güncellemek için sayfayı yenileyin.')
+      } else {
+        // Not committed → roll back local to the snapshot, and best-effort restore
+        // the cloud to it too so a later load() stays consistent.
+        try {
+          await writeDexie(snapshot)
+          await cloudReplaceAll(snapshot, userId).catch(e => console.error('[backup:cloud-rollback]', e))
+          await reloadStores().catch(e => console.error('[backup:reload-after-rollback]', e))
+        } catch (rollbackErr) {
+          console.error('[backup:rollback]', rollbackErr)
+        }
+        setError('Buluta senkronizasyon başarısız oldu. Değişiklikler geri alındı — verileriniz korundu.')
       }
-      setError('Buluta senkronizasyon başarısız oldu. Değişiklikler geri alındı — verileriniz korundu.')
     } finally {
       setImportPhase('idle')
     }
