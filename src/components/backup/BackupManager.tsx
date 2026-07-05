@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { db } from '@/lib/db'
+import { getUserId } from '@/lib/auth'
+import { cloudReplaceAll, type BackupData } from '@/lib/backup-sync'
 import {
   useAccountStore, useTransactionStore, useCategoryStore,
   useBudgetStore, useDebtStore, useInvestmentStore,
@@ -57,12 +59,15 @@ function validateBackup(raw: unknown): BackupFile {
 export function BackupManager() {
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [exporting, setExporting] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [preview,   setPreview]   = useState<BackupFile | null>(null)
-  const [fileName,  setFileName]  = useState('')
-  const [error,     setError]     = useState('')
-  const [success,   setSuccess]   = useState('')
+  const [exporting,   setExporting]   = useState(false)
+  // 'idle' | 'local' (writing Dexie) | 'cloud' (bulk-syncing Supabase)
+  const [importPhase, setImportPhase] = useState<'idle' | 'local' | 'cloud'>('idle')
+  const [preview,     setPreview]     = useState<BackupFile | null>(null)
+  const [fileName,    setFileName]    = useState('')
+  const [error,       setError]       = useState('')
+  const [success,     setSuccess]     = useState('')
+
+  const importing = importPhase !== 'idle'
 
   const loadAccounts     = useAccountStore(s => s.load)
   const loadTransactions = useTransactionStore(s => s.load)
@@ -141,61 +146,100 @@ export function BackupManager() {
 
   /* ── Import ─────────────────────────────────────────────── */
 
+  // Snapshot every table from Dexie so we can restore local state if the
+  // cloud sync fails partway through.
+  async function readSnapshot(): Promise<BackupData> {
+    const [accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions] =
+      await Promise.all([
+        db.accounts.toArray(), db.transactions.toArray(), db.categories.toArray(),
+        db.budgets.toArray(), db.debts.toArray(), db.investmentTransactions.toArray(),
+        db.people.toArray(), db.recurringTransactions.toArray(),
+      ])
+    return { accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions }
+  }
+
+  // Atomic clear + bulk insert of all tables (auto-rolls-back on any error).
+  async function writeDexie(data: BackupData) {
+    await db.transaction('rw',
+      [db.accounts, db.transactions, db.categories, db.budgets, db.debts, db.investmentTransactions, db.people, db.recurringTransactions],
+      async () => {
+        await Promise.all([
+          db.accounts.clear(), db.transactions.clear(), db.categories.clear(),
+          db.budgets.clear(), db.debts.clear(), db.investmentTransactions.clear(),
+          db.people.clear(), db.recurringTransactions.clear(),
+        ])
+        await Promise.all([
+          data.accounts.length               && db.accounts.bulkAdd(data.accounts                             as never),
+          data.transactions.length           && db.transactions.bulkAdd(data.transactions                     as never),
+          data.categories.length             && db.categories.bulkAdd(data.categories                         as never),
+          data.budgets.length                && db.budgets.bulkAdd(data.budgets                               as never),
+          data.debts.length                  && db.debts.bulkAdd(data.debts                                   as never),
+          data.investmentTransactions.length && db.investmentTransactions.bulkAdd(data.investmentTransactions as never),
+          data.people.length                 && db.people.bulkAdd(data.people                                 as never),
+          data.recurringTransactions.length  && db.recurringTransactions.bulkAdd(data.recurringTransactions   as never),
+        ])
+      },
+    )
+  }
+
+  async function reloadStores() {
+    await Promise.all([
+      loadAccounts(),
+      loadTransactions(),
+      loadCategories().then(initCategories),
+      loadBudgets(),
+      loadDebts(),
+      loadInvestments(),
+      loadPeople(),
+      loadRecurring(),
+    ])
+  }
+
   async function handleImport() {
     if (!preview) return
-    setImporting(true)
     setError('')
 
+    // Cloud-first restore needs a signed-in user; abort before touching anything.
+    const userId = await getUserId()
+    if (!userId) {
+      setError('Oturum bulunamadı. Buluta geri yükleme için lütfen giriş yapın.')
+      return
+    }
+
+    const data = preview.data as BackupData
+    const snapshot = await readSnapshot()
+
     try {
-      const { data } = preview
+      // 1. Write the restored data to Dexie (atomic).
+      setImportPhase('local')
+      await writeDexie(data)
 
-      // Atomic: clear everything then bulk insert — rolls back on any failure
-      await db.transaction('rw',
-        [db.accounts, db.transactions, db.categories, db.budgets, db.debts, db.investmentTransactions, db.people, db.recurringTransactions],
-        async () => {
-          await Promise.all([
-            db.accounts.clear(),
-            db.transactions.clear(),
-            db.categories.clear(),
-            db.budgets.clear(),
-            db.debts.clear(),
-            db.investmentTransactions.clear(),
-            db.people.clear(),
-            db.recurringTransactions.clear(),
-          ])
-          await Promise.all([
-            data.accounts.length               && db.accounts.bulkAdd(data.accounts                             as never),
-            data.transactions.length           && db.transactions.bulkAdd(data.transactions                     as never),
-            data.categories.length             && db.categories.bulkAdd(data.categories                         as never),
-            data.budgets.length                && db.budgets.bulkAdd(data.budgets                               as never),
-            data.debts.length                  && db.debts.bulkAdd(data.debts                                   as never),
-            data.investmentTransactions.length && db.investmentTransactions.bulkAdd(data.investmentTransactions as never),
-            data.people.length                 && db.people.bulkAdd(data.people                                 as never),
-            data.recurringTransactions.length  && db.recurringTransactions.bulkAdd(data.recurringTransactions   as never),
-          ])
-        },
-      )
+      // 2. Push it to Supabase. The stores are cloud-authoritative, so the
+      //    cloud MUST hold the restored data before any load() runs — otherwise
+      //    load() would overwrite the restore with stale cloud rows.
+      setImportPhase('cloud')
+      await cloudReplaceAll(data, userId)
 
-      // Reload all Zustand stores from fresh DB state
-      await Promise.all([
-        loadAccounts(),
-        loadTransactions(),
-        loadCategories().then(initCategories),
-        loadBudgets(),
-        loadDebts(),
-        loadInvestments(),
-        loadPeople(),
-        loadRecurring(),
-      ])
+      // 3. Rehydrate stores from the now-consistent cloud.
+      await reloadStores()
 
       setPreview(null)
       setFileName('')
-      flash('success', 'Yedek başarıyla geri yüklendi.')
+      flash('success', 'Yedek geri yüklendi ve buluta senkronize edildi.')
     } catch (err) {
-      setError('Geri yükleme başarısız. Dosya bozuk olabilir — verileriniz korundu.')
-      console.error(err)
+      console.error('[backup:restore]', err)
+      // Cloud sync failed → roll back local to the pre-restore snapshot, and
+      // best-effort restore the cloud to it too so a later load() stays consistent.
+      try {
+        await writeDexie(snapshot)
+        await cloudReplaceAll(snapshot, userId).catch(e => console.error('[backup:cloud-rollback]', e))
+        await reloadStores().catch(e => console.error('[backup:reload-after-rollback]', e))
+      } catch (rollbackErr) {
+        console.error('[backup:rollback]', rollbackErr)
+      }
+      setError('Buluta senkronizasyon başarısız oldu. Değişiklikler geri alındı — verileriniz korundu.')
     } finally {
-      setImporting(false)
+      setImportPhase('idle')
     }
   }
 
@@ -318,7 +362,11 @@ export function BackupManager() {
                     disabled={importing}
                     className="flex-1 h-9 rounded-xl bg-destructive text-white text-xs font-semibold hover:bg-destructive/80 disabled:opacity-40 transition-colors"
                   >
-                    {importing ? 'Geri Yükleniyor...' : 'Evet, Geri Yükle'}
+                    {importPhase === 'cloud'
+                      ? 'Buluta senkronize ediliyor...'
+                      : importPhase === 'local'
+                        ? 'Geri Yükleniyor...'
+                        : 'Evet, Geri Yükle'}
                   </button>
                 </div>
               </div>
