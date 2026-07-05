@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { useBudgetStore, useTransactionStore, useCategoryStore, useUIStore } from '@/store'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
@@ -52,7 +53,9 @@ function BudgetCard({
         <div className="min-w-0">
           <div className="flex gap-1 flex-wrap mb-1">
             {cats.map(cat => (
-              <span key={cat!.id} className="text-lg" title={cat!.name}>{cat!.icon}</span>
+              <span key={cat!.id} title={cat!.name} className="inline-flex">
+                <CategoryIcon icon={cat!.icon} color={cat!.color} size={18} />
+              </span>
             ))}
           </div>
           <div className="text-sm font-semibold truncate">
@@ -298,7 +301,7 @@ export default function BudgetsPage() {
                       onChange={() => toggleCat(cat.id)}
                       className="rounded accent-primary"
                     />
-                    <span className="text-base">{cat.icon}</span>
+                    <CategoryIcon icon={cat.icon} color={cat.color} size={16} />
                     <span className="text-sm">{cat.name}</span>
                   </label>
                 ))

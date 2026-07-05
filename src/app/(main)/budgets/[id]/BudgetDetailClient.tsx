@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBudgetStore, useTransactionStore, useCategoryStore } from '@/store'
 import { ProgressBar }     from '@/components/ui/ProgressBar'
+import { CategoryIcon }    from '@/components/categories/CategoryIcon'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { Modal }           from '@/components/ui/Modal'
 import { Button }          from '@/components/ui/button'
@@ -263,7 +264,10 @@ export default function BudgetDetailClient({ id }: { id: string }) {
                   : 'border-border text-muted-foreground hover:text-foreground'
               }`}
             >
-              {cat!.icon} {cat!.name}
+              <span className="inline-flex items-center gap-1.5">
+                <CategoryIcon icon={cat!.icon} color={cat!.color} size={13} />
+                {cat!.name}
+              </span>
             </button>
           ))}
         </div>
@@ -354,7 +358,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
                     onChange={() => toggleEditCat(cat.id)}
                     className="rounded accent-primary"
                   />
-                  <span className="text-base">{cat.icon}</span>
+                  <CategoryIcon icon={cat.icon} color={cat.color} size={16} />
                   <span className="text-sm">{cat.name}</span>
                 </label>
               ))}

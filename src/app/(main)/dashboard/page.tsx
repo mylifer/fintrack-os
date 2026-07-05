@@ -221,7 +221,10 @@ export default function DashboardPage() {
                     return (
                       <div key={b.id} className="space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{cat?.icon} {cat?.name}</span>
+                          <span className="flex items-center gap-1.5 text-sm font-medium">
+                            {cat && <CategoryIcon icon={cat.icon} color={cat.color} size={14} />}
+                            {cat?.name}
+                          </span>
                           <span className="text-sm tabular-nums text-muted-foreground">
                             {formatCurrency(b.spent, 'TRY')} / {formatCurrency(b.amount, 'TRY')}
                           </span>
@@ -314,7 +317,16 @@ export default function DashboardPage() {
                   const account = allAccounts.find(a => a.id === r.accountId)
                   return (
                     <li key={r.id} className="flex items-center gap-3 px-6 py-3">
-                      <span className="text-base w-6 text-center shrink-0">{cat?.icon ?? '↻'}</span>
+                      {cat ? (
+                        <span
+                          className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                          style={{ background: cat.color ? `${cat.color}20` : 'rgba(255,255,255,0.06)' }}
+                        >
+                          <CategoryIcon icon={cat.icon} color={cat.color} size={15} />
+                        </span>
+                      ) : (
+                        <span className="text-base w-7 text-center shrink-0 select-none">↻</span>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{r.name}</p>
                         {account && <p className="text-xs text-muted-foreground">{account.name}</p>}

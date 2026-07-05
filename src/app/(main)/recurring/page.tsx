@@ -8,6 +8,7 @@ import { Button }             from '@/components/ui/button'
 import { Modal }              from '@/components/ui/Modal'
 import { Input }              from '@/components/ui/Input'
 import { SelectField as Select } from '@/components/ui/Select'
+import { CategoryIcon }       from '@/components/categories/CategoryIcon'
 import { CurrencyInput }      from '@/components/ui/CurrencyInput'
 import { EmptyState }         from '@/components/ui/EmptyState'
 import { Badge }              from '@/components/ui/Badge'
@@ -98,7 +99,7 @@ export default function RecurringPage() {
   const categoryOptions = useMemo(
     () => categories
       .filter(c => c.scope === form.type)
-      .map(c => ({ value: c.id, label: `${c.icon} ${c.name}` })),
+      .map(c => ({ value: c.id, label: c.name })),
     [categories, form.type],
   )
 
@@ -442,7 +443,7 @@ function DueRow({
 }: {
   r: RecurringTransaction
   accounts: { id: string; name: string; color: string }[]
-  categories: { id: string; name: string; icon: string }[]
+  categories: { id: string; name: string; icon: string; color: string }[]
   isGenerating: boolean
   onGenerate: () => void
   onSkip: () => void
@@ -454,7 +455,7 @@ function DueRow({
     <div className="flex items-center gap-4 px-5 py-4">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          {category && <span className="text-base">{category.icon}</span>}
+          {category && <CategoryIcon icon={category.icon} color={category.color} size={16} />}
           <span className="font-semibold text-sm text-foreground truncate">{r.name}</span>
           <Badge variant={r.type === 'income' ? 'ok' : r.type === 'transfer' ? 'info' : 'danger'}>
             {FREQ_LABEL[r.frequency]}
@@ -500,7 +501,7 @@ function RecurringRow({
 }: {
   r: RecurringTransaction
   accounts: { id: string; name: string; color: string }[]
-  categories: { id: string; name: string; icon: string }[]
+  categories: { id: string; name: string; icon: string; color: string }[]
   confirmDeleteId: string | null
   onEdit: () => void
   onToggle: () => void
@@ -516,7 +517,7 @@ function RecurringRow({
     <div className="flex items-center gap-4 px-5 py-4 group">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          {category && <span className="text-base">{category.icon}</span>}
+          {category && <CategoryIcon icon={category.icon} color={category.color} size={16} />}
           <span className="font-semibold text-sm text-foreground truncate">{r.name}</span>
           <Badge variant={r.type === 'income' ? 'ok' : r.type === 'transfer' ? 'info' : 'default'}>
             {FREQ_LABEL[r.frequency]}

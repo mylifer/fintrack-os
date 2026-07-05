@@ -20,6 +20,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/Select'
 import { CategoryCascadeSelect } from '@/components/categories/CategoryCascadeSelect'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ function DescriptionAutocomplete({
   onChange: (v: string) => void
   onSelect: (s: Suggestion) => void
   suggestions: Suggestion[]
-  categories: { id: string; name: string; icon: string }[]
+  categories: { id: string; name: string; icon: string; color: string }[]
   people: Person[]
   error?: string
 }) {
@@ -200,7 +201,7 @@ function DescriptionAutocomplete({
                 <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                   {famPerson && <span>{famPerson.name}</span>}
                   {recPerson && <span>{recPerson.name}</span>}
-                  {cat && <span>{cat.icon} {cat.name}</span>}
+                  {cat && <span className="inline-flex items-center gap-1"><CategoryIcon icon={cat.icon} color={cat.color} size={12} /> {cat.name}</span>}
                 </span>
               </button>
             )
