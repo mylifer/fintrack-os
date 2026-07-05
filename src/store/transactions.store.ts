@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase'
+import { supabase, nullifyUndefined } from '@/lib/supabase'
 import type { Transaction, TransactionFilters } from '@/types'
 import { isInRange } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
@@ -99,18 +99,15 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   },
 
   update: async (id, patch) => {
-    const oldTx = get().transactions.find(t => t.id === id)
     const now = new Date().toISOString()
     const updated = { ...patch, updatedAt: now }
     await db.transactions.update(id, updated)
-    supabase.from('transactions').update(updated).eq('id', id).then(({ error }) => {
+    supabase.from('transactions').update(nullifyUndefined(updated)).eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:transactions:update]', error)
     })
-    // If the amount changed on a debt-linked transaction, adjust the debt's paidAmount
-    const effectiveDebtId = patch.debtId ?? oldTx?.debtId
-    if (effectiveDebtId && oldTx && patch.amount !== undefined && patch.amount !== oldTx.amount) {
-      await useDebtStore.getState().adjustPaidAmount(effectiveDebtId, patch.amount - oldTx.amount)
-    }
+    // NOT: Borç paidAmount mutabakatı burada YAPILMAZ — düzenleme akışının tek
+    // sahibi TransactionFormModal'dır (borç değişimi/kaldırma dahil tüm dalları
+    // yönetir). Burada da ayarlamak çift sayıma yol açıyordu.
     set(s => {
       const newTxs = s.transactions.map(t => t.id === id ? { ...t, ...updated } : t)
       useAccountStore.getState().recomputeBalances(newTxs)
@@ -140,6 +137,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     if (filters.accountIds?.length) txs = txs.filter(t => filters.accountIds!.includes(t.accountId))
     if (filters.categoryIds?.length) txs = txs.filter(t => t.categoryId && filters.categoryIds!.includes(t.categoryId))
     if (filters.types?.length) txs = txs.filter(t => filters.types!.includes(t.type))
+    if (filters.familyMemberIds?.length) txs = txs.filter(t => t.familyMemberId && filters.familyMemberIds!.includes(t.familyMemberId))
+    if (filters.recipientIds?.length) txs = txs.filter(t => t.recipientId && filters.recipientIds!.includes(t.recipientId))
     if (filters.dateFrom && filters.dateTo) txs = txs.filter(t => isInRange(t.date, filters.dateFrom!, filters.dateTo!))
     if (filters.search) {
       const q = filters.search.toLowerCase()

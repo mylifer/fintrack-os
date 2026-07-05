@@ -161,14 +161,18 @@ export function PriceHistoryChart({
   const [error,   setError]   = useState(false)
 
   useEffect(() => {
+    // Abort: hızlı periyot/varlık değişiminde eski yanıt yenisini ezmesin,
+    // unmount sonrası setState olmasın
+    const ctrl = new AbortController()
     setLoading(true)
     setError(false)
     const params = new URLSearchParams({ asset, from: fetchFrom })
     if (buyDatesStr) params.set('buyDates', buyDatesStr)
-    fetch(`/api/prices/history?${params}`)
+    fetch(`/api/prices/history?${params}`, { signal: ctrl.signal })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((d: PricePoint[]) => { setPriceHistory(d); setLoading(false) })
-      .catch(() => { setError(true); setLoading(false) })
+      .catch(() => { if (!ctrl.signal.aborted) { setError(true); setLoading(false) } })
+    return () => ctrl.abort()
   }, [asset, fetchFrom, buyDatesStr])
 
   // ── Chart data ───────────────────────────────────────────────────

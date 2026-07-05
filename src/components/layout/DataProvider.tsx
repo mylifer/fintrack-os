@@ -7,6 +7,11 @@ import {
   useRecurringStore,
 } from '@/store'
 
+// Modül seviyesinde tekil koruma: StrictMode'da effect iki kez çalışır ve iki
+// eşzamanlı init, initDefaults'un "mevcutları oku → eksikleri ekle" akışını
+// yarıştırıp varsayılan kategorileri çiftler. Aynı sayfa oturumunda init bir kez koşar.
+let initPromise: Promise<void> | null = null
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const loadAccounts              = useAccountStore(s => s.load)
   const loadTransactions          = useTransactionStore(s => s.load)
@@ -41,13 +46,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         fetchPrices(),
       ])
 
-      reprocessSellLinkedTxs()
+      reprocessSellLinkedTxs().catch(err => {
+        console.error('[init:reprocessSellLinkedTxs]', err)
+      })
       const { recomputeBalances } = useAccountStore.getState()
       const { transactions }      = useTransactionStore.getState()
       recomputeBalances(transactions)
     }
 
-    init()
+    if (!initPromise) {
+      initPromise = init().catch(err => {
+        console.error('[init]', err)
+        initPromise = null // başarısız init tekrar denenebilsin
+      })
+    }
   }, [loadAccounts, loadTransactions, loadCategories, initCategories, loadBudgets, loadDebts, loadInvestments, fetchPrices, loadPeople, loadRecurring, reprocessSellLinkedTxs])
 
   return <>{children}</>

@@ -105,7 +105,7 @@ export function TransactionImportModal({ open, onClose }: Props) {
       return
     }
 
-    const result = validateImportRows(parsed.rows, mapping, categories)
+    const result = validateImportRows(parsed.rows, mapping, categories, parsed.rowLines)
     setValid(result.valid)
     setRowErrors(result.errors)
     setStep('validate')
@@ -136,13 +136,26 @@ export function TransactionImportModal({ open, onClose }: Props) {
 
       await db.transactions.bulkAdd(txs)
 
+      // Supabase insert'i BEKLE: loadTxs() Supabase'i doğru kabul edip Dexie'yi
+      // sunucudan yeniden yazar — insert uçuştayken çağrılırsa içe aktarılan
+      // satırlar silinir. Insert başarısızsa yeniden yükleme yapma.
       const userId = await getUserId()
       const dbRows = userId ? txs.map(t => ({ ...t, user_id: userId })) : txs
-      supabase.from('transactions').insert(dbRows).then(({ error: e }) => {
-        if (e) console.error('[supabase:transactions:bulk-import]', e)
-      })
+      const { error: insertError } = await supabase.from('transactions').insert(dbRows)
+      if (insertError) {
+        console.error('[supabase:transactions:bulk-import]', insertError)
+        // Sunucuya yazılamadı: Dexie'de duran satırları store'a yansıt ama
+        // loadTxs() çağırma (Supabase'ten yeniden yazım onları siler)
+        useTransactionStore.setState(s => ({ transactions: [...txs, ...s.transactions] }))
+      } else {
+        await loadTxs()
+      }
 
-      await loadTxs()
+      // İçe aktarma store.add yolunu atladığı için bakiyeleri elle tazele
+      const { recomputeBalances } = useAccountStore.getState()
+      const { transactions }      = useTransactionStore.getState()
+      recomputeBalances(transactions)
+
       setStep('done')
     } catch (err) {
       setError('İçe aktarma başarısız oldu. Lütfen tekrar deneyin.')

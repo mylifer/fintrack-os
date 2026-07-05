@@ -16,7 +16,9 @@ const fillColor: Record<BudgetStatus, string> = {
 }
 
 export function ProgressBar({ percent, status = 'ok', className = '', showLabel }: ProgressBarProps) {
-  const capped = Math.min(percent, 100)
+  // NaN/negatif değerler geçersiz CSS (width: NaN%) üretmesin
+  const safe   = Number.isFinite(percent) ? percent : 0
+  const capped = Math.min(Math.max(safe, 0), 100)
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
@@ -30,7 +32,7 @@ export function ProgressBar({ percent, status = 'ok', className = '', showLabel 
         <span className={`font-mono text-[10px] tabular w-8 text-right ${
           status === 'exceeded' ? 'text-destructive' : status === 'warning' ? 'text-orange-500' : 'text-muted-foreground'
         }`}>
-          {Math.round(percent)}%
+          {Math.round(safe)}%
         </span>
       )}
     </div>

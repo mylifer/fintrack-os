@@ -39,7 +39,7 @@ const PencilIcon = () => (
 export default function BudgetDetailClient({ id }: { id: string }) {
   const router       = useRouter()
   const budget       = useBudgetStore(s => s.budgets.find(b => b.id === id))
-  const loading      = useBudgetStore(s => s.loading)
+  const ready        = useBudgetStore(s => s.ready)
   const update       = useBudgetStore(s => s.update)
   const transactions = useTransactionStore(s => s.transactions)
   const categories   = useCategoryStore(s => s.categories)
@@ -73,14 +73,19 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   async function handleSave() {
     if (!budget || editCatIds.length === 0 || !parseCurrencyInput(editAmtStr)) return
     setEditLoading(true)
-    const categoryId = editCatIds.length === 1 ? editCatIds[0] : JSON.stringify(editCatIds)
-    await update(budget.id, {
-      categoryId,
-      amount: parseCurrencyInput(editAmtStr),
-      alertThreshold: Number(editThreshold) || 80,
-    })
-    setEditLoading(false)
-    setShowEdit(false)
+    try {
+      const categoryId = editCatIds.length === 1 ? editCatIds[0] : JSON.stringify(editCatIds)
+      await update(budget.id, {
+        categoryId,
+        amount: parseCurrencyInput(editAmtStr),
+        alertThreshold: Number(editThreshold) || 80,
+      })
+      setShowEdit(false)
+    } catch (err) {
+      console.error('[budget:update]', err)
+    } finally {
+      setEditLoading(false)
+    }
   }
 
   // ── Derived (all before conditional returns — Rules of Hooks) ─────────────
@@ -127,7 +132,8 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   }, [budget, transactions, activeCatIds, allTime, from, to, search])
 
   // ── Conditional returns (after all hooks) ─────────────────────────────────
-  if (loading && !budget) return null
+  // İlk render'da store henüz yüklenmemişken "Bütçe bulunamadı" yanıp sönmesin
+  if (!ready && !budget) return null
 
   if (!budget) {
     return (

@@ -146,7 +146,7 @@ export default function DebtsPage() {
   async function handleSave() {
     if (!form.name || !parseCurrencyInput(form.totalStr)) return
     setLoading(true)
-
+    try {
     const patch = {
       name:              form.name,
       type:              form.type,
@@ -175,9 +175,12 @@ export default function DebtsPage() {
       }
       await add(d)
     }
-
     closeForm()
-    setLoading(false)
+    } catch (err) {
+      console.error('[debt:save]', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   function DebtCard({ debt }: { debt: ReturnType<typeof getActive>[0] }) {

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const PUBLIC_PATHS = ['/login', '/register']
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -32,9 +32,16 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  const isLocalhost = request.headers.get('host')?.startsWith('localhost')
+  // Yerel geliştirmede auth atlanır. Host header istemci kontrolündedir —
+  // ortam tespiti için güvenilmez (localhost.evil.com bypass'ı).
+  const isDev = process.env.NODE_ENV === 'development'
 
-  if (!user && !isLocalhost) {
+  if (!user && !isDev) {
+    // API istekleri HTML login sayfasına yönlendirilmez; fetch çağrıları
+    // 200+HTML yerine net bir 401 görmeli
+    if (pathname.startsWith('/api')) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    }
     return NextResponse.redirect(new URL('/login', request.url))
   }
 

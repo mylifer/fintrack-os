@@ -49,45 +49,66 @@ export function downloadCsv(csvString: string, filename: string): void {
 // ─── Import — parsing ──────────────────────────────────────────────────────
 
 export interface ParsedCsv {
-  headers: string[]
-  rows:    Record<string, string>[]
+  headers:  string[]
+  rows:     Record<string, string>[]
+  /** 1-based source line number each data row starts on (for error reporting) */
+  rowLines: number[]
 }
 
 export function parseCsvText(text: string): ParsedCsv {
   const normalized = text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-  const lines      = normalized.split('\n').filter(l => l.trim())
 
-  if (lines.length < 2) {
+  // Quote-aware tokenizer over the WHOLE text: a quoted cell may contain
+  // commas and newlines (our own export produces these), so rows cannot be
+  // derived from a plain split('\n').
+  const records: string[][] = []
+  const recordLines: number[] = []
+  let row: string[] = []
+  let current   = ''
+  let inQuotes  = false
+  let line      = 1
+  let rowLine   = 1
+  let rowEmpty  = true
+
+  const endCell = () => { row.push(current.trim()); current = '' }
+  const endRow  = () => {
+    endCell()
+    if (!rowEmpty || row.length > 1) { records.push(row); recordLines.push(rowLine) }
+    row = []; rowEmpty = true; rowLine = line
+  }
+
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i]
+    if (ch === '"') {
+      if (inQuotes && normalized[i + 1] === '"') { current += '"'; i++ }
+      else inQuotes = !inQuotes
+      rowEmpty = false
+    } else if (ch === ',' && !inQuotes) {
+      endCell()
+    } else if (ch === '\n' && !inQuotes) {
+      line++
+      endRow()
+      rowLine = line
+    } else {
+      if (ch === '\n') line++
+      if (ch.trim()) rowEmpty = false
+      current += ch
+    }
+  }
+  endRow()
+
+  if (records.length < 2) {
     throw new Error('CSV dosyası boş veya yalnızca başlık satırı içeriyor.')
   }
 
-  function parseLine(line: string): string[] {
-    const cells: string[] = []
-    let current  = ''
-    let inQuotes = false
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i]
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') { current += '"'; i++ }
-        else inQuotes = !inQuotes
-      } else if (ch === ',' && !inQuotes) {
-        cells.push(current.trim()); current = ''
-      } else {
-        current += ch
-      }
-    }
-    cells.push(current.trim())
-    return cells
-  }
-
-  const headers = parseLine(lines[0])
-  const rows    = lines.slice(1).map(line => {
-    const cells: Record<string, string> = {}
-    parseLine(line).forEach((v, i) => { cells[headers[i] ?? `col${i}`] = v })
-    return cells
+  const headers = records[0]
+  const rows    = records.slice(1).map(cells => {
+    const rec: Record<string, string> = {}
+    cells.forEach((v, i) => { rec[headers[i] ?? `col${i}`] = v })
+    return rec
   })
 
-  return { headers, rows }
+  return { headers, rows, rowLines: recordLines.slice(1) }
 }
 
 // ─── Import — column mapping ───────────────────────────────────────────────
@@ -130,7 +151,9 @@ const HEADER_ALIASES: Record<string, AppField> = {
 export function autoDetectMapping(headers: string[]): ColumnMapping {
   const mapping: ColumnMapping = {}
   for (const h of headers) {
-    const field = HEADER_ALIASES[h.toLowerCase()]
+    const key = h.toLowerCase()
+    // hasOwnProperty guard: "constructor" gibi başlıklar prototip zincirinden değer döndürmesin
+    const field = Object.prototype.hasOwnProperty.call(HEADER_ALIASES, key) ? HEADER_ALIASES[key] : undefined
     if (field && !mapping[field]) mapping[field] = h
   }
   return mapping
@@ -163,9 +186,30 @@ function parseDate(raw: string): string | null {
 }
 
 function parseAmount(raw: string): number | null {
-  const cleaned = raw.trim().replace(/[₺$€£\s]/g, '').replace(',', '.')
+  let cleaned = raw.trim().replace(/[₺$€£\s]/g, '')
+  const hasComma = cleaned.includes(',')
+  const hasDot   = cleaned.includes('.')
+
+  if (hasComma && hasDot) {
+    // Son gelen ayraç ondalıktır: "1.234,56" (TR) ve "1,234.56" (EN)
+    if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+    } else {
+      cleaned = cleaned.replace(/,/g, '')
+    }
+  } else if (hasComma) {
+    // Birden çok virgül binlik ayraçtır ("1,234,567"); tek virgül TR ondalığı ("12,5")
+    const parts = cleaned.split(',')
+    cleaned = parts.length > 2 ? parts.join('') : parts.join('.')
+  } else if (hasDot) {
+    // "1.234" / "1.234.567" desenleri TR binlik gruplarıdır; "1234.56" ondalıktır
+    if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) cleaned = cleaned.replace(/\./g, '')
+  }
+
+  // Ayraçlar temizlendikten sonra kalıntı ayraç/harf varsa sayı geçersizdir
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null
   const n = parseFloat(cleaned)
-  if (isNaN(n) || n < 0) return null
+  if (isNaN(n) || n <= 0) return null
   return Math.round(n * 100) / 100
 }
 
@@ -194,13 +238,14 @@ export function validateImportRows(
   rows:       Record<string, string>[],
   mapping:    ColumnMapping,
   categories: Category[],
+  rowLines?:  number[],
 ): ValidationResult {
   const catByName = new Map(categories.map(c => [c.name.toLowerCase(), c.id]))
   const valid:  ImportedTransaction[] = []
   const errors: RowError[]           = []
 
   rows.forEach((row, idx) => {
-    const rowNum = idx + 2
+    const rowNum = rowLines?.[idx] ?? idx + 2
     const errs:  string[] = []
 
     const rawDate    = (mapping.date        ? row[mapping.date]        : '') ?? ''
@@ -210,14 +255,18 @@ export function validateImportRows(
     const rawCat     = (mapping.category    ? row[mapping.category]    : '') ?? ''
     const rawCur     = (mapping.currency    ? row[mapping.currency]    : '') ?? ''
 
-    const date   = rawDate.trim()   ? parseDate(rawDate)   : null
-    const amount = rawAmount.trim() ? parseAmount(rawAmount) : null
-    const type   = TYPE_MAP[rawType.trim().toLowerCase()] ?? null
+    const date    = rawDate.trim()   ? parseDate(rawDate)   : null
+    const amount  = rawAmount.trim() ? parseAmount(rawAmount) : null
+    const typeKey = rawType.trim().toLowerCase()
+    const type    = Object.prototype.hasOwnProperty.call(TYPE_MAP, typeKey) ? TYPE_MAP[typeKey] : null
 
     if (!date)                         errs.push(`Geçersiz tarih: "${rawDate.trim()}"`)
     if (!rawDesc.trim())               errs.push('Açıklama boş olamaz')
     if (amount === null)               errs.push(`Geçersiz tutar: "${rawAmount.trim()}"`)
-    if (!type)                         errs.push(`Geçersiz tür: "${rawType.trim()}" (gider/gelir/transfer bekleniyor)`)
+    if (!type)                         errs.push(`Geçersiz tür: "${rawType.trim()}" (gider/gelir bekleniyor)`)
+    // İçe aktarma tek hesaba yapılır; hedef hesabı olmayan transfer yalnızca
+    // para çıkışı yaratır — kabul etme
+    if (type === 'transfer')           errs.push('Transfer satırları içe aktarılamaz (hedef hesap bilgisi CSV\'de yok)')
 
     const categoryId = rawCat.trim() ? catByName.get(rawCat.trim().toLowerCase()) : undefined
     const curRaw     = rawCur.trim().toUpperCase()

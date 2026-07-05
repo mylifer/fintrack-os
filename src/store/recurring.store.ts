@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import { addDays, addWeeks, addMonths, addYears, format, parseISO } from 'date-fns'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase'
+import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import type { RecurringTransaction, RecurringFrequency } from '@/types'
 
@@ -63,7 +63,7 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   update: async (id, patch) => {
     await db.recurringTransactions.update(id, patch)
-    supabase.from('recurring_transactions').update(patch).eq('id', id).then(({ error }) => {
+    supabase.from('recurring_transactions').update(nullifyUndefined(patch)).eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:recurring_transactions:update]', error)
     })
     set(s => ({

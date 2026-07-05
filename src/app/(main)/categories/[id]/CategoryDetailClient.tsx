@@ -13,6 +13,7 @@ interface Props { id: string }
 export default function CategoryDetailClient({ id }: Props) {
   const router       = useRouter()
   const categories   = useCategoryStore(s => s.categories)
+  const ready        = useCategoryStore(s => s.ready)
   const update       = useCategoryStore(s => s.update)
   const transactions = useTransactionStore(s => s.transactions)
 
@@ -134,6 +135,8 @@ export default function CategoryDetailClient({ id }: Props) {
   }
 
   /* ── Not found ── */
+  // Store yüklenmeden "Kategori bulunamadı" gösterme (ilk render'da liste boş)
+  if (!ready && !cat) return null
   if (!cat) {
     return (
       <div className="flex flex-col h-full">

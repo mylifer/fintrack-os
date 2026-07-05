@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -104,18 +104,27 @@ export default function DashboardPage() {
   const dueSoon = getDueSoon(30)
   const pending = getDue(today())
 
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
+
   async function handleGenerate(id: string) {
     const r = pending.find(x => x.id === id)
-    if (!r) return
-    const now = new Date().toISOString()
-    await addTransaction({
-      id: crypto.randomUUID(), type: r.type, amount: r.amount, currency: r.currency,
-      date: r.nextDueDate, accountId: r.accountId, toAccountId: r.toAccountId,
-      categoryId: r.categoryId, description: r.description, notes: r.notes,
-      isInstallment: false, familyMemberId: r.familyMemberId, recipientId: r.recipientId,
-      createdAt: now, updatedAt: now,
-    })
-    await markGenerated(id, today())
+    if (!r || generatingId) return
+    setGeneratingId(id)
+    try {
+      const now = new Date().toISOString()
+      await addTransaction({
+        id: crypto.randomUUID(), type: r.type, amount: r.amount, currency: r.currency,
+        date: r.nextDueDate, accountId: r.accountId, toAccountId: r.toAccountId,
+        categoryId: r.categoryId, description: r.description, notes: r.notes,
+        isInstallment: false, familyMemberId: r.familyMemberId, recipientId: r.recipientId,
+        createdAt: now, updatedAt: now,
+      })
+      await markGenerated(id, today())
+    } catch (err) {
+      console.error('[dashboard:generate]', err)
+    } finally {
+      setGeneratingId(null)
+    }
   }
 
   return (
@@ -313,8 +322,8 @@ export default function DashboardPage() {
                       <span className={`text-sm tabular-nums shrink-0 font-medium ${r.type === 'income' ? 'text-green-600' : 'text-destructive'}`}>
                         {r.type === 'income' ? '+' : '−'}{formatCurrency(r.amount)}
                       </span>
-                      <Button variant="outline" size="sm" onClick={() => handleGenerate(r.id)} className="shrink-0">
-                        Kaydet
+                      <Button variant="outline" size="sm" onClick={() => handleGenerate(r.id)} disabled={!!generatingId} className="shrink-0">
+                        {generatingId === r.id ? '…' : 'Kaydet'}
                       </Button>
                     </li>
                   )

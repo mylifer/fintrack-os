@@ -80,7 +80,12 @@ export function Sidebar() {
   const router         = useRouter()
 
   async function handleSignOut() {
-    await clearLocalData()
+    try {
+      await clearLocalData()
+    } catch (err) {
+      // Yerel temizlik başarısız olsa bile oturumu kapat
+      console.error('[signout:clearLocalData]', err)
+    }
     await supabase.auth.signOut()
     router.push('/login')
   }

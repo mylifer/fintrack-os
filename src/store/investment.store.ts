@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase'
+import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import { useTransactionStore } from './transactions.store'
 import type {
@@ -330,7 +330,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
     const finalPatch = { ...patch, linkedTransactionId }
     await db.investmentTransactions.update(id, finalPatch)
-    supabase.from('investment_transactions').update(finalPatch).eq('id', id).then(({ error }) => {
+    supabase.from('investment_transactions').update(nullifyUndefined(finalPatch)).eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:investment_transactions:update]', error)
     })
     set(s => ({

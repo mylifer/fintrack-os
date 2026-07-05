@@ -43,7 +43,7 @@ async function fetchUsd(date: string): Promise<Record<string, number> | null> {
     try {
       const res = await fetch(
         `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${tag}/v1/currencies/usd.min.json`,
-        { cache: 'no-store' },
+        { cache: 'no-store', signal: AbortSignal.timeout(6_000) },
       )
       if (!res.ok) continue
       const d = await res.json()
@@ -80,7 +80,9 @@ export async function GET(request: Request) {
     ? buyDatesRaw.split(',').filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s))
     : []
 
-  const dates = sampleDates(from, mustInclude)
+  // Üst sınır: "from=1900-01-01" gibi bir istek binlerce paralel CDN fetch'i
+  // tetiklemesin — örnekleme adımı zaten seyrekleştiriyor, 400 nokta ≈ 15+ yıl
+  const dates = sampleDates(from, mustInclude).slice(-400)
 
   const points = await Promise.all(
     dates.map(async (date): Promise<PricePoint | null> => {

@@ -27,14 +27,24 @@ export default function SettingsPage() {
 
   async function handleLoadDemo() {
     setDemoLoading(true)
-    await loadDemoData()
-    window.location.reload()
+    try {
+      await loadDemoData()
+      window.location.reload()
+    } catch (err) {
+      console.error('[settings:load-demo]', err)
+      setDemoLoading(false)
+    }
   }
 
   async function handleClearAll() {
     setClearLoading(true)
-    await clearAllData()
-    window.location.reload()
+    try {
+      await clearAllData()
+      window.location.reload()
+    } catch (err) {
+      console.error('[settings:clear-all]', err)
+      setClearLoading(false)
+    }
   }
 
   return (

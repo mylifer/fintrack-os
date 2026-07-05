@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase'
+import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
 import { enrichBudget } from '@/lib/utils/calculations'
@@ -10,6 +10,7 @@ import { enrichBudget } from '@/lib/utils/calculations'
 interface BudgetState {
   budgets: Budget[]
   loading: boolean
+  ready: boolean
   load: () => Promise<void>
   add: (budget: Budget) => Promise<void>
   update: (id: string, patch: Partial<Budget>) => Promise<void>
@@ -20,6 +21,7 @@ interface BudgetState {
 export const useBudgetStore = create<BudgetState>()((set, get) => ({
   budgets: [],
   loading: false,
+  ready: false,
 
   load: async () => {
     set({ loading: true })
@@ -30,11 +32,11 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
         await db.budgets.clear()
         await db.budgets.bulkAdd(budgets)
       })
-      set({ budgets, loading: false })
+      set({ budgets, loading: false, ready: true })
     } else {
       console.error('[supabase:budgets:load]', error)
       const budgets = await db.budgets.toArray()
-      set({ budgets, loading: false })
+      set({ budgets, loading: false, ready: true })
     }
   },
 
@@ -54,7 +56,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     await db.budgets.update(id, patch)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { spent: _s, remaining: _r, percentUsed: _pu, status: _st, category: _c, ...patchForDb } = patch as Partial<BudgetWithSpent>
-    supabase.from('budgets').update(patchForDb).eq('id', id).then(({ error }) => {
+    supabase.from('budgets').update(nullifyUndefined(patchForDb)).eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:budgets:update]', error)
     })
     set(s => ({

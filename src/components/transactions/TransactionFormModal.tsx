@@ -240,6 +240,8 @@ function PersonField({
       onChange(person.id)
       setAdding(false)
       setNewName('')
+    } catch (err) {
+      console.error('[person:add]', err)
     } finally {
       setSaving(false)
     }
@@ -463,11 +465,14 @@ export function TransactionFormModal() {
   }
 
   async function handleSubmit() {
-    if (!validate()) return
+    if (loading || !validate()) return
     setLoading(true)
+    try {
     const amount   = parseCurrencyInput(amountStr)
-    const account  = accounts.find(a => a.id === form.accountId)
-    const currency = (account?.currency ?? 'TRY') as CurrencyCode
+    // Arşivlenmiş hesap `accounts` listesinde yok — tam store'dan ara ki
+    // arşivli hesaptaki bir işlemi düzenlemek para birimini TRY'ye çevirmesin
+    const account  = useAccountStore.getState().accounts.find(a => a.id === form.accountId)
+    const currency = (account?.currency ?? editingTx?.currency ?? 'TRY') as CurrencyCode
     const now      = new Date().toISOString()
 
     // Strip UI-only fields before building the stored transaction
@@ -483,22 +488,24 @@ export function TransactionFormModal() {
         recipientId:    formData.recipientId    ?? null,
       })
 
-      // Reconcile debt paidAmount for edit
+      // Reconcile debt paidAmount for edit.
+      // adjustPaidAmount: taksit sayısını değiştirmez (tutar düzeltmesi / geri alma);
+      // recordPayment: yeni bir ödeme kaydeder (taksit sayısını da artırır).
       const wasDebtPayment = editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId
       const isDebtPaymentNow = tab === 'transfer' && form.isDebtPayment && !!formData.debtId
-      const { recordPayment } = useDebtStore.getState()
+      const { recordPayment, adjustPaidAmount } = useDebtStore.getState()
 
       if (wasDebtPayment && isDebtPaymentNow) {
         if (editingTx.debtId === formData.debtId) {
           const delta = Math.round((amount - editingTx.amount) * 100) / 100
-          if (delta !== 0) await recordPayment(formData.debtId!, delta)
+          if (delta !== 0) await adjustPaidAmount(formData.debtId!, delta)
         } else {
           // Debt changed: reverse old debt, apply to new debt
-          await recordPayment(editingTx.debtId!, -editingTx.amount)
+          await adjustPaidAmount(editingTx.debtId!, -editingTx.amount)
           await recordPayment(formData.debtId!, amount)
         }
       } else if (wasDebtPayment && !isDebtPaymentNow) {
-        await recordPayment(editingTx.debtId!, -editingTx.amount)
+        await adjustPaidAmount(editingTx.debtId!, -editingTx.amount)
       } else if (!wasDebtPayment && isDebtPaymentNow) {
         await recordPayment(formData.debtId!, amount)
       }
@@ -520,8 +527,13 @@ export function TransactionFormModal() {
         await useDebtStore.getState().recordPayment(formData.debtId, amount)
       }
     }
-    setLoading(false)
     closeModal()
+    } catch (err) {
+      console.error('[transaction:submit]', err)
+      setErrors({ description: 'Kaydetme başarısız oldu, tekrar deneyin' })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const patch = (p: Partial<ReturnType<typeof newForm>>) => setForm(f => ({ ...f, ...p }))
@@ -827,7 +839,7 @@ export function TransactionFormModal() {
                     min={2}
                     max={60}
                     value={installments}
-                    onChange={e => setInstallments(Number(e.target.value))}
+                    onChange={e => setInstallments(Math.min(60, Math.max(2, Number(e.target.value) || 2)))}
                     className="w-20 h-9 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm text-center outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
                   />
                   <span className="text-sm text-muted-foreground">taksit</span>

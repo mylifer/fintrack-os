@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase'
+import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import type { Debt, DebtWithRemaining } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
@@ -60,7 +60,7 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     await db.debts.update(id, patch)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { remainingAmount: _ra, progressPercent: _pp, ...patchForDb } = patch as Partial<DebtWithRemaining>
-    supabase.from('debts').update(patchForDb).eq('id', id).then(({ error }) => {
+    supabase.from('debts').update(nullifyUndefined(patchForDb)).eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:debts:update]', error)
     })
     set(s => ({

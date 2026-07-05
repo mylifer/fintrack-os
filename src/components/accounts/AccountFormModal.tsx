@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/button'
 import { Input }  from '@/components/ui/Input'
@@ -41,12 +41,15 @@ const CONFIRM_WORD = 'Onaylıyorum'
 export function AccountFormModal({ open, onClose, account, onDeleted }: AccountFormModalProps) {
   const { add, update, remove, recomputeBalances } = useAccountStore()
 
+  // Kredi kartı borcu pozitif girilir (DB'de negatif tutulur); diğer hesap
+  // türlerinde işaret korunur — abs almak negatif açılış bakiyesini bozar
+  const initialBalanceDisplay = (a?: Account) =>
+    a ? String(a.type === 'credit_card' ? Math.abs(a.initialBalance) : a.initialBalance) : ''
+
   const [name, setName]               = useState(account?.name ?? '')
   const [type, setType]               = useState<AccountType>(account?.type ?? 'checking')
   const [currency, setCurrency]       = useState<CurrencyCode>(account?.currency ?? 'TRY')
-  const [initialBalStr, setInitialBalStr] = useState(
-    account ? String(Math.abs(account.initialBalance)) : ''
-  )
+  const [initialBalStr, setInitialBalStr] = useState(initialBalanceDisplay(account))
   const [color, setColor]             = useState(account?.color ?? '#1A5CA3')
   const [limitStr, setLimitStr]     = useState(account?.creditLimit ? String(account.creditLimit) : '')
   const [stmtDay, setStmtDay]       = useState(account?.statementDay ?? 1)
@@ -56,6 +59,23 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
   const [errors, setErrors]         = useState<Record<string, string>>({})
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [confirmText, setConfirmText]         = useState('')
+
+  // Modal kapatılıp yeniden açıldığında (aynı key ile) önceki, kaydedilmemiş
+  // form değerleri kalıyordu — açılışta account'tan yeniden doldur
+  useEffect(() => {
+    if (!open) return
+    setName(account?.name ?? '')
+    setType(account?.type ?? 'checking')
+    setCurrency(account?.currency ?? 'TRY')
+    setInitialBalStr(initialBalanceDisplay(account))
+    setColor(account?.color ?? '#1A5CA3')
+    setLimitStr(account?.creditLimit ? String(account.creditLimit) : '')
+    setStmtDay(account?.statementDay ?? 1)
+    setIcon(account?.icon ?? '')
+    setIconUrl('')
+    setErrors({})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, account])
 
   const isCreditCard = type === 'credit_card'
   const canDelete    = confirmText === CONFIRM_WORD
@@ -82,7 +102,9 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
 
   const txs            = useTransactionStore(s => s.transactions)
   const txEffect       = account ? computeTransactionEffect(account.id, txs) : 0
-  const initialBalNum  = parseCurrencyInput(initialBalStr) * (isCreditCard ? -1 : 1)
+  const initialBalNum  = isCreditCard
+    ? -Math.abs(parseCurrencyInput(initialBalStr))   // borç her zaman negatif tutulur
+    : parseCurrencyInput(initialBalStr)              // işaret kullanıcının girdiği gibi
   const computedBalance = initialBalNum + txEffect
 
   async function handleSubmit() {
@@ -93,6 +115,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
     if (Object.keys(e).length > 0) return
 
     setLoading(true)
+    try {
     const initialBalance = initialBalNum
     const balance        = computedBalance
 
@@ -119,18 +142,28 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
     else         { await add(data) }
 
     recomputeBalances(useTransactionStore.getState().transactions)
-    setLoading(false)
     onClose()
+    } catch (err) {
+      console.error('[account:save]', err)
+      setErrors({ name: 'Kaydetme başarısız oldu, tekrar deneyin' })
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleDelete() {
     if (!account || !canDelete) return
     setLoading(true)
-    await remove(account.id)
-    setLoading(false)
-    setShowDeleteModal(false)
-    onClose()
-    onDeleted?.()
+    try {
+      await remove(account.id)
+      setShowDeleteModal(false)
+      onClose()
+      onDeleted?.()
+    } catch (err) {
+      console.error('[account:delete]', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   function openDeleteModal() {
@@ -175,7 +208,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
                 <input
                   type="number" min={1} max={28}
                   value={stmtDay}
-                  onChange={e => setStmtDay(Number(e.target.value))}
+                  onChange={e => setStmtDay(Math.min(28, Math.max(1, Number(e.target.value) || 1)))}
                   className="w-full border border-border px-3 py-2.5 text-sm font-mono bg-background dark:bg-muted focus:border-ink outline-none"
                 />
               </div>

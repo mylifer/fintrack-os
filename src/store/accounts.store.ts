@@ -2,11 +2,13 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase'
+import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { computeTransactionEffect } from '@/lib/utils/calculations'
-import type { Account, Transaction } from '@/types'
+import type { Account, InvestmentTransaction, Transaction } from '@/types'
 import { useTransactionStore } from './transactions.store'
 import { useDebtStore } from './debts.store'
+import { useRecurringStore } from './recurring.store'
+import { useInvestmentStore } from './investment.store'
 import { getUserId } from '@/lib/auth'
 
 interface AccountState {
@@ -64,7 +66,7 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     await db.accounts.update(id, patch)
     // balance runtime'da hesaplanır, Supabase şemasında kolonu yok
     const { balance: _b, ...patchForDb } = patch as Partial<Account>
-    supabase.from('accounts').update(patchForDb).eq('id', id).then(({ error }) => {
+    supabase.from('accounts').update(nullifyUndefined(patchForDb)).eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:accounts:update]', error)
     })
     set(s => ({
@@ -99,6 +101,47 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     supabase.from('accounts').delete().eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:accounts:delete]', error)
     })
+
+    // 4b. Bu hesaba bağlı tekrarlayan işlemleri sil — aksi halde silinmiş
+    // hesaba yeni işlemler üretilmeye devam eder
+    const recurringStore = useRecurringStore.getState()
+    const linkedRecurring = recurringStore.recurring.filter(r => r.accountId === id || r.toAccountId === id)
+    for (const r of linkedRecurring) {
+      await recurringStore.remove(r.id)
+    }
+
+    // 4c. Yatırım işlemlerindeki hesap referanslarını temizle (linked tx'ler
+    // adım 3'te silindi; referanslar dangling kalmasın)
+    const investStore = useInvestmentStore.getState()
+    const linkedInvest = investStore.transactions.filter(t => t.sourceAccountId === id || t.targetAccountId === id)
+    for (const t of linkedInvest) {
+      const patch: Partial<InvestmentTransaction> = { linkedTransactionId: undefined }
+      if (t.sourceAccountId === id) patch.sourceAccountId = undefined
+      if (t.targetAccountId === id) patch.targetAccountId = undefined
+      await db.investmentTransactions.update(t.id, patch)
+      supabase.from('investment_transactions').update(nullifyUndefined(patch)).eq('id', t.id).then(({ error }) => {
+        if (error) console.error('[supabase:investment_transactions:unlink-account]', error)
+      })
+    }
+    if (linkedInvest.length > 0) {
+      const linkedIds = new Set(linkedInvest.map(t => t.id))
+      useInvestmentStore.setState(s => ({
+        transactions: s.transactions.map(t => linkedIds.has(t.id)
+          ? {
+              ...t,
+              linkedTransactionId: undefined,
+              ...(t.sourceAccountId === id && { sourceAccountId: undefined }),
+              ...(t.targetAccountId === id && { targetAccountId: undefined }),
+            }
+          : t),
+      }))
+    }
+
+    // 4d. Borçların bu hesaba işaret eden ödeme hesabı bağlantısını temizle
+    const debtStore = useDebtStore.getState()
+    for (const d of debtStore.debts.filter(d => d.accountId === id)) {
+      await debtStore.update(d.id, { accountId: undefined })
+    }
 
     // 5. Store'ları güncelle
     const remainingTxs = useTransactionStore.getState().transactions.filter(

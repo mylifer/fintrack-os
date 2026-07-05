@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { db } from '@/lib/db'
 import {
@@ -201,9 +201,18 @@ export function BackupManager() {
 
   /* ── Helpers ─────────────────────────────────────────────── */
 
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (flashTimerRef.current) clearTimeout(flashTimerRef.current) }, [])
+
   function flash(type: 'success' | 'error', msg: string) {
-    if (type === 'success') { setSuccess(msg); setTimeout(() => setSuccess(''), 4000) }
-    else                    { setError(msg) }
+    if (type === 'success') {
+      setSuccess(msg)
+      // Önceki zamanlayıcıyı iptal et: eski flash yenisini erken söndürmesin
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+      flashTimerRef.current = setTimeout(() => setSuccess(''), 4000)
+    } else {
+      setError(msg)
+    }
   }
 
   /* ── Render ──────────────────────────────────────────────── */

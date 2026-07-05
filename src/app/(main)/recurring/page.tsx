@@ -190,27 +190,33 @@ export default function RecurringPage() {
   }
 
   async function handleGenerate(r: RecurringTransaction) {
+    if (generatingId) return
     setGeneratingId(r.id)
-    const now = new Date().toISOString()
-    await addTransaction({
-      id:            crypto.randomUUID(),
-      type:          r.type,
-      amount:        r.amount,
-      currency:      r.currency,
-      date:          r.nextDueDate,
-      accountId:     r.accountId,
-      toAccountId:   r.toAccountId,
-      categoryId:    r.categoryId,
-      description:   r.description,
-      notes:         r.notes,
-      isInstallment: false,
-      familyMemberId: r.familyMemberId,
-      recipientId:   r.recipientId,
-      createdAt:     now,
-      updatedAt:     now,
-    })
-    await markGenerated(r.id, todayStr)
-    setGeneratingId(null)
+    try {
+      const now = new Date().toISOString()
+      await addTransaction({
+        id:            crypto.randomUUID(),
+        type:          r.type,
+        amount:        r.amount,
+        currency:      r.currency,
+        date:          r.nextDueDate,
+        accountId:     r.accountId,
+        toAccountId:   r.toAccountId,
+        categoryId:    r.categoryId,
+        description:   r.description,
+        notes:         r.notes,
+        isInstallment: false,
+        familyMemberId: r.familyMemberId,
+        recipientId:   r.recipientId,
+        createdAt:     now,
+        updatedAt:     now,
+      })
+      await markGenerated(r.id, todayStr)
+    } catch (err) {
+      console.error('[recurring:generate]', err)
+    } finally {
+      setGeneratingId(null)
+    }
   }
 
   return (

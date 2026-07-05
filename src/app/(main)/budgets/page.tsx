@@ -178,7 +178,7 @@ export default function BudgetsPage() {
   async function handleSave() {
     if (selectedCatIds.length === 0 || !parseCurrencyInput(amtStr)) return
     setLoading(true)
-
+    try {
     const categoryId = selectedCatIds.length === 1
       ? selectedCatIds[0]
       : JSON.stringify(selectedCatIds)
@@ -201,7 +201,11 @@ export default function BudgetsPage() {
       await add(b)
     }
     closeForm()
-    setLoading(false)
+    } catch (err) {
+      console.error('[budget:save]', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const usedCatIds = useMemo(

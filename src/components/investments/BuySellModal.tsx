@@ -118,7 +118,8 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
         }
       })
       .catch(() => {})
-      .finally(() => setFetchingPrice(false))
+      // İptal edilen (eski) isteğin finally'si yeni isteğin göstergesini söndürmesin
+      .finally(() => { if (!ctrl.signal.aborted) setFetchingPrice(false) })
 
     return () => ctrl.abort()
   }, [open, date, asset, editingTx, prices])
@@ -145,7 +146,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   async function handleSave() {
     if (!canSave) return
     setSaving(true)
-
+    try {
     if (isEdit && editingTx) {
       await updateTransaction(editingTx.id, {
         type:            txType,
@@ -172,9 +173,12 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
       }
       await addTransaction(tx)
     }
-
-    setSaving(false)
     onClose()
+    } catch (err) {
+      console.error('[investment:save]', err)
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (!open) return null

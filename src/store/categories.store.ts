@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase'
+import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import type { Category, CategoryScope, DefaultCategoryDef } from '@/types'
 import { DEFAULT_CATEGORIES } from '@/types'
@@ -214,6 +214,7 @@ function applyIconMigration(raw: Category[]): { categories: Category[]; dirty: C
 interface CategoryState {
   categories: Category[]
   loading: boolean
+  ready: boolean
   load: () => Promise<void>
   initDefaults: () => Promise<void>
   add: (cat: Category) => Promise<void>
@@ -227,6 +228,7 @@ interface CategoryState {
 export const useCategoryStore = create<CategoryState>()((set, get) => ({
   categories: [],
   loading: false,
+  ready: false,
 
   load: async () => {
     set({ loading: true })
@@ -239,7 +241,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
         await db.categories.clear()
         await db.categories.bulkAdd(categories)
       })
-      set({ categories, loading: false })
+      set({ categories, loading: false, ready: true })
       // Persist migrated icons back to Supabase asynchronously
       if (dirty.length > 0) {
         dirty.forEach(cat => {
@@ -255,7 +257,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       console.error('[supabase:categories:load]', error)
       const raw = await db.categories.toArray()
       const { categories } = applyIconMigration(raw.sort((a, b) => a.sortOrder - b.sortOrder))
-      set({ categories, loading: false })
+      set({ categories, loading: false, ready: true })
     }
   },
 
@@ -365,7 +367,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
   update: async (id, patch) => {
     await db.categories.update(id, patch)
-    supabase.from('categories').update(patch).eq('id', id).then(({ error }) => {
+    supabase.from('categories').update(nullifyUndefined(patch)).eq('id', id).then(({ error }) => {
       if (error) console.error('[supabase:categories:update]', error)
     })
     set(s => ({
