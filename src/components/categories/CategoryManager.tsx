@@ -23,9 +23,10 @@ interface InlineFormProps {
   l0Options: { id: string; label: string }[]
   l1Options: { id: string; label: string }[]
   indentPx?: number
+  error?: string
 }
 
-function InlineForm({ form, onChange, onSave, onCancel, label, l0Options, l1Options, indentPx = 16 }: InlineFormProps) {
+function InlineForm({ form, onChange, onSave, onCancel, label, l0Options, l1Options, indentPx = 16, error }: InlineFormProps) {
   function pickL0(id: string) { onChange({ ...form, parentL0: id, parentL1: '' }) }
   function pickL1(id: string) { onChange({ ...form, parentL1: id, parentL0: '' }) }
 
@@ -34,6 +35,9 @@ function InlineForm({ form, onChange, onSave, onCancel, label, l0Options, l1Opti
       className="flex items-center gap-2 py-2 pr-4 bg-accent/25 border-b border-border flex-wrap"
       style={{ paddingLeft: indentPx }}
     >
+      {error && (
+        <p className="w-full text-xs text-destructive font-medium">{error}</p>
+      )}
       {/* Icon picker */}
       <CategoryIconPicker
         icon={form.icon}
@@ -108,6 +112,7 @@ export function CategoryManager() {
   const [addForm,          setAddForm]         = useState<FormState>(emptyForm())
   const [editingId,        setEditingId]       = useState<string | null>(null)
   const [editForm,         setEditForm]        = useState<FormState>(emptyForm())
+  const [editError,        setEditError]       = useState<string | null>(null)
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null)
   const [showArchived,     setShowArchived]    = useState(false)
 
@@ -135,6 +140,13 @@ export function CategoryManager() {
   const getAllDescendants = useCallback((catId: string): string[] => {
     const ch = categories.filter(c => c.parentId === catId)
     return [catId, ...ch.flatMap(c => getAllDescendants(c.id))]
+  }, [categories])
+
+  // Levels of nesting below a node: leaf → 0, has children → 1, has grandchildren → 2
+  const getSubtreeHeight = useCallback((catId: string): number => {
+    const ch = categories.filter(c => c.parentId === catId)
+    if (ch.length === 0) return 0
+    return 1 + Math.max(...ch.map(c => getSubtreeHeight(c.id)))
   }, [categories])
 
   const txCount = useCallback((catId: string) => {
@@ -202,6 +214,7 @@ export function CategoryManager() {
 
   function startEdit(cat: Category) {
     const level = getLevel(cat.id)
+    setEditError(null)
     setEditingId(cat.id)
     setEditForm({
       name:     cat.name,
@@ -217,6 +230,18 @@ export function CategoryManager() {
   async function saveEdit() {
     if (!editingId || !editForm.name.trim()) return
     const parentId = editForm.parentL1 || editForm.parentL0 || undefined
+
+    // Depth guard: max 3 levels (0,1,2). Re-parenting a category deeper than its
+    // subtree allows would push descendants past L2 (e.g. moving a category that
+    // has children under an L1 parent buries those children at L3).
+    const newLevel = parentId ? getLevel(parentId) + 1 : 0
+    const deepestDescendantLevel = newLevel + getSubtreeHeight(editingId)
+    if (deepestDescendantLevel > 2) {
+      setEditError('Bu kategorinin alt kategorileri var; daha derine taşınırsa 3. seviye oluşur. Daha üst bir kategori seçin.')
+      return
+    }
+
+    setEditError(null)
     await update(editingId, {
       name:     editForm.name.trim(),
       icon:     editForm.icon || 'package',
@@ -262,13 +287,14 @@ export function CategoryManager() {
         <InlineForm
           key={cat.id}
           form={editForm}
-          onChange={setEditForm}
+          onChange={f => { setEditForm(f); if (editError) setEditError(null) }}
           onSave={saveEdit}
-          onCancel={() => setEditingId(null)}
+          onCancel={() => { setEditError(null); setEditingId(null) }}
           label="Kaydet"
           l0Options={buildL0Options(cat.id)}
           l1Options={buildL1Options(cat.id)}
           indentPx={pl}
+          error={editError ?? undefined}
         />
       )
     }

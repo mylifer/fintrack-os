@@ -2,7 +2,7 @@ import {
   format, parseISO, startOfMonth, endOfMonth,
   subMonths, addMonths, isWithinInterval, startOfYear, endOfYear,
   differenceInDays, isAfter, isBefore, addDays, subDays, subWeeks, subYears,
-  startOfWeek, endOfWeek,
+  startOfWeek, endOfWeek, startOfDay,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { Account, MonthYear, PeriodType } from '@/types'
@@ -133,7 +133,8 @@ export function isDueSoon(iso: string, days = 7): boolean {
 }
 
 export function isOverdue(iso: string): boolean {
-  return isBefore(parseISO(iso), new Date())
+  // Overdue only if strictly before the start of today — a debt due today is not overdue
+  return isBefore(parseISO(iso), startOfDay(new Date()))
 }
 
 // Generate list of last N months
