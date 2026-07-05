@@ -80,7 +80,9 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     const debt = get().debts.find(d => d.id === id)
     if (!debt) return
     const paidAmount = Math.round((debt.paidAmount + amount) * 100) / 100
-    const paidInstallments = (debt.paidInstallments ?? 0) + 1
+    // Negatif tutar bir ödemenin geri alınmasıdır → taksit sayısını azalt (0'ın altına düşme)
+    const installmentDelta = amount < 0 ? -1 : amount > 0 ? 1 : 0
+    const paidInstallments = Math.max(0, (debt.paidInstallments ?? 0) + installmentDelta)
     const isSettled = paidAmount >= debt.totalAmount
     const patch = { paidAmount, paidInstallments, isSettled }
 
