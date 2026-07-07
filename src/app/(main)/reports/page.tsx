@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -14,6 +15,7 @@ import { Header }           from '@/components/layout/Header'
 import { useTransactionStore, useAccountStore, useCategoryStore } from '@/store'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
+import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
@@ -117,6 +119,53 @@ function buildCategoryData(
       const cat        = categories.find(c => c.id === key)
       const categoryId = key === '__none__' ? null : key
       return { categoryId, name: cat?.name ?? 'Kategorisiz', amount, percent: (amount / total) * 100, color: cat?.color ?? '#8C8C8C' }
+    })
+    .sort((a, b) => b.amount - a.amount)
+}
+
+/* ── Tag distribution (expenses) ──────────────────────────────────────
+   Attributes each tagged expense's full amount to EVERY tag it carries
+   (multi-tag transactions are counted once per tag). Untagged and
+   investment-linked expenses are excluded. Colors use the same
+   deterministic tagColor logic as the TagBadges so tags read consistently
+   across the app. `percent` is relative to the summed tag volume.
+ ─────────────────────────────────────────────────────────────────────── */
+
+function buildTagExpenseData(transactions: Transaction[]): CategorySlice[] {
+  const map = new Map<string, { amount: number; casings: Map<string, number> }>()
+
+  for (const tx of transactions) {
+    if (tx.type !== 'expense' || tx.icon) continue
+    if (!tx.tags?.length) continue
+    const seen = new Set<string>()
+    for (const raw of tx.tags) {
+      const norm = normalizeTag(raw)
+      if (!norm) continue
+      const key = tagKey(norm)
+      if (seen.has(key)) continue
+      seen.add(key)
+      let entry = map.get(key)
+      if (!entry) { entry = { amount: 0, casings: new Map() }; map.set(key, entry) }
+      entry.amount += tx.amount
+      entry.casings.set(norm, (entry.casings.get(norm) ?? 0) + 1)
+    }
+  }
+
+  const total = [...map.values()].reduce((s, e) => s + e.amount, 0)
+  if (total === 0) return []
+
+  return [...map.entries()]
+    .map(([key, entry]) => {
+      // Canonical display casing = most frequent (ties → first-seen).
+      let best = '', bestN = -1
+      for (const [casing, n] of entry.casings) if (n > bestN) { bestN = n; best = casing }
+      return {
+        categoryId: key,  // tag key reused as the slice id
+        name:       best,
+        amount:     entry.amount,
+        percent:    (entry.amount / total) * 100,
+        color:      tagColor(key),
+      }
     })
     .sort((a, b) => b.amount - a.amount)
 }
@@ -261,6 +310,7 @@ export default function ReportsPage() {
   const [accountId,    setAccountId]    = useState('all')
   const [selectedCat,   setSelectedCat]   = useState<CategorySlice | null>(null)
   const [activeSliceIdx, setActiveSliceIdx] = useState<number | null>(null)
+  const [tagSliceIdx,   setTagSliceIdx]   = useState<number | null>(null)
   const [trendCatKey,   setTrendCatKey]   = useState<string>('')  // '' = auto (first in comparison list)
 
   const dateRange = useMemo(
@@ -289,6 +339,8 @@ export default function ReportsPage() {
 
   const cashFlowData    = useMemo(() => buildCashFlowData(filteredTxs, dateRange),                    [filteredTxs, dateRange])
   const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
+  const tagData         = useMemo(() => buildTagExpenseData(filteredTxs),                             [filteredTxs])
+  const topTags         = useMemo(() => tagData.slice(0, 8),                                          [tagData])
   const trendData       = useMemo(() => buildTrendData(accounts, transactions, dateRange, accountId),  [accounts, transactions, dateRange, accountId])
   const comparisonData  = useMemo(() => buildPeriodComparison(transactions, categories, dateRange, accountId), [transactions, categories, dateRange, accountId])
 
@@ -321,6 +373,7 @@ export default function ReportsPage() {
   useEffect(() => {
     setSelectedCat(null)
     setActiveSliceIdx(null)
+    setTagSliceIdx(null)
     setTrendCatKey('')
   }, [preset, customFrom, customTo, accountId])
 
@@ -523,6 +576,82 @@ export default function ReportsPage() {
           </Card>
         )}
 
+        {/* ── Tag Analytics: distribution + top tags ─────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          {/* Etiket Dağılımı */}
+          <Card className="overflow-hidden gap-0 py-0">
+            <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
+              <span className="text-sm font-semibold text-foreground/90">Etiket Dağılımı</span>
+              {!isLoading && tagData.length > 0 && (
+                <span className="text-xs text-muted-foreground">{tagData.length} etiket</span>
+              )}
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <div className="min-w-[360px]">
+                  {isLoading ? <DonutSkeleton /> : tagData.length === 0 ? (
+                    <TagEmptyState />
+                  ) : (
+                    <CategoryDonutChart
+                      data={tagData}
+                      activeIndex={tagSliceIdx}
+                      onSliceClick={(_slice, idx) => setTagSliceIdx(prev => prev === idx ? null : idx)}
+                    />
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* En Aktif Etiketler */}
+          <Card className="overflow-hidden gap-0 py-0">
+            <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
+              <span className="text-sm font-semibold text-foreground/90">En Aktif Etiketler</span>
+              {!isLoading && topTags.length > 0 && (
+                <span className="text-xs text-muted-foreground">Gider hacmi</span>
+              )}
+            </CardHeader>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <AdvancedSkeleton />
+              ) : topTags.length === 0 ? (
+                <TagEmptyState />
+              ) : (
+                <div className="p-5 flex flex-col gap-0.5">
+                  {topTags.map((t, i) => {
+                    const width = topTags[0].amount > 0 ? (t.amount / topTags[0].amount) * 100 : 0
+                    return (
+                      <Link
+                        key={t.categoryId}
+                        href={`/tags/${encodeURIComponent(t.name)}`}
+                        className="group flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-accent transition-colors"
+                      >
+                        <span className="text-[11px] tabular-nums text-muted-foreground w-4 text-right flex-shrink-0">{i + 1}</span>
+                        <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: t.color }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] text-foreground/80 truncate group-hover:text-primary transition-colors">
+                              #{t.name}
+                            </span>
+                            <span className="text-[13px] tabular-nums font-medium text-foreground/70 flex-shrink-0">
+                              {formatCompact(t.amount)}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 h-1 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full rounded-full transition-all" style={{ width: `${width}%`, background: t.color }} />
+                          </div>
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+        </div>
+
         {/* ── Balance / Net Worth Trend ──────────────────────────────── */}
         <Card className="overflow-hidden gap-0 py-0">
           <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
@@ -658,6 +787,17 @@ function KPICard({
         {sub && <div className="text-xs text-muted-foreground mt-1.5 font-medium">{sub}</div>}
       </CardContent>
     </Card>
+  )
+}
+
+function TagEmptyState() {
+  return (
+    <div className="h-[280px] flex flex-col items-center justify-center gap-3 text-center px-6">
+      <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-muted-foreground/60 text-xl font-bold select-none">
+        #
+      </div>
+      <p className="text-sm text-muted-foreground">Bu dönemde etiketli işlem bulunmuyor</p>
+    </div>
   )
 }
 
