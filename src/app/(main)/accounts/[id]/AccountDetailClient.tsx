@@ -108,13 +108,22 @@ export default function AccountDetailClient({ id }: { id: string }) {
               <Badge variant="default">{TYPE_LABELS[account.type]}</Badge>
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setEditingAccount(account)}
-          >
-            Düzenle
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => openModal('reconcile-balance', { id })}
+            >
+              Bakiyeyi Eşitle
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setEditingAccount(account)}
+            >
+              Düzenle
+            </Button>
+          </div>
         </div>
 
         {/* Balance */}

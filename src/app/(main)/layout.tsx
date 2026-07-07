@@ -4,6 +4,7 @@ import { QuickAddFAB }  from '@/components/layout/QuickAddFAB'
 import { DataProvider } from '@/components/layout/DataProvider'
 import { TransactionFormModal } from '@/components/transactions/TransactionFormModal'
 import { RefundModal } from '@/components/transactions/RefundModal'
+import { ReconcileBalanceModal } from '@/components/accounts/ReconcileBalanceModal'
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,6 +18,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <QuickAddFAB />
         <TransactionFormModal />
         <RefundModal />
+        <ReconcileBalanceModal />
       </div>
     </DataProvider>
   )

@@ -18,6 +18,7 @@ import { parseISO, differenceInDays } from 'date-fns'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
+import { isReconciliation } from '@/lib/utils/reconciliation'
 import type { Account, Category, Transaction } from '@/types'
 
 /* ── amountTry helper — mirrors the Reports page for TRY-consistent sums
@@ -107,12 +108,22 @@ export function DetailedStats({
     [categories],
   )
 
+  /* Ghosting: balance-reconciliation entries are real ledger transactions that
+     correct the raw account balance, but they must NEVER inflate income/expense
+     analytics (counts, averages, top categories, merchants). Strip them here so
+     every aggregate below is computed from genuine activity only. Net-worth math
+     (further down) deliberately keeps them — it reflects the raw balance. */
+  const analyticTxs = useMemo(
+    () => filteredTxs.filter(t => !isReconciliation(t)),
+    [filteredTxs],
+  )
+
   /* Transaction counts by type within the period. Refunds are modelled as
      negative `expense` transactions (Negative-Expense architecture), so we
      split them out from gross expense counts and report them distinctly. */
   const counts = useMemo(() => {
     let expense = 0, income = 0, transfer = 0, refund = 0
-    for (const t of filteredTxs) {
+    for (const t of analyticTxs) {
       if (t.type === 'expense') {
         if (t.amount < 0) refund++
         else expense++
@@ -126,9 +137,9 @@ export function DetailedStats({
       transfer,
       balanceAdjustment: 0,
       refund,
-      total: filteredTxs.length,
+      total: analyticTxs.length,
     }
-  }, [filteredTxs])
+  }, [analyticTxs])
 
   /* Period info + averages. */
   const period = useMemo(() => {
@@ -136,10 +147,10 @@ export function DetailedStats({
       1,
       differenceInDays(parseISO(dateRange.to), parseISO(dateRange.from)) + 1,
     )
-    const expenseTotal = filteredTxs
+    const expenseTotal = analyticTxs
       .filter(t => t.type === 'expense')
       .reduce((s, t) => s + getTryAmount(t), 0)
-    const incomeTotal = filteredTxs
+    const incomeTotal = analyticTxs
       .filter(t => t.type === 'income')
       .reduce((s, t) => s + getTryAmount(t), 0)
 
@@ -151,13 +162,13 @@ export function DetailedStats({
     })
 
     return { days, expense: avg(expenseTotal), income: avg(incomeTotal) }
-  }, [filteredTxs, dateRange])
+  }, [analyticTxs, dateRange])
 
   /* Top 5 categories (expense + income), full paths, % of scope total. */
   const topCategories = useMemo(() => {
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
       const groups = new Map<string, number>()
-      for (const t of filteredTxs) {
+      for (const t of analyticTxs) {
         if (t.type !== scope) continue
         const key = t.categoryId ?? '__none__'
         groups.set(key, (groups.get(key) ?? 0) + getTryAmount(t))
@@ -180,13 +191,13 @@ export function DetailedStats({
       expense: build('expense', period.expense.total),
       income:  build('income',  period.income.total),
     }
-  }, [filteredTxs, catMap, period])
+  }, [analyticTxs, catMap, period])
 
   /* Top 5 merchants (expense + income), % of scope total. */
   const topMerchants = useMemo(() => {
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
       const groups = new Map<string, number>()
-      for (const t of filteredTxs) {
+      for (const t of analyticTxs) {
         if (t.type !== scope) continue
         const name = t.merchant?.trim()
         if (!name) continue
@@ -207,7 +218,7 @@ export function DetailedStats({
       expense: build('expense', period.expense.total),
       income:  build('income',  period.income.total),
     }
-  }, [filteredTxs, period])
+  }, [analyticTxs, period])
 
   /* Net worth: current (at period end), max & min with exact dates.
      Baseline = opening net worth entering the period; then we replay the

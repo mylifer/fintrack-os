@@ -16,6 +16,7 @@ import { useTransactionStore, useAccountStore, useCategoryStore } from '@/store'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
+import { isReconciliation } from '@/lib/utils/reconciliation'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
@@ -109,6 +110,7 @@ function buildCategoryData(
   for (const tx of transactions) {
     if (tx.type !== 'expense') continue
     if (tx.icon) continue  // investment-linked expense — skip
+    if (isReconciliation(tx)) continue  // ghost balance-reconciliation — never an expense
     const key = tx.categoryId ?? '__none__'
     catMap.set(key, (catMap.get(key) ?? 0) + tx.amount)
   }
@@ -142,6 +144,7 @@ function buildTagExpenseData(transactions: Transaction[]): CategorySlice[] {
 
   for (const tx of transactions) {
     if (tx.type !== 'expense' || tx.icon) continue
+    if (isReconciliation(tx)) continue  // ghost reconciliation carries RECONCILE_TAG — exclude
     if (!tx.tags?.length) continue
     const seen = new Set<string>()
     for (const raw of tx.tags) {
@@ -253,6 +256,7 @@ function buildPeriodComparison(
 
   for (const tx of transactions) {
     if (tx.type !== 'expense' || tx.icon) continue
+    if (isReconciliation(tx)) continue  // ghost reconciliation — never a comparison expense
     if (accountId !== 'all' && tx.accountId !== accountId) continue
     const key = tx.categoryId ?? '__none__'
     if (!catMap.has(key)) catMap.set(key, { current: 0, prev: 0 })
@@ -297,6 +301,7 @@ function buildCategoryTrendData(
     const amount = transactions
       .filter(tx => {
         if (tx.type !== 'expense' || tx.icon) return false
+        if (isReconciliation(tx)) return false  // ghost reconciliation — exclude from trend
         if (tx.date < mFrom || tx.date > mTo) return false
         return categoryId === null ? !tx.categoryId : tx.categoryId === categoryId
       })
@@ -328,9 +333,15 @@ export default function ReportsPage() {
     [preset, customFrom, customTo],
   )
 
+  // Base analytic scope: period + account filtered, with ghost balance-
+  // reconciliation entries stripped out. Every income/expense aggregate below
+  // (KPIs, cash-flow, category & tag donuts, drill-downs) derives from this, so
+  // reconciliation never inflates them. Balance/net-worth trends read the full
+  // `transactions` list instead and keep the ghosts (that IS the raw balance).
   const filteredTxs = useMemo(() =>
     transactions.filter(tx => {
       if (tx.date < dateRange.from || tx.date > dateRange.to) return false
+      if (isReconciliation(tx)) return false
       if (accountId !== 'all') {
         if (tx.accountId !== accountId && tx.toAccountId !== accountId) return false
       }

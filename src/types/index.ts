@@ -160,6 +160,7 @@ export type ModalType =
   | 'add-transaction'
   | 'edit-transaction'
   | 'refund-transaction'
+  | 'reconcile-balance'
   | 'add-account'
   | 'edit-account'
   | 'add-budget'
