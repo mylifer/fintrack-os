@@ -395,6 +395,7 @@ export function TransactionList({
               if (tx.isInstallment) metaItems.push({ text: `${tx.installIndex}/${tx.installTotal}` })
               if (recipient) metaItems.push({ text: recipient.name, href: `/alicilar/${tx.recipientId}` })
               if (family)    metaItems.push({ text: family.name,    href: `/aile-uyeleri/${tx.familyMemberId}` })
+              tx.tags?.forEach(t => metaItems.push({ text: `#${t}`, href: `/tags/${encodeURIComponent(t)}` }))
 
               const hasSubline = metaItems.length > 0
 

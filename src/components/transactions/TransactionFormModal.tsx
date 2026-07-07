@@ -21,6 +21,9 @@ import {
 } from '@/components/ui/Select'
 import { CategoryCascadeSelect } from '@/components/categories/CategoryCascadeSelect'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
+import { TagInput } from '@/components/transactions/TagInput'
+import { useTags } from '@/lib/hooks/useTags'
+import { dedupeTags } from '@/lib/utils/tags'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +46,7 @@ function newForm() {
     categoryId: '' as string | undefined,
     description: '',
     notes: undefined as string | undefined,
+    tags: [] as string[],
     isInstallment: false,
     familyMemberId: undefined as string | null | undefined,
     recipientId:    undefined as string | null | undefined,
@@ -340,6 +344,7 @@ export function TransactionFormModal() {
   const updateTx     = useTransactionStore(s => s.update)
   const allPeople    = usePeopleStore(s => s.people)
   const activeDebts  = useDebtStore(useShallow(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe')))
+  const tagSuggestions = useTags().map(t => t.tag)
 
   const open = modal === 'add-transaction' || modal === 'edit-transaction'
   const isEdit = modal === 'edit-transaction'
@@ -394,6 +399,7 @@ export function TransactionFormModal() {
         categoryId:     editingTx.categoryId ?? '',
         description:    editingTx.description,
         notes:          editingTx.notes,
+        tags:           editingTx.tags ?? [],
         isInstallment:  editingTx.isInstallment,
         familyMemberId: editingTx.familyMemberId ?? undefined,
         recipientId:    editingTx.recipientId    ?? undefined,
@@ -475,6 +481,7 @@ export function TransactionFormModal() {
     const account  = useAccountStore.getState().accounts.find(a => a.id === form.accountId)
     const currency = (account?.currency ?? editingTx?.currency ?? 'TRY') as CurrencyCode
     const now      = new Date().toISOString()
+    const cleanTags = dedupeTags(form.tags)
 
     // Strip UI-only fields before building the stored transaction
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -487,6 +494,7 @@ export function TransactionFormModal() {
         toAccountId:    formData.toAccountId    || undefined,
         familyMemberId: formData.familyMemberId ?? null,
         recipientId:    formData.recipientId    ?? null,
+        tags:           cleanTags.length ? cleanTags : undefined,
       })
 
       // Reconcile debt paidAmount for edit.
@@ -518,6 +526,7 @@ export function TransactionFormModal() {
         currency,
         categoryId:  formData.categoryId  || undefined,
         toAccountId: formData.toAccountId || undefined,
+        tags:        cleanTags.length ? cleanTags : undefined,
       }
       if (formData.isInstallment && installments > 1) {
         await addGroup(base, installments)
@@ -817,6 +826,15 @@ export function TransactionFormModal() {
               value={form.notes ?? ''}
               onChange={e => patch({ notes: e.target.value || undefined })}
               placeholder="Ek bilgi..."
+            />
+          </Field>
+
+          {/* Tags */}
+          <Field label="Etiketler" optional>
+            <TagInput
+              value={form.tags}
+              onChange={tags => patch({ tags })}
+              suggestions={tagSuggestions}
             />
           </Field>
 

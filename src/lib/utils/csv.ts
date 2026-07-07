@@ -1,8 +1,9 @@
 import type { Transaction, Category, CurrencyCode, TransactionType } from '@/types'
+import { serializeTagsCell, parseTagsCell } from '@/lib/utils/tags'
 
 // ─── Export ────────────────────────────────────────────────────────────────
 
-const CSV_HEADERS = ['Tarih', 'Açıklama', 'Kategori', 'Tutar', 'Tür', 'Para Birimi']
+const CSV_HEADERS = ['Tarih', 'Açıklama', 'Kategori', 'Tutar', 'Tür', 'Para Birimi', 'Etiketler']
 
 const TYPE_LABELS: Record<TransactionType, string> = {
   expense:  'Gider',
@@ -30,6 +31,7 @@ export function transactionsToCsvString(
       tx.amount.toFixed(2),
       TYPE_LABELS[tx.type],
       tx.currency,
+      serializeTagsCell(tx.tags),
     ]
       .map(v => escapeCsvCell(String(v)))
       .join(','),
@@ -113,7 +115,7 @@ export function parseCsvText(text: string): ParsedCsv {
 
 // ─── Import — column mapping ───────────────────────────────────────────────
 
-export type AppField = 'date' | 'description' | 'amount' | 'type' | 'category' | 'currency'
+export type AppField = 'date' | 'description' | 'amount' | 'type' | 'category' | 'currency' | 'tags'
 
 export const APP_FIELD_LABELS: Record<AppField, string> = {
   date:        'Tarih',
@@ -122,6 +124,7 @@ export const APP_FIELD_LABELS: Record<AppField, string> = {
   type:        'Tür',
   category:    'Kategori (opsiyonel)',
   currency:    'Para Birimi (opsiyonel)',
+  tags:        'Etiketler (opsiyonel)',
 }
 
 export const REQUIRED_FIELDS: AppField[] = ['date', 'description', 'amount', 'type']
@@ -146,6 +149,10 @@ const HEADER_ALIASES: Record<string, AppField> = {
   'para birimi': 'currency',
   currency:    'currency',
   para:        'currency',
+  etiket:      'tags',
+  etiketler:   'tags',
+  tag:         'tags',
+  tags:        'tags',
 }
 
 export function autoDetectMapping(headers: string[]): ColumnMapping {
@@ -222,6 +229,7 @@ export interface ImportedTransaction {
   type:        TransactionType
   categoryId?: string
   currency:    CurrencyCode
+  tags?:       string[]
 }
 
 export interface RowError {
@@ -254,6 +262,7 @@ export function validateImportRows(
     const rawType    = (mapping.type        ? row[mapping.type]        : '') ?? ''
     const rawCat     = (mapping.category    ? row[mapping.category]    : '') ?? ''
     const rawCur     = (mapping.currency    ? row[mapping.currency]    : '') ?? ''
+    const rawTags    = (mapping.tags        ? row[mapping.tags]        : '') ?? ''
 
     const date    = rawDate.trim()   ? parseDate(rawDate)   : null
     const amount  = rawAmount.trim() ? parseAmount(rawAmount) : null
@@ -271,6 +280,7 @@ export function validateImportRows(
     const categoryId = rawCat.trim() ? catByName.get(rawCat.trim().toLowerCase()) : undefined
     const curRaw     = rawCur.trim().toUpperCase()
     const currency   = (VALID_CURRENCIES.has(curRaw) ? curRaw : 'TRY') as CurrencyCode
+    const tags       = parseTagsCell(rawTags)
 
     if (errs.length > 0) {
       errors.push({ row: rowNum, message: errs.join('; ') })
@@ -282,6 +292,7 @@ export function validateImportRows(
         type:        type!,
         categoryId,
         currency,
+        tags:        tags.length ? tags : undefined,
       })
     }
   })

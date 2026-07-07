@@ -27,7 +27,7 @@ interface Props {
   onClose: () => void
 }
 
-const ALL_FIELDS: AppField[] = ['date', 'description', 'amount', 'type', 'category', 'currency']
+const ALL_FIELDS: AppField[] = ['date', 'description', 'amount', 'type', 'category', 'currency', 'tags']
 
 export function TransactionImportModal({ open, onClose }: Props) {
   const accounts   = useAccountStore(s => s.accounts)
@@ -129,6 +129,7 @@ export function TransactionImportModal({ open, onClose }: Props) {
         accountId,
         categoryId:   t.categoryId,
         description:  t.description,
+        tags:         t.tags,
         isInstallment: false,
         createdAt:    now,
         updatedAt:    now,
