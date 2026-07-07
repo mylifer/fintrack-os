@@ -12,6 +12,7 @@ import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import type { Transaction, PersonRole } from '@/types'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
+import { TagBadges } from '@/components/transactions/TagBadges'
 
 const PencilIcon = ({ size = 13 }: { size?: number }) => (
   <svg fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" width={size} height={size}>
@@ -258,6 +259,7 @@ export function TransactionList({
                                 </span>
                               )}
                             </div>
+                            <TagBadges tags={tx.tags} className="mt-1" />
                           </div>
                         </div>
 
@@ -395,7 +397,6 @@ export function TransactionList({
               if (tx.isInstallment) metaItems.push({ text: `${tx.installIndex}/${tx.installTotal}` })
               if (recipient) metaItems.push({ text: recipient.name, href: `/alicilar/${tx.recipientId}` })
               if (family)    metaItems.push({ text: family.name,    href: `/aile-uyeleri/${tx.familyMemberId}` })
-              tx.tags?.forEach(t => metaItems.push({ text: `#${t}`, href: `/tags/${encodeURIComponent(t)}` }))
 
               const hasSubline = metaItems.length > 0
 
@@ -444,6 +445,7 @@ export function TransactionList({
                         ))}
                       </div>
                     )}
+                    <TagBadges tags={tx.tags} className="mt-1" />
                   </div>
 
                   {/* Amount */}

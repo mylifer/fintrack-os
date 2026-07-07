@@ -24,6 +24,7 @@ import { PeriodTabs } from '@/components/ui/PeriodTabs'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
+import { TagBadges } from '@/components/transactions/TagBadges'
 import type { PeriodType } from '@/types'
 
 const CashflowChart = dynamic(
@@ -282,6 +283,7 @@ export default function DashboardPage() {
                           <p className="text-xs text-muted-foreground">
                             {formatDateShort(tx.date)} · {account?.name ?? '—'}
                           </p>
+                          <TagBadges tags={tx.tags} className="mt-1" />
                         </div>
                         <span className={`text-sm tabular-nums shrink-0 font-medium ${isIncome ? 'text-green-600' : isTransfer ? 'text-primary' : 'text-foreground'}`}>
                           {isIncome ? '+' : isTransfer ? '↔' : '−'}{formatCurrency(tx.amount, tx.currency)}
