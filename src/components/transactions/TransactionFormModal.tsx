@@ -356,6 +356,9 @@ export function TransactionFormModal() {
   const [tab, setTab]             = useState<Tab>('expense')
   const [form, setForm]           = useState(newForm())
   const [amountStr, setAmountStr] = useState('')
+  // Sign of the amount. Always +1 except when editing a refund (negative
+  // expense), where we preserve the negative so a save doesn't flip it positive.
+  const [amountSign, setAmountSign] = useState(1)
   const [installments, setInstallments] = useState(1)
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
@@ -384,7 +387,7 @@ export function TransactionFormModal() {
   useEffect(() => {
     if (!open) {
       setForm(newForm()); setAmountStr(''); setInstallments(1); setErrors({})
-      setCursorX(0)
+      setCursorX(0); setAmountSign(1)
       return
     }
     if (isEdit && editingTx) {
@@ -406,10 +409,12 @@ export function TransactionFormModal() {
         isDebtPayment:  editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId,
         debtId:         editingTx.type === 'transfer' && !editingTx.toAccountId ? editingTx.debtId : undefined,
       })
-      setAmountStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2, useGrouping: false }).format(editingTx.amount))
+      setAmountSign(editingTx.amount < 0 ? -1 : 1)
+      setAmountStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2, useGrouping: false }).format(Math.abs(editingTx.amount)))
       setInstallments(editingTx.installTotal ?? 1)
     } else {
       setTab('expense')
+      setAmountSign(1)
       const f = newForm()
       if (modalPayload?.accountId) f.accountId = modalPayload.accountId
       setForm(f)
@@ -459,6 +464,8 @@ export function TransactionFormModal() {
 
   function validate(): boolean {
     const e: Record<string, string> = {}
+    // Magnitude only — the sign is carried separately (amountSign). Negative
+    // `expense` amounts (refunds) are allowed; the input holds the magnitude.
     const amount = parseCurrencyInput(amountStr)
     if (!amount || amount <= 0)                      e.amount      = 'Geçerli bir tutar girin'
     if (!form.accountId)                             e.accountId   = 'Hesap seçin'
@@ -475,7 +482,8 @@ export function TransactionFormModal() {
     if (loading || !validate()) return
     setLoading(true)
     try {
-    const amount   = parseCurrencyInput(amountStr)
+    // Re-apply the preserved sign so editing a refund keeps its negative amount.
+    const amount   = parseCurrencyInput(amountStr) * amountSign
     // Arşivlenmiş hesap `accounts` listesinde yok — tam store'dan ara ki
     // arşivli hesaptaki bir işlemi düzenlemek para birimini TRY'ye çevirmesin
     const account  = useAccountStore.getState().accounts.find(a => a.id === form.accountId)
@@ -600,9 +608,11 @@ export function TransactionFormModal() {
             {tab !== 'transfer' && (
               <span className={cn(
                 "text-2xl font-semibold leading-none transition-colors duration-200",
-                amountStr ? "text-muted-foreground/50" : "text-muted-foreground/25",
+                tab === 'expense' && amountSign < 0
+                  ? "text-green-600"
+                  : amountStr ? "text-muted-foreground/50" : "text-muted-foreground/25",
               )}>
-                {tab === 'income' ? '+' : '−'}
+                {tab === 'income' || (tab === 'expense' && amountSign < 0) ? '+' : '−'}
               </span>
             )}
             <span className={cn(

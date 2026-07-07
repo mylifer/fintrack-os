@@ -107,13 +107,16 @@ export function DetailedStats({
     [categories],
   )
 
-  /* Transaction counts by type within the period. The schema only models
-     expense / income / transfer — balance adjustments and refunds are not
-     distinct types, so they are honestly reported as 0. */
+  /* Transaction counts by type within the period. Refunds are modelled as
+     negative `expense` transactions (Negative-Expense architecture), so we
+     split them out from gross expense counts and report them distinctly. */
   const counts = useMemo(() => {
-    let expense = 0, income = 0, transfer = 0
+    let expense = 0, income = 0, transfer = 0, refund = 0
     for (const t of filteredTxs) {
-      if (t.type === 'expense') expense++
+      if (t.type === 'expense') {
+        if (t.amount < 0) refund++
+        else expense++
+      }
       else if (t.type === 'income') income++
       else if (t.type === 'transfer') transfer++
     }
@@ -122,7 +125,7 @@ export function DetailedStats({
       income,
       transfer,
       balanceAdjustment: 0,
-      refund: 0,
+      refund,
       total: filteredTxs.length,
     }
   }, [filteredTxs])

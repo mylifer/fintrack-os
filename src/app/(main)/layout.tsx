@@ -3,6 +3,7 @@ import { MobileNav }    from '@/components/layout/MobileNav'
 import { QuickAddFAB }  from '@/components/layout/QuickAddFAB'
 import { DataProvider } from '@/components/layout/DataProvider'
 import { TransactionFormModal } from '@/components/transactions/TransactionFormModal'
+import { RefundModal } from '@/components/transactions/RefundModal'
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -15,6 +16,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <MobileNav />
         <QuickAddFAB />
         <TransactionFormModal />
+        <RefundModal />
       </div>
     </DataProvider>
   )

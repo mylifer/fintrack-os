@@ -262,6 +262,7 @@ export default function DashboardPage() {
                     const person    = recipient ?? family
                     const isIncome   = tx.type === 'income'
                     const isTransfer = tx.type === 'transfer'
+                    const isRefund   = tx.type === 'expense' && tx.amount < 0
                     return (
                       <li key={tx.id} className="flex items-center gap-3 px-6 py-3">
                         {person ? (
@@ -279,14 +280,21 @@ export default function DashboardPage() {
                           </span>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{tx.description}</p>
+                          <p className="text-sm font-medium truncate">
+                            {tx.description}
+                            {isRefund && (
+                              <span className="ml-1.5 align-middle rounded-sm bg-green-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-green-600">
+                                İade
+                              </span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             {formatDateShort(tx.date)} · {account?.name ?? '—'}
                           </p>
                           <TagBadges tags={tx.tags} className="mt-1" />
                         </div>
-                        <span className={`text-sm tabular-nums shrink-0 font-medium ${isIncome ? 'text-green-600' : isTransfer ? 'text-primary' : 'text-foreground'}`}>
-                          {isIncome ? '+' : isTransfer ? '↔' : '−'}{formatCurrency(tx.amount, tx.currency)}
+                        <span className={`text-sm tabular-nums shrink-0 font-medium ${isIncome || isRefund ? 'text-green-600' : isTransfer ? 'text-primary' : 'text-foreground'}`}>
+                          {isIncome || isRefund ? '+' : isTransfer ? '↔' : '−'}{formatCurrency(Math.abs(tx.amount), tx.currency)}
                         </span>
                       </li>
                     )

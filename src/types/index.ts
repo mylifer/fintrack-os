@@ -159,6 +159,7 @@ export interface DebtWithRemaining extends Debt {
 export type ModalType =
   | 'add-transaction'
   | 'edit-transaction'
+  | 'refund-transaction'
   | 'add-account'
   | 'edit-account'
   | 'add-budget'
