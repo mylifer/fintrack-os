@@ -112,9 +112,15 @@ function buildCategoryData(
     const key = tx.categoryId ?? '__none__'
     catMap.set(key, (catMap.get(key) ?? 0) + tx.amount)
   }
-  const total = [...catMap.values()].reduce((s, v) => s + v, 0)
+  // A category whose *net* total is ≤ 0 — fully refunded, or carrying only a
+  // refund (negative expense) for a purchase made in an earlier period — is not
+  // a positive expense contribution. Drop it before building slices: a negative
+  // dataKey makes Recharts' <Pie> draw a reversed/overlapping arc and yields
+  // nonsensical percentages (negative, or >100% for the remaining slices).
+  const entries = [...catMap.entries()].filter(([, amount]) => amount > 0)
+  const total = entries.reduce((s, [, amount]) => s + amount, 0)
   if (total === 0) return []
-  return [...catMap.entries()]
+  return entries
     .map(([key, amount]) => {
       const cat        = categories.find(c => c.id === key)
       const categoryId = key === '__none__' ? null : key
@@ -151,10 +157,14 @@ function buildTagExpenseData(transactions: Transaction[]): CategorySlice[] {
     }
   }
 
-  const total = [...map.values()].reduce((s, e) => s + e.amount, 0)
+  // Same guard as buildCategoryData: a tag whose net expense is ≤ 0 (its only
+  // spend was refunded, or it carries just a refund) must not reach the donut
+  // as a negative slice.
+  const entries = [...map.entries()].filter(([, e]) => e.amount > 0)
+  const total = entries.reduce((s, [, e]) => s + e.amount, 0)
   if (total === 0) return []
 
-  return [...map.entries()]
+  return entries
     .map(([key, entry]) => {
       // Canonical display casing = most frequent (ties → first-seen).
       let best = '', bestN = -1
