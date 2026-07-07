@@ -1,5 +1,6 @@
 import type { Account, Transaction, Budget, BudgetWithSpent, Debt, DebtWithRemaining, MonthYear, PriceData } from '@/types'
 import { isInRange, monthRange, yearRange } from './date'
+import { isReconciliation } from './reconciliation'
 
 // Sum of all transaction effects on an account (income adds, expense/outgoing-transfer subtracts).
 // Used to derive the current balance from initialBalance.
@@ -88,15 +89,24 @@ export function enrichBudget(
   return { ...budget, spent, remaining, percentUsed, status }
 }
 
+// Raw income/expense/net over an already date-scoped slice. No ghosting —
+// callers decide whether to pre-filter reconciliation.
+function sumFlow(inRange: Transaction[]): { income: number; expense: number; net: number } {
+  const income  = Math.round(inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0) * 100) / 100
+  const expense = Math.round(inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0) * 100) / 100
+  return { income, expense, net: Math.round((income - expense) * 100) / 100 }
+}
+
+// Flow metrics (income/expense/net) exclude balance-reconciliation ("ghost")
+// entries everywhere — they correct raw balances only and must never inflate
+// any income/expense total or average. Net-worth math uses calcMonthlyNetRaw.
 export function calcPeriodFlow(
   transactions: Transaction[],
   from: string,
   to: string,
 ): { income: number; expense: number; net: number } {
-  const inRange = transactions.filter(tx => tx.date >= from && tx.date <= to)
-  const income  = Math.round(inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0) * 100) / 100
-  const expense = Math.round(inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0) * 100) / 100
-  return { income, expense, net: Math.round((income - expense) * 100) / 100 }
+  const inRange = transactions.filter(tx => tx.date >= from && tx.date <= to && !isReconciliation(tx))
+  return sumFlow(inRange)
 }
 
 export function calcMonthlyFlow(
@@ -104,11 +114,21 @@ export function calcMonthlyFlow(
   my: MonthYear,
 ): { income: number; expense: number; net: number } {
   const { from, to } = monthRange(my)
-  const inRange = transactions.filter(tx => isInRange(tx.date, from, to))
+  const inRange = transactions.filter(tx => isInRange(tx.date, from, to) && !isReconciliation(tx))
+  return sumFlow(inRange)
+}
 
-  const income  = Math.round(inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0) * 100) / 100
-  const expense = Math.round(inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0) * 100) / 100
-  return { income, expense, net: Math.round((income - expense) * 100) / 100 }
+// Net worth delta for a month INCLUDING reconciliation. Used only to walk
+// account balances backwards in the Net Worth trend: reconciliation entries
+// move the raw balance, so they must be counted here even though they are
+// ghosted from the flow metrics above.
+export function calcMonthlyNetRaw(
+  transactions: Transaction[],
+  my: MonthYear,
+): number {
+  const { from, to } = monthRange(my)
+  const inRange = transactions.filter(tx => isInRange(tx.date, from, to))
+  return sumFlow(inRange).net
 }
 
 export function enrichDebt(debt: Debt): DebtWithRemaining {

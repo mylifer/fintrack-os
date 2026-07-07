@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic'
 import { useMemo, useState } from 'react'
 import { useTransactionStore, useAccountStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import { calcNetWorth, calcMonthlyFlow } from '@/lib/utils/calculations'
+import { calcNetWorth, calcMonthlyNetRaw } from '@/lib/utils/calculations'
 import { monthRange, isInRange, currentMonthYear } from '@/lib/utils/date'
 import { getAssetPrice } from '@/store/investment.store'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
@@ -116,7 +116,9 @@ export function NetWorthChart() {
 
       points[i] = { month: my.month, year: my.year, shortLabel, longLabel, fullLabel, netWorth: Math.round(nw * 100) / 100, delta: 0 }
 
-      const { net } = calcMonthlyFlow(transactions, my)
+      // Raw net (reconciliation INCLUDED) — this walks the balance backwards,
+      // and reconciliation entries genuinely moved the balance.
+      const net = calcMonthlyNetRaw(transactions, my)
       nw -= net
 
       if (prices) {
