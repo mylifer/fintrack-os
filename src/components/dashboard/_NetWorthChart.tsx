@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts'
-import { formatCompact, formatCurrency } from '@/lib/utils/currency'
+import { formatCompact, formatCurrency, formatAxisCompact } from '@/lib/utils/currency'
 
 export interface NWDataPoint {
   label: string      // axis tick — empty string = invisible tick
@@ -34,19 +34,6 @@ function CustomTooltip({ active, payload }: TooltipProps) {
   )
 }
 
-function formatAxisTick(v: number): string {
-  const abs = Math.abs(v)
-  const sign = v < 0 ? '-' : ''
-  if (abs >= 1_000_000) {
-    const n = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(abs / 1_000_000)
-    return `${sign}₺${n}Mn`
-  }
-  if (abs >= 1_000) {
-    const n = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(abs / 1_000)
-    return `${sign}₺${n}B`
-  }
-  return `${sign}₺${abs}`
-}
 
 // Returns tick values as multiples of 50K covering [minVal, maxVal], capped at 6 ticks
 function niceYTicks(minVal: number, maxVal: number): number[] {
@@ -109,7 +96,7 @@ export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
             width={52}
             ticks={ticks}
             domain={[ticks[0] ?? 0, ticks[ticks.length - 1] ?? 1]}
-            tickFormatter={formatAxisTick}
+            tickFormatter={v => formatAxisCompact(v as number)}
             tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.5 }}
           />
           {showRef && (

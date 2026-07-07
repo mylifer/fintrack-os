@@ -2,7 +2,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
-import { formatCompact } from '@/lib/utils/currency'
+import { formatCompact, formatAxisCompact } from '@/lib/utils/currency'
 
 export type TrendPoint = {
   label: string
@@ -54,7 +54,7 @@ export function BalanceTrendChartInner({ data }: { data: TrendPoint[] }) {
             tickLine={false}
           />
           <YAxis
-            tickFormatter={v => formatCompact(v as number)}
+            tickFormatter={v => formatAxisCompact(v as number)}
             tick={{ fontSize: 11, fill: '#71717a' }}
             axisLine={false}
             tickLine={false}

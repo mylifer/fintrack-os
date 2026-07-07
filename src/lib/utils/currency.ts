@@ -48,6 +48,24 @@ export function formatCompact(amount: number, currency: CurrencyCode = 'TRY'): s
   return COMPACT_FORMATTERS[currency].format(amount)
 }
 
+// Grafik eksenleri için gerçek "compact" gösterim: dar eksen sütununa sığar.
+// ör. 125.000 → "₺125B", 1.200.000 → "₺1,2Mn". (formatCompact <1M'de tam
+// biçime düştüğü ve eksende kırpıldığı için ayrı bir fonksiyon.)
+export function formatAxisCompact(v: number, currency: CurrencyCode = 'TRY'): string {
+  const sym = getCurrencySymbol(currency)
+  const abs = Math.abs(v)
+  const sign = v < 0 ? '-' : ''
+  if (abs >= 1_000_000) {
+    const n = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(abs / 1_000_000)
+    return `${sign}${sym}${n}Mn`
+  }
+  if (abs >= 1_000) {
+    const n = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(abs / 1_000)
+    return `${sign}${sym}${n}B`
+  }
+  return `${sign}${sym}${abs}`
+}
+
 export function getCurrencySymbol(currency: CurrencyCode): string {
   const map: Record<CurrencyCode, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
   return map[currency]
