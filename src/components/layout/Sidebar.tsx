@@ -48,6 +48,7 @@ const IC = {
   recipient:   'M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z',
   recurring:   'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99',
   tags:        'M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5',
+  stats:       'M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z M13.5 3v7.5H21A7.5 7.5 0 0 0 13.5 3Z',
 }
 
 const MAIN_NAV = [
@@ -58,8 +59,9 @@ const MAIN_NAV = [
 ]
 
 const LOWER_NAV_TOP = [
-  { href: '/investments',  label: 'Yatırımlar', icon: IC.investments },
-  { href: '/reports',      label: 'Raporlar',   icon: IC.reports },
+  { href: '/investments',  label: 'Yatırımlar',   icon: IC.investments },
+  { href: '/reports',      label: 'Raporlar',     icon: IC.reports },
+  { href: '/statistics',   label: 'İstatistikler', icon: IC.stats },
 ]
 
 const LOWER_NAV_BOTTOM = [

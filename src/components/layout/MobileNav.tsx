@@ -9,6 +9,7 @@ const NAV = [
   { href: '/accounts',     label: 'Hesaplar',  icon: '◫' },
   { href: '/investments',  label: 'Yatırım',   icon: '📈' },
   { href: '/reports',      label: 'Raporlar',  icon: '📊' },
+  { href: '/statistics',   label: 'İstatistik', icon: '📋' },
 ]
 
 export function MobileNav() {

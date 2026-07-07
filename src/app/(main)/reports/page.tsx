@@ -20,7 +20,6 @@ import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
 import { CategoryTrendChart }  from '@/components/reports/CategoryTrendChart'
-import { DetailedStats }       from '@/components/reports/DetailedStats'
 import { TransactionList }     from '@/components/transactions/TransactionList'
 import type { CashFlowPoint }       from '@/components/reports/_CashFlowBarChart'
 import type { CategorySlice }       from '@/components/reports/_CategoryDonutChart'
@@ -760,18 +759,6 @@ export default function ReportsPage() {
             )}
           </CardContent>
         </Card>
-
-        {/* ── Detailed statistics ───────────────────────────────────── */}
-        {!isLoading && (
-          <DetailedStats
-            filteredTxs={filteredTxs}
-            transactions={transactions}
-            categories={categories}
-            accounts={accounts}
-            dateRange={dateRange}
-            accountId={accountId}
-          />
-        )}
 
       </div>
     </>
