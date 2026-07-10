@@ -6,6 +6,7 @@ import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
 import { enrichBudget } from '@/lib/utils/calculations'
+import { softDelete, isLive } from '@/lib/sync/tombstone'
 
 interface BudgetState {
   budgets: Budget[]
@@ -25,7 +26,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('budgets').select('*')
+    const { data, error } = await supabase.from('budgets').select('*').is('deleted_at', null)
     if (!error) {
       const budgets = (data ?? []) as Budget[]
       await db.transaction('rw', db.budgets, async () => {
@@ -35,7 +36,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
       set({ budgets, loading: false, ready: true })
     } else {
       console.error('[supabase:budgets:load]', error)
-      const budgets = await db.budgets.toArray()
+      const budgets = (await db.budgets.toArray()).filter(isLive)
       set({ budgets, loading: false, ready: true })
     }
   },
@@ -65,10 +66,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
   },
 
   remove: async (id) => {
-    await db.budgets.delete(id)
-    supabase.from('budgets').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:budgets:delete]', error)
-    })
+    await softDelete(db.budgets, 'budgets', id) // C3 — soft delete
     set(s => ({ budgets: s.budgets.filter(b => b.id !== id) }))
   },
 

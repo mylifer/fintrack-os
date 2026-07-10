@@ -25,6 +25,7 @@ export interface Account {
   icon?: string             // Emoji
   isArchived: boolean
   createdAt: string         // ISO 8601
+  deleted_at?: string | null // Tombstone (C3): ISO 8601 when soft-deleted, else null/undefined
 
   // Credit card fields
   creditLimit?: number
@@ -43,6 +44,7 @@ export interface Person {
   role: PersonRole
   url?: string
   createdAt: string
+  deleted_at?: string | null // Tombstone (C3)
 }
 
 // ─── Transaction ───────────────────────────────────────────────────────────
@@ -77,6 +79,7 @@ export interface Transaction {
   debtId?: string           // Links to a tracked Debt
   createdAt: string
   updatedAt: string
+  deleted_at?: string | null // Tombstone (C3)
 }
 
 // ─── Category ──────────────────────────────────────────────────────────────
@@ -93,6 +96,7 @@ export interface Category {
   isSystem: boolean         // Cannot be deleted
   isArchived?: boolean      // Soft-deleted; hidden from pickers but kept for historical data
   sortOrder: number
+  deleted_at?: string | null // Tombstone (C3)
 }
 
 // ─── Budget ────────────────────────────────────────────────────────────────
@@ -109,6 +113,7 @@ export interface Budget {
   month?: number            // Legacy; ignored — budgets now apply to all months
   rollover: boolean         // Carry unused budget forward
   alertThreshold: number    // Warn at X% (default: 80)
+  deleted_at?: string | null // Tombstone (C3)
 }
 
 export interface BudgetWithSpent extends Budget {
@@ -147,6 +152,7 @@ export interface Debt {
   notes?: string
   isSettled: boolean
   createdAt: string
+  deleted_at?: string | null // Tombstone (C3)
 }
 
 export interface DebtWithRemaining extends Debt {
@@ -218,6 +224,7 @@ export interface InvestmentTransaction {
   date: string            // ISO 8601 date
   note?: string
   createdAt: string
+  deleted_at?: string | null // Tombstone (C3)
 }
 
 export interface PriceData {
@@ -270,6 +277,7 @@ export interface RecurringTransaction {
   familyMemberId?: string
   recipientId?: string
   createdAt: string
+  deleted_at?: string | null // Tombstone (C3)
 }
 
 // ─── Default categories ────────────────────────────────────────────────────

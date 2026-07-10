@@ -6,6 +6,7 @@ import { db } from '@/lib/db'
 import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import type { RecurringTransaction, RecurringFrequency } from '@/types'
+import { softDelete, isLive } from '@/lib/sync/tombstone'
 
 function advanceDueDate(current: string, frequency: RecurringFrequency): string {
   const d = parseISO(current)
@@ -37,7 +38,7 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('recurring_transactions').select('*')
+    const { data, error } = await supabase.from('recurring_transactions').select('*').is('deleted_at', null)
     if (!error) {
       const recurring = ((data ?? []) as RecurringTransaction[]).sort((a, b) => a.name.localeCompare(b.name, 'tr'))
       await db.transaction('rw', db.recurringTransactions, async () => {
@@ -47,7 +48,7 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
       set({ recurring, loading: false, ready: true })
     } else {
       console.error('[supabase:recurring_transactions:load]', error)
-      const rows = await db.recurringTransactions.toArray()
+      const rows = (await db.recurringTransactions.toArray()).filter(isLive)
       set({ recurring: rows.sort((a, b) => a.name.localeCompare(b.name, 'tr')), loading: false, ready: true })
     }
   },
@@ -72,10 +73,7 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
   },
 
   remove: async (id) => {
-    await db.recurringTransactions.delete(id)
-    supabase.from('recurring_transactions').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:recurring_transactions:delete]', error)
-    })
+    await softDelete(db.recurringTransactions, 'recurring_transactions', id) // C3 — soft delete
     set(s => ({ recurring: s.recurring.filter(r => r.id !== id) }))
   },
 

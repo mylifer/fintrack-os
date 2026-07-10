@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
+import { softDelete, isLive } from '@/lib/sync/tombstone'
 import { useTransactionStore } from './transactions.store'
 import type {
   InvestmentTransaction, InvestmentHolding,
@@ -262,7 +263,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('investment_transactions').select('*')
+    const { data, error } = await supabase.from('investment_transactions').select('*').is('deleted_at', null)
     if (!error) {
       const txs = ((data ?? []) as InvestmentTransaction[]).sort((a, b) => b.date.localeCompare(a.date))
       await db.transaction('rw', db.investmentTransactions, async () => {
@@ -272,7 +273,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       set({ transactions: txs, loading: false })
     } else {
       console.error('[supabase:investment_transactions:load]', error)
-      const txs = await db.investmentTransactions.orderBy('date').reverse().toArray()
+      const txs = (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive)
       set({ transactions: txs, loading: false })
     }
   },
@@ -347,10 +348,9 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       await cleanSellLinkedTxs(tx)
     }
 
-    await db.investmentTransactions.delete(id)
-    supabase.from('investment_transactions').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:investment_transactions:delete]', error)
-    })
+    // C3 — soft delete. Linked ledger txs are removed via txStore.remove above,
+    // which is itself now a tombstone.
+    await softDelete(db.investmentTransactions, 'investment_transactions', id)
     set(s => ({ transactions: s.transactions.filter(t => t.id !== id) }))
   },
 

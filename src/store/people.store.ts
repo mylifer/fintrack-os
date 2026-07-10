@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import type { Person, PersonRole } from '@/types'
+import { softDelete, isLive } from '@/lib/sync/tombstone'
 
 interface PeopleState {
   people: Person[]
@@ -24,7 +25,7 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('people').select('*')
+    const { data, error } = await supabase.from('people').select('*').is('deleted_at', null)
     if (!error) {
       const people = (data ?? []) as Person[]
       await db.transaction('rw', db.people, async () => {
@@ -34,7 +35,7 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
       set({ people, loading: false, ready: true })
     } else {
       console.error('[supabase:people:load]', error)
-      const people = await db.people.toArray()
+      const people = (await db.people.toArray()).filter(isLive)
       set({ people, loading: false, ready: true })
     }
   },
@@ -75,10 +76,7 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
   },
 
   remove: async (id) => {
-    await db.people.delete(id)
-    supabase.from('people').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:people:delete]', error)
-    })
+    await softDelete(db.people, 'people', id) // C3 — soft delete
     set(s => ({ people: s.people.filter(p => p.id !== id) }))
   },
 }))

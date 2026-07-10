@@ -205,6 +205,20 @@ class FinTrackDB extends Dexie {
     }).upgrade(async (trans) => {
       await trans.table('categories').toCollection().modify({ isArchived: false })
     })
+
+    // v8: tombstones (C3). Add an indexed `deleted_at` soft-delete marker to
+    // every synced table. No data transform needed — existing rows have an
+    // undefined deleted_at, which reads as "live" everywhere.
+    this.version(8).stores({
+      accounts:               '&id, type, currency, isArchived, deleted_at',
+      transactions:           '&id, type, accountId, toAccountId, categoryId, date, installGroupId, debtId, familyMemberId, recipientId, deleted_at',
+      categories:             '&id, scope, parentId, isSystem, isArchived, deleted_at',
+      budgets:                '&id, categoryId, period, year, month, deleted_at',
+      debts:                  '&id, type, direction, isSettled, dueDate, deleted_at',
+      investmentTransactions: '&id, type, asset, date, deleted_at',
+      people:                 '&id, role, deleted_at',
+      recurringTransactions:  '&id, type, frequency, nextDueDate, isActive, deleted_at',
+    })
   }
 }
 

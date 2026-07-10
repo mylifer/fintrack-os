@@ -10,6 +10,7 @@ import { useDebtStore } from './debts.store'
 import { useRecurringStore } from './recurring.store'
 import { useInvestmentStore } from './investment.store'
 import { getUserId } from '@/lib/auth'
+import { softDelete, softDeleteMany, isLive } from '@/lib/sync/tombstone'
 
 interface AccountState {
   accounts: Account[]
@@ -32,7 +33,8 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('accounts').select('*')
+    // Tombstones (C3): never fetch or surface soft-deleted rows.
+    const { data, error } = await supabase.from('accounts').select('*').is('deleted_at', null)
     if (!error) {
       // balance DB'de yok — placeholder olarak initialBalance kullan, DataProvider'da recomputeBalances düzeltir
       const accounts: Account[] = (data ?? []).map(a => ({
@@ -46,7 +48,7 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
       set({ accounts, loading: false, ready: true })
     } else {
       console.error('[supabase:accounts:load]', error)
-      const raw = await db.accounts.toArray()
+      const raw = (await db.accounts.toArray()).filter(isLive)
       const accounts = raw.map(a => ({ ...a, initialBalance: a.initialBalance ?? a.balance }))
       set({ accounts, loading: false, ready: true })
     }
@@ -88,19 +90,13 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
       }
     }
 
-    // 3. İşlemleri fiziksel olarak sil
+    // 3. Bağlı işlemleri tombstone'la (C3 — soft delete, fiziksel silme değil)
     if (linkedTxIds.length > 0) {
-      await db.transactions.bulkDelete(linkedTxIds)
-      supabase.from('transactions').delete().in('id', linkedTxIds).then(({ error }) => {
-        if (error) console.error('[supabase:transactions:cascade-delete]', error)
-      })
+      await softDeleteMany(db.transactions, 'transactions', linkedTxIds)
     }
 
-    // 4. Hesabı fiziksel olarak sil
-    await db.accounts.delete(id)
-    supabase.from('accounts').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:accounts:delete]', error)
-    })
+    // 4. Hesabı tombstone'la (C3 — soft delete)
+    await softDelete(db.accounts, 'accounts', id)
 
     // 4b. Bu hesaba bağlı tekrarlayan işlemleri sil — aksi halde silinmiş
     // hesaba yeni işlemler üretilmeye devam eder

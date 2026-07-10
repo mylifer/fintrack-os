@@ -7,6 +7,7 @@ import { getUserId } from '@/lib/auth'
 import type { Debt, DebtWithRemaining } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
 import { isDueSoon } from '@/lib/utils/date'
+import { softDelete, isLive } from '@/lib/sync/tombstone'
 
 interface DebtState {
   debts: Debt[]
@@ -29,7 +30,7 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('debts').select('*')
+    const { data, error } = await supabase.from('debts').select('*').is('deleted_at', null)
     if (!error) {
       const debts = (data ?? []) as Debt[]
       await db.transaction('rw', db.debts, async () => {
@@ -39,7 +40,7 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
       set({ debts, loading: false })
     } else {
       console.error('[supabase:debts:load]', error)
-      const debts = await db.debts.toArray()
+      const debts = (await db.debts.toArray()).filter(isLive)
       set({ debts, loading: false })
     }
   },
@@ -69,10 +70,7 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
   },
 
   remove: async (id) => {
-    await db.debts.delete(id)
-    supabase.from('debts').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:debts:delete]', error)
-    })
+    await softDelete(db.debts, 'debts', id) // C3 — soft delete
     set(s => ({ debts: s.debts.filter(d => d.id !== id) }))
   },
 

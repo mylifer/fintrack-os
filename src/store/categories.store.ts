@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
+import { isLive } from '@/lib/sync/tombstone'
 import type { Category, CategoryScope, DefaultCategoryDef } from '@/types'
 import { DEFAULT_CATEGORIES } from '@/types'
 
@@ -232,7 +233,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('categories').select('*')
+    const { data, error } = await supabase.from('categories').select('*').is('deleted_at', null)
     if (!error) {
       const { categories, dirty } = applyIconMigration(
         (data ?? [] as Category[]).sort((a, b) => a.sortOrder - b.sortOrder)
@@ -255,7 +256,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       }
     } else {
       console.error('[supabase:categories:load]', error)
-      const raw = await db.categories.toArray()
+      const raw = (await db.categories.toArray()).filter(isLive)
       const { categories } = applyIconMigration(raw.sort((a, b) => a.sortOrder - b.sortOrder))
       set({ categories, loading: false, ready: true })
     }

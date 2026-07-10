@@ -9,6 +9,7 @@ import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
 import { useDebtStore } from './debts.store'
 import { getUserId } from '@/lib/auth'
+import { softDelete, isLive } from '@/lib/sync/tombstone'
 
 function investRank(tx: Transaction): number {
   if (!tx.icon) return 10
@@ -47,7 +48,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('transactions').select('*')
+    // Tombstones (C3): never fetch or surface soft-deleted rows.
+    const { data, error } = await supabase.from('transactions').select('*').is('deleted_at', null)
     if (!error) {
       const txs = ((data ?? []) as Transaction[]).sort(txSortComparator)
       await db.transaction('rw', db.transactions, async () => {
@@ -57,7 +59,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       set({ transactions: txs, loading: false, ready: true })
     } else {
       console.error('[supabase:transactions:load]', error)
-      const txs = (await db.transactions.toArray()).sort(txSortComparator)
+      const txs = (await db.transactions.toArray()).filter(isLive).sort(txSortComparator)
       set({ transactions: txs, loading: false, ready: true })
     }
   },
@@ -117,10 +119,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   remove: async (id) => {
     const tx = get().transactions.find(t => t.id === id)
-    await db.transactions.delete(id)
-    supabase.from('transactions').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:transactions:delete]', error)
-    })
+    // Soft delete (C3): tombstone instead of physical delete so the removal
+    // syncs as an UPDATE and cannot resurrect on the next cloud-authoritative load.
+    await softDelete(db.transactions, 'transactions', id)
     // Revert this transaction's contribution to the linked debt's paidAmount
     if (tx?.debtId) {
       await useDebtStore.getState().adjustPaidAmount(tx.debtId, -tx.amount)
