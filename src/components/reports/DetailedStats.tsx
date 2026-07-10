@@ -19,13 +19,9 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { isReconciliation } from '@/lib/utils/reconciliation'
+import { baseAmount, toBaseTry } from '@/lib/utils/fx'
+import { toMinor, toMajor, sumBy } from '@/lib/utils/money'
 import type { Account, Category, Transaction } from '@/types'
-
-/* ── amountTry helper — mirrors the Reports page for TRY-consistent sums
-      across multi-currency transactions; falls back to `amount`. ──────── */
-function getTryAmount(tx: Transaction): number {
-  return (tx as Transaction & { amountTry?: number }).amountTry ?? tx.amount
-}
 
 /* Percentages: TR formatting with a decimal comma, e.g. 41.58 → "41,58%". */
 const PCT_FMT = new Intl.NumberFormat('tr-TR', {
@@ -65,7 +61,7 @@ function resolveCategoryPath(
 /* Net effect of a single transaction on the net worth of the selected
    account set. Transfers between two selected accounts net to zero. */
 function netDelta(tx: Transaction, selectedIds: Set<string>): number {
-  const amt = getTryAmount(tx)
+  const amt = baseAmount(tx)
   if (tx.type === 'transfer') {
     let d = 0
     if (selectedIds.has(tx.accountId)) d -= amt
@@ -147,12 +143,8 @@ export function DetailedStats({
       1,
       differenceInDays(parseISO(dateRange.to), parseISO(dateRange.from)) + 1,
     )
-    const expenseTotal = analyticTxs
-      .filter(t => t.type === 'expense')
-      .reduce((s, t) => s + getTryAmount(t), 0)
-    const incomeTotal = analyticTxs
-      .filter(t => t.type === 'income')
-      .reduce((s, t) => s + getTryAmount(t), 0)
+    const expenseTotal = sumBy(analyticTxs.filter(t => t.type === 'expense'), baseAmount)
+    const incomeTotal  = sumBy(analyticTxs.filter(t => t.type === 'income'),  baseAmount)
 
     const avg = (total: number) => ({
       total,
@@ -167,14 +159,15 @@ export function DetailedStats({
   /* Top 5 categories (expense + income), full paths, % of scope total. */
   const topCategories = useMemo(() => {
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
-      const groups = new Map<string, number>()
+      const groups = new Map<string, number>()   // accumulate in minor units (S8)
       for (const t of analyticTxs) {
         if (t.type !== scope) continue
         const key = t.categoryId ?? '__none__'
-        groups.set(key, (groups.get(key) ?? 0) + getTryAmount(t))
+        groups.set(key, (groups.get(key) ?? 0) + toMinor(baseAmount(t)))
       }
       return [...groups.entries()]
-        .map(([key, amount]) => {
+        .map(([key, minor]) => {
+          const amount = toMajor(minor)
           const cat = key === '__none__' ? undefined : catMap.get(key)
           return {
             key,
@@ -196,20 +189,20 @@ export function DetailedStats({
   /* Top 5 merchants (expense + income), % of scope total. */
   const topMerchants = useMemo(() => {
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
-      const groups = new Map<string, number>()
+      const groups = new Map<string, number>()   // accumulate in minor units (S8)
       for (const t of analyticTxs) {
         if (t.type !== scope) continue
         const name = t.merchant?.trim()
         if (!name) continue
-        groups.set(name, (groups.get(name) ?? 0) + getTryAmount(t))
+        groups.set(name, (groups.get(name) ?? 0) + toMinor(baseAmount(t)))
       }
       return [...groups.entries()]
-        .map(([name, amount]) => ({
+        .map(([name, minor]) => ({
           key: name,
           name,
           color: '#8C8C8C',
-          amount,
-          pct: total > 0 ? (amount / total) * 100 : 0,
+          amount: toMajor(minor),
+          pct: total > 0 ? (toMajor(minor) / total) * 100 : 0,
         }))
         .sort((a, b) => b.amount - a.amount)
         .slice(0, 5)
@@ -229,27 +222,29 @@ export function DetailedStats({
     )
     const inScope = accounts.filter(a => selectedIds.has(a.id))
 
-    // Opening net worth: initial balances + every effect strictly before the period.
-    let baseline = inScope.reduce((s, a) => s + a.initialBalance, 0)
-    const byDate = new Map<string, number>()
+    // Opening net worth (TRY): initial balances converted to base currency,
+    // plus every effect strictly before the period. Accumulated in minor units.
+    let baselineMinor = inScope.reduce((s, a) => s + toMinor(toBaseTry(a.initialBalance, a.currency)), 0)
+    const byDateMinor = new Map<string, number>()
     for (const t of transactions) {
       if (t.date < dateRange.from) {
-        baseline += netDelta(t, selectedIds)
+        baselineMinor += toMinor(netDelta(t, selectedIds))
       } else if (t.date <= dateRange.to) {
-        byDate.set(t.date, (byDate.get(t.date) ?? 0) + netDelta(t, selectedIds))
+        byDateMinor.set(t.date, (byDateMinor.get(t.date) ?? 0) + toMinor(netDelta(t, selectedIds)))
       }
     }
 
-    let running = baseline
-    let max = { value: running, date: dateRange.from }
-    let min = { value: running, date: dateRange.from }
-    for (const date of [...byDate.keys()].sort()) {
-      running += byDate.get(date)!
-      if (running > max.value) max = { value: running, date }
-      if (running < min.value) min = { value: running, date }
+    let runningMinor = baselineMinor
+    let max = { value: toMajor(runningMinor), date: dateRange.from }
+    let min = { value: toMajor(runningMinor), date: dateRange.from }
+    for (const date of [...byDateMinor.keys()].sort()) {
+      runningMinor += byDateMinor.get(date)!
+      const value = toMajor(runningMinor)
+      if (value > max.value) max = { value, date }
+      if (value < min.value) min = { value, date }
     }
 
-    return { current: running, max, min }
+    return { current: toMajor(runningMinor), max, min }
   }, [transactions, accounts, accountId, dateRange])
 
   const hasExpense = period.expense.total > 0

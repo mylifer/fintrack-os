@@ -9,6 +9,14 @@ import { useAccountStore } from './accounts.store'
 import { useDebtStore } from './debts.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
+import { toBaseTry } from '@/lib/utils/fx'
+
+// Snapshot the base-currency (TRY) value at write time (S2/S3). Every creation
+// path funnels through the store, so stamping here covers the form, refunds,
+// reconciliation ghosts, investment-linked txs, recurring generation and import.
+function withBase(tx: Transaction): Transaction {
+  return { ...tx, amountTry: toBaseTry(tx.amount, tx.currency) }
+}
 
 function investRank(tx: Transaction): number {
   if (!tx.icon) return 10
@@ -60,10 +68,11 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   },
 
   add: async (tx) => {
-    // Durable write (C1): entity + outbox in one IndexedDB transaction.
-    await localUpsert('transactions', tx)
+    // Base-currency snapshot (S2/S3) + durable write (C1).
+    const stamped = withBase(tx)
+    await localUpsert('transactions', stamped)
     set(s => {
-      const updated = [tx, ...s.transactions]
+      const updated = [stamped, ...s.transactions]
       updated.sort(txSortComparator)
       useAccountStore.getState().recomputeBalances(updated)
       return { transactions: updated }
@@ -76,7 +85,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const txs: Transaction[] = []
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
-      txs.push({ ...base, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now })
+      txs.push(withBase({ ...base, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now }))
     }
     await localBulkUpsert('transactions', txs)
     set(s => {
@@ -89,8 +98,16 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   update: async (id, patch) => {
     const now = new Date().toISOString()
-    const updated = { ...patch, updatedAt: now }
-    await localPatch('transactions', id, updated)
+    const updated: Partial<Transaction> = { ...patch, updatedAt: now }
+    // Re-snapshot amountTry whenever amount or currency changes (S2/S3).
+    if ('amount' in patch || 'currency' in patch) {
+      const cur = get().transactions.find(t => t.id === id)
+      if (cur) {
+        const merged = { ...cur, ...patch }
+        updated.amountTry = toBaseTry(merged.amount, merged.currency)
+      }
+    }
+    await localPatch('transactions', id, updated as Record<string, unknown>)
     // NOT: Borç paidAmount mutabakatı burada YAPILMAZ — düzenleme akışının tek
     // sahibi TransactionFormModal'dır (borç değişimi/kaldırma dahil tüm dalları
     // yönetir). Burada da ayarlamak çift sayıma yol açıyordu.

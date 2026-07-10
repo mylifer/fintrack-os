@@ -85,6 +85,12 @@ begin
   end loop;
 end $$;
 
+-- ── Base-currency snapshot (S2/S3) ──────────────────────────────────────────
+-- transactions."amountTry" stores the amount converted to base currency (TRY)
+-- at write time. Analytics sum this column; a null (legacy row) is converted
+-- client-side at the live rate. Quoted identifier to match the app's camelCase.
+alter table public.transactions add column if not exists "amountTry" double precision;
+
 -- ── Verification helpers (optional; run manually after applying) ─────────────
 -- Every table below MUST report rowsecurity = true:
 --   select relname, relrowsecurity as rls_enabled

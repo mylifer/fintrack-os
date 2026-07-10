@@ -101,7 +101,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
   }
 
   const txs            = useTransactionStore(s => s.transactions)
-  const txEffect       = account ? computeTransactionEffect(account.id, txs) : 0
+  const txEffect       = account ? computeTransactionEffect(account, txs) : 0
   const initialBalNum  = isCreditCard
     ? -Math.abs(parseCurrencyInput(initialBalStr))   // borç her zaman negatif tutulur
     : parseCurrencyInput(initialBalStr)              // işaret kullanıcının girdiği gibi

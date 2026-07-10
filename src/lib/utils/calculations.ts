@@ -1,35 +1,51 @@
 import type { Account, Transaction, Budget, BudgetWithSpent, Debt, DebtWithRemaining, MonthYear, PriceData } from '@/types'
 import { isInRange, monthRange, yearRange } from './date'
 import { isReconciliation } from './reconciliation'
+import { toMinor, toMajor, sumBy, subMoney } from './money'
+import { baseAmount, fromBaseTry } from './fx'
 
-// Sum of all transaction effects on an account (income adds, expense/outgoing-transfer subtracts).
-// Used to derive the current balance from initialBalance.
-export function computeTransactionEffect(accountId: string, transactions: Transaction[]): number {
-  const raw = transactions.reduce((sum, t) => {
+// Sum of all transaction effects on an account, in the ACCOUNT'S OWN currency
+// (a TRY account's balance is TRY, a USD account's is USD). Used to derive the
+// current balance from initialBalance.
+//
+// Cross-currency transfers (S2): the outgoing leg is `amount` (already in the
+// source = transfer currency). The incoming leg is `amount` when the transfer
+// currency matches the target account (same-currency, exact, the common case),
+// otherwise the TRY-normalized value converted into the target's currency.
+export function computeTransactionEffect(
+  account: Pick<Account, 'id' | 'currency'>,
+  transactions: Transaction[],
+): number {
+  let minor = 0
+  for (const t of transactions) {
     if (t.type === 'transfer') {
-      if (t.accountId === accountId) return sum - t.amount
-      if (t.toAccountId === accountId) return sum + t.amount
-    } else if (t.accountId === accountId) {
-      return sum + (t.type === 'income' ? t.amount : -t.amount)
+      if (t.accountId === account.id) minor -= toMinor(t.amount)
+      if (t.toAccountId === account.id) {
+        const incoming = t.currency === account.currency
+          ? t.amount
+          : fromBaseTry(baseAmount(t), account.currency)
+        minor += toMinor(incoming)
+      }
+    } else if (t.accountId === account.id) {
+      minor += t.type === 'income' ? toMinor(t.amount) : -toMinor(t.amount)
     }
-    return sum
-  }, 0)
-  return Math.round(raw * 100) / 100
+  }
+  return toMajor(minor)
 }
 
 export function calcNetWorth(accounts: Account[], prices?: PriceData | null): number {
-  const raw = accounts
-    .filter(a => !a.isArchived)
-    .reduce((sum, a) => {
-      let balance = a.balance
-      if (prices && a.currency !== 'TRY') {
-        if (a.currency === 'USD') balance *= prices.usdTry
-        else if (a.currency === 'EUR') balance *= prices.eurTry
-        else if (a.currency === 'GBP') balance *= prices.gbpTry
-      }
-      return sum + balance
-    }, 0)
-  return Math.round(raw * 100) / 100
+  let minor = 0
+  for (const a of accounts) {
+    if (a.isArchived) continue
+    let balance = a.balance
+    if (prices && a.currency !== 'TRY') {
+      if (a.currency === 'USD') balance *= prices.usdTry
+      else if (a.currency === 'EUR') balance *= prices.eurTry
+      else if (a.currency === 'GBP') balance *= prices.gbpTry
+    }
+    minor += toMinor(balance)
+  }
+  return toMajor(minor)
 }
 
 export function calcAvailableCredit(account: Account): number {
@@ -62,15 +78,14 @@ export function calcBudgetSpent(
       : yearRange(budget.year ?? new Date().getFullYear())
 
   const categoryIds = getBudgetCategoryIds(budget)
-  const raw = transactions
-    .filter(tx =>
-      tx.type === 'expense' &&
-      tx.categoryId !== undefined &&
-      categoryIds.includes(tx.categoryId) &&
-      isInRange(tx.date, range.from, range.to),
-    )
-    .reduce((sum, tx) => sum + tx.amount, 0)
-  return Math.round(raw * 100) / 100
+  // Budgets are TRY-denominated → sum the normalized amountTry (S3), not raw.
+  const matching = transactions.filter(tx =>
+    tx.type === 'expense' &&
+    tx.categoryId !== undefined &&
+    categoryIds.includes(tx.categoryId) &&
+    isInRange(tx.date, range.from, range.to),
+  )
+  return sumBy(matching, baseAmount)
 }
 
 export function enrichBudget(
@@ -79,7 +94,7 @@ export function enrichBudget(
   my?: MonthYear,
 ): BudgetWithSpent {
   const spent = calcBudgetSpent(budget, transactions, my)
-  const remaining = Math.max(0, budget.amount - spent)
+  const remaining = Math.max(0, subMoney(budget.amount, spent))
   const percentUsed = budget.amount > 0 ? (spent / budget.amount) * 100 : 0
   const status =
     percentUsed >= 100 ? 'exceeded'
@@ -89,12 +104,13 @@ export function enrichBudget(
   return { ...budget, spent, remaining, percentUsed, status }
 }
 
-// Raw income/expense/net over an already date-scoped slice. No ghosting —
-// callers decide whether to pre-filter reconciliation.
+// Income/expense/net over an already date-scoped slice, summed in TRY-normalized
+// amountTry (S2/S3) via integer minor units (S8). No ghosting — callers decide
+// whether to pre-filter reconciliation.
 function sumFlow(inRange: Transaction[]): { income: number; expense: number; net: number } {
-  const income  = Math.round(inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0) * 100) / 100
-  const expense = Math.round(inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0) * 100) / 100
-  return { income, expense, net: Math.round((income - expense) * 100) / 100 }
+  const income  = sumBy(inRange.filter(t => t.type === 'income'),  baseAmount)
+  const expense = sumBy(inRange.filter(t => t.type === 'expense'), baseAmount)
+  return { income, expense, net: subMoney(income, expense) }
 }
 
 // Flow metrics (income/expense/net) exclude balance-reconciliation ("ghost")
@@ -132,7 +148,7 @@ export function calcMonthlyNetRaw(
 }
 
 export function enrichDebt(debt: Debt): DebtWithRemaining {
-  const remainingAmount = Math.max(0, debt.totalAmount - debt.paidAmount)
+  const remainingAmount = Math.max(0, subMoney(debt.totalAmount, debt.paidAmount))
   const progressPercent = debt.totalAmount > 0
     ? Math.min(100, (debt.paidAmount / debt.totalAmount) * 100)
     : 0
@@ -145,13 +161,12 @@ export function calcCategorySpend(
   from: string,
   to: string,
 ): number {
-  return transactions
-    .filter(tx =>
-      tx.type === 'expense' &&
-      tx.categoryId === categoryId &&
-      isInRange(tx.date, from, to),
-    )
-    .reduce((sum, tx) => sum + tx.amount, 0)
+  const matching = transactions.filter(tx =>
+    tx.type === 'expense' &&
+    tx.categoryId === categoryId &&
+    isInRange(tx.date, from, to),
+  )
+  return sumBy(matching, baseAmount)
 }
 
 // Group transactions by date for list display

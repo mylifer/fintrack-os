@@ -17,6 +17,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
+import { baseAmount } from '@/lib/utils/fx'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
@@ -220,13 +221,13 @@ function buildTrendData(
   return pts
 }
 
-/* ── amountTry helper ─────────────────────────────────────────────
-   Uses amountTry if present (future field) for consistent TRY
-   comparisons across multi-currency transactions; falls back to amount.
+/* ── Base-currency (TRY) amount ────────────────────────────────────
+   Uses the snapshotted amountTry (S2/S3) for consistent TRY comparisons
+   across multi-currency transactions; converts legacy rows at live rates.
  ─────────────────────────────────────────────────────────────────── */
 
 function getTryAmount(tx: Transaction): number {
-  return (tx as any).amountTry ?? tx.amount
+  return baseAmount(tx)
 }
 
 /* ── Period comparison ────────────────────────────────────────────── */

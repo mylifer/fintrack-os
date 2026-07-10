@@ -133,7 +133,7 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     set(s => ({
       accounts: s.accounts.map(a => ({
         ...a,
-        balance: a.initialBalance + computeTransactionEffect(a.id, transactions),
+        balance: a.initialBalance + computeTransactionEffect(a, transactions),
       })),
     }))
   },

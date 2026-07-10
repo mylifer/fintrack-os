@@ -54,7 +54,8 @@ export type TransactionType = 'expense' | 'income' | 'transfer'
 export interface Transaction {
   id: string
   type: TransactionType
-  amount: number            // Always positive; direction from type
+  amount: number            // In `currency`; direction from type (negative for refunds)
+  amountTry?: number        // Base-currency (TRY) snapshot at write time (S2/S3). Aggregators sum THIS.
   currency: CurrencyCode
   date: string              // ISO 8601 date: "2026-06-21"
   accountId: string

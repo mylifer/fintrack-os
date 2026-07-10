@@ -109,7 +109,7 @@ export function Sidebar() {
     const prevTxs = transactions.filter(t => t.date <= cutoff)
     const prevAccounts = accounts.map(a => ({
       ...a,
-      balance: a.initialBalance + computeTransactionEffect(a.id, prevTxs),
+      balance: a.initialBalance + computeTransactionEffect(a, prevTxs),
     }))
     const prevAccountNetWorth = calcNetWorth(prevAccounts, prices)
     const prevInvestTxs = investTxs.filter(t => t.date <= cutoff)

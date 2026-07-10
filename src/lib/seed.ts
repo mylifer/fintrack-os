@@ -110,6 +110,7 @@ export async function loadDemoData(): Promise<void> {
       id: `cc000000-0000-0000-0000-${seq}`,
       type: opts.type,
       amount: opts.amount,
+      amountTry: opts.amount, // demo data is TRY → base value equals amount (S2/S3)
       currency: opts.currency ?? 'TRY',
       date: opts.date,
       accountId: opts.accountId,

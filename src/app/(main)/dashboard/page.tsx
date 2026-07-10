@@ -93,7 +93,7 @@ export default function DashboardPage() {
     const prevTxs = transactions.filter(t => t.date <= prevRange.to)
     const prevAccounts = accounts.map(a => ({
       ...a,
-      balance: a.initialBalance + computeTransactionEffect(a.id, prevTxs),
+      balance: a.initialBalance + computeTransactionEffect(a, prevTxs),
     }))
     const prevInvestTxs = investTxs.filter(t => t.date <= prevRange.to)
     const prevInvestValue = computeHoldings(prevInvestTxs, prices).reduce((s, h) => s + h.currentValue, 0)

@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
+import { setBaseRates } from '@/lib/utils/fx'
 import { useTransactionStore } from './transactions.store'
 import type {
   InvestmentTransaction, InvestmentHolding,
@@ -399,6 +400,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       const data: PriceData = await res.json()
       if ('error' in data) throw new Error(String((data as Record<string, unknown>).error))
       set({ prices: data, pricesError: null })
+      setBaseRates(data) // publish live FX rates for base-currency normalization (S2/S3)
     } catch (err) {
       set({ pricesError: err instanceof Error ? err.message : 'Bağlantı hatası' })
     } finally {
