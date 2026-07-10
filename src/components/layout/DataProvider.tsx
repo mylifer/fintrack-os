@@ -57,6 +57,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // C1: drain any mutations left in the outbox from a previous (possibly
       // offline) session, and keep draining whenever connectivity returns.
       startAutoSync()
+
+      // Ask the browser to keep our IndexedDB data across eviction pressure.
+      // Without this, Safari can wipe local data after ~7 days of no visits.
+      // Best-effort: browsers auto-decide based on engagement; never blocks.
+      if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
+        navigator.storage.persist().catch(() => { /* non-fatal */ })
+      }
     }
 
     if (!initPromise) {

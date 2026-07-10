@@ -204,6 +204,7 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
 
 /* ── Background flusher (C1) ────────────────────────────────────────────── */
 
+const MAX_ATTEMPTS = 12 // ~ back-to-back retries before an entry is dead-lettered
 let flushing = false
 let rerun = false
 let kickTimer: ReturnType<typeof setTimeout> | null = null
@@ -233,15 +234,20 @@ export async function flushOutbox(): Promise<void> {
 
       let failed = 0
       for (const e of entries) {
+        // Dead-letter: a poison payload (permanent 4xx) must not retry forever
+        // and block the whole outbox. Past MAX_ATTEMPTS we keep the row durable
+        // (for inspection/manual fix) but stop auto-retrying it.
+        if (e.attempts >= MAX_ATTEMPTS) continue
+
         const payload = { ...e.snapshot, user_id: userId }
         const { error } = await supabase.from(e.table).upsert(payload, { onConflict: 'id' })
         if (error) {
           failed++
-          await db._outbox.update(e.id, {
-            attempts: e.attempts + 1,
-            lastError: error.message,
-            updatedAt: now(),
-          })
+          const attempts = e.attempts + 1
+          if (attempts >= MAX_ATTEMPTS) {
+            console.error(`[sync:dead-letter] ${e.table}/${e.entityId} giving up after ${attempts} attempts:`, error.message)
+          }
+          await db._outbox.update(e.id, { attempts, lastError: error.message, updatedAt: now() })
         } else {
           await db._outbox.delete(e.id)  // ACK
         }

@@ -42,6 +42,8 @@ export function TransactionImportModal({ open, onClose }: Props) {
   const [rowErrors, setRowErrors] = useState<{ row: number; message: string }[]>([])
   const [importing, setImporting] = useState(false)
   const [error, setError]         = useState('')
+  const [importedCount, setImportedCount] = useState(0)
+  const [skippedDup, setSkippedDup]       = useState(0)
 
   const activeAccounts = accounts.filter(a => !a.isArchived)
 
@@ -119,7 +121,28 @@ export function TransactionImportModal({ open, onClose }: Props) {
 
     try {
       const now = new Date().toISOString()
-      const txs: Transaction[] = valid.map(t => ({
+
+      // Duplicate guard (M5): skip rows that match an existing transaction in the
+      // target account (date + amount + description) and de-dupe within the file,
+      // so re-importing the same statement can't double the data.
+      const sig = (date: string, amount: number, desc: string) =>
+        `${date}|${Math.round(amount * 100)}|${(desc ?? '').trim().toLowerCase()}`
+      const existingSigs = new Set(
+        useTransactionStore.getState().transactions
+          .filter(t => t.accountId === accountId)
+          .map(t => sig(t.date, t.amount, t.description)),
+      )
+      const seen = new Set<string>()
+      const rows = valid.filter(t => {
+        const s = sig(t.date, t.amount, t.description)
+        if (existingSigs.has(s) || seen.has(s)) return false
+        seen.add(s)
+        return true
+      })
+      setSkippedDup(valid.length - rows.length)
+      setImportedCount(rows.length)
+
+      const txs: Transaction[] = rows.map(t => ({
         id:           crypto.randomUUID(),
         type:         t.type,
         amount:       t.amount,
@@ -348,7 +371,10 @@ export function TransactionImportModal({ open, onClose }: Props) {
           <div>
             <div className="text-base font-semibold">İçe Aktarma Tamamlandı</div>
             <div className="text-sm text-muted-foreground mt-1">
-              <span className="font-semibold text-foreground">{valid.length}</span> işlem başarıyla eklendi.
+              <span className="font-semibold text-foreground">{importedCount}</span> işlem başarıyla eklendi.
+              {skippedDup > 0 && (
+                <div className="mt-1">{skippedDup} mükerrer satır atlandı.</div>
+              )}
             </div>
           </div>
           <Button onClick={handleClose} className="px-8 rounded-xl">Kapat</Button>
