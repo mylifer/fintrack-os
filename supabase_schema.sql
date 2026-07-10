@@ -31,6 +31,7 @@
 do $$
 declare
   t text;
+  pol text;
   tables text[] := array[
     'accounts',
     'transactions',
@@ -54,16 +55,23 @@ begin
       t || '_user_live_idx', t
     );
 
-    -- 3. Enable RLS (C7). No FORCE: the security-invoker restore RPC and the
-    --    service_role key continue to operate; anon/authenticated are gated.
+    -- 3. Drop EVERY existing policy on the table — including legacy/permissive
+    --    ones (e.g. a leftover "allow all" USING (true) from project setup) that
+    --    would otherwise OR-combine with ours and defeat isolation.
+    for pol in
+      select policyname from pg_policies where schemaname = 'public' and tablename = t
+    loop
+      execute format('drop policy if exists %I on public.%I;', pol, t);
+    end loop;
+
+    -- 4. Enable + FORCE RLS. FORCE also subjects the table owner to RLS;
+    --    service_role has BYPASSRLS so backups/admin keep working, and the
+    --    security-invoker restore RPC runs as the authenticated user (allowed
+    --    by the owner policies below).
     execute format('alter table public.%I enable row level security;', t);
+    execute format('alter table public.%I force row level security;', t);
 
-    -- 4. Owner-only policies. Drop first so re-runs don't error on duplicates.
-    execute format('drop policy if exists %I on public.%I;', t || '_select_own', t);
-    execute format('drop policy if exists %I on public.%I;', t || '_insert_own', t);
-    execute format('drop policy if exists %I on public.%I;', t || '_update_own', t);
-    execute format('drop policy if exists %I on public.%I;', t || '_delete_own', t);
-
+    -- 5. Owner-only policies (the ONLY policies that now exist on the table).
     execute format(
       'create policy %I on public.%I for select to authenticated using (user_id = auth.uid());',
       t || '_select_own', t
