@@ -18,4 +18,8 @@ export async function clearLocalData(): Promise<void> {
     db.recurringTransactions.clear(),
     db._outbox.clear(), // drop pending mutations on a full local reset
   ])
+  // Per-device migration flags must not leak to the next user on a shared device.
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('inv_sell_pnl_v3')
+  }
 }

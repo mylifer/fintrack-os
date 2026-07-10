@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useEffect, useMemo } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { clearLocalData } from '@/lib/auth'
 import { useAccountStore, useInvestmentStore, useRecurringStore, useTransactionStore, useBudgetStore, useCategoryStore } from '@/store'
@@ -81,7 +81,6 @@ function navCls(active: boolean) {
 
 export function Sidebar() {
   const pathname       = usePathname()
-  const router         = useRouter()
 
   async function handleSignOut() {
     try {
@@ -91,7 +90,10 @@ export function Sidebar() {
       console.error('[signout:clearLocalData]', err)
     }
     await supabase.auth.signOut()
-    router.push('/login')
+    // HARD reload (soft router.push değil): bellekteki Zustand store'larını ve
+    // DataProvider'ın modül-seviyesi init kilidini sıfırlar. Aksi halde aynı
+    // sekmede ikinci kullanıcı, birinci kullanıcının verisini ekranda görürdü.
+    window.location.assign('/login')
   }
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const investValue    = useInvestmentStore(s => s.getPortfolioValue())

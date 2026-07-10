@@ -3,10 +3,9 @@
 import { useState, useRef } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/button'
-import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase'
-import { getUserId } from '@/lib/auth'
 import { useAccountStore, useTransactionStore, useCategoryStore } from '@/store'
+import { localBulkUpsert } from '@/lib/sync/engine'
+import { toBaseTry } from '@/lib/utils/fx'
 import {
   parseCsvText,
   autoDetectMapping,
@@ -124,6 +123,7 @@ export function TransactionImportModal({ open, onClose }: Props) {
         id:           crypto.randomUUID(),
         type:         t.type,
         amount:       t.amount,
+        amountTry:    toBaseTry(t.amount, t.currency),  // base-currency snapshot (S2/S3)
         currency:     t.currency,
         date:         t.date,
         accountId,
@@ -135,27 +135,18 @@ export function TransactionImportModal({ open, onClose }: Props) {
         updatedAt:    now,
       }))
 
-      await db.transactions.bulkAdd(txs)
+      // Durable write via the sync engine (C1): Dexie + _outbox in one atomic
+      // transaction. Replaces the old raw db.bulkAdd + fire-and-forget insert,
+      // which created no outbox entry and could be silently deleted by the next
+      // reconciling pull if the cloud write failed (H1).
+      await localBulkUpsert('transactions', txs)
 
-      // Supabase insert'i BEKLE: loadTxs() Supabase'i doğru kabul edip Dexie'yi
-      // sunucudan yeniden yazar — insert uçuştayken çağrılırsa içe aktarılan
-      // satırlar silinir. Insert başarısızsa yeniden yükleme yapma.
-      const userId = await getUserId()
-      const dbRows = userId ? txs.map(t => ({ ...t, user_id: userId })) : txs
-      const { error: insertError } = await supabase.from('transactions').insert(dbRows)
-      if (insertError) {
-        console.error('[supabase:transactions:bulk-import]', insertError)
-        // Sunucuya yazılamadı: Dexie'de duran satırları store'a yansıt ama
-        // loadTxs() çağırma (Supabase'ten yeniden yazım onları siler)
-        useTransactionStore.setState(s => ({ transactions: [...txs, ...s.transactions] }))
-      } else {
-        await loadTxs()
-      }
+      // Safe now: imported rows are pending in the outbox, so reconcilingPull
+      // keeps them (offline too) instead of dropping them.
+      await loadTxs()
 
-      // İçe aktarma store.add yolunu atladığı için bakiyeleri elle tazele
       const { recomputeBalances } = useAccountStore.getState()
-      const { transactions }      = useTransactionStore.getState()
-      recomputeBalances(transactions)
+      recomputeBalances(useTransactionStore.getState().transactions)
 
       setStep('done')
     } catch (err) {

@@ -159,14 +159,18 @@ export function BackupManager() {
   }
 
   // Atomic clear + bulk insert of all tables (auto-rolls-back on any error).
+  // The _outbox is cleared in the SAME transaction: a restore is an authoritative
+  // replace (cloudReplaceAll already rewrote the cloud), so any pre-restore
+  // pending mutation must be discarded — otherwise flushOutbox would replay stale
+  // pre-restore snapshots on top of the restored cloud data (H2).
   async function writeDexie(data: BackupData) {
     await db.transaction('rw',
-      [db.accounts, db.transactions, db.categories, db.budgets, db.debts, db.investmentTransactions, db.people, db.recurringTransactions],
+      [db.accounts, db.transactions, db.categories, db.budgets, db.debts, db.investmentTransactions, db.people, db.recurringTransactions, db._outbox],
       async () => {
         await Promise.all([
           db.accounts.clear(), db.transactions.clear(), db.categories.clear(),
           db.budgets.clear(), db.debts.clear(), db.investmentTransactions.clear(),
-          db.people.clear(), db.recurringTransactions.clear(),
+          db.people.clear(), db.recurringTransactions.clear(), db._outbox.clear(),
         ])
         await Promise.all([
           data.accounts.length               && db.accounts.bulkAdd(data.accounts                             as never),
