@@ -17,6 +17,8 @@ import {
   useRecurringStore, useAccountStore, useCategoryStore,
   useTransactionStore, usePeopleStore,
 } from '@/store'
+import { recurringOccurrences } from '@/store/recurring.store'
+import { deterministicUuid }    from '@/lib/utils/id'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import { today }              from '@/lib/utils/date'
 import { useShallow }         from 'zustand/react/shallow'
@@ -76,7 +78,7 @@ type FormState = ReturnType<typeof emptyForm>
 /* ── Page ───────────────────────────────────────────────────────────── */
 
 export default function RecurringPage() {
-  const { recurring, add, update, remove, toggleActive, getDue, markGenerated } = useRecurringStore()
+  const { recurring, add, update, remove, toggleActive, getDue, markGenerated, skip } = useRecurringStore()
   const addTransaction  = useTransactionStore(s => s.add)
   const accounts        = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories      = useCategoryStore(s => s.categories)
@@ -195,23 +197,28 @@ export default function RecurringPage() {
     setGeneratingId(r.id)
     try {
       const now = new Date().toISOString()
-      await addTransaction({
-        id:            crypto.randomUUID(),
-        type:          r.type,
-        amount:        r.amount,
-        currency:      r.currency,
-        date:          r.nextDueDate,
-        accountId:     r.accountId,
-        toAccountId:   r.toAccountId,
-        categoryId:    r.categoryId,
-        description:   r.description,
-        notes:         r.notes,
-        isInstallment: false,
-        familyMemberId: r.familyMemberId,
-        recipientId:   r.recipientId,
-        createdAt:     now,
-        updatedAt:     now,
-      })
+      // Catch-up: one transaction per MISSED period (not just one), each with a
+      // deterministic id so a double-click / second tab / retry can't duplicate
+      // it — the same (template, date) always maps to the same row.
+      for (const occ of recurringOccurrences(r, todayStr)) {
+        await addTransaction({
+          id:            deterministicUuid(`recur:${r.id}:${occ}`),
+          type:          r.type,
+          amount:        r.amount,
+          currency:      r.currency,
+          date:          occ,
+          accountId:     r.accountId,
+          toAccountId:   r.toAccountId,
+          categoryId:    r.categoryId,
+          description:   r.description,
+          notes:         r.notes,
+          isInstallment: false,
+          familyMemberId: r.familyMemberId,
+          recipientId:   r.recipientId,
+          createdAt:     now,
+          updatedAt:     now,
+        })
+      }
       await markGenerated(r.id, todayStr)
     } catch (err) {
       console.error('[recurring:generate]', err)
@@ -243,7 +250,7 @@ export default function RecurringPage() {
                   categories={categories}
                   isGenerating={generatingId === r.id}
                   onGenerate={() => handleGenerate(r)}
-                  onSkip={() => markGenerated(r.id, todayStr)}
+                  onSkip={() => skip(r.id, todayStr)}
                 />
               ))}
               </CardContent>

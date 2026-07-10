@@ -17,6 +17,34 @@ function advanceDueDate(current: string, frequency: RecurringFrequency): string 
   }
 }
 
+const OCCURRENCE_CAP = 1000 // runaway guard for a very stale nextDueDate
+
+/** Every occurrence date from nextDueDate up to & including asOf (endDate-aware).
+ *  Drives catch-up generation: months offline → one transaction per missed
+ *  period, not a single one. */
+export function recurringOccurrences(r: RecurringTransaction, asOf: string): string[] {
+  const out: string[] = []
+  let d = r.nextDueDate
+  let guard = 0
+  while (d <= asOf && (!r.endDate || d <= r.endDate) && guard < OCCURRENCE_CAP) {
+    out.push(d)
+    d = advanceDueDate(d, r.frequency)
+    guard++
+  }
+  return out
+}
+
+/** First occurrence strictly after asOf — the new nextDueDate after (re)processing. */
+function nextDueAfter(r: RecurringTransaction, asOf: string): string {
+  let d = r.nextDueDate
+  let guard = 0
+  while (d <= asOf && guard < OCCURRENCE_CAP) {
+    d = advanceDueDate(d, r.frequency)
+    guard++
+  }
+  return d
+}
+
 interface RecurringState {
   recurring: RecurringTransaction[]
   loading: boolean
@@ -28,6 +56,7 @@ interface RecurringState {
   toggleActive: (id: string) => Promise<void>
   getDue: (asOf: string) => RecurringTransaction[]
   markGenerated: (id: string, asOf: string) => Promise<void>
+  skip: (id: string, asOf: string) => Promise<void>
 }
 
 export const useRecurringStore = create<RecurringState>()((set, get) => ({
@@ -82,19 +111,29 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
     })
   },
 
+  // Advance past all periods up to asOf and stamp lastGeneratedDate to the LAST
+  // generated occurrence (catch-up aware). Call AFTER generating the occurrences.
   markGenerated: async (id, asOf) => {
     const r = get().recurring.find(x => x.id === id)
     if (!r) return
 
-    let next = advanceDueDate(r.nextDueDate, r.frequency)
-    while (next <= asOf) {
-      next = advanceDueDate(next, r.frequency)
-    }
-
+    const occ = recurringOccurrences(r, asOf)
     const patch: Partial<RecurringTransaction> = {
-      nextDueDate: next,
-      lastGeneratedDate: r.nextDueDate,
+      nextDueDate: nextDueAfter(r, asOf),
+      lastGeneratedDate: occ.length ? occ[occ.length - 1] : r.lastGeneratedDate,
     }
+    await localPatch('recurring_transactions', id, patch as Record<string, unknown>)
+    set(s => ({
+      recurring: s.recurring.map(x => x.id === id ? { ...x, ...patch } : x),
+    }))
+  },
+
+  // Skip the pending period(s) WITHOUT generating — advances nextDueDate but
+  // leaves lastGeneratedDate untouched (a skip is not a generation, L1).
+  skip: async (id, asOf) => {
+    const r = get().recurring.find(x => x.id === id)
+    if (!r) return
+    const patch: Partial<RecurringTransaction> = { nextDueDate: nextDueAfter(r, asOf) }
     await localPatch('recurring_transactions', id, patch as Record<string, unknown>)
     set(s => ({
       recurring: s.recurring.map(x => x.id === id ? { ...x, ...patch } : x),
