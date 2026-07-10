@@ -10,6 +10,7 @@ import { useRecurringStore } from './recurring.store'
 import { useInvestmentStore } from './investment.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, localBatch, reconcilingPull } from '@/lib/sync/engine'
+import { baseAmount } from '@/lib/utils/fx'
 
 interface AccountState {
   accounts: Account[]
@@ -66,10 +67,11 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
       .toArray() as Transaction[]
     const linkedTxIds = linkedTxs.map(t => t.id)
 
-    // 2. Borç bağlantılı işlemlerin ödeme miktarlarını geri al
+    // 2. Borç bağlantılı işlemlerin ödemelerini geri al (TL bazında, taksit
+    //    sayısı da düşürülerek — M3/M4)
     for (const tx of linkedTxs) {
       if (tx.debtId) {
-        await useDebtStore.getState().adjustPaidAmount(tx.debtId, -tx.amount)
+        await useDebtStore.getState().revertPayment(tx.debtId, baseAmount(tx))
       }
     }
 

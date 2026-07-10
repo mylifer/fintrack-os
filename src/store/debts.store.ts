@@ -15,8 +15,13 @@ interface DebtState {
   add: (debt: Debt) => Promise<void>
   update: (id: string, patch: Partial<Debt>) => Promise<void>
   remove: (id: string) => Promise<void>
+  /** Record a NEW payment: +amount and +1 installment. `amount` is in the debt's
+   *  (TRY) base currency — callers must normalize foreign-account payments first. */
   recordPayment: (id: string, amount: number) => Promise<void>
-  /** Adjusts paidAmount by delta (negative to revert). Recomputes isSettled. */
+  /** Reverse a WHOLE payment: -amount and -1 installment (delete/cascade/edit-away). */
+  revertPayment: (id: string, amount: number) => Promise<void>
+  /** Adjust paidAmount by delta only, WITHOUT touching installment count
+   *  (used when the amount of an existing payment is edited). */
   adjustPaidAmount: (id: string, delta: number) => Promise<void>
   settle: (id: string) => Promise<void>
   getActive: () => DebtWithRemaining[]
@@ -71,6 +76,17 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     set(s => ({
       debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d),
     }))
+  },
+
+  revertPayment: async (id, amount) => {
+    const debt = get().debts.find(d => d.id === id)
+    if (!debt) return
+    const paidAmount = Math.round(Math.max(0, debt.paidAmount - amount) * 100) / 100
+    const paidInstallments = Math.max(0, (debt.paidInstallments ?? 0) - 1)
+    const isSettled = paidAmount >= debt.totalAmount
+    const patch = { paidAmount, paidInstallments, isSettled }
+    await localPatch('debts', id, patch)
+    set(s => ({ debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d) }))
   },
 
   adjustPaidAmount: async (id, delta) => {

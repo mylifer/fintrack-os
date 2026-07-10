@@ -9,7 +9,7 @@ import { useAccountStore } from './accounts.store'
 import { useDebtStore } from './debts.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
-import { toBaseTry } from '@/lib/utils/fx'
+import { toBaseTry, baseAmount } from '@/lib/utils/fx'
 
 // Snapshot the base-currency (TRY) value at write time (S2/S3). Every creation
 // path funnels through the store, so stamping here covers the form, refunds,
@@ -123,9 +123,11 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // Soft delete (C3) via the durable outbox: syncs as an UPDATE and cannot
     // resurrect on the next reconciling pull.
     await softDelete('transactions', id)
-    // Revert this transaction's contribution to the linked debt's paidAmount
+    // Revert this transaction's contribution to the linked debt: use the TRY
+    // base value (debts are TRY) and revertPayment so paidInstallments is
+    // decremented too (M3, M4).
     if (tx?.debtId) {
-      await useDebtStore.getState().adjustPaidAmount(tx.debtId, -tx.amount)
+      await useDebtStore.getState().revertPayment(tx.debtId, baseAmount(tx))
     }
     set(s => {
       const remaining = s.transactions.filter(t => t.id !== id)

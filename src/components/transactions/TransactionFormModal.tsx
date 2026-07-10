@@ -10,6 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import { parseCurrencyInput, getCurrencySymbol } from '@/lib/utils/currency'
+import { toBaseTry } from '@/lib/utils/fx'
 import { today } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person } from '@/types'
@@ -488,6 +489,9 @@ export function TransactionFormModal() {
     // arşivli hesaptaki bir işlemi düzenlemek para birimini TRY'ye çevirmesin
     const account  = useAccountStore.getState().accounts.find(a => a.id === form.accountId)
     const currency = (account?.currency ?? editingTx?.currency ?? 'TRY') as CurrencyCode
+    // Debts are TRY-denominated → all debt paidAmount math uses the base value,
+    // never the raw account-currency amount (M4).
+    const amountTry = toBaseTry(amount, currency)
     const now      = new Date().toISOString()
     const cleanTags = dedupeTags(form.tags)
 
@@ -510,21 +514,23 @@ export function TransactionFormModal() {
       // recordPayment: yeni bir ödeme kaydeder (taksit sayısını da artırır).
       const wasDebtPayment = editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId
       const isDebtPaymentNow = tab === 'transfer' && form.isDebtPayment && !!formData.debtId
-      const { recordPayment, adjustPaidAmount } = useDebtStore.getState()
+      const { recordPayment, revertPayment, adjustPaidAmount } = useDebtStore.getState()
+      const oldPaidTry = editingTx.amountTry ?? editingTx.amount   // prior payment in TRY
 
       if (wasDebtPayment && isDebtPaymentNow) {
         if (editingTx.debtId === formData.debtId) {
-          const delta = Math.round((amount - editingTx.amount) * 100) / 100
+          // Same payment, amount edited → adjust value only, keep installment count.
+          const delta = Math.round((amountTry - oldPaidTry) * 100) / 100
           if (delta !== 0) await adjustPaidAmount(formData.debtId!, delta)
         } else {
-          // Debt changed: reverse old debt, apply to new debt
-          await adjustPaidAmount(editingTx.debtId!, -editingTx.amount)
-          await recordPayment(formData.debtId!, amount)
+          // Debt changed: fully reverse old payment, record a new one on the new debt.
+          await revertPayment(editingTx.debtId!, oldPaidTry)
+          await recordPayment(formData.debtId!, amountTry)
         }
       } else if (wasDebtPayment && !isDebtPaymentNow) {
-        await adjustPaidAmount(editingTx.debtId!, -editingTx.amount)
+        await revertPayment(editingTx.debtId!, oldPaidTry)
       } else if (!wasDebtPayment && isDebtPaymentNow) {
-        await recordPayment(formData.debtId!, amount)
+        await recordPayment(formData.debtId!, amountTry)
       }
     } else {
       const base = {
@@ -542,7 +548,7 @@ export function TransactionFormModal() {
         await addTx({ ...base, id: crypto.randomUUID(), isInstallment: false, createdAt: now, updatedAt: now })
       }
       if (tab === 'transfer' && form.isDebtPayment && formData.debtId) {
-        await useDebtStore.getState().recordPayment(formData.debtId, amount)
+        await useDebtStore.getState().recordPayment(formData.debtId, amountTry)
       }
     }
     closeModal()
