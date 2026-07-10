@@ -3,10 +3,9 @@
 import { create } from 'zustand'
 import { addDays, addWeeks, addMonths, addYears, format, parseISO } from 'date-fns'
 import { db } from '@/lib/db'
-import { supabase, nullifyUndefined } from '@/lib/supabase'
-import { getUserId } from '@/lib/auth'
 import type { RecurringTransaction, RecurringFrequency } from '@/types'
-import { softDelete, isLive } from '@/lib/sync/tombstone'
+import { isLive } from '@/lib/sync/tombstone'
+import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
 
 function advanceDueDate(current: string, frequency: RecurringFrequency): string {
   const d = parseISO(current)
@@ -38,42 +37,30 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('recurring_transactions').select('*').is('deleted_at', null)
-    if (!error) {
-      const recurring = ((data ?? []) as RecurringTransaction[]).sort((a, b) => a.name.localeCompare(b.name, 'tr'))
-      await db.transaction('rw', db.recurringTransactions, async () => {
-        await db.recurringTransactions.clear()
-        await db.recurringTransactions.bulkAdd(recurring)
-      })
-      set({ recurring, loading: false, ready: true })
-    } else {
-      console.error('[supabase:recurring_transactions:load]', error)
+    try {
+      const rows = await reconcilingPull<RecurringTransaction>('recurring_transactions')
+      set({ recurring: rows.sort((a, b) => a.name.localeCompare(b.name, 'tr')), loading: false, ready: true })
+    } catch (err) {
+      console.error('[recurring:load]', err)
       const rows = (await db.recurringTransactions.toArray()).filter(isLive)
       set({ recurring: rows.sort((a, b) => a.name.localeCompare(b.name, 'tr')), loading: false, ready: true })
     }
   },
 
   add: async (r) => {
-    await db.recurringTransactions.add(r)
-    const userId = await getUserId()
-    supabase.from('recurring_transactions').insert({ ...r, ...(userId && { user_id: userId }) }).then(({ error }) => {
-      if (error) console.error('[supabase:recurring_transactions:insert]', error)
-    })
+    await localUpsert('recurring_transactions', r)
     set(s => ({ recurring: [...s.recurring, r].sort((a, b) => a.name.localeCompare(b.name, 'tr')) }))
   },
 
   update: async (id, patch) => {
-    await db.recurringTransactions.update(id, patch)
-    supabase.from('recurring_transactions').update(nullifyUndefined(patch)).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:recurring_transactions:update]', error)
-    })
+    await localPatch('recurring_transactions', id, patch as Record<string, unknown>)
     set(s => ({
       recurring: s.recurring.map(r => r.id === id ? { ...r, ...patch } : r),
     }))
   },
 
   remove: async (id) => {
-    await softDelete(db.recurringTransactions, 'recurring_transactions', id) // C3 — soft delete
+    await softDelete('recurring_transactions', id) // C3 — soft delete via durable outbox
     set(s => ({ recurring: s.recurring.filter(r => r.id !== id) }))
   },
 
@@ -81,10 +68,7 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
     const r = get().recurring.find(x => x.id === id)
     if (!r) return
     const isActive = !r.isActive
-    await db.recurringTransactions.update(id, { isActive })
-    supabase.from('recurring_transactions').update({ isActive }).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:recurring_transactions:toggleActive]', error)
-    })
+    await localPatch('recurring_transactions', id, { isActive })
     set(s => ({
       recurring: s.recurring.map(x => x.id === id ? { ...x, isActive } : x),
     }))
@@ -111,10 +95,7 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
       nextDueDate: next,
       lastGeneratedDate: r.nextDueDate,
     }
-    await db.recurringTransactions.update(id, patch)
-    supabase.from('recurring_transactions').update(patch).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:recurring_transactions:markGenerated]', error)
-    })
+    await localPatch('recurring_transactions', id, patch as Record<string, unknown>)
     set(s => ({
       recurring: s.recurring.map(x => x.id === id ? { ...x, ...patch } : x),
     }))

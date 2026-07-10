@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
+import { localBulkUpsert } from '@/lib/sync/engine'
 import type {
   Account, Transaction, Budget, Debt,
   Person, RecurringTransaction, InvestmentTransaction,
@@ -452,39 +453,16 @@ export async function loadDemoData(): Promise<void> {
     { id: '10000000-0000-0000-0000-000000000007', type: 'sell', asset: 'USD',          quantity: 100, pricePerUnit: 36.5, targetAccountId: ACC_CHK, date: '2026-06-20', note: 'Kısmi satış — nakit ihtiyacı', createdAt: now },
   ]
 
-  // ── Write to Dexie (upsert) ────────────────────────────────────────────────
-  await db.accounts.bulkPut(accounts)
-  await db.people.bulkPut(people)
-  await db.transactions.bulkPut(txs)
-  await db.budgets.bulkPut(budgets)
-  await db.debts.bulkPut(debts)
-  await db.recurringTransactions.bulkPut(recurring)
-  await db.investmentTransactions.bulkPut(investTxs)
-
-  // ── Sync to Supabase (upsert) ──────────────────────────────────────────────
-  const userId = await getUserId()
-  if (userId) {
-    const uid = { user_id: userId }
-    const accountsForDb = accounts.map(({ balance: _b, ...a }) => ({ ...a, ...uid }))
-    const [r1, r2] = await Promise.all([
-      supabase.from('accounts').upsert(accountsForDb, { onConflict: 'id' }),
-      supabase.from('people').upsert(people.map(p => ({ ...p, ...uid })), { onConflict: 'id' }),
-    ])
-    if (r1.error) console.error('[seed:accounts]', r1.error)
-    if (r2.error) console.error('[seed:people]', r2.error)
-    const [r3, r4, r5, r6, r7] = await Promise.all([
-      supabase.from('transactions').upsert(txs.map(t => ({ ...t, ...uid })), { onConflict: 'id' }),
-      supabase.from('budgets').upsert(budgets.map(b => ({ ...b, ...uid })), { onConflict: 'id' }),
-      supabase.from('debts').upsert(debts.map(d => ({ ...d, ...uid })), { onConflict: 'id' }),
-      supabase.from('recurring_transactions').upsert(recurring.map(r => ({ ...r, ...uid })), { onConflict: 'id' }),
-      supabase.from('investment_transactions').upsert(investTxs.map(i => ({ ...i, ...uid })), { onConflict: 'id' }),
-    ])
-    if (r3.error) console.error('[seed:transactions]', r3.error)
-    if (r4.error) console.error('[seed:budgets]', r4.error)
-    if (r5.error) console.error('[seed:debts]', r5.error)
-    if (r6.error) console.error('[seed:recurring]', r6.error)
-    if (r7.error) console.error('[seed:investments]', r7.error)
-  }
+  // ── Durable local write + outbox (C1) ─────────────────────────────────────
+  // Each entity lands in Dexie AND the outbox atomically; the background sync
+  // engine pushes it to Supabase (retry/backoff). No direct fire-and-forget.
+  await localBulkUpsert('accounts', accounts)
+  await localBulkUpsert('people', people)
+  await localBulkUpsert('transactions', txs)
+  await localBulkUpsert('budgets', budgets)
+  await localBulkUpsert('debts', debts)
+  await localBulkUpsert('recurring_transactions', recurring)
+  await localBulkUpsert('investment_transactions', investTxs)
 }
 
 // ── Clear ─────────────────────────────────────────────────────────────────────
@@ -499,6 +477,7 @@ export async function clearAllData(): Promise<void> {
   await db.investmentTransactions.clear()
   await db.people.clear()
   await db.recurringTransactions.clear()
+  await db._outbox.clear() // discard pending mutations — this is an explicit wipe
 
   if (userId) {
     await Promise.all([

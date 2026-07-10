@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Account, Transaction, Category, Budget, Debt, InvestmentTransaction, Person, RecurringTransaction } from '@/types'
+import type { Account, Transaction, Category, Budget, Debt, InvestmentTransaction, Person, RecurringTransaction, OutboxEntry } from '@/types'
 
 class FinTrackDB extends Dexie {
   accounts!: EntityTable<Account, 'id'>
@@ -10,6 +10,7 @@ class FinTrackDB extends Dexie {
   investmentTransactions!: EntityTable<InvestmentTransaction, 'id'>
   people!: EntityTable<Person, 'id'>
   recurringTransactions!: EntityTable<RecurringTransaction, 'id'>
+  _outbox!: EntityTable<OutboxEntry, 'id'>
 
   constructor() {
     super('fintrack-os')
@@ -218,6 +219,22 @@ class FinTrackDB extends Dexie {
       investmentTransactions: '&id, type, asset, date, deleted_at',
       people:                 '&id, role, deleted_at',
       recurringTransactions:  '&id, type, frequency, nextDueDate, isActive, deleted_at',
+    })
+
+    // v9: durable sync outbox (C1). `_outbox` holds one pending mutation per
+    // (table, entity), pushed to Supabase by the background sync engine and
+    // removed only on server ACK. Indexed by `table` (reconciling-pull guard)
+    // and `enqueuedAt` (stable FK-safe flush order).
+    this.version(9).stores({
+      accounts:               '&id, type, currency, isArchived, deleted_at',
+      transactions:           '&id, type, accountId, toAccountId, categoryId, date, installGroupId, debtId, familyMemberId, recipientId, deleted_at',
+      categories:             '&id, scope, parentId, isSystem, isArchived, deleted_at',
+      budgets:                '&id, categoryId, period, year, month, deleted_at',
+      debts:                  '&id, type, direction, isSettled, dueDate, deleted_at',
+      investmentTransactions: '&id, type, asset, date, deleted_at',
+      people:                 '&id, role, deleted_at',
+      recurringTransactions:  '&id, type, frequency, nextDueDate, isActive, deleted_at',
+      _outbox:                '&id, table, entityId, enqueuedAt',
     })
   }
 }

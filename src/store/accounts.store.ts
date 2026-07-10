@@ -2,15 +2,14 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase, nullifyUndefined } from '@/lib/supabase'
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import type { Account, InvestmentTransaction, Transaction } from '@/types'
 import { useTransactionStore } from './transactions.store'
 import { useDebtStore } from './debts.store'
 import { useRecurringStore } from './recurring.store'
 import { useInvestmentStore } from './investment.store'
-import { getUserId } from '@/lib/auth'
-import { softDelete, softDeleteMany, isLive } from '@/lib/sync/tombstone'
+import { isLive } from '@/lib/sync/tombstone'
+import { localUpsert, localPatch, softDelete, softDeleteMany, reconcilingPull } from '@/lib/sync/engine'
 
 interface AccountState {
   accounts: Account[]
@@ -33,21 +32,14 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    // Tombstones (C3): never fetch or surface soft-deleted rows.
-    const { data, error } = await supabase.from('accounts').select('*').is('deleted_at', null)
-    if (!error) {
-      // balance DB'de yok — placeholder olarak initialBalance kullan, DataProvider'da recomputeBalances düzeltir
-      const accounts: Account[] = (data ?? []).map(a => ({
-        ...a,
-        balance: a.initialBalance ?? 0,
-      }))
-      await db.transaction('rw', db.accounts, async () => {
-        await db.accounts.clear()
-        await db.accounts.bulkAdd(accounts)
-      })
+    // Reconciling pull (C2) + pagination (C6). Cloud accounts have no `balance`
+    // column — seed a placeholder; DataProvider.recomputeBalances corrects it.
+    try {
+      const raw = await reconcilingPull<Account>('accounts')
+      const accounts = raw.map(a => ({ ...a, balance: a.initialBalance ?? 0 }))
       set({ accounts, loading: false, ready: true })
-    } else {
-      console.error('[supabase:accounts:load]', error)
+    } catch (err) {
+      console.error('[accounts:load]', err)
       const raw = (await db.accounts.toArray()).filter(isLive)
       const accounts = raw.map(a => ({ ...a, initialBalance: a.initialBalance ?? a.balance }))
       set({ accounts, loading: false, ready: true })
@@ -55,22 +47,13 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
   },
 
   add: async (account) => {
-    await db.accounts.add(account)
-    const userId = await getUserId()
-    const { balance: _b, ...accountForDb } = account
-    supabase.from('accounts').insert({ ...accountForDb, ...(userId && { user_id: userId }) }).then(({ error }) => {
-      if (error) console.error('[supabase:accounts:insert]', error)
-    })
+    // Durable write (C1); the outbox snapshot strips the computed `balance`.
+    await localUpsert('accounts', account)
     set(s => ({ accounts: [...s.accounts, account] }))
   },
 
   update: async (id, patch) => {
-    await db.accounts.update(id, patch)
-    // balance runtime'da hesaplanır, Supabase şemasında kolonu yok
-    const { balance: _b, ...patchForDb } = patch as Partial<Account>
-    supabase.from('accounts').update(nullifyUndefined(patchForDb)).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:accounts:update]', error)
-    })
+    await localPatch('accounts', id, patch)
     set(s => ({
       accounts: s.accounts.map(a => a.id === id ? { ...a, ...patch } : a),
     }))
@@ -90,13 +73,13 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
       }
     }
 
-    // 3. Bağlı işlemleri tombstone'la (C3 — soft delete, fiziksel silme değil)
+    // 3. Bağlı işlemleri tombstone'la (C3 — soft delete, durable outbox üzerinden)
     if (linkedTxIds.length > 0) {
-      await softDeleteMany(db.transactions, 'transactions', linkedTxIds)
+      await softDeleteMany('transactions', linkedTxIds)
     }
 
     // 4. Hesabı tombstone'la (C3 — soft delete)
-    await softDelete(db.accounts, 'accounts', id)
+    await softDelete('accounts', id)
 
     // 4b. Bu hesaba bağlı tekrarlayan işlemleri sil — aksi halde silinmiş
     // hesaba yeni işlemler üretilmeye devam eder
@@ -114,10 +97,7 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
       const patch: Partial<InvestmentTransaction> = { linkedTransactionId: undefined }
       if (t.sourceAccountId === id) patch.sourceAccountId = undefined
       if (t.targetAccountId === id) patch.targetAccountId = undefined
-      await db.investmentTransactions.update(t.id, patch)
-      supabase.from('investment_transactions').update(nullifyUndefined(patch)).eq('id', t.id).then(({ error }) => {
-        if (error) console.error('[supabase:investment_transactions:unlink-account]', error)
-      })
+      await localPatch('investment_transactions', t.id, patch as Record<string, unknown>)
     }
     if (linkedInvest.length > 0) {
       const linkedIds = new Set(linkedInvest.map(t => t.id))

@@ -2,10 +2,9 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase } from '@/lib/supabase'
-import { getUserId } from '@/lib/auth'
 import type { Person, PersonRole } from '@/types'
-import { softDelete, isLive } from '@/lib/sync/tombstone'
+import { isLive } from '@/lib/sync/tombstone'
+import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
 
 interface PeopleState {
   people: Person[]
@@ -25,16 +24,11 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('people').select('*').is('deleted_at', null)
-    if (!error) {
-      const people = (data ?? []) as Person[]
-      await db.transaction('rw', db.people, async () => {
-        await db.people.clear()
-        await db.people.bulkAdd(people)
-      })
+    try {
+      const people = await reconcilingPull<Person>('people')
       set({ people, loading: false, ready: true })
-    } else {
-      console.error('[supabase:people:load]', error)
+    } catch (err) {
+      console.error('[people:load]', err)
       const people = (await db.people.toArray()).filter(isLive)
       set({ people, loading: false, ready: true })
     }
@@ -47,36 +41,26 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
       role,
       createdAt: new Date().toISOString(),
     }
-    await db.people.add(person)
-    const userId = await getUserId()
-    supabase.from('people').insert({ ...person, ...(userId && { user_id: userId }) }).then(({ error }) => {
-      if (error) console.error('[supabase:people:insert]', error)
-    })
+    await localUpsert('people', person)
     set(s => ({ people: [...s.people, person] }))
     return person
   },
 
   rename: async (id, name) => {
     const trimmed = name.trim()
-    await db.people.update(id, { name: trimmed })
-    supabase.from('people').update({ name: trimmed }).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:people:rename]', error)
-    })
+    await localPatch('people', id, { name: trimmed })
     set(s => ({ people: s.people.map(p => p.id === id ? { ...p, name: trimmed } : p) }))
   },
 
   setUrl: async (id, url) => {
     const value = url?.trim() || undefined
-    // Dexie: update with empty string to "clear" since undefined is ignored
-    await db.people.update(id, { url: value ?? '' } as Partial<Person>)
-    supabase.from('people').update({ url: value ?? null }).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:people:setUrl]', error)
-    })
+    // null clears the column (undefined is normalised to null in the snapshot).
+    await localPatch('people', id, { url: value ?? null })
     set(s => ({ people: s.people.map(p => p.id === id ? { ...p, url: value } : p) }))
   },
 
   remove: async (id) => {
-    await softDelete(db.people, 'people', id) // C3 — soft delete
+    await softDelete('people', id) // C3 — soft delete via durable outbox
     set(s => ({ people: s.people.filter(p => p.id !== id) }))
   },
 }))

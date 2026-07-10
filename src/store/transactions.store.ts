@@ -2,14 +2,13 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase, nullifyUndefined } from '@/lib/supabase'
 import type { Transaction, TransactionFilters } from '@/types'
 import { isInRange } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
 import { useDebtStore } from './debts.store'
-import { getUserId } from '@/lib/auth'
-import { softDelete, isLive } from '@/lib/sync/tombstone'
+import { isLive } from '@/lib/sync/tombstone'
+import { localUpsert, localBulkUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
 
 function investRank(tx: Transaction): number {
   if (!tx.icon) return 10
@@ -48,28 +47,21 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    // Tombstones (C3): never fetch or surface soft-deleted rows.
-    const { data, error } = await supabase.from('transactions').select('*').is('deleted_at', null)
-    if (!error) {
-      const txs = ((data ?? []) as Transaction[]).sort(txSortComparator)
-      await db.transaction('rw', db.transactions, async () => {
-        await db.transactions.clear()
-        await db.transactions.bulkAdd(txs)
-      })
+    // Reconciling pull (C2) + pagination (C6): merge the full live cloud set
+    // into Dexie without clobbering pending local writes; never truncate.
+    try {
+      const txs = (await reconcilingPull<Transaction>('transactions')).sort(txSortComparator)
       set({ transactions: txs, loading: false, ready: true })
-    } else {
-      console.error('[supabase:transactions:load]', error)
+    } catch (err) {
+      console.error('[transactions:load]', err)
       const txs = (await db.transactions.toArray()).filter(isLive).sort(txSortComparator)
       set({ transactions: txs, loading: false, ready: true })
     }
   },
 
   add: async (tx) => {
-    await db.transactions.add(tx)
-    const userId = await getUserId()
-    supabase.from('transactions').insert({ ...tx, ...(userId && { user_id: userId }) }).then(({ error }) => {
-      if (error) console.error('[supabase:transactions:insert]', error)
-    })
+    // Durable write (C1): entity + outbox in one IndexedDB transaction.
+    await localUpsert('transactions', tx)
     set(s => {
       const updated = [tx, ...s.transactions]
       updated.sort(txSortComparator)
@@ -86,12 +78,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
       txs.push({ ...base, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now })
     }
-    await db.transactions.bulkAdd(txs)
-    const userId = await getUserId()
-    const txsForDb = userId ? txs.map(t => ({ ...t, user_id: userId })) : txs
-    supabase.from('transactions').insert(txsForDb).then(({ error }) => {
-      if (error) console.error('[supabase:transactions:insert-installments]', error)
-    })
+    await localBulkUpsert('transactions', txs)
     set(s => {
       const updated = [...txs, ...s.transactions]
       updated.sort(txSortComparator)
@@ -103,10 +90,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   update: async (id, patch) => {
     const now = new Date().toISOString()
     const updated = { ...patch, updatedAt: now }
-    await db.transactions.update(id, updated)
-    supabase.from('transactions').update(nullifyUndefined(updated)).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:transactions:update]', error)
-    })
+    await localPatch('transactions', id, updated)
     // NOT: Borç paidAmount mutabakatı burada YAPILMAZ — düzenleme akışının tek
     // sahibi TransactionFormModal'dır (borç değişimi/kaldırma dahil tüm dalları
     // yönetir). Burada da ayarlamak çift sayıma yol açıyordu.
@@ -119,9 +103,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   remove: async (id) => {
     const tx = get().transactions.find(t => t.id === id)
-    // Soft delete (C3): tombstone instead of physical delete so the removal
-    // syncs as an UPDATE and cannot resurrect on the next cloud-authoritative load.
-    await softDelete(db.transactions, 'transactions', id)
+    // Soft delete (C3) via the durable outbox: syncs as an UPDATE and cannot
+    // resurrect on the next reconciling pull.
+    await softDelete('transactions', id)
     // Revert this transaction's contribution to the linked debt's paidAmount
     if (tx?.debtId) {
       await useDebtStore.getState().adjustPaidAmount(tx.debtId, -tx.amount)

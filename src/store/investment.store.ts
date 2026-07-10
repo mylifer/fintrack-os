@@ -2,9 +2,8 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase, nullifyUndefined } from '@/lib/supabase'
-import { getUserId } from '@/lib/auth'
-import { softDelete, isLive } from '@/lib/sync/tombstone'
+import { isLive } from '@/lib/sync/tombstone'
+import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
 import { useTransactionStore } from './transactions.store'
 import type {
   InvestmentTransaction, InvestmentHolding,
@@ -263,16 +262,12 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('investment_transactions').select('*').is('deleted_at', null)
-    if (!error) {
-      const txs = ((data ?? []) as InvestmentTransaction[]).sort((a, b) => b.date.localeCompare(a.date))
-      await db.transaction('rw', db.investmentTransactions, async () => {
-        await db.investmentTransactions.clear()
-        await db.investmentTransactions.bulkAdd(txs)
-      })
+    try {
+      const txs = (await reconcilingPull<InvestmentTransaction>('investment_transactions'))
+        .sort((a, b) => b.date.localeCompare(a.date))
       set({ transactions: txs, loading: false })
-    } else {
-      console.error('[supabase:investment_transactions:load]', error)
+    } catch (err) {
+      console.error('[investment:load]', err)
       const txs = (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive)
       set({ transactions: txs, loading: false })
     }
@@ -296,11 +291,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     }
 
     const finalTx = { ...tx, linkedTransactionId }
-    await db.investmentTransactions.add(finalTx)
-    const userId = await getUserId()
-    supabase.from('investment_transactions').insert({ ...finalTx, ...(userId && { user_id: userId }) }).then(({ error }) => {
-      if (error) console.error('[supabase:investment_transactions:insert]', error)
-    })
+    await localUpsert('investment_transactions', finalTx)
     set(s => ({ transactions: [finalTx, ...s.transactions] }))
   },
 
@@ -330,10 +321,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     }
 
     const finalPatch = { ...patch, linkedTransactionId }
-    await db.investmentTransactions.update(id, finalPatch)
-    supabase.from('investment_transactions').update(nullifyUndefined(finalPatch)).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:investment_transactions:update]', error)
-    })
+    await localPatch('investment_transactions', id, finalPatch as Record<string, unknown>)
     set(s => ({
       transactions: s.transactions.map(t => t.id === id ? { ...t, ...finalPatch } : t),
     }))
@@ -348,9 +336,9 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       await cleanSellLinkedTxs(tx)
     }
 
-    // C3 — soft delete. Linked ledger txs are removed via txStore.remove above,
-    // which is itself now a tombstone.
-    await softDelete(db.investmentTransactions, 'investment_transactions', id)
+    // C3 — soft delete via durable outbox. Linked ledger txs are removed via
+    // txStore.remove above, which is itself now a tombstone.
+    await softDelete('investment_transactions', id)
     set(s => ({ transactions: s.transactions.filter(t => t.id !== id) }))
   },
 
@@ -386,11 +374,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
             const newLinkedId = await createSellLinkedTxs(
               tx.targetAccountId, tx.asset, tx.quantity, total, costBasis, tx.date, tx.createdAt,
             )
-            const updatePatch = { linkedTransactionId: newLinkedId }
-            await db.investmentTransactions.update(tx.id, updatePatch)
-            supabase.from('investment_transactions').update(updatePatch).eq('id', tx.id).then(({ error }) => {
-              if (error) console.error('[supabase:investment_transactions:reprocess]', error)
-            })
+            await localPatch('investment_transactions', tx.id, { linkedTransactionId: newLinkedId })
           }
 
           const newQty = Math.max(0, pos.qty - tx.quantity)
@@ -398,7 +382,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
         }
       }
 
-      const txs = await db.investmentTransactions.orderBy('date').reverse().toArray()
+      const txs = (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive)
       set({ transactions: txs })
     } catch (err) {
       if (typeof window !== 'undefined') localStorage.removeItem(MIGRATION_KEY)

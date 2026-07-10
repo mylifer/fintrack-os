@@ -2,12 +2,11 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase, nullifyUndefined } from '@/lib/supabase'
-import { getUserId } from '@/lib/auth'
 import type { Debt, DebtWithRemaining } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
 import { isDueSoon } from '@/lib/utils/date'
-import { softDelete, isLive } from '@/lib/sync/tombstone'
+import { isLive } from '@/lib/sync/tombstone'
+import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
 
 interface DebtState {
   debts: Debt[]
@@ -30,47 +29,31 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('debts').select('*').is('deleted_at', null)
-    if (!error) {
-      const debts = (data ?? []) as Debt[]
-      await db.transaction('rw', db.debts, async () => {
-        await db.debts.clear()
-        await db.debts.bulkAdd(debts)
-      })
+    try {
+      const debts = await reconcilingPull<Debt>('debts')
       set({ debts, loading: false })
-    } else {
-      console.error('[supabase:debts:load]', error)
+    } catch (err) {
+      console.error('[debts:load]', err)
       const debts = (await db.debts.toArray()).filter(isLive)
       set({ debts, loading: false })
     }
   },
 
   add: async (debt) => {
-    await db.debts.add(debt)
-    const userId = await getUserId()
-    // remainingAmount, progressPercent DebtWithRemaining'e ait computed alanlar
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { remainingAmount: _ra, progressPercent: _pp, ...debtForDb } = debt as DebtWithRemaining
-    supabase.from('debts').insert({ ...debtForDb, ...(userId && { user_id: userId }) }).then(({ error }) => {
-      if (error) console.error('[supabase:debts:insert]', error)
-    })
+    // The outbox snapshot strips DebtWithRemaining computed fields.
+    await localUpsert('debts', debt)
     set(s => ({ debts: [...s.debts, debt] }))
   },
 
   update: async (id, patch) => {
-    await db.debts.update(id, patch)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { remainingAmount: _ra, progressPercent: _pp, ...patchForDb } = patch as Partial<DebtWithRemaining>
-    supabase.from('debts').update(nullifyUndefined(patchForDb)).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:debts:update]', error)
-    })
+    await localPatch('debts', id, patch as Record<string, unknown>)
     set(s => ({
       debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d),
     }))
   },
 
   remove: async (id) => {
-    await softDelete(db.debts, 'debts', id) // C3 — soft delete
+    await softDelete('debts', id) // C3 — soft delete via durable outbox
     set(s => ({ debts: s.debts.filter(d => d.id !== id) }))
   },
 
@@ -84,10 +67,7 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     const isSettled = paidAmount >= debt.totalAmount
     const patch = { paidAmount, paidInstallments, isSettled }
 
-    await db.debts.update(id, patch)
-    supabase.from('debts').update(patch).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:debts:update-payment]', error)
-    })
+    await localPatch('debts', id, patch)
     set(s => ({
       debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d),
     }))
@@ -99,19 +79,13 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     const paidAmount = Math.round(Math.max(0, debt.paidAmount + delta) * 100) / 100
     const isSettled = paidAmount >= debt.totalAmount
     const patch = { paidAmount, isSettled }
-    await db.debts.update(id, patch)
-    supabase.from('debts').update(patch).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:debts:adjust-paid]', error)
-    })
+    await localPatch('debts', id, patch)
     set(s => ({ debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d) }))
   },
 
   settle: async (id) => {
     const patch = { isSettled: true }
-    await db.debts.update(id, patch)
-    supabase.from('debts').update(patch).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:debts:settle]', error)
-    })
+    await localPatch('debts', id, patch)
     set(s => ({
       debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d),
     }))

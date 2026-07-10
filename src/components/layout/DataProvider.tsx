@@ -6,6 +6,7 @@ import {
   useBudgetStore, useDebtStore, useInvestmentStore, usePeopleStore,
   useRecurringStore,
 } from '@/store'
+import { startAutoSync } from '@/lib/sync/engine'
 
 // Modül seviyesinde tekil koruma: StrictMode'da effect iki kez çalışır ve iki
 // eşzamanlı init, initDefaults'un "mevcutları oku → eksikleri ekle" akışını
@@ -52,6 +53,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { recomputeBalances } = useAccountStore.getState()
       const { transactions }      = useTransactionStore.getState()
       recomputeBalances(transactions)
+
+      // C1: drain any mutations left in the outbox from a previous (possibly
+      // offline) session, and keep draining whenever connectivity returns.
+      startAutoSync()
     }
 
     if (!initPromise) {

@@ -280,6 +280,24 @@ export interface RecurringTransaction {
   deleted_at?: string | null // Tombstone (C3)
 }
 
+// ─── Sync outbox (C1 — durable offline writes) ──────────────────────────────
+
+/** A pending mutation awaiting push to Supabase. One entry per (table, entity):
+ *  the id is `${table}:${entityId}`, so re-mutating a row COALESCES onto the
+ *  same entry holding the latest full snapshot. The snapshot is the DB-ready
+ *  row (computed fields + user_id stripped); the flusher upserts it and adds the
+ *  current user_id. Entries are removed only on a successful server ACK. */
+export interface OutboxEntry {
+  id: string                          // `${table}:${entityId}`
+  table: string                       // Supabase table name
+  entityId: string                    // the row's id
+  snapshot: Record<string, unknown>   // DB-ready row to upsert (no user_id)
+  attempts: number                    // failed push count (for backoff)
+  lastError?: string | null
+  enqueuedAt: string                  // first-enqueue time — stable FK ordering
+  updatedAt: string
+}
+
 // ─── Default categories ────────────────────────────────────────────────────
 
 // _parentName: resolved to parentId during initDefaults — stripped before DB insert

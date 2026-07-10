@@ -2,9 +2,8 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase, nullifyUndefined } from '@/lib/supabase'
-import { getUserId } from '@/lib/auth'
 import { isLive } from '@/lib/sync/tombstone'
+import { localUpsert, localBulkUpsert, localPatch, reconcilingPull } from '@/lib/sync/engine'
 import type { Category, CategoryScope, DefaultCategoryDef } from '@/types'
 import { DEFAULT_CATEGORIES } from '@/types'
 
@@ -233,29 +232,16 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('categories').select('*').is('deleted_at', null)
-    if (!error) {
-      const { categories, dirty } = applyIconMigration(
-        (data ?? [] as Category[]).sort((a, b) => a.sortOrder - b.sortOrder)
-      )
-      await db.transaction('rw', db.categories, async () => {
-        await db.categories.clear()
-        await db.categories.bulkAdd(categories)
-      })
+    try {
+      const rows = await reconcilingPull<Category>('categories')
+      const { categories, dirty } = applyIconMigration(rows.sort((a, b) => a.sortOrder - b.sortOrder))
       set({ categories, loading: false, ready: true })
-      // Persist migrated icons back to Supabase asynchronously
-      if (dirty.length > 0) {
-        dirty.forEach(cat => {
-          supabase.from('categories')
-            .update({ icon: cat.icon, color: cat.color })
-            .eq('id', cat.id)
-            .then(({ error: e }) => {
-              if (e) console.error('[supabase:categories:migrate-icons]', e)
-            })
-        })
+      // Persist migrated icons durably (Dexie + outbox).
+      for (const cat of dirty) {
+        await localPatch('categories', cat.id, { icon: cat.icon, color: cat.color })
       }
-    } else {
-      console.error('[supabase:categories:load]', error)
+    } catch (err) {
+      console.error('[categories:load]', err)
       const raw = (await db.categories.toArray()).filter(isLive)
       const { categories } = applyIconMigration(raw.sort((a, b) => a.sortOrder - b.sortOrder))
       set({ categories, loading: false, ready: true })
@@ -290,12 +276,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     }
 
     if (toInsert.length > 0) {
-      await db.categories.bulkAdd(toInsert)
-      const userId = await getUserId()
-      const forDb = userId ? toInsert.map(c => ({ ...c, user_id: userId })) : toInsert
-      supabase.from('categories').insert(forDb).then(({ error }) => {
-        if (error) console.error('[supabase:categories:insert-defaults]', error)
-      })
+      await localBulkUpsert('categories', toInsert)
       set(s => ({
         categories: [...s.categories, ...toInsert].sort((a, b) => a.sortOrder - b.sortOrder),
       }))
@@ -335,17 +316,9 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
             ? { icon: m.icon }
             : { icon: 'package' }  // last-resort fallback for unknown icons
         }
-        await db.categories.update(cat.id, patch)
+        await localPatch('categories', cat.id, patch as Record<string, unknown>)
         updates.push({ id: cat.id, patch })
       }
-      updates.forEach(({ id, patch }) => {
-        supabase.from('categories')
-          .update(patch)
-          .eq('id', id)
-          .then(({ error: e }) => {
-            if (e) console.error('[supabase:categories:sync-icon]', e)
-          })
-      })
       set(s => ({
         categories: s.categories.map(c => {
           if (!c.isSystem) return c
@@ -358,19 +331,12 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
   add: async (cat) => {
     const entry: Category = { ...cat, isArchived: false }
-    await db.categories.add(entry)
-    const userId = await getUserId()
-    supabase.from('categories').insert({ ...entry, ...(userId && { user_id: userId }) }).then(({ error }) => {
-      if (error) console.error('[supabase:categories:insert]', error)
-    })
+    await localUpsert('categories', entry)
     set(s => ({ categories: [...s.categories, entry].sort((a, b) => a.sortOrder - b.sortOrder) }))
   },
 
   update: async (id, patch) => {
-    await db.categories.update(id, patch)
-    supabase.from('categories').update(nullifyUndefined(patch)).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:categories:update]', error)
-    })
+    await localPatch('categories', id, patch as Record<string, unknown>)
     set(s => ({
       categories: s.categories.map(c => c.id === id ? { ...c, ...patch } : c),
     }))
@@ -380,20 +346,15 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     const cat = get().categories.find(c => c.id === id)
     if (cat?.isSystem) return
 
-    await db.categories.update(id, { isArchived: true })
-    supabase.from('categories').update({ isArchived: true }).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:categories:archive]', error)
-    })
+    // Categories use archive (isArchived), not tombstones — still durable via outbox.
+    await localPatch('categories', id, { isArchived: true })
     set(s => ({
       categories: s.categories.map(c => c.id === id ? { ...c, isArchived: true } : c),
     }))
   },
 
   restore: async (id) => {
-    await db.categories.update(id, { isArchived: false })
-    supabase.from('categories').update({ isArchived: false }).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:categories:restore]', error)
-    })
+    await localPatch('categories', id, { isArchived: false })
     set(s => ({
       categories: s.categories.map(c => c.id === id ? { ...c, isArchived: false } : c),
     }))

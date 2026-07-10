@@ -2,11 +2,10 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { supabase, nullifyUndefined } from '@/lib/supabase'
-import { getUserId } from '@/lib/auth'
 import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
 import { enrichBudget } from '@/lib/utils/calculations'
-import { softDelete, isLive } from '@/lib/sync/tombstone'
+import { isLive } from '@/lib/sync/tombstone'
+import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
 
 interface BudgetState {
   budgets: Budget[]
@@ -26,47 +25,31 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    const { data, error } = await supabase.from('budgets').select('*').is('deleted_at', null)
-    if (!error) {
-      const budgets = (data ?? []) as Budget[]
-      await db.transaction('rw', db.budgets, async () => {
-        await db.budgets.clear()
-        await db.budgets.bulkAdd(budgets)
-      })
+    try {
+      const budgets = await reconcilingPull<Budget>('budgets')
       set({ budgets, loading: false, ready: true })
-    } else {
-      console.error('[supabase:budgets:load]', error)
+    } catch (err) {
+      console.error('[budgets:load]', err)
       const budgets = (await db.budgets.toArray()).filter(isLive)
       set({ budgets, loading: false, ready: true })
     }
   },
 
   add: async (budget) => {
-    await db.budgets.add(budget)
-    const userId = await getUserId()
-    // spent, remaining, percentUsed, status, category BudgetWithSpent'e ait computed alanlar
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { spent: _s, remaining: _r, percentUsed: _pu, status: _st, category: _c, ...budgetForDb } = budget as BudgetWithSpent
-    supabase.from('budgets').insert({ ...budgetForDb, ...(userId && { user_id: userId }) }).then(({ error }) => {
-      if (error) console.error('[supabase:budgets:insert]', error)
-    })
+    // The outbox snapshot strips BudgetWithSpent computed fields (spent, etc.).
+    await localUpsert('budgets', budget)
     set(s => ({ budgets: [...s.budgets, budget] }))
   },
 
   update: async (id, patch) => {
-    await db.budgets.update(id, patch)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { spent: _s, remaining: _r, percentUsed: _pu, status: _st, category: _c, ...patchForDb } = patch as Partial<BudgetWithSpent>
-    supabase.from('budgets').update(nullifyUndefined(patchForDb)).eq('id', id).then(({ error }) => {
-      if (error) console.error('[supabase:budgets:update]', error)
-    })
+    await localPatch('budgets', id, patch as Record<string, unknown>)
     set(s => ({
       budgets: s.budgets.map(b => b.id === id ? { ...b, ...patch } : b),
     }))
   },
 
   remove: async (id) => {
-    await softDelete(db.budgets, 'budgets', id) // C3 — soft delete
+    await softDelete('budgets', id) // C3 — soft delete via durable outbox
     set(s => ({ budgets: s.budgets.filter(b => b.id !== id) }))
   },
 
