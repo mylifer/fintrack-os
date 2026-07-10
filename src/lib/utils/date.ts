@@ -45,10 +45,12 @@ export function yearRange(year: number): { from: string; to: string } {
 }
 
 export function isInRange(date: string, from: string, to: string): boolean {
-  return isWithinInterval(parseISO(date), {
-    start: parseISO(from),
-    end:   parseISO(to),
-  })
+  let start = parseISO(from)
+  let end   = parseISO(to)
+  // Tolerate a reversed range (user enters dateTo < dateFrom): isWithinInterval
+  // throws RangeError when start > end, which would crash the filter.
+  if (start > end) [start, end] = [end, start]
+  return isWithinInterval(parseISO(date), { start, end })
 }
 
 export function prevMonth(my: MonthYear): MonthYear {
@@ -63,7 +65,11 @@ export function nextMonth(my: MonthYear): MonthYear {
 
 // Returns statement period [from, to] for a credit card account
 export function getStatementPeriod(account: Account, my: MonthYear): { from: string; to: string } {
-  const day = account.statementDay ?? 1
+  const rawDay = account.statementDay ?? 1
+  // Clamp to the month's length so statementDay 29–31 doesn't roll into the
+  // next month for short months (e.g. day 31 in April → May 1).
+  const daysInMonth = new Date(my.year, my.month, 0).getDate()
+  const day = Math.min(rawDay, daysInMonth)
   const periodEnd   = new Date(my.year, my.month - 1, day)
   const periodStart = addDays(subMonths(periodEnd, 1), 1)
   return {

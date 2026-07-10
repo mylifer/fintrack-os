@@ -12,10 +12,15 @@ const TYPE_LABELS: Record<TransactionType, string> = {
 }
 
 function escapeCsvCell(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`
+  // Formula-injection guard: a cell starting with = + - @ (or tab/CR) is
+  // executed as a formula when the CSV is opened in Excel/Sheets. Prefix a
+  // single quote to neutralise it.
+  let v = value
+  if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`
+  if (v.includes(',') || v.includes('"') || v.includes('\n')) {
+    return `"${v.replace(/"/g, '""')}"`
   }
-  return value
+  return v
 }
 
 export function transactionsToCsvString(

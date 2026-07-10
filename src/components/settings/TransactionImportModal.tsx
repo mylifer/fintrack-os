@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/button'
 import { useAccountStore, useTransactionStore, useCategoryStore } from '@/store'
 import { localBulkUpsert } from '@/lib/sync/engine'
-import { toBaseTry } from '@/lib/utils/fx'
+import { toBaseTry, rateFor } from '@/lib/utils/fx'
 import {
   parseCsvText,
   autoDetectMapping,
@@ -146,7 +146,7 @@ export function TransactionImportModal({ open, onClose }: Props) {
         id:           crypto.randomUUID(),
         type:         t.type,
         amount:       t.amount,
-        amountTry:    toBaseTry(t.amount, t.currency),  // base-currency snapshot (S2/S3)
+        amountTry:    rateFor(t.currency) != null ? toBaseTry(t.amount, t.currency) : undefined, // snapshot only when rate known (S2/S3, L3)
         currency:     t.currency,
         date:         t.date,
         accountId,

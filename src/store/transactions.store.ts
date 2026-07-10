@@ -9,12 +9,16 @@ import { useAccountStore } from './accounts.store'
 import { useDebtStore } from './debts.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
-import { toBaseTry, baseAmount } from '@/lib/utils/fx'
+import { toBaseTry, baseAmount, rateFor } from '@/lib/utils/fx'
 
 // Snapshot the base-currency (TRY) value at write time (S2/S3). Every creation
 // path funnels through the store, so stamping here covers the form, refunds,
-// reconciliation ghosts, investment-linked txs, recurring generation and import.
+// reconciliation ghosts, investment-linked txs and recurring generation.
+// If the FX rate isn't available yet (foreign tx created before prices load),
+// leave amountTry UNSET rather than stamping a wrong raw value — baseAmount()
+// then converts it live once rates arrive (L3). TRY always has a rate (1).
 function withBase(tx: Transaction): Transaction {
+  if (rateFor(tx.currency) == null) return tx
   return { ...tx, amountTry: toBaseTry(tx.amount, tx.currency) }
 }
 
