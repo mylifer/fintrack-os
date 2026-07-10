@@ -99,6 +99,14 @@ end $$;
 -- client-side at the live rate. Quoted identifier to match the app's camelCase.
 alter table public.transactions add column if not exists "amountTry" double precision;
 
+-- ── Refund link (S4) + first-class system marker (S7) ───────────────────────
+-- "refundOfId": on a refund entry, the id of the original transaction it offsets
+--   (enables the cumulative-refund guard).
+-- "systemKind": authoritative marker for system ghost entries (reconciliation),
+--   replacing brittle tag-string matching in analytics.
+alter table public.transactions add column if not exists "refundOfId" text;
+alter table public.transactions add column if not exists "systemKind" text;
+
 -- ── Verification helpers (optional; run manually after applying) ─────────────
 -- Every table below MUST report rowsecurity = true:
 --   select relname, relrowsecurity as rls_enabled

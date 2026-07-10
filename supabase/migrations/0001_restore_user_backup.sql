@@ -84,10 +84,10 @@ begin
 
   insert into public.transactions
     (id, type, amount, "amountTry", currency, date, "accountId", "toAccountId", "categoryId", icon, description, notes, tags, merchant,
-     "familyMemberId", "recipientId", "isInstallment", "installTotal", "installIndex", "installGroupId", "debtId",
+     "familyMemberId", "recipientId", "isInstallment", "installTotal", "installIndex", "installGroupId", "debtId", "refundOfId", "systemKind",
      "createdAt", "updatedAt", user_id)
   select r.id, r.type, r.amount, r."amountTry", r.currency, r.date, r."accountId", r."toAccountId", r."categoryId", r.icon, r.description, r.notes, r.tags, r.merchant,
-         r."familyMemberId", r."recipientId", r."isInstallment", r."installTotal", r."installIndex", r."installGroupId", r."debtId",
+         r."familyMemberId", r."recipientId", r."isInstallment", r."installTotal", r."installIndex", r."installGroupId", r."debtId", r."refundOfId", r."systemKind",
          r."createdAt", r."updatedAt", target_user_id
   from jsonb_populate_recordset(null::public.transactions, payload->'transactions') as r;
 

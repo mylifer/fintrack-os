@@ -77,7 +77,8 @@ export function ReconcileBalanceModal() {
         date:           today(),
         accountId:      account.id,
         description:    RECONCILE_DESCRIPTION,
-        tags:           [RECONCILE_TAG],         // canonical marker → excluded from analytics
+        systemKind:     'reconciliation',        // first-class marker → excluded from analytics (S7)
+        tags:           [RECONCILE_TAG],         // kept for display/back-compat
         familyMemberId: null,
         recipientId:    null,
         isInstallment:  false,

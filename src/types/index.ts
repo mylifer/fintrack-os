@@ -78,6 +78,8 @@ export interface Transaction {
   installGroupId?: string   // Groups all installments of one purchase
 
   debtId?: string           // Links to a tracked Debt
+  refundOfId?: string       // Set on refund entries → the original transaction they offset (S4)
+  systemKind?: 'reconciliation' // First-class marker for system ghost entries (S7); see reconciliation.ts
   createdAt: string
   updatedAt: string
   deleted_at?: string | null // Tombstone (C3)

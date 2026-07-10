@@ -23,7 +23,11 @@ const RECONCILE_KEY = tagKey(RECONCILE_TAG)
 
 /** True if a transaction is a system balance-reconciliation ("ghost") entry.
  *  Analytics builders call this to exclude reconciliation from every
- *  income/expense aggregate while leaving raw balance math untouched. */
-export function isReconciliation(tx: Pick<Transaction, 'tags'>): boolean {
+ *  income/expense aggregate while leaving raw balance math untouched.
+ *
+ *  Authoritative source is the `systemKind` field (S7). The tag check is kept
+ *  only as a fallback for legacy rows created before the field existed. */
+export function isReconciliation(tx: Pick<Transaction, 'tags' | 'systemKind'>): boolean {
+  if (tx.systemKind === 'reconciliation') return true
   return !!tx.tags?.some(t => tagKey(t) === RECONCILE_KEY)
 }

@@ -39,27 +39,40 @@ export function RefundModal() {
 
   const [mode, setMode]         = useState<RefundMode>('full')
   const [amountStr, setAmountStr] = useState('')
+  const [dateStr, setDateStr]   = useState(today())
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
 
   // Reset whenever the dialog (re)opens.
   useEffect(() => {
-    if (open) { setMode('full'); setAmountStr(''); setError(''); setLoading(false) }
+    if (open) { setMode('full'); setAmountStr(''); setDateStr(today()); setError(''); setLoading(false) }
   }, [open, modalPayload?.id])
 
   const originalAmount = original ? Math.abs(original.amount) : 0
-  const refundAmount = mode === 'full' ? originalAmount : parseCurrencyInput(amountStr)
 
   if (!original) return null
 
+  // Cumulative-refund guard (S4): sum prior refunds against THIS original so
+  // the total can never exceed the original spend (which would net to phantom
+  // income). "Full" refunds only what's still refundable.
+  const alreadyRefunded = transactions
+    .filter(t => t.refundOfId === original.id)
+    .reduce((s, t) => s + Math.abs(t.amount), 0)
+  const remaining = Math.max(0, Math.round((originalAmount - alreadyRefunded) * 100) / 100)
+  const refundAmount = mode === 'full' ? remaining : parseCurrencyInput(amountStr)
+
   function validate(): boolean {
+    if (remaining <= 0) {
+      setError('Bu işlem zaten tamamen iade edilmiş')
+      return false
+    }
     if (mode === 'partial') {
       if (!refundAmount || refundAmount <= 0) {
         setError('Geçerli bir tutar girin')
         return false
       }
-      if (refundAmount > originalAmount) {
-        setError('İade tutarı işlem tutarını aşamaz')
+      if (refundAmount > remaining) {
+        setError('İade tutarı kalan iade edilebilir tutarı aşamaz')
         return false
       }
     }
@@ -79,11 +92,12 @@ export function RefundModal() {
         type:           'expense',
         amount:         -Math.abs(refundAmount),   // negative expense → nets the original spend
         currency:       original.currency,
-        date:           today(),                   // current local date
+        date:           dateStr || today(),        // user-chosen refund date (period control, S4)
         accountId:      original.accountId,
         categoryId:     original.categoryId,
         merchant:       original.merchant,
         description:    `[İade] ${original.description}`,
+        refundOfId:     original.id,               // link → original (cumulative guard, S4)
         tags,
         familyMemberId: original.familyMemberId ?? null,
         recipientId:    original.recipientId ?? null,
@@ -158,17 +172,28 @@ export function RefundModal() {
                 autoFocus
               />
               <p className="text-xs text-muted-foreground">
-                En fazla {formatCurrency(originalAmount, original.currency)}
+                Kalan iade edilebilir: {formatCurrency(remaining, original.currency)}
               </p>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed p-4 flex items-baseline justify-between">
               <span className="text-sm text-muted-foreground">İade Tutarı</span>
               <span className="text-xl font-bold tabular-nums text-green-600">
-                +{formatCurrency(originalAmount, original.currency)}
+                +{formatCurrency(remaining, original.currency)}
               </span>
             </div>
           )}
+
+          {/* İade tarihi — dönem ataması kullanıcı kontrolünde (S4) */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium">İade Tarihi</label>
+            <input
+              type="date"
+              value={dateStr}
+              onChange={e => { setDateStr(e.target.value); if (error) setError('') }}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
 
           {error && mode === 'full' && (
             <p className="text-xs text-destructive">{error}</p>
