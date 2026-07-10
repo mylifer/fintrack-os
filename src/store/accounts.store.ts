@@ -9,7 +9,7 @@ import { useDebtStore } from './debts.store'
 import { useRecurringStore } from './recurring.store'
 import { useInvestmentStore } from './investment.store'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, softDelete, softDeleteMany, reconcilingPull } from '@/lib/sync/engine'
+import { localUpsert, localPatch, localBatch, reconcilingPull } from '@/lib/sync/engine'
 
 interface AccountState {
   accounts: Account[]
@@ -73,13 +73,17 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
       }
     }
 
-    // 3. Bağlı işlemleri tombstone'la (C3 — soft delete, durable outbox üzerinden)
-    if (linkedTxIds.length > 0) {
-      await softDeleteMany('transactions', linkedTxIds)
-    }
-
-    // 4. Hesabı tombstone'la (C3 — soft delete)
-    await softDelete('accounts', id)
+    // 3+4. Hesabı VE bağlı işlemleri TEK atomik blokta tombstone'la (C5): ikisi
+    // ya birlikte silinir ya da hiç — yarıda kalıp dangling (hesapsız işlem /
+    // işlemsiz hesap) bırakmaz. Kalan temizlikler (borç/tekrarlayan/yatırım)
+    // outbox üzerinden tek tek dayanıklı kalır.
+    const ts = new Date().toISOString()
+    await localBatch([
+      ...(linkedTxIds.length > 0
+        ? [{ kind: 'patchMany' as const, table: 'transactions' as const, ids: linkedTxIds, patch: { deleted_at: ts } }]
+        : []),
+      { kind: 'patch' as const, table: 'accounts' as const, id, patch: { deleted_at: ts } },
+    ])
 
     // 4b. Bu hesaba bağlı tekrarlayan işlemleri sil — aksi halde silinmiş
     // hesaba yeni işlemler üretilmeye devam eder

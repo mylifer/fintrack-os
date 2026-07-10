@@ -162,6 +162,46 @@ export async function softDeleteMany(table: SyncTable, ids: string[]): Promise<v
   await localPatchMany(table, ids, { deleted_at: now() })
 }
 
+/* ── Atomic multi-table batch (C5) ─────────────────────────────────────────
+   Cross-table operations (e.g. deleting an account and its transactions) must
+   not half-commit: a crash between two separate writes leaves orphaned rows.
+   localBatch applies every op — entity writes AND their outbox entries — inside
+   ONE IndexedDB transaction spanning all involved tables, so it is all-or-
+   nothing locally; the durable outbox then carries the whole set to the cloud.
+   Uses only raw Dexie ops (same proven pattern as localPatchMany) — no nested
+   async-helper awaits, which would risk leaking the transaction zone. */
+export type BatchOp =
+  | { kind: 'upsert'; table: SyncTable; entity: { id: string } }
+  | { kind: 'patch'; table: SyncTable; id: string; patch: Record<string, unknown> }
+  | { kind: 'patchMany'; table: SyncTable; ids: string[]; patch: Record<string, unknown> }
+
+export async function localBatch(ops: BatchOp[]): Promise<void> {
+  if (ops.length === 0) return
+  // Dexie needs every table named up front; de-dupe the involved tables.
+  const involved = new Set<EntityTable<Row, 'id'>>([db._outbox as unknown as EntityTable<Row, 'id'>])
+  for (const op of ops) involved.add(DEXIE[op.table])
+
+  await db.transaction('rw', [...involved], async () => {
+    for (const op of ops) {
+      const t = DEXIE[op.table]
+      if (op.kind === 'upsert') {
+        await t.put(op.entity)
+        await putOutbox(op.table, op.entity)
+      } else if (op.kind === 'patch') {
+        await t.update(op.id, nullifyPatch(op.patch))
+        const full = await t.get(op.id)
+        if (full) await putOutbox(op.table, full)
+      } else {
+        if (op.ids.length === 0) continue
+        await t.where('id').anyOf(op.ids).modify(nullifyPatch(op.patch))
+        const rows = await t.where('id').anyOf(op.ids).toArray()
+        for (const r of rows) await putOutbox(op.table, r)
+      }
+    }
+  })
+  kickSync()
+}
+
 /* ── Background flusher (C1) ────────────────────────────────────────────── */
 
 let flushing = false
