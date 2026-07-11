@@ -72,7 +72,10 @@ export async function GET(request: Request) {
   const from         = searchParams.get('from')
   const buyDatesRaw  = searchParams.get('buyDates')
 
-  if (!asset || !from || !['GOLD', 'USD', 'EUR', 'GBP'].includes(asset)) {
+  // `from` feeds new Date(from) → start.toISOString(); a non-date value makes
+  // that throw RangeError and surface as an unhandled 500. Validate the shape
+  // up front (same YYYY-MM-DD regex used for buyDates below).
+  if (!asset || !from || !['GOLD', 'USD', 'EUR', 'GBP'].includes(asset) || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
     return NextResponse.json({ error: 'Invalid params' }, { status: 400 })
   }
 

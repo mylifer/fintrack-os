@@ -21,13 +21,20 @@ export default function RegisterPage() {
     setError('')
 
     if (password !== confirm) { setError('Şifreler eşleşmiyor.'); return }
-    if (password.length < 6)  { setError('Şifre en az 6 karakter olmalıdır.'); return }
+    // Sunucu tarafı zorunluluk Supabase proje şifre politikasıyla uygulanır;
+    // buradaki kontrol yalnızca istemci UX'i içindir.
+    if (password.length < 12) { setError('Şifre en az 12 karakter olmalıdır.'); return }
 
     setLoading(true)
     const { data, error } = await supabase.auth.signUp({ email, password })
     setLoading(false)
 
-    if (error) { setError(error.message); return }
+    if (error) {
+      // Ham Supabase mesajını UI'a sızdırma; "user already registered" gibi
+      // hesap sayımına imkan veren yanıtları jenerik bir mesaja indirge.
+      setError('Kayıt oluşturulamadı. Bilgilerinizi kontrol edip tekrar deneyin.')
+      return
+    }
 
     // session null ise mail onayı bekleniyor
     if (data.session) {

@@ -41,6 +41,14 @@ export type SyncTable =
 // Minimal row shape every synced table shares.
 type Row = { id: string; deleted_at?: string | null }
 
+// Outbox row + the owner uid we tag at ENQUEUE time. `ownerId` is metadata ON
+// the outbox entry (NOT inside the snapshot payload) recording which user's
+// session created the mutation, so a pending write is only ever replayed into
+// the account that produced it (shared-device cross-tenant leak fix). It is not
+// indexed, so it needs no Dexie schema/version bump — Dexie persists the whole
+// object regardless of which keys are indexed.
+type OutboxRow = OutboxEntry & { ownerId?: string | null }
+
 // Supabase table name → Dexie table.
 const DEXIE: Record<SyncTable, EntityTable<Row, 'id'>> = {
   accounts:                db.accounts as unknown as EntityTable<Row, 'id'>,
@@ -88,14 +96,23 @@ function nullifyPatch(patch: Record<string, unknown>): Record<string, unknown> {
 
 /* ── Enqueue (must run inside an active Dexie rw transaction) ───────────── */
 
-async function putOutbox(table: SyncTable, row: { id: string }): Promise<void> {
+// Resolve the current session uid to tag onto an outbox entry. MUST be called
+// BEFORE opening the Dexie transaction (getUserId hits supabase.auth, and
+// awaiting a non-Dexie promise inside a Dexie tx would leak the transaction
+// zone — same reason localBatch avoids nested async-helper awaits).
+async function currentOwnerId(): Promise<string | null> {
+  return (await getUserId()) ?? null
+}
+
+async function putOutbox(table: SyncTable, row: { id: string }, ownerId: string | null): Promise<void> {
   const id = `${table}:${row.id}`
   const existing = await db._outbox.get(id)
   const ts = now()
-  const entry: OutboxEntry = {
+  const entry: OutboxRow = {
     id,
     table,
     entityId: row.id,
+    ownerId,                                       // owner tagged at enqueue time (cross-tenant guard)
     snapshot: toSnapshot(table, row as Record<string, unknown>),
     attempts: 0,                                   // fresh payload → fresh attempts
     lastError: null,
@@ -110,9 +127,10 @@ async function putOutbox(table: SyncTable, row: { id: string }): Promise<void> {
 /** Insert-or-replace a full entity locally and enqueue it for push. */
 export async function localUpsert<T extends { id: string }>(table: SyncTable, entity: T): Promise<void> {
   const t = DEXIE[table]
+  const ownerId = await currentOwnerId()   // capture before the tx (see currentOwnerId)
   await db.transaction('rw', t, db._outbox, async () => {
     await t.put(entity)
-    await putOutbox(table, entity)
+    await putOutbox(table, entity, ownerId)
   })
   kickSync()
 }
@@ -121,9 +139,10 @@ export async function localUpsert<T extends { id: string }>(table: SyncTable, en
 export async function localBulkUpsert<T extends { id: string }>(table: SyncTable, entities: T[]): Promise<void> {
   if (entities.length === 0) return
   const t = DEXIE[table]
+  const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
     await t.bulkPut(entities)
-    for (const e of entities) await putOutbox(table, e)
+    for (const e of entities) await putOutbox(table, e, ownerId)
   })
   kickSync()
 }
@@ -132,10 +151,11 @@ export async function localBulkUpsert<T extends { id: string }>(table: SyncTable
 export async function localPatch(table: SyncTable, id: string, patch: Record<string, unknown>): Promise<void> {
   const t = DEXIE[table]
   const norm = nullifyPatch(patch)
+  const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
     await t.update(id, norm)
     const full = await t.get(id)
-    if (full) await putOutbox(table, full)
+    if (full) await putOutbox(table, full, ownerId)
   })
   kickSync()
 }
@@ -145,10 +165,11 @@ export async function localPatchMany(table: SyncTable, ids: string[], patch: Rec
   if (ids.length === 0) return
   const t = DEXIE[table]
   const norm = nullifyPatch(patch)
+  const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
     await t.where('id').anyOf(ids).modify(norm)
     const rows = await t.where('id').anyOf(ids).toArray()
-    for (const r of rows) await putOutbox(table, r)
+    for (const r of rows) await putOutbox(table, r, ownerId)
   })
   kickSync()
 }
@@ -181,21 +202,22 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
   const involved = new Set<EntityTable<Row, 'id'>>([db._outbox as unknown as EntityTable<Row, 'id'>])
   for (const op of ops) involved.add(DEXIE[op.table])
 
+  const ownerId = await currentOwnerId()   // capture before the tx (see currentOwnerId)
   await db.transaction('rw', [...involved], async () => {
     for (const op of ops) {
       const t = DEXIE[op.table]
       if (op.kind === 'upsert') {
         await t.put(op.entity)
-        await putOutbox(op.table, op.entity)
+        await putOutbox(op.table, op.entity, ownerId)
       } else if (op.kind === 'patch') {
         await t.update(op.id, nullifyPatch(op.patch))
         const full = await t.get(op.id)
-        if (full) await putOutbox(op.table, full)
+        if (full) await putOutbox(op.table, full, ownerId)
       } else {
         if (op.ids.length === 0) continue
         await t.where('id').anyOf(op.ids).modify(nullifyPatch(op.patch))
         const rows = await t.where('id').anyOf(op.ids).toArray()
-        for (const r of rows) await putOutbox(op.table, r)
+        for (const r of rows) await putOutbox(op.table, r, ownerId)
       }
     }
   })
@@ -234,6 +256,19 @@ export async function flushOutbox(): Promise<void> {
 
       let failed = 0
       for (const e of entries) {
+        // Cross-tenant guard (shared-device leak): an entry created by a
+        // DIFFERENT user's session must NEVER be replayed into the current
+        // account — flush re-stamps user_id from the current session, so
+        // pushing it would write user A's mutation into user B's data. Drop it.
+        // LEGACY entries predating owner-tagging have ownerId null/undefined:
+        // preserve the old behavior (stamp with current uid) so in-flight
+        // writes are not lost on upgrade.
+        const owner = (e as OutboxRow).ownerId
+        if (owner != null && owner !== userId) {
+          await db._outbox.delete(e.id)
+          continue
+        }
+
         // Dead-letter: a poison payload (permanent 4xx) must not retry forever
         // and block the whole outbox. Past MAX_ATTEMPTS we keep the row durable
         // (for inspection/manual fix) but stop auto-retrying it.
@@ -291,11 +326,17 @@ async function fetchAllLive(
 ): Promise<{ rows: Record<string, unknown>[]; complete: boolean }> {
   const acc: Record<string, unknown>[] = []
   let from = 0
+  // Defense-in-depth: scope the read to the current user. RLS already enforces
+  // this server-side; adding an explicit filter is belt-and-suspenders against
+  // a future RLS misconfiguration and is a no-op when RLS is correct.
+  const userId = await getUserId()
   for (;;) {
-    const { data, error } = await supabase
+    let query = supabase
       .from(table)
       .select('*')
       .is('deleted_at', null)
+    if (userId) query = query.eq('user_id', userId)
+    const { data, error } = await query
       .order('id', { ascending: true })   // stable order across pages
       .range(from, from + PAGE - 1)
     if (error) {

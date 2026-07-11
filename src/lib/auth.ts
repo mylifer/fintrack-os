@@ -18,8 +18,16 @@ export async function clearLocalData(): Promise<void> {
     db.recurringTransactions.clear(),
     db._outbox.clear(), // drop pending mutations on a full local reset
   ])
-  // Per-device migration flags must not leak to the next user on a shared device.
+  // Shared-device hardening: wipe ALL browser storage so nothing (migration
+  // flags like inv_sell_pnl_v3, zustand-persist 'fintrack-ui', etc.) leaks to
+  // the next user. A blanket clear is safe here — no app key must survive a
+  // logout on a per-user finance app. The only device-level preference we keep
+  // is the theme ('fintrack-theme'), which is cosmetic and tenant-agnostic.
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('inv_sell_pnl_v3')
+    const theme = localStorage.getItem('fintrack-theme')
+    localStorage.clear()
+    sessionStorage.clear()
+    if (theme !== null) localStorage.setItem('fintrack-theme', theme)
+    // ft_last_uid (shared-device switch detection) is cleared by localStorage.clear() above.
   }
 }

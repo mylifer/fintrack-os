@@ -4,8 +4,13 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { clearLocalData } from '@/lib/auth'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/button'
+
+// Shared-device: son giriş yapan kullanıcının id'sini tutar. Yeni girişte
+// kullanıcı değişimini yükleme/sync'ten ÖNCE tespit etmek için kullanılır.
+const LAST_UID_KEY = 'ft_last_uid'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -19,19 +24,43 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
-      if (error.message === 'Email not confirmed') {
-        setError('E-posta adresiniz henüz doğrulanmadı. Gelen kutunuzu kontrol edin.')
-      } else {
-        setError('E-posta veya şifre hatalı.')
-      }
+      // Hesabın var olup olmadığını sızdırmamak için tüm hatalar tek bir
+      // jenerik mesaja indirgenir (ör. "Email not confirmed" ile kullanıcı
+      // sayımı yapılamaz).
+      setError('E-posta veya şifre hatalı.')
       setLoading(false)
       return
     }
 
-    router.push('/dashboard')
+    // Shared-device cross-tenant sızıntısını önle: yükleme/sync başlamadan
+    // ÖNCE, bu cihazda daha önce farklı bir kullanıcı oturum açtıysa yerel
+    // Dexie + outbox'ı temizle.
+    const newUid = data.user?.id
+    const prevUid = localStorage.getItem(LAST_UID_KEY)
+    const switched = !!newUid && !!prevUid && prevUid !== newUid
+
+    if (switched) {
+      try {
+        await clearLocalData()
+      } catch (err) {
+        console.error('[login:clearLocalData]', err)
+      }
+    }
+
+    if (newUid) localStorage.setItem(LAST_UID_KEY, newUid)
+
+    if (switched) {
+      // HARD navigation: bellekteki Zustand store'larını ve DataProvider'ın
+      // modül-seviyesi init kilidini yeni kullanıcı için sıfırlar (bkz.
+      // Sidebar.handleSignOut). Soft push bunları taşıyıp önceki kullanıcının
+      // verisini gösterebilirdi.
+      window.location.assign('/dashboard')
+    } else {
+      router.push('/dashboard')
+    }
   }
 
   return (

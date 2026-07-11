@@ -89,11 +89,17 @@ export function Sidebar() {
       // Yerel temizlik başarısız olsa bile oturumu kapat
       console.error('[signout:clearLocalData]', err)
     }
-    await supabase.auth.signOut()
-    // HARD reload (soft router.push değil): bellekteki Zustand store'larını ve
-    // DataProvider'ın modül-seviyesi init kilidini sıfırlar. Aksi halde aynı
-    // sekmede ikinci kullanıcı, birinci kullanıcının verisini ekranda görürdü.
-    window.location.assign('/login')
+    try {
+      // signOut çevrimdışıyken hata fırlatabilir; yönlendirme yine de çalışmalı.
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.error('[signout:supabase]', err)
+    } finally {
+      // HARD reload (soft router.push değil): bellekteki Zustand store'larını ve
+      // DataProvider'ın modül-seviyesi init kilidini sıfırlar. Aksi halde aynı
+      // sekmede ikinci kullanıcı, birinci kullanıcının verisini ekranda görürdü.
+      window.location.assign('/login')
+    }
   }
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const prices         = useInvestmentStore(s => s.prices)

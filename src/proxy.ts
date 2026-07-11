@@ -32,11 +32,14 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  // Yerel geliştirmede auth atlanır. Host header istemci kontrolündedir —
-  // ortam tespiti için güvenilmez (localhost.evil.com bypass'ı).
-  const isDev = process.env.NODE_ENV === 'development'
+  // Auth bypass yalnızca AÇIK opt-in ile ve asla production'da çalışmaz.
+  // NODE_ENV'e bağlamıyoruz: NODE_ENV=development ile deploy edilen bir
+  // preview/staging ortamı auth'u sessizce devre dışı bırakmasın diye,
+  // ayrı bir AUTH_BYPASS=1 bayrağı şart (production'da yok sayılır).
+  const authBypass =
+    process.env.NODE_ENV !== 'production' && process.env.AUTH_BYPASS === '1'
 
-  if (!user && !isDev) {
+  if (!user && !authBypass) {
     // API istekleri HTML login sayfasına yönlendirilmez; fetch çağrıları
     // 200+HTML yerine net bir 401 görmeli
     if (pathname.startsWith('/api')) {
