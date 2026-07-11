@@ -99,8 +99,10 @@ async function cleanLinkedTxs(investTx: InvestmentTransaction): Promise<void> {
 
   const txStore = useTransactionStore.getState()
 
+  // Linked ledger txs are an implementation detail of the investment record —
+  // suppress their individual undo toasts (the invest tx restore is out of scope).
   if (investTx.linkedTransactionId) {
-    await txStore.remove(investTx.linkedTransactionId)
+    await txStore.remove(investTx.linkedTransactionId, { undoable: false })
     return
   }
 
@@ -112,7 +114,7 @@ async function cleanLinkedTxs(investTx: InvestmentTransaction): Promise<void> {
     t.description.includes(assetLabel) &&
     t.description.includes('Alım'),
   )
-  for (const t of toDelete) await txStore.remove(t.id)
+  for (const t of toDelete) await txStore.remove(t.id, { undoable: false })
 }
 
 async function createSellLinkedTxs(
@@ -177,13 +179,13 @@ async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void
   const assetLabel = ASSET_LABELS[investTx.asset]
 
   if (investTx.linkedTransactionId) {
-    await txStore.remove(investTx.linkedTransactionId)
+    await txStore.remove(investTx.linkedTransactionId, { undoable: false })
     const pnlTx = txStore.transactions.find(t =>
       t.accountId === investTx.targetAccountId &&
       t.date === investTx.date &&
       (t.description === `${assetLabel} Satış Kârı` || t.description === `${assetLabel} Satış Zararı`),
     )
-    if (pnlTx) await txStore.remove(pnlTx.id)
+    if (pnlTx) await txStore.remove(pnlTx.id, { undoable: false })
     return
   }
 
@@ -194,7 +196,7 @@ async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void
     t.description.includes(assetLabel) &&
     t.description.includes('Satış'),
   )
-  for (const t of toDelete) await txStore.remove(t.id)
+  for (const t of toDelete) await txStore.remove(t.id, { undoable: false })
 }
 
 /* ── Portfolio calculation ───────────────────────────────────────── */

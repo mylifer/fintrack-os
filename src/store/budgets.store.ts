@@ -7,6 +7,7 @@ import { enrichBudget } from '@/lib/utils/calculations'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
 import { loadEntities } from './entity-helpers'
+import { useUndoStore, type RemoveOptions } from './undo.store'
 
 interface BudgetState {
   budgets: Budget[]
@@ -15,7 +16,7 @@ interface BudgetState {
   load: () => Promise<void>
   add: (budget: Budget) => Promise<void>
   update: (id: string, patch: Partial<Budget>) => Promise<void>
-  remove: (id: string) => Promise<void>
+  remove: (id: string, opts?: RemoveOptions) => Promise<void>
   getMonthBudgets: (my: MonthYear, transactions: Transaction[]) => BudgetWithSpent[]
 }
 
@@ -46,9 +47,16 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     }))
   },
 
-  remove: async (id) => {
+  remove: async (id, opts) => {
+    const budget = get().budgets.find(b => b.id === id)
     await softDelete('budgets', id) // C3 — soft delete via durable outbox
     set(s => ({ budgets: s.budgets.filter(b => b.id !== id) }))
+    if (budget && opts?.undoable !== false) {
+      useUndoStore.getState().pushUndo('Bütçe silindi', async () => {
+        await localPatch('budgets', id, { deleted_at: null })
+        set(s => ({ budgets: [...s.budgets, budget] }))
+      })
+    }
   },
 
   getMonthBudgets: (my, transactions) => {

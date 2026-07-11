@@ -11,6 +11,7 @@ import { DEFAULT_CATEGORIES } from '@/types'
 // Run every load() so Supabase is always corrected on fetch, regardless of
 // whether prior async Supabase writes succeeded.
 import { NOTO_TO_TABLER, LEGACY_COLOR } from '@/lib/legacy-icon-map'
+import { useUndoStore, type RemoveOptions } from './undo.store'
 
 function applyIconMigration(raw: Category[]): { categories: Category[]; dirty: Category[] } {
   const dirty: Category[] = []
@@ -32,7 +33,7 @@ interface CategoryState {
   initDefaults: () => Promise<void>
   add: (cat: Category) => Promise<void>
   update: (id: string, patch: Partial<Category>) => Promise<void>
-  remove: (id: string) => Promise<void>
+  remove: (id: string, opts?: RemoveOptions) => Promise<void>
   restore: (id: string) => Promise<void>
   getByScope: (scope: CategoryScope) => Category[]
   getById: (id: string) => Category | undefined
@@ -155,7 +156,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     }))
   },
 
-  remove: async (id) => {
+  remove: async (id, opts) => {
     const cat = get().categories.find(c => c.id === id)
     if (cat?.isSystem) return
 
@@ -164,6 +165,12 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     set(s => ({
       categories: s.categories.map(c => c.id === id ? { ...c, isArchived: true } : c),
     }))
+
+    if (cat && opts?.undoable !== false) {
+      useUndoStore.getState().pushUndo('Kategori arşivlendi', async () => {
+        await get().restore(id)
+      })
+    }
   },
 
   restore: async (id) => {

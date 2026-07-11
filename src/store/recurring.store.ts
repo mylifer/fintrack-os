@@ -7,6 +7,7 @@ import type { RecurringTransaction, RecurringFrequency } from '@/types'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
 import { loadEntities } from './entity-helpers'
+import { useUndoStore, type RemoveOptions } from './undo.store'
 
 function advanceDueDate(current: string, frequency: RecurringFrequency): string {
   const d = parseISO(current)
@@ -53,7 +54,7 @@ interface RecurringState {
   load: () => Promise<void>
   add: (r: RecurringTransaction) => Promise<void>
   update: (id: string, patch: Partial<RecurringTransaction>) => Promise<void>
-  remove: (id: string) => Promise<void>
+  remove: (id: string, opts?: RemoveOptions) => Promise<void>
   toggleActive: (id: string) => Promise<void>
   getDue: (asOf: string) => RecurringTransaction[]
   markGenerated: (id: string, asOf: string) => Promise<void>
@@ -89,9 +90,16 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
     }))
   },
 
-  remove: async (id) => {
+  remove: async (id, opts) => {
+    const r = get().recurring.find(x => x.id === id)
     await softDelete('recurring_transactions', id) // C3 — soft delete via durable outbox
-    set(s => ({ recurring: s.recurring.filter(r => r.id !== id) }))
+    set(s => ({ recurring: s.recurring.filter(x => x.id !== id) }))
+    if (r && opts?.undoable !== false) {
+      useUndoStore.getState().pushUndo('Tekrarlayan işlem silindi', async () => {
+        await localPatch('recurring_transactions', id, { deleted_at: null })
+        set(s => ({ recurring: [...s.recurring, r].sort((a, b) => a.name.localeCompare(b.name, 'tr')) }))
+      })
+    }
   },
 
   toggleActive: async (id) => {

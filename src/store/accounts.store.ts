@@ -90,7 +90,9 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     const recurringStore = useRecurringStore.getState()
     const linkedRecurring = recurringStore.recurring.filter(r => r.accountId === id || r.toAccountId === id)
     for (const r of linkedRecurring) {
-      await recurringStore.remove(r.id)
+      // No undo toast for cascade children — account deletion is a lossy
+      // multi-store cascade with no single-entity restore (out of scope).
+      await recurringStore.remove(r.id, { undoable: false })
     }
 
     // 4c. Yatırım işlemlerindeki hesap referanslarını temizle (linked tx'ler

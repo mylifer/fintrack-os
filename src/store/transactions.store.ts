@@ -7,6 +7,7 @@ import { isInRange } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
 import { useDebtStore } from './debts.store'
+import { useUndoStore, type RemoveOptions } from './undo.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
 import { toBaseTry, baseAmount, rateFor } from '@/lib/utils/fx'
@@ -48,7 +49,7 @@ interface TransactionState {
     count: number,
   ) => Promise<void>
   update: (id: string, patch: Partial<Transaction>) => Promise<void>
-  remove: (id: string) => Promise<void>
+  remove: (id: string, opts?: RemoveOptions) => Promise<void>
   getFiltered: (filters: TransactionFilters) => Transaction[]
 }
 
@@ -119,7 +120,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     useAccountStore.getState().recomputeBalances(next)
   },
 
-  remove: async (id) => {
+  remove: async (id, opts) => {
     const tx = get().transactions.find(t => t.id === id)
     // Soft delete (C3) via the durable outbox: syncs as an UPDATE and cannot
     // resurrect on the next reconciling pull.
@@ -134,6 +135,22 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const remaining = get().transactions.filter(t => t.id !== id)
     set({ transactions: remaining })
     useAccountStore.getState().recomputeBalances(remaining)
+
+    // Undo: un-tombstone, re-insert (sorted), recompute, and re-apply the debt
+    // payment — symmetric with the revertPayment above (recordPayment +amount,
+    // +1 installment ↔ revertPayment -amount, -1 installment).
+    if (tx && opts?.undoable !== false) {
+      useUndoStore.getState().pushUndo('İşlem silindi', async () => {
+        await localPatch('transactions', id, { deleted_at: null })
+        const next = [tx, ...get().transactions]
+        next.sort(txSortComparator)
+        set({ transactions: next })
+        useAccountStore.getState().recomputeBalances(next)
+        if (tx.debtId) {
+          await useDebtStore.getState().recordPayment(tx.debtId, baseAmount(tx))
+        }
+      })
+    }
   },
 
   getFiltered: (filters) => {

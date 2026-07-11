@@ -8,6 +8,7 @@ import { isDueSoon } from '@/lib/utils/date'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
 import { loadEntities } from './entity-helpers'
+import { useUndoStore, type RemoveOptions } from './undo.store'
 
 interface DebtState {
   debts: Debt[]
@@ -15,7 +16,7 @@ interface DebtState {
   load: () => Promise<void>
   add: (debt: Debt) => Promise<void>
   update: (id: string, patch: Partial<Debt>) => Promise<void>
-  remove: (id: string) => Promise<void>
+  remove: (id: string, opts?: RemoveOptions) => Promise<void>
   /** Record a NEW payment: +amount and +1 installment. `amount` is in the debt's
    *  (TRY) base currency — callers must normalize foreign-account payments first. */
   recordPayment: (id: string, amount: number) => Promise<void>
@@ -55,9 +56,16 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     }))
   },
 
-  remove: async (id) => {
+  remove: async (id, opts) => {
+    const debt = get().debts.find(d => d.id === id)
     await softDelete('debts', id) // C3 — soft delete via durable outbox
     set(s => ({ debts: s.debts.filter(d => d.id !== id) }))
+    if (debt && opts?.undoable !== false) {
+      useUndoStore.getState().pushUndo('Borç silindi', async () => {
+        await localPatch('debts', id, { deleted_at: null })
+        set(s => ({ debts: [...s.debts, debt] }))
+      })
+    }
   },
 
   recordPayment: async (id, amount) => {
