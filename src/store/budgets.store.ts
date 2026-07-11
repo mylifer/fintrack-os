@@ -5,7 +5,8 @@ import { db } from '@/lib/db'
 import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
 import { enrichBudget } from '@/lib/utils/calculations'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
+import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { loadEntities } from './entity-helpers'
 
 interface BudgetState {
   budgets: Budget[]
@@ -25,14 +26,11 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    try {
-      const budgets = await reconcilingPull<Budget>('budgets')
-      set({ budgets, loading: false, ready: true })
-    } catch (err) {
-      console.error('[budgets:load]', err)
-      const budgets = (await db.budgets.toArray()).filter(isLive)
-      set({ budgets, loading: false, ready: true })
-    }
+    const budgets = await loadEntities<Budget>(
+      'budgets', 'budgets',
+      async () => (await db.budgets.toArray()).filter(isLive),
+    )
+    set({ budgets, loading: false, ready: true })
   },
 
   add: async (budget) => {

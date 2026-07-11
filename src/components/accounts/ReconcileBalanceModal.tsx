@@ -7,7 +7,7 @@ import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
-import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
+import { formatCurrency, formatSigned, parseCurrencyInput } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
 import { RECONCILE_TAG, RECONCILE_DESCRIPTION } from '@/lib/utils/reconciliation'
 import { X } from 'lucide-react'
@@ -146,7 +146,7 @@ export function ReconcileBalanceModal() {
                 {delta > 0 ? 'Eklenecek düzeltme (Gelir)' : 'Düşülecek düzeltme (Gider)'}
               </span>
               <span className={`text-xl font-bold tabular-nums ${delta > 0 ? 'text-green-600' : 'text-destructive'}`}>
-                {delta > 0 ? '+' : '−'}{formatCurrency(Math.abs(delta), currency)}
+                {formatSigned(delta, currency)}
               </span>
             </div>
           )}

@@ -4,7 +4,8 @@ import { create } from 'zustand'
 import { db } from '@/lib/db'
 import type { Person, PersonRole } from '@/types'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
+import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { loadEntities } from './entity-helpers'
 
 interface PeopleState {
   people: Person[]
@@ -24,14 +25,11 @@ export const usePeopleStore = create<PeopleState>()((set) => ({
 
   load: async () => {
     set({ loading: true })
-    try {
-      const people = await reconcilingPull<Person>('people')
-      set({ people, loading: false, ready: true })
-    } catch (err) {
-      console.error('[people:load]', err)
-      const people = (await db.people.toArray()).filter(isLive)
-      set({ people, loading: false, ready: true })
-    }
+    const people = await loadEntities<Person>(
+      'people', 'people',
+      async () => (await db.people.toArray()).filter(isLive),
+    )
+    set({ people, loading: false, ready: true })
   },
 
   add: async (name, role) => {

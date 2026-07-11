@@ -21,8 +21,6 @@ interface AccountState {
   update: (id: string, patch: Partial<Account>) => Promise<void>
   remove: (id: string) => Promise<void>
   recomputeBalances: (transactions: Transaction[]) => void
-  /** @deprecated Balance is now computed. Kept as no-op so call sites compile until removed. */
-  updateBalance: (id: string, delta: number) => Promise<void>
   getById: (id: string) => Account | undefined
 }
 
@@ -143,9 +141,6 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
       })),
     }))
   },
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  updateBalance: async (_id, _delta) => {},
 
   getById: (id) => get().accounts.find(a => a.id === id),
 }))

@@ -173,14 +173,14 @@ export function BackupManager() {
           db.people.clear(), db.recurringTransactions.clear(), db._outbox.clear(),
         ])
         await Promise.all([
-          data.accounts.length               && db.accounts.bulkAdd(data.accounts                             as never),
-          data.transactions.length           && db.transactions.bulkAdd(data.transactions                     as never),
-          data.categories.length             && db.categories.bulkAdd(data.categories                         as never),
-          data.budgets.length                && db.budgets.bulkAdd(data.budgets                               as never),
-          data.debts.length                  && db.debts.bulkAdd(data.debts                                   as never),
-          data.investmentTransactions.length && db.investmentTransactions.bulkAdd(data.investmentTransactions as never),
-          data.people.length                 && db.people.bulkAdd(data.people                                 as never),
-          data.recurringTransactions.length  && db.recurringTransactions.bulkAdd(data.recurringTransactions   as never),
+          data.accounts.length               && db.accounts.bulkAdd(data.accounts),
+          data.transactions.length           && db.transactions.bulkAdd(data.transactions),
+          data.categories.length             && db.categories.bulkAdd(data.categories),
+          data.budgets.length                && db.budgets.bulkAdd(data.budgets),
+          data.debts.length                  && db.debts.bulkAdd(data.debts),
+          data.investmentTransactions.length && db.investmentTransactions.bulkAdd(data.investmentTransactions),
+          data.people.length                 && db.people.bulkAdd(data.people),
+          data.recurringTransactions.length  && db.recurringTransactions.bulkAdd(data.recurringTransactions),
         ])
       },
     )

@@ -24,11 +24,6 @@ export default function CategoryDetailClient({ id }: Props) {
   const [typeFilter, setTypeFilter] = useState('')
 
   /* ── Helpers ── */
-  const getAllDescendants = useCallback((catId: string): string[] => {
-    const children = categories.filter(c => c.parentId === catId)
-    return [catId, ...children.flatMap(c => getAllDescendants(c.id))]
-  }, [categories])
-
   const getLevel = useCallback((catId: string): 0 | 1 | 2 => {
     const c = categories.find(x => x.id === catId)
     if (!c?.parentId) return 0
@@ -48,10 +43,12 @@ export default function CategoryDetailClient({ id }: Props) {
   }, [cat, categories])
 
   /* All descendants */
-  const descendantIds = useMemo(
-    () => new Set(cat ? getAllDescendants(cat.id) : []),
-    [cat, getAllDescendants],
-  )
+  const descendantIds = useMemo(() => {
+    if (!cat) return new Set<string>()
+    const walk = (cid: string): string[] =>
+      [cid, ...categories.filter(c => c.parentId === cid).flatMap(c => walk(c.id))]
+    return new Set(walk(cat.id))
+  }, [cat, categories])
 
   /* Direct children */
   const children = useMemo(
@@ -72,33 +69,34 @@ export default function CategoryDetailClient({ id }: Props) {
     [transactions, descendantIds, typeFilter, search],
   )
 
-  const totalAmount = catTxs.reduce((sum, t) => {
-    if (t.type === 'income')  return sum + t.amount
-    if (t.type === 'expense') return sum - t.amount
-    return sum
-  }, 0)
+  const totalAmount = useMemo(
+    () => catTxs.reduce((sum, t) => {
+      if (t.type === 'income')  return sum + t.amount
+      if (t.type === 'expense') return sum - t.amount
+      return sum
+    }, 0),
+    [catTxs],
+  )
 
   /* ── Parent options for the two-dropdown edit form ── */
   const l0Options = useMemo(() => {
     if (!cat) return []
-    const excluded = new Set(getAllDescendants(cat.id))
     return categories
-      .filter(c => c.scope === cat.scope && getLevel(c.id) === 0 && !excluded.has(c.id))
+      .filter(c => c.scope === cat.scope && getLevel(c.id) === 0 && !descendantIds.has(c.id))
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map(c => ({ id: c.id, label: c.name }))
-  }, [cat, categories, getAllDescendants, getLevel])
+  }, [cat, categories, descendantIds, getLevel])
 
   const l1Options = useMemo(() => {
     if (!cat) return []
-    const excluded = new Set(getAllDescendants(cat.id))
     return categories
-      .filter(c => c.scope === cat.scope && getLevel(c.id) === 1 && !excluded.has(c.id))
+      .filter(c => c.scope === cat.scope && getLevel(c.id) === 1 && !descendantIds.has(c.id))
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map(c => {
         const parent = categories.find(p => p.id === c.parentId)
         return { id: c.id, label: `${c.name} (${parent?.name ?? ''})` }
       })
-  }, [cat, categories, getAllDescendants, getLevel])
+  }, [cat, categories, descendantIds, getLevel])
 
   /* ── Edit state ── */
   const [editing,      setEditing]      = useState(false)

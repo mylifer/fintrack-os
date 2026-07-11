@@ -75,12 +75,11 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // Base-currency snapshot (S2/S3) + durable write (C1).
     const stamped = withBase(tx)
     await localUpsert('transactions', stamped)
-    set(s => {
-      const updated = [stamped, ...s.transactions]
-      updated.sort(txSortComparator)
-      useAccountStore.getState().recomputeBalances(updated)
-      return { transactions: updated }
-    })
+    // Pure updater: compute next array, set it, THEN fire the cross-store effect.
+    const next = [stamped, ...get().transactions]
+    next.sort(txSortComparator)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
   },
 
   addInstallmentGroup: async (base, count) => {
@@ -92,12 +91,11 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       txs.push(withBase({ ...base, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now }))
     }
     await localBulkUpsert('transactions', txs)
-    set(s => {
-      const updated = [...txs, ...s.transactions]
-      updated.sort(txSortComparator)
-      useAccountStore.getState().recomputeBalances(updated)
-      return { transactions: updated }
-    })
+    // Pure updater: compute next array, set it, THEN fire the cross-store effect.
+    const next = [...txs, ...get().transactions]
+    next.sort(txSortComparator)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
   },
 
   update: async (id, patch) => {
@@ -115,11 +113,10 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // NOT: Borç paidAmount mutabakatı burada YAPILMAZ — düzenleme akışının tek
     // sahibi TransactionFormModal'dır (borç değişimi/kaldırma dahil tüm dalları
     // yönetir). Burada da ayarlamak çift sayıma yol açıyordu.
-    set(s => {
-      const newTxs = s.transactions.map(t => t.id === id ? { ...t, ...updated } : t)
-      useAccountStore.getState().recomputeBalances(newTxs)
-      return { transactions: newTxs }
-    })
+    // Pure updater: compute next array, set it, THEN fire the cross-store effect.
+    const next = get().transactions.map(t => t.id === id ? { ...t, ...updated } : t)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
   },
 
   remove: async (id) => {
@@ -133,11 +130,10 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     if (tx?.debtId) {
       await useDebtStore.getState().revertPayment(tx.debtId, baseAmount(tx))
     }
-    set(s => {
-      const remaining = s.transactions.filter(t => t.id !== id)
-      useAccountStore.getState().recomputeBalances(remaining)
-      return { transactions: remaining }
-    })
+    // Pure updater: compute next array, set it, THEN fire the cross-store effect.
+    const remaining = get().transactions.filter(t => t.id !== id)
+    set({ transactions: remaining })
+    useAccountStore.getState().recomputeBalances(remaining)
   },
 
   getFiltered: (filters) => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { useShallow } from 'zustand/react/shallow'
@@ -221,15 +221,6 @@ function buildTrendData(
   return pts
 }
 
-/* ── Base-currency (TRY) amount ────────────────────────────────────
-   Uses the snapshotted amountTry (S2/S3) for consistent TRY comparisons
-   across multi-currency transactions; converts legacy rows at live rates.
- ─────────────────────────────────────────────────────────────────── */
-
-function getTryAmount(tx: Transaction): number {
-  return baseAmount(tx)
-}
-
 /* ── Period comparison ────────────────────────────────────────────── */
 
 type ComparisonRow = {
@@ -262,7 +253,7 @@ function buildPeriodComparison(
     const key = tx.categoryId ?? '__none__'
     if (!catMap.has(key)) catMap.set(key, { current: 0, prev: 0 })
     const entry = catMap.get(key)!
-    const amt = getTryAmount(tx)
+    const amt = baseAmount(tx)
     if (tx.date >= dateRange.from && tx.date <= dateRange.to) {
       entry.current += amt
     } else if (tx.date >= prevFrom && tx.date <= prevTo) {
@@ -306,7 +297,7 @@ function buildCategoryTrendData(
         if (tx.date < mFrom || tx.date > mTo) return false
         return categoryId === null ? !tx.categoryId : tx.categoryId === categoryId
       })
-      .reduce((s, tx) => s + getTryAmount(tx), 0)
+      .reduce((s, tx) => s + baseAmount(tx), 0)
     return { label: format(mDate, 'MMM yy', { locale: tr }), amount }
   })
 }
@@ -328,6 +319,16 @@ export default function ReportsPage() {
   const [activeSliceIdx, setActiveSliceIdx] = useState<number | null>(null)
   const [tagSliceIdx,   setTagSliceIdx]   = useState<number | null>(null)
   const [trendCatKey,   setTrendCatKey]   = useState<string>('')  // '' = auto (first in comparison list)
+
+  // Filtre (dönem/hesap) değişince tüm drill-down seçimlerini sıfırla. Filtreyi
+  // değiştiren AYNI event handler içinde çağrılır — böylece bayat bir ara render
+  // (eski seçim + yeni filtre) hiç oluşmaz.
+  const resetDrilldown = useCallback(() => {
+    setSelectedCat(null)
+    setActiveSliceIdx(null)
+    setTagSliceIdx(null)
+    setTrendCatKey('')
+  }, [])
 
   const dateRange = useMemo(
     () => getPresetRange(preset, customFrom, customTo),
@@ -392,13 +393,6 @@ export default function ReportsPage() {
     })
   }, [filteredTxs, selectedCat])
 
-  useEffect(() => {
-    setSelectedCat(null)
-    setActiveSliceIdx(null)
-    setTagSliceIdx(null)
-    setTrendCatKey('')
-  }, [preset, customFrom, customTo, accountId])
-
   const isLoading = !txsReady || !accountsReady
 
   const animIncome  = useCountUp(kpi.income)
@@ -417,7 +411,7 @@ export default function ReportsPage() {
           {PRESETS.map(p => (
             <button
               key={p.key}
-              onClick={() => setPreset(p.key)}
+              onClick={() => { setPreset(p.key); resetDrilldown() }}
               className={[
                 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap',
                 preset === p.key ? 'bg-secondary text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground rounded-xl',
@@ -433,14 +427,14 @@ export default function ReportsPage() {
             <input
               type="date"
               value={customFrom}
-              onChange={e => setCustomFrom(e.target.value)}
+              onChange={e => { setCustomFrom(e.target.value); resetDrilldown() }}
               className="border border-border rounded-xl px-2 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:border-primary"
             />
             <span className="text-muted-foreground text-xs">—</span>
             <input
               type="date"
               value={customTo}
-              onChange={e => setCustomTo(e.target.value)}
+              onChange={e => { setCustomTo(e.target.value); resetDrilldown() }}
               className="border border-border rounded-xl px-2 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:border-primary"
             />
           </div>
@@ -448,7 +442,7 @@ export default function ReportsPage() {
 
         <select
           value={accountId}
-          onChange={e => setAccountId(e.target.value)}
+          onChange={e => { setAccountId(e.target.value); resetDrilldown() }}
           className="ml-auto border border-border rounded-xl px-3 py-2 text-xs text-foreground bg-card focus:outline-none focus:border-primary cursor-pointer"
         >
           <option value="all">Tüm Hesaplar</option>

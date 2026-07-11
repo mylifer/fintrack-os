@@ -19,6 +19,12 @@ export function formatCurrency(amount: number, currency: CurrencyCode = 'TRY'): 
   return FORMATTERS[currency].format(Number.isFinite(amount) ? amount : 0)
 }
 
+// İşaretli tutar: negatifte U+2212 (−), pozitif/sıfırda +. Tüm uygulamada
+// tutarlı işaret gösterimi için tek kaynak.
+export function formatSigned(v: number, currency: CurrencyCode = 'TRY'): string {
+  return `${v < 0 ? '−' : '+'}${formatCurrency(Math.abs(v), currency)}`
+}
+
 export function formatAmount(amount: number, currency: CurrencyCode = 'TRY'): string {
   return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(amount)
 }

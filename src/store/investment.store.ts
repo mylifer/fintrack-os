@@ -3,7 +3,8 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
+import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { loadEntities } from './entity-helpers'
 import { setBaseRates } from '@/lib/utils/fx'
 import { useTransactionStore } from './transactions.store'
 import type {
@@ -263,15 +264,15 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    try {
-      const txs = (await reconcilingPull<InvestmentTransaction>('investment_transactions'))
-        .sort((a, b) => b.date.localeCompare(a.date))
-      set({ transactions: txs, loading: false })
-    } catch (err) {
-      console.error('[investment:load]', err)
-      const txs = (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive)
-      set({ transactions: txs, loading: false })
-    }
+    // NOTE: the two branches order differently on ties (cloud path: JS sort by
+    // date desc; Dexie fallback: orderBy('date').reverse()), so the fallback
+    // stays self-contained and `post` only re-sorts the reconciled cloud rows.
+    const txs = await loadEntities<InvestmentTransaction>(
+      'investment_transactions', 'investment',
+      async () => (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive),
+      rows => rows.sort((a, b) => b.date.localeCompare(a.date)),
+    )
+    set({ transactions: txs, loading: false })
   },
 
   addTransaction: async (tx) => {

@@ -1,4 +1,8 @@
 import { supabase } from './supabase'
+import type {
+  Account, Transaction, Category, Budget, Debt,
+  InvestmentTransaction, Person, RecurringTransaction,
+} from '@/types'
 
 /**
  * Cloud replace for backup restore.
@@ -14,14 +18,14 @@ import { supabase } from './supabase'
  */
 
 export interface BackupData {
-  accounts:               unknown[]
-  transactions:           unknown[]
-  categories:             unknown[]
-  budgets:                unknown[]
-  debts:                  unknown[]
-  investmentTransactions: unknown[]
-  people:                 unknown[]
-  recurringTransactions:  unknown[]
+  accounts:               Account[]
+  transactions:           Transaction[]
+  categories:             Category[]
+  budgets:                Budget[]
+  debts:                  Debt[]
+  investmentTransactions: InvestmentTransaction[]
+  people:                 Person[]
+  recurringTransactions:  RecurringTransaction[]
 }
 
 /**

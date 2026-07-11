@@ -6,7 +6,8 @@ import type { Debt, DebtWithRemaining } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
 import { isDueSoon } from '@/lib/utils/date'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
+import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { loadEntities } from './entity-helpers'
 
 interface DebtState {
   debts: Debt[]
@@ -34,14 +35,11 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    try {
-      const debts = await reconcilingPull<Debt>('debts')
-      set({ debts, loading: false })
-    } catch (err) {
-      console.error('[debts:load]', err)
-      const debts = (await db.debts.toArray()).filter(isLive)
-      set({ debts, loading: false })
-    }
+    const debts = await loadEntities<Debt>(
+      'debts', 'debts',
+      async () => (await db.debts.toArray()).filter(isLive),
+    )
+    set({ debts, loading: false })
   },
 
   add: async (debt) => {

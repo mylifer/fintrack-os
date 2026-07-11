@@ -5,7 +5,8 @@ import { addDays, addWeeks, addMonths, addYears, format, parseISO } from 'date-f
 import { db } from '@/lib/db'
 import type { RecurringTransaction, RecurringFrequency } from '@/types'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
+import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { loadEntities } from './entity-helpers'
 
 function advanceDueDate(current: string, frequency: RecurringFrequency): string {
   const d = parseISO(current)
@@ -66,14 +67,14 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
 
   load: async () => {
     set({ loading: true })
-    try {
-      const rows = await reconcilingPull<RecurringTransaction>('recurring_transactions')
-      set({ recurring: rows.sort((a, b) => a.name.localeCompare(b.name, 'tr')), loading: false, ready: true })
-    } catch (err) {
-      console.error('[recurring:load]', err)
-      const rows = (await db.recurringTransactions.toArray()).filter(isLive)
-      set({ recurring: rows.sort((a, b) => a.name.localeCompare(b.name, 'tr')), loading: false, ready: true })
-    }
+    const byName = (rows: RecurringTransaction[]) =>
+      rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+    const recurring = await loadEntities<RecurringTransaction>(
+      'recurring_transactions', 'recurring',
+      async () => byName((await db.recurringTransactions.toArray()).filter(isLive)),
+      byName,
+    )
+    set({ recurring, loading: false, ready: true })
   },
 
   add: async (r) => {
