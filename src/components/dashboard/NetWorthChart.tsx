@@ -5,11 +5,11 @@ import { useMemo, useState } from 'react'
 import { useTransactionStore, useAccountStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, calcMonthlyNetRaw } from '@/lib/utils/calculations'
-import { monthRange, isInRange, currentMonthYear } from '@/lib/utils/date'
-import { getAssetPrice } from '@/store/investment.store'
+import { isInRange, currentMonthYear } from '@/lib/utils/date'
+import { getAssetPrice, computeHoldings } from '@/store/investment.store'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
-import type { MonthYear } from '@/types'
+import type { MonthYear, Transaction } from '@/types'
 import type { NWDataPoint } from './_NetWorthChart'
 
 const Chart = dynamic(() => import('./_NetWorthChart'), {
@@ -84,20 +84,39 @@ export function NetWorthChart() {
   const transactions = useTransactionStore(s => s.transactions)
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const prices       = useInvestmentStore(s => s.prices)
-  const investValue  = useInvestmentStore(s => s.getPortfolioValue())
   const investTxs    = useInvestmentStore(s => s.transactions)
+  const investValue  = useMemo(
+    () => prices ? computeHoldings(investTxs, prices).reduce((s, h) => s + h.currentValue, 0) : 0,
+    [investTxs, prices],
+  )
 
   const currentNW = calcNetWorth(accounts, prices) + investValue
 
   // Full monthly history — used by monthly / yearly / all ranges
   const allData = useMemo<RawPoint[]>(() => {
+    // Pre-bucket every ledger + investment tx by calendar month ('yyyy-MM') in a
+    // SINGLE pass each, so the per-month walk below reads its bucket instead of
+    // re-filtering the whole ledger. Bucketing by date.slice(0,7) matches the
+    // monthRange/isInRange month exactly. startMY is derived in the same pass.
+    const txByMonth     = new Map<string, Transaction[]>()
+    const investByMonth = new Map<string, typeof investTxs>()
+
     let startMY = currentMonthYear()
     for (const tx of transactions) {
+      const key = tx.date.slice(0, 7)
+      const bucket = txByMonth.get(key)
+      if (bucket) bucket.push(tx); else txByMonth.set(key, [tx])
+
       const d = new Date(tx.date)
       const my: MonthYear = { month: d.getMonth() + 1, year: d.getFullYear() }
       if (my.year < startMY.year || (my.year === startMY.year && my.month < startMY.month)) {
         startMY = my
       }
+    }
+    for (const tx of investTxs) {
+      const key = tx.date.slice(0, 7)
+      const bucket = investByMonth.get(key)
+      if (bucket) bucket.push(tx); else investByMonth.set(key, [tx])
     }
 
     const months = monthsSince(startMY)
@@ -109,6 +128,7 @@ export function NetWorthChart() {
     for (let i = months.length - 1; i >= 0; i--) {
       const my = months[i]
       const d  = new Date(my.year, my.month - 1)
+      const key = `${my.year}-${String(my.month).padStart(2, '0')}`
 
       const shortLabel = d.toLocaleDateString('tr-TR', { month: 'short' })
       const longLabel  = `${shortLabel} '${String(my.year).slice(2)}`
@@ -118,13 +138,11 @@ export function NetWorthChart() {
 
       // Raw net (reconciliation INCLUDED) — this walks the balance backwards,
       // and reconciliation entries genuinely moved the balance.
-      const net = calcMonthlyNetRaw(transactions, my)
+      const net = calcMonthlyNetRaw(txByMonth.get(key) ?? [], my)
       nw -= net
 
       if (prices) {
-        const { from, to } = monthRange(my)
-        const investDelta = investTxs
-          .filter(tx => isInRange(tx.date, from, to))
+        const investDelta = (investByMonth.get(key) ?? [])
           .reduce((sum, tx) => {
             const unitPrice    = getAssetPrice(tx.asset, prices)
             const currentValue = tx.quantity * unitPrice
@@ -144,6 +162,23 @@ export function NetWorthChart() {
   // Weekly data — computed independently, same backward pattern
   const weeklyData = useMemo<NWDataPoint[]>(() => {
     const weeks = lastNWeeks(8)
+
+    // Pre-bucket txs + investment txs into their (disjoint) week ONCE instead of
+    // running a full-ledger filter per week. Assignment uses the same isInRange
+    // ranges the old per-week filter did, so bucket membership is identical.
+    const txByWeek:     Transaction[][]     = weeks.map(() => [])
+    const investByWeek: (typeof investTxs)[] = weeks.map(() => [])
+    for (const tx of transactions) {
+      for (let w = 0; w < weeks.length; w++) {
+        if (isInRange(tx.date, weeks[w].from, weeks[w].to)) { txByWeek[w].push(tx); break }
+      }
+    }
+    for (const tx of investTxs) {
+      for (let w = 0; w < weeks.length; w++) {
+        if (isInRange(tx.date, weeks[w].from, weeks[w].to)) { investByWeek[w].push(tx); break }
+      }
+    }
+
     const points: NWDataPoint[] = new Array(weeks.length)
     let nw = currentNW
 
@@ -152,14 +187,13 @@ export function NetWorthChart() {
 
       points[i] = { label: week.label, fullLabel: week.fullLabel, netWorth: Math.round(nw * 100) / 100, delta: 0 }
 
-      const inRange = transactions.filter(tx => isInRange(tx.date, week.from, week.to))
+      const inRange = txByWeek[i]
       const income  = inRange.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
       const expense = inRange.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
       nw -= (income - expense)
 
       if (prices) {
-        const investDelta = investTxs
-          .filter(tx => isInRange(tx.date, week.from, week.to))
+        const investDelta = investByWeek[i]
           .reduce((sum, tx) => {
             const unitPrice    = getAssetPrice(tx.asset, prices)
             const currentValue = tx.quantity * unitPrice

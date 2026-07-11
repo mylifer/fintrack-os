@@ -55,9 +55,12 @@ export default function DashboardPage() {
   const allAccounts  = useAccountStore(s => s.accounts)
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories   = useCategoryStore(s => s.categories)
-  const investValue  = useInvestmentStore(s => s.getPortfolioValue())
   const prices       = useInvestmentStore(s => s.prices)
   const investTxs    = useInvestmentStore(s => s.transactions)
+  const investValue  = useMemo(
+    () => prices ? computeHoldings(investTxs, prices).reduce((s, h) => s + h.currentValue, 0) : 0,
+    [investTxs, prices],
+  )
   const getBudgets   = useBudgetStore(s => s.getMonthBudgets)
   const getDueSoon   = useDebtStore(s => s.getDueSoon)
   const getActive    = useDebtStore(s => s.getActive)

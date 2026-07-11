@@ -13,7 +13,7 @@ import { parseCurrencyInput, getCurrencySymbol } from '@/lib/utils/currency'
 import { toBaseTry } from '@/lib/utils/fx'
 import { today } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
-import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person } from '@/types'
+import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
 import { Check, X, Plus } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
@@ -54,6 +54,38 @@ function newForm() {
     isDebtPayment: false,
     debtId: undefined as string | undefined,
   }
+}
+
+// Build the initial form once (used as a lazy useState initializer). On edit it
+// hydrates from the transaction being edited; on add it seeds an empty form,
+// optionally pre-filling the account passed via the modal payload.
+function buildInitialForm(
+  isEdit: boolean,
+  editingTx: Transaction | undefined,
+  modalPayload: ModalPayload | null,
+): ReturnType<typeof newForm> {
+  if (isEdit && editingTx) {
+    return {
+      type:           editingTx.type as Tab,
+      amount:         editingTx.amount,
+      currency:       editingTx.currency,
+      date:           editingTx.date,
+      accountId:      editingTx.accountId,
+      toAccountId:    editingTx.toAccountId,
+      categoryId:     editingTx.categoryId ?? '',
+      description:    editingTx.description,
+      notes:          editingTx.notes,
+      tags:           editingTx.tags ?? [],
+      isInstallment:  editingTx.isInstallment,
+      familyMemberId: editingTx.familyMemberId ?? undefined,
+      recipientId:    editingTx.recipientId    ?? undefined,
+      isDebtPayment:  editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId,
+      debtId:         editingTx.type === 'transfer' && !editingTx.toAccountId ? editingTx.debtId : undefined,
+    }
+  }
+  const f = newForm()
+  if (modalPayload?.accountId) f.accountId = modalPayload.accountId
+  return f
 }
 
 interface Suggestion {
@@ -148,8 +180,6 @@ function DescriptionAutocomplete({
     return suggestions.filter(s => s.description.toLowerCase().includes(q)).slice(0, 6)
   }, [value, suggestions])
 
-  useEffect(() => { setHighlighted(0) }, [filtered.length])
-
   function handleKeyDown(e: React.KeyboardEvent) {
     if (!open || !filtered.length) return
     if (e.key === 'ArrowDown')  { e.preventDefault(); setHighlighted(h => Math.min(h + 1, filtered.length - 1)) }
@@ -167,7 +197,7 @@ function DescriptionAutocomplete({
         ref={inputRef}
         autoFocus
         value={value}
-        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onChange={e => { onChange(e.target.value); setOpen(true); setHighlighted(0) }}
         onKeyDown={handleKeyDown}
         onFocus={() => {
           if (justMountedRef.current) { justMountedRef.current = false; return }
@@ -336,7 +366,9 @@ function formatTurkishDisplay(raw: string): string {
 // ── Main modal ────────────────────────────────────────────────────────────────
 
 export function TransactionFormModal() {
-  const { modal, modalPayload, closeModal } = useUIStore()
+  const modal        = useUIStore(s => s.modal)
+  const modalPayload = useUIStore(s => s.modalPayload)
+  const closeModal   = useUIStore(s => s.closeModal)
   const accounts   = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories = useCategoryStore(s => s.categories)
   const transactions = useTransactionStore(s => s.transactions)
@@ -345,7 +377,8 @@ export function TransactionFormModal() {
   const updateTx     = useTransactionStore(s => s.update)
   const allPeople    = usePeopleStore(s => s.people)
   const activeDebts  = useDebtStore(useShallow(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe')))
-  const tagSuggestions = useTags().map(t => t.tag)
+  const tags           = useTags()
+  const tagSuggestions = useMemo(() => tags.map(t => t.tag), [tags])
 
   const open = modal === 'add-transaction' || modal === 'edit-transaction'
   const isEdit = modal === 'edit-transaction'
@@ -354,13 +387,18 @@ export function TransactionFormModal() {
     ? transactions.find(t => t.id === modalPayload.id)
     : undefined
 
-  const [tab, setTab]             = useState<Tab>('expense')
-  const [form, setForm]           = useState(newForm())
-  const [amountStr, setAmountStr] = useState('')
+  // Lazy initializers run exactly once — the component is remounted (keyed) per
+  // open, so first-render values (editingTx / modalPayload) are the correct seed.
+  const [tab, setTab]             = useState<Tab>(() => isEdit && editingTx ? editingTx.type as Tab : 'expense')
+  const [form, setForm]           = useState(() => buildInitialForm(isEdit, editingTx, modalPayload))
+  const [amountStr, setAmountStr] = useState(() =>
+    isEdit && editingTx
+      ? new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2, useGrouping: false }).format(Math.abs(editingTx.amount))
+      : '')
   // Sign of the amount. Always +1 except when editing a refund (negative
   // expense), where we preserve the negative so a save doesn't flip it positive.
-  const [amountSign, setAmountSign] = useState(1)
-  const [installments, setInstallments] = useState(1)
+  const [amountSign, setAmountSign] = useState(() => isEdit && editingTx && editingTx.amount < 0 ? -1 : 1)
+  const [installments, setInstallments] = useState(() => isEdit && editingTx ? (editingTx.installTotal ?? 1) : 1)
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
 
@@ -383,44 +421,6 @@ export function TransactionFormModal() {
     return () => document.removeEventListener('pointerdown', snap, true)
   }, [])
   const onSelectOpen = (open: boolean) => { selectOpenRef.current = open }
-
-  // Reset / populate on open
-  useEffect(() => {
-    if (!open) {
-      setForm(newForm()); setAmountStr(''); setInstallments(1); setErrors({})
-      setCursorX(0); setAmountSign(1)
-      return
-    }
-    if (isEdit && editingTx) {
-      setTab(editingTx.type as Tab)
-      setForm({
-        type:           editingTx.type as Tab,
-        amount:         editingTx.amount,
-        currency:       editingTx.currency,
-        date:           editingTx.date,
-        accountId:      editingTx.accountId,
-        toAccountId:    editingTx.toAccountId,
-        categoryId:     editingTx.categoryId ?? '',
-        description:    editingTx.description,
-        notes:          editingTx.notes,
-        tags:           editingTx.tags ?? [],
-        isInstallment:  editingTx.isInstallment,
-        familyMemberId: editingTx.familyMemberId ?? undefined,
-        recipientId:    editingTx.recipientId    ?? undefined,
-        isDebtPayment:  editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId,
-        debtId:         editingTx.type === 'transfer' && !editingTx.toAccountId ? editingTx.debtId : undefined,
-      })
-      setAmountSign(editingTx.amount < 0 ? -1 : 1)
-      setAmountStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2, useGrouping: false }).format(Math.abs(editingTx.amount)))
-      setInstallments(editingTx.installTotal ?? 1)
-    } else {
-      setTab('expense')
-      setAmountSign(1)
-      const f = newForm()
-      if (modalPayload?.accountId) f.accountId = modalPayload.accountId
-      setForm(f)
-    }
-  }, [open])
 
   // Autocomplete suggestions
   const suggestions = useMemo<Suggestion[]>(() => {
@@ -460,8 +460,11 @@ export function TransactionFormModal() {
     }))
   }, [amountStr])
 
-  const filteredCategories = categories.filter(c => c.scope === tab)
-  const accountOptions     = accounts.map(a => ({ value: a.id, label: a.name, icon: <AccountAvatar account={a} size="xs" /> }))
+  const filteredCategories = useMemo(() => categories.filter(c => c.scope === tab), [categories, tab])
+  const accountOptions     = useMemo(
+    () => accounts.map(a => ({ value: a.id, label: a.name, icon: <AccountAvatar account={a} size="xs" /> })),
+    [accounts],
+  )
 
   function validate(): boolean {
     const e: Record<string, string> = {}
@@ -512,25 +515,28 @@ export function TransactionFormModal() {
       // Reconcile debt paidAmount for edit.
       // adjustPaidAmount: taksit sayısını değiştirmez (tutar düzeltmesi / geri alma);
       // recordPayment: yeni bir ödeme kaydeder (taksit sayısını da artırır).
-      const wasDebtPayment = editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId
-      const isDebtPaymentNow = tab === 'transfer' && form.isDebtPayment && !!formData.debtId
+      // Narrowed locals let TS follow the debt-id flow without non-null assertions.
+      const editDebtId = editingTx.debtId
+      const formDebtId = formData.debtId
+      const wasDebtPayment = editingTx.type === 'transfer' && !!editDebtId && !editingTx.toAccountId
+      const isDebtPaymentNow = tab === 'transfer' && form.isDebtPayment && !!formDebtId
       const { recordPayment, revertPayment, adjustPaidAmount } = useDebtStore.getState()
       const oldPaidTry = editingTx.amountTry ?? editingTx.amount   // prior payment in TRY
 
-      if (wasDebtPayment && isDebtPaymentNow) {
-        if (editingTx.debtId === formData.debtId) {
+      if (wasDebtPayment && editDebtId && isDebtPaymentNow && formDebtId) {
+        if (editDebtId === formDebtId) {
           // Same payment, amount edited → adjust value only, keep installment count.
           const delta = Math.round((amountTry - oldPaidTry) * 100) / 100
-          if (delta !== 0) await adjustPaidAmount(formData.debtId!, delta)
+          if (delta !== 0) await adjustPaidAmount(formDebtId, delta)
         } else {
           // Debt changed: fully reverse old payment, record a new one on the new debt.
-          await revertPayment(editingTx.debtId!, oldPaidTry)
-          await recordPayment(formData.debtId!, amountTry)
+          await revertPayment(editDebtId, oldPaidTry)
+          await recordPayment(formDebtId, amountTry)
         }
-      } else if (wasDebtPayment && !isDebtPaymentNow) {
-        await revertPayment(editingTx.debtId!, oldPaidTry)
-      } else if (!wasDebtPayment && isDebtPaymentNow) {
-        await recordPayment(formData.debtId!, amountTry)
+      } else if (wasDebtPayment && editDebtId && !isDebtPaymentNow) {
+        await revertPayment(editDebtId, oldPaidTry)
+      } else if (!wasDebtPayment && isDebtPaymentNow && formDebtId) {
+        await recordPayment(formDebtId, amountTry)
       }
     } else {
       const base = {

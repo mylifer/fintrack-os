@@ -41,8 +41,15 @@ export default function TransactionsPage() {
     [transactions, search, typeFilter, from, to, familyFilter, recipientFilter],
   )
 
-  const totalExpense = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  const totalIncome  = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  // Tek geçişte hem gider hem gelir toplamı (eskiden render başına 4 tam tarama).
+  const { totalExpense, totalIncome } = useMemo(() => {
+    let expense = 0, income = 0
+    for (const t of filtered) {
+      if (t.type === 'expense') expense += t.amount
+      else if (t.type === 'income') income += t.amount
+    }
+    return { totalExpense: expense, totalIncome: income }
+  }, [filtered])
 
   function handlePersonClick(role: PersonRole, id: string) {
     const person = people.find(p => p.id === id)

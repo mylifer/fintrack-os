@@ -1,18 +1,22 @@
 'use client'
 
-import { useMemo } from 'react'
+import { memo, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { AlertDialog } from 'radix-ui'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCategoryStore, useAccountStore, useUIStore, usePeopleStore, useTransactionStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { groupByDate } from '@/lib/utils/calculations'
+import { toMinor, toMajor } from '@/lib/utils/money'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
-import type { Transaction, PersonRole } from '@/types'
+import type { Transaction, PersonRole, Category, Account, Person, ModalType, ModalPayload } from '@/types'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { TagBadges } from '@/components/transactions/TagBadges'
+
+type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
 const PencilIcon = ({ size = 13 }: { size?: number }) => (
   <svg fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" width={size} height={size}>
@@ -90,6 +94,317 @@ const TABLE_MIN_W = 130 + 96 + 76 + 76 + 76 + 72 + 84 + 76 + 24
 
 type MetaItem = { text: string; href?: string }
 
+// Günlük işlemleri kararlı bir sırayla dizer (kronolojik + yatırım rank + taksit).
+// Artık render başına değil, tek seferlik `rows` memo'sunda çağrılır.
+function sortDay(dayTxs: Transaction[]) {
+  const investRank = (tx: Transaction) => {
+    if (!tx.icon) return 10
+    if (tx.description.includes('Alım')) return 0
+    if (tx.description.includes('Kâr') || tx.description.includes('Zarar')) return 6
+    return 5
+  }
+  return [...dayTxs].sort((a, b) => {
+    const ca = a.createdAt ?? '', cb = b.createdAt ?? ''
+    if (ca !== cb) return cb.localeCompare(ca)
+    const ra = investRank(a), rb = investRank(b)
+    if (ra !== rb) return ra - rb
+    return (a.installIndex ?? 0) - (b.installIndex ?? 0)
+  })
+}
+
+// Flattened, virtualization-friendly row list. One entry per rendered row.
+type Row =
+  | { kind: 'header'; date: string; dateIdx: number }
+  | { kind: 'tx'; tx: Transaction; isFirst: boolean; isLast: boolean }
+
+// ── Date separator (both layouts share the same look, only top spacing differs) ─
+function DateSeparator({ date, topClass }: { date: string; topClass: string }) {
+  return (
+    <div className={`flex items-center gap-3 py-1 ${topClass}`}>
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap select-none">
+        {formatDate(date, 'd MMM')} · {formatDate(date, 'EEEE')}
+      </span>
+      <div className="flex-1 h-px bg-border/60" />
+    </div>
+  )
+}
+
+// ── TABLE row ─────────────────────────────────────────────────────────────
+const TableTxRow = memo(function TableTxRow({
+  tx, cat, account, recipient, family, balanceAfter, isFirst, isLast, openModal, removeTx,
+}: {
+  tx: Transaction
+  cat?: Category
+  account?: Account
+  recipient?: Person
+  family?: Person
+  balanceAfter?: number
+  isFirst: boolean
+  isLast: boolean
+  openModal: OpenModal
+  removeTx: (id: string) => void
+}) {
+  const isIncome    = tx.type === 'income'
+  const isXfer      = tx.type === 'transfer'
+  const isRefund    = tx.type === 'expense' && tx.amount < 0
+  const iconBg      = cat?.color ? `${cat.color}18` : isXfer ? '#00E5FF18' : 'rgba(255,255,255,0.04)'
+  const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
+  const iconIsText  = !cat?.icon && !!tx.icon
+  return (
+    <div
+      className={[
+        'group grid transition-colors hover:bg-accent/40 bg-card border-x border-t border-border/60',
+        isFirst ? 'rounded-t-lg overflow-hidden' : '',
+        isLast ? 'rounded-b-lg border-b overflow-hidden' : '',
+      ].join(' ')}
+      style={{ gridTemplateColumns: TABLE_COLS }}
+    >
+      {/* Açıklama */}
+      <div className="px-3 py-2 flex items-center gap-2 min-w-0 overflow-hidden">
+        {recipient ? (
+          <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
+        ) : cat ? (
+          <CategoryIcon icon={cat.icon} color={cat.color} size={9} className="flex-shrink-0" />
+        ) : (
+          <div
+            className={[
+              'w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-sm',
+              iconIsText ? 'text-[10px] font-medium text-foreground/50' : 'text-[11px]',
+            ].join(' ')}
+            style={{ background: iconBg }}
+          >
+            {displayIcon}
+          </div>
+        )}
+        <div className="min-w-0 overflow-hidden">
+          <div className="text-xs font-medium text-foreground truncate leading-none">
+            {tx.description}
+            {tx.isInstallment && (
+              <span className="ml-1 font-normal text-orange-500/80">
+                ({tx.installIndex}/{tx.installTotal})
+              </span>
+            )}
+            {isRefund && (
+              <span className="ml-1.5 align-middle rounded-sm bg-green-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-green-600">
+                İade
+              </span>
+            )}
+          </div>
+          <TagBadges tags={tx.tags} className="mt-1" />
+        </div>
+      </div>
+
+      {/* Hesap */}
+      <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
+        {account ? (
+          <Link href={`/accounts/${tx.accountId}`} className="flex items-center gap-1.5 min-w-0 group/link">
+            <AccountAvatar account={account} size="xs" className="flex-shrink-0" />
+            <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{account.name}</span>
+          </Link>
+        ) : null}
+      </div>
+
+      {/* Alıcı */}
+      <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
+        {recipient ? (
+          <Link href={`/alicilar/${tx.recipientId}`} className="flex items-center gap-1.5 min-w-0 group/link">
+            <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
+            <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">
+              {recipient.name}
+            </span>
+          </Link>
+        ) : (
+          <span className="text-xs text-muted-foreground/25">—</span>
+        )}
+      </div>
+
+      {/* Aile Üyesi */}
+      <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
+        {family ? (
+          <Link href={`/aile-uyeleri/${tx.familyMemberId}`} className="flex items-center gap-1.5 min-w-0 group/link">
+            <PersonAvatar person={family} size="xs" className="flex-shrink-0" />
+            <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">
+              {family.name}
+            </span>
+          </Link>
+        ) : (
+          <span className="text-xs text-muted-foreground/25">—</span>
+        )}
+      </div>
+
+      {/* Kategori */}
+      <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
+        {cat ? (
+          <Link href={`/categories/${tx.categoryId}`} className="flex items-center gap-1.5 min-w-0 group/link">
+            <CategoryIcon icon={cat.icon} color={cat.color} size={10} className="flex-shrink-0" />
+            <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{cat.name}</span>
+          </Link>
+        ) : (
+          <span className="text-xs text-muted-foreground/25">—</span>
+        )}
+      </div>
+
+      {/* Miktar */}
+      <div className="px-3 py-2 flex items-center justify-end">
+        <span className={[
+          'text-xs font-semibold tabular-nums',
+          isIncome || isRefund ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground',
+        ].join(' ')}>
+          {isIncome || isRefund ? '+' : isXfer ? '' : '−'}
+          {formatCurrency(Math.abs(tx.amount), tx.currency)}
+        </span>
+      </div>
+
+      {/* Güncel Bakiye */}
+      <div className="px-3 py-2 flex items-center justify-end">
+        {balanceAfter !== undefined ? (
+          <span className={[
+            'text-xs tabular-nums',
+            balanceAfter < 0 ? 'text-destructive' : 'text-muted-foreground/60',
+          ].join(' ')}>
+            {formatCurrency(balanceAfter, account?.currency)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground/25">—</span>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="px-2 py-2 flex items-center justify-end gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        {tx.type === 'expense' && tx.amount > 0 && (
+          <button
+            onClick={() => openModal('refund-transaction', { id: tx.id })}
+            className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-colors"
+            title="İade İşle"
+          >
+            <RefundIcon size={12} />
+          </button>
+        )}
+        <button
+          onClick={() => openModal('edit-transaction', { id: tx.id })}
+          className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          title="Düzenle"
+        >
+          <PencilIcon size={12} />
+        </button>
+        <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} compact />
+      </div>
+    </div>
+  )
+})
+
+// ── CARDS row (compact minimal) ───────────────────────────────────────────
+const CardTxRow = memo(function CardTxRow({
+  tx, cat, account, recipient, family, showAccount, openModal, removeTx,
+}: {
+  tx: Transaction
+  cat?: Category
+  account?: Account
+  recipient?: Person
+  family?: Person
+  showAccount: boolean
+  openModal: OpenModal
+  removeTx: (id: string) => void
+}) {
+  const isIncome  = tx.type === 'income'
+  const isXfer    = tx.type === 'transfer'
+  const isRefund  = tx.type === 'expense' && tx.amount < 0
+  const iconBg    = cat?.color ? `${cat.color}18` : isXfer ? '#00E5FF15' : 'rgba(255,255,255,0.04)'
+  const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
+  const iconIsText  = !cat?.icon && !!tx.icon
+
+  // Build meta items — each can have an href for navigation
+  const metaItems: MetaItem[] = []
+  if (showAccount && account) metaItems.push({ text: account.name, href: `/accounts/${tx.accountId}` })
+  if (cat) metaItems.push({ text: cat.name, href: `/categories/${tx.categoryId}` })
+  if (tx.isInstallment) metaItems.push({ text: `${tx.installIndex}/${tx.installTotal}` })
+  if (recipient) metaItems.push({ text: recipient.name, href: `/alicilar/${tx.recipientId}` })
+  if (family)    metaItems.push({ text: family.name,    href: `/aile-uyeleri/${tx.familyMemberId}` })
+
+  const hasSubline = metaItems.length > 0
+
+  return (
+    <div className="group flex items-center gap-2.5 px-2 py-[5px] rounded-lg hover:bg-accent/40 transition-colors">
+      {/* Icon / Avatar */}
+      {recipient ? (
+        <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
+      ) : cat ? (
+        <CategoryIcon icon={cat.icon} color={cat.color} size={9} className="flex-shrink-0" />
+      ) : (
+        <div
+          className={[
+            'w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-sm',
+            iconIsText ? 'text-[10px] font-medium text-foreground/50' : 'text-[11px]',
+          ].join(' ')}
+          style={{ background: iconBg }}
+        >
+          {displayIcon}
+        </div>
+      )}
+
+      {/* Description + meta */}
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-medium text-foreground truncate leading-snug">
+          {tx.description}
+          {isRefund && (
+            <span className="ml-1.5 align-middle rounded-sm bg-green-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-green-600">
+              İade
+            </span>
+          )}
+        </div>
+        {hasSubline && (
+          <div className="text-[11px] text-muted-foreground/60 truncate leading-snug">
+            {metaItems.map((item, i) => (
+              <span key={i}>
+                {i > 0 && <span className="opacity-40"> · </span>}
+                {item.href ? (
+                  <Link
+                    href={item.href}
+                    onClick={e => e.stopPropagation()}
+                    className="hover:text-foreground transition-colors"
+                  >
+                    {item.text}
+                  </Link>
+                ) : item.text}
+              </span>
+            ))}
+          </div>
+        )}
+        <TagBadges tags={tx.tags} className="mt-1" />
+      </div>
+
+      {/* Amount */}
+      <span className={[
+        'text-[13px] font-medium tabular-nums flex-shrink-0',
+        isIncome || isRefund ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground',
+      ].join(' ')}>
+        {isIncome || isRefund ? '+' : isXfer ? '' : '−'}{formatCurrency(Math.abs(tx.amount), tx.currency)}
+      </span>
+
+      {/* Actions — visible only on row hover */}
+      <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        {tx.type === 'expense' && tx.amount > 0 && (
+          <button
+            onClick={() => openModal('refund-transaction', { id: tx.id })}
+            className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-colors"
+            title="İade İşle"
+          >
+            <RefundIcon size={12} />
+          </button>
+        )}
+        <button
+          onClick={() => openModal('edit-transaction', { id: tx.id })}
+          className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          title="Düzenle"
+        >
+          <PencilIcon size={12} />
+        </button>
+        <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} compact />
+      </div>
+    </div>
+  )
+})
+
 interface Props {
   transactions: Transaction[]
   layout?: 'cards' | 'table'
@@ -108,7 +423,6 @@ export function TransactionList({
   showAccount = true,
   emptyTitle = 'İşlem bulunamadı',
   emptyDescription = 'Filtrelerinizi değiştirin veya yeni işlem ekleyin.',
-  onPersonClick,
   primaryAccountId,
 }: Props) {
   const categories = useCategoryStore(s => s.categories)
@@ -118,264 +432,159 @@ export function TransactionList({
   const removeTx   = useTransactionStore(s => s.remove)
   const allTxs     = useTransactionStore(s => s.transactions)
 
+  // O(1) lookup maps — replace per-row categories/accounts/people .find() scans.
+  const catById    = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
+  const accById    = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts])
+  const personById = useMemo(() => new Map(people.map(p => [p.id, p])), [people])
+
   const grouped     = useMemo(() => groupByDate(transactions), [transactions])
   const sortedDates = useMemo(() => [...grouped.keys()].sort((a, b) => b.localeCompare(a)), [grouped])
 
-  const runningBalances = useMemo(() => {
-    if (layout !== 'table') return new Map<string, number>()
-    const map = new Map<string, number>()
+  // Tek düz satır listesi: her tarih için bir başlık + o güne ait sıralı işlemler.
+  // sortDay burada bir kez çalışır (eskiden her render'da çalışıyordu).
+  const rows = useMemo<Row[]>(() => {
+    const out: Row[] = []
+    sortedDates.forEach((date, dateIdx) => {
+      out.push({ kind: 'header', date, dateIdx })
+      const day = sortDay(grouped.get(date)!)
+      day.forEach((tx, i) => {
+        out.push({ kind: 'tx', tx, isFirst: i === 0, isLast: i === day.length - 1 })
+      })
+    })
+    return out
+  }, [sortedDates, grouped])
 
-    // Which accounts need a running balance?
-    // If a primaryAccountId is given (account detail page) we only track that one account,
-    // which lets us correctly show the balance for incoming transfers too.
-    const neededIds: string[] = primaryAccountId
+  // Güncel bakiye (yalnızca table layout). Eski kod her hesap için tüm defteri
+  // filter+sort ediyordu → O(hesap × N log N). Artık defteri BİR kez kronolojik
+  // sıralayıp tek geçişte süpürüyoruz ve işlem-sonrası bakiyeyi tx.id başına
+  // kaydediyoruz. Semantik korunur: bir işleme birden çok izlenen hesap
+  // dokunuyorsa neededIds sırasında EN SON gelen hesabın bakiyesi yazılır.
+  const runningBalances = useMemo(() => {
+    const map = new Map<string, number>()
+    if (layout !== 'table') return map
+
+    const neededIds = primaryAccountId
       ? [primaryAccountId]
       : [...new Set(transactions.map(t => t.accountId))]
 
-    for (const accountId of neededIds) {
-      const account = accounts.find(a => a.id === accountId)
-      if (!account) continue
+    const order    = new Map<string, number>()          // hesap → neededIds sırası
+    const balances = new Map<string, number>()          // hesap → minor birim (kuruş)
+    neededIds.forEach((id, i) => {
+      const account = accById.get(id)
+      if (!account) return
+      order.set(id, i)
+      balances.set(id, toMinor(account.initialBalance))
+    })
+    if (balances.size === 0) return map
 
-      const accountTxs = allTxs
-        .filter(t => t.accountId === accountId || t.toAccountId === accountId)
-        .sort((a, b) =>
-          (a.date + (a.createdAt ?? '')).localeCompare(b.date + (b.createdAt ?? '')),
-        )
+    const sorted = [...allTxs].sort((a, b) =>
+      (a.date + (a.createdAt ?? '')).localeCompare(b.date + (b.createdAt ?? '')),
+    )
 
-      let balance = account.initialBalance
-      for (const tx of accountTxs) {
-        if (tx.type === 'income'   && tx.accountId === accountId) balance += tx.amount
-        if (tx.type === 'expense'  && tx.accountId === accountId) balance -= tx.amount
-        if (tx.type === 'transfer') {
-          if (tx.accountId   === accountId) balance -= tx.amount
-          if (tx.toAccountId === accountId) balance += tx.amount
+    for (const tx of sorted) {
+      let winner: string | undefined
+      let winnerRank = -1
+      const consider = (id: string) => {
+        const rank = order.get(id)
+        if (rank !== undefined && rank > winnerRank) { winnerRank = rank; winner = id }
+      }
+
+      if (tx.type === 'income' && balances.has(tx.accountId)) {
+        balances.set(tx.accountId, balances.get(tx.accountId)! + toMinor(tx.amount))
+        consider(tx.accountId)
+      } else if (tx.type === 'expense' && balances.has(tx.accountId)) {
+        balances.set(tx.accountId, balances.get(tx.accountId)! - toMinor(tx.amount))
+        consider(tx.accountId)
+      } else if (tx.type === 'transfer') {
+        if (balances.has(tx.accountId)) {
+          balances.set(tx.accountId, balances.get(tx.accountId)! - toMinor(tx.amount))
+          consider(tx.accountId)
         }
-        // Store balance entry for any transaction that involves this account
-        if (tx.accountId === accountId || tx.toAccountId === accountId) {
-          map.set(tx.id, balance)
+        if (tx.toAccountId && balances.has(tx.toAccountId)) {
+          balances.set(tx.toAccountId, balances.get(tx.toAccountId)! + toMinor(tx.amount))
+          consider(tx.toAccountId)
         }
       }
+
+      if (winner !== undefined) map.set(tx.id, toMajor(balances.get(winner)!))
     }
     return map
-  }, [layout, primaryAccountId, transactions, allTxs, accounts])
+  }, [layout, primaryAccountId, transactions, allTxs, accById])
+
+  const parentRef = useRef<HTMLDivElement>(null)
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: i => (rows[i].kind === 'header' ? 36 : layout === 'table' ? 64 : 60),
+    overscan: 12,
+    getItemKey: i => {
+      const r = rows[i]
+      return r.kind === 'header' ? `h:${r.date}` : `t:${r.tx.id}`
+    },
+  })
 
   if (sortedDates.length === 0) {
     return <EmptyState icon="↕" title={emptyTitle} description={emptyDescription} />
   }
 
-  function sortDay(dayTxs: Transaction[]) {
-    const investRank = (tx: Transaction) => {
-      if (!tx.icon) return 10
-      if (tx.description.includes('Alım')) return 0
-      if (tx.description.includes('Kâr') || tx.description.includes('Zarar')) return 6
-      return 5
-    }
-    return [...dayTxs].sort((a, b) => {
-      const ca = a.createdAt ?? '', cb = b.createdAt ?? ''
-      if (ca !== cb) return cb.localeCompare(ca)
-      const ra = investRank(a), rb = investRank(b)
-      if (ra !== rb) return ra - rb
-      return (a.installIndex ?? 0) - (b.installIndex ?? 0)
-    })
-  }
+  const virtualItems = virtualizer.getVirtualItems()
 
   // ── TABLE layout ─────────────────────────────────────────────────────────
   if (layout === 'table') {
     return (
-      <div style={{ minWidth: TABLE_MIN_W }}>
+      <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto">
+        <div style={{ minWidth: TABLE_MIN_W }}>
 
-        {/* Sticky column headers */}
-        <div className="sticky top-0 z-10 bg-background border-b border-border">
-          <div className="mx-3 grid" style={{ gridTemplateColumns: TABLE_COLS }}>
-            {['Açıklama', 'Hesap', 'Alıcı', 'Aile Üyesi', 'Kategori', 'Miktar', 'Güncel Bakiye', ''].map((h, i) => (
-              <div
-                key={i}
-                className={[
-                  'py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60 select-none',
-                  i === 0 ? 'px-3' : i === 5 || i === 6 ? 'px-3 text-right' : 'px-2',
-                ].join(' ')}
-              >
-                {h}
-              </div>
-            ))}
+          {/* Sticky column headers */}
+          <div className="sticky top-0 z-10 bg-background border-b border-border">
+            <div className="mx-3 grid" style={{ gridTemplateColumns: TABLE_COLS }}>
+              {['Açıklama', 'Hesap', 'Alıcı', 'Aile Üyesi', 'Kategori', 'Miktar', 'Güncel Bakiye', ''].map((h, i) => (
+                <div
+                  key={i}
+                  className={[
+                    'py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60 select-none',
+                    i === 0 ? 'px-3' : i === 5 || i === 6 ? 'px-3 text-right' : 'px-2',
+                  ].join(' ')}
+                >
+                  {h}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Date group sections */}
-        <div className="flex flex-col px-4 py-2">
-          {sortedDates.map((date, dateIdx) => {
-            const sorted = sortDay(grouped.get(date)!)
-            return (
-              <div key={date}>
-
-                {/* Date separator */}
-                <div className={`flex items-center gap-3 py-1 ${dateIdx > 0 ? 'mt-3' : 'mt-1'}`}>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap select-none">
-                    {formatDate(date, 'd MMM')} · {formatDate(date, 'EEEE')}
-                  </span>
-                  <div className="flex-1 h-px bg-border/60" />
-                </div>
-
-                {/* Rows */}
-                <div className="rounded-lg overflow-hidden border border-border/60 bg-card">
-                  {sorted.map((tx, txIdx) => {
-                    const cat         = categories.find(c => c.id === tx.categoryId)
-                    const account     = accounts.find(a => a.id === tx.accountId)
-                    const recipient   = tx.recipientId    ? people.find(p => p.id === tx.recipientId)    : null
-                    const family      = tx.familyMemberId ? people.find(p => p.id === tx.familyMemberId) : null
-                    const isIncome    = tx.type === 'income'
-                    const isXfer      = tx.type === 'transfer'
-                    const isRefund    = tx.type === 'expense' && tx.amount < 0
-                    const iconBg      = cat?.color ? `${cat.color}18` : isXfer ? '#00E5FF18' : 'rgba(255,255,255,0.04)'
-                    const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
-                    const iconIsText  = !cat?.icon && !!tx.icon
-                    const balanceAfter = runningBalances.get(tx.id)
-                    return (
-                      <div
-                        key={tx.id}
-                        className={[
-                          'group grid transition-colors hover:bg-accent/40',
-                          txIdx > 0 ? 'border-t border-border/60' : '',
-                        ].join(' ')}
-                        style={{ gridTemplateColumns: TABLE_COLS }}
-                      >
-                        {/* Açıklama */}
-                        <div className="px-3 py-2 flex items-center gap-2 min-w-0 overflow-hidden">
-                          {recipient ? (
-                            <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
-                          ) : cat ? (
-                            <CategoryIcon icon={cat.icon} color={cat.color} size={9} className="flex-shrink-0" />
-                          ) : (
-                            <div
-                              className={[
-                                'w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-sm',
-                                iconIsText ? 'text-[10px] font-medium text-foreground/50' : 'text-[11px]',
-                              ].join(' ')}
-                              style={{ background: iconBg }}
-                            >
-                              {displayIcon}
-                            </div>
-                          )}
-                          <div className="min-w-0 overflow-hidden">
-                            <div className="text-xs font-medium text-foreground truncate leading-none">
-                              {tx.description}
-                              {tx.isInstallment && (
-                                <span className="ml-1 font-normal text-orange-500/80">
-                                  ({tx.installIndex}/{tx.installTotal})
-                                </span>
-                              )}
-                              {isRefund && (
-                                <span className="ml-1.5 align-middle rounded-sm bg-green-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-green-600">
-                                  İade
-                                </span>
-                              )}
-                            </div>
-                            <TagBadges tags={tx.tags} className="mt-1" />
-                          </div>
-                        </div>
-
-                        {/* Hesap */}
-                        <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
-                          {account ? (
-                            <Link href={`/accounts/${tx.accountId}`} className="flex items-center gap-1.5 min-w-0 group/link">
-                              <AccountAvatar account={account} size="xs" className="flex-shrink-0" />
-                              <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{account.name}</span>
-                            </Link>
-                          ) : null}
-                        </div>
-
-                        {/* Alıcı */}
-                        <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
-                          {recipient ? (
-                            <Link href={`/alicilar/${tx.recipientId}`} className="flex items-center gap-1.5 min-w-0 group/link">
-                              <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
-                              <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">
-                                {recipient.name}
-                              </span>
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-muted-foreground/25">—</span>
-                          )}
-                        </div>
-
-                        {/* Aile Üyesi */}
-                        <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
-                          {family ? (
-                            <Link href={`/aile-uyeleri/${tx.familyMemberId}`} className="flex items-center gap-1.5 min-w-0 group/link">
-                              <PersonAvatar person={family} size="xs" className="flex-shrink-0" />
-                              <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">
-                                {family.name}
-                              </span>
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-muted-foreground/25">—</span>
-                          )}
-                        </div>
-
-                        {/* Kategori */}
-                        <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
-                          {cat ? (
-                            <Link href={`/categories/${tx.categoryId}`} className="flex items-center gap-1.5 min-w-0 group/link">
-                              <CategoryIcon icon={cat.icon} color={cat.color} size={10} className="flex-shrink-0" />
-                              <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{cat.name}</span>
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-muted-foreground/25">—</span>
-                          )}
-                        </div>
-
-                        {/* Miktar */}
-                        <div className="px-3 py-2 flex items-center justify-end">
-                          <span className={[
-                            'text-xs font-semibold tabular-nums',
-                            isIncome || isRefund ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground',
-                          ].join(' ')}>
-                            {isIncome || isRefund ? '+' : isXfer ? '' : '−'}
-                            {formatCurrency(Math.abs(tx.amount), tx.currency)}
-                          </span>
-                        </div>
-
-                        {/* Güncel Bakiye */}
-                        <div className="px-3 py-2 flex items-center justify-end">
-                          {balanceAfter !== undefined ? (
-                            <span className={[
-                              'text-xs tabular-nums',
-                              balanceAfter < 0 ? 'text-destructive' : 'text-muted-foreground/60',
-                            ].join(' ')}>
-                              {formatCurrency(balanceAfter, account?.currency)}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground/25">—</span>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="px-2 py-2 flex items-center justify-end gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {tx.type === 'expense' && tx.amount > 0 && (
-                            <button
-                              onClick={() => openModal('refund-transaction', { id: tx.id })}
-                              className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-colors"
-                              title="İade İşle"
-                            >
-                              <RefundIcon size={12} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => openModal('edit-transaction', { id: tx.id })}
-                            className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                            title="Düzenle"
-                          >
-                            <PencilIcon size={12} />
-                          </button>
-                          <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} compact />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
+          {/* Virtualized rows */}
+          <div className="px-4 py-2">
+            <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+              {virtualItems.map(vi => {
+                const row = rows[vi.index]
+                return (
+                  <div
+                    key={vi.key}
+                    data-index={vi.index}
+                    ref={virtualizer.measureElement}
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
+                  >
+                    {row.kind === 'header' ? (
+                      <DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-3' : 'pt-1'} />
+                    ) : (
+                      <TableTxRow
+                        tx={row.tx}
+                        cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
+                        account={accById.get(row.tx.accountId)}
+                        recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
+                        family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
+                        balanceAfter={runningBalances.get(row.tx.id)}
+                        isFirst={row.isFirst}
+                        isLast={row.isLast}
+                        openModal={openModal}
+                        removeTx={removeTx}
+                      />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -383,131 +592,37 @@ export function TransactionList({
 
   // ── CARDS layout (compact minimal) ────────────────────────────────────────
   return (
-    <div className="flex flex-col px-4 py-2">
-      {sortedDates.map((date, dateIdx) => {
-        const sorted = sortDay(grouped.get(date)!)
-
-        return (
-          <div key={date}>
-
-            {/* Date separator */}
-            <div className={`flex items-center gap-3 py-1 ${dateIdx > 0 ? 'mt-4' : 'mt-1'}`}>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap select-none">
-                {formatDate(date, 'd MMM')} · {formatDate(date, 'EEEE')}
-              </span>
-              <div className="flex-1 h-px bg-border/60" />
-            </div>
-
-            {/* Transaction rows */}
-            {sorted.map(tx => {
-              const cat       = categories.find(c => c.id === tx.categoryId)
-              const account   = accounts.find(a => a.id === tx.accountId)
-              const recipient = tx.recipientId    ? people.find(p => p.id === tx.recipientId)    : null
-              const family    = tx.familyMemberId ? people.find(p => p.id === tx.familyMemberId) : null
-              const isIncome  = tx.type === 'income'
-              const isXfer    = tx.type === 'transfer'
-              const isRefund  = tx.type === 'expense' && tx.amount < 0
-              const iconBg    = cat?.color ? `${cat.color}18` : isXfer ? '#00E5FF15' : 'rgba(255,255,255,0.04)'
-              const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
-              const iconIsText  = !cat?.icon && !!tx.icon
-
-              // Build meta items — each can have an href for navigation
-              const metaItems: MetaItem[] = []
-              if (showAccount && account) metaItems.push({ text: account.name, href: `/accounts/${tx.accountId}` })
-              if (cat) metaItems.push({ text: cat.name, href: `/categories/${tx.categoryId}` })
-              if (tx.isInstallment) metaItems.push({ text: `${tx.installIndex}/${tx.installTotal}` })
-              if (recipient) metaItems.push({ text: recipient.name, href: `/alicilar/${tx.recipientId}` })
-              if (family)    metaItems.push({ text: family.name,    href: `/aile-uyeleri/${tx.familyMemberId}` })
-
-              const hasSubline = metaItems.length > 0
-
-              return (
-                <div
-                  key={tx.id}
-                  className="group flex items-center gap-2.5 px-2 py-[5px] rounded-lg hover:bg-accent/40 transition-colors"
-                >
-                  {/* Icon / Avatar */}
-                  {recipient ? (
-                    <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
-                  ) : cat ? (
-                    <CategoryIcon icon={cat.icon} color={cat.color} size={9} className="flex-shrink-0" />
-                  ) : (
-                    <div
-                      className={[
-                        'w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-sm',
-                        iconIsText ? 'text-[10px] font-medium text-foreground/50' : 'text-[11px]',
-                      ].join(' ')}
-                      style={{ background: iconBg }}
-                    >
-                      {displayIcon}
-                    </div>
-                  )}
-
-                  {/* Description + meta */}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-medium text-foreground truncate leading-snug">
-                      {tx.description}
-                      {isRefund && (
-                        <span className="ml-1.5 align-middle rounded-sm bg-green-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-green-600">
-                          İade
-                        </span>
-                      )}
-                    </div>
-                    {hasSubline && (
-                      <div className="text-[11px] text-muted-foreground/60 truncate leading-snug">
-                        {metaItems.map((item, i) => (
-                          <span key={i}>
-                            {i > 0 && <span className="opacity-40"> · </span>}
-                            {item.href ? (
-                              <Link
-                                href={item.href}
-                                onClick={e => e.stopPropagation()}
-                                className="hover:text-foreground transition-colors"
-                              >
-                                {item.text}
-                              </Link>
-                            ) : item.text}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <TagBadges tags={tx.tags} className="mt-1" />
-                  </div>
-
-                  {/* Amount */}
-                  <span className={[
-                    'text-[13px] font-medium tabular-nums flex-shrink-0',
-                    isIncome || isRefund ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground',
-                  ].join(' ')}>
-                    {isIncome || isRefund ? '+' : isXfer ? '' : '−'}{formatCurrency(Math.abs(tx.amount), tx.currency)}
-                  </span>
-
-                  {/* Actions — visible only on row hover */}
-                  <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {tx.type === 'expense' && tx.amount > 0 && (
-                      <button
-                        onClick={() => openModal('refund-transaction', { id: tx.id })}
-                        className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-colors"
-                        title="İade İşle"
-                      >
-                        <RefundIcon size={12} />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => openModal('edit-transaction', { id: tx.id })}
-                      className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                      title="Düzenle"
-                    >
-                      <PencilIcon size={12} />
-                    </button>
-                    <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} compact />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )
-      })}
+    <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-y-auto">
+      <div className="px-4 py-2">
+        <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+          {virtualItems.map(vi => {
+            const row = rows[vi.index]
+            return (
+              <div
+                key={vi.key}
+                data-index={vi.index}
+                ref={virtualizer.measureElement}
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
+              >
+                {row.kind === 'header' ? (
+                  <DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-4' : 'pt-1'} />
+                ) : (
+                  <CardTxRow
+                    tx={row.tx}
+                    cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
+                    account={accById.get(row.tx.accountId)}
+                    recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
+                    family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
+                    showAccount={showAccount}
+                    openModal={openModal}
+                    removeTx={removeTx}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

@@ -85,9 +85,15 @@ function emptyForm() {
 }
 
 export default function DebtsPage() {
-  const { getActive, add, update, settle, remove } = useDebtStore()
+  const getActive    = useDebtStore(s => s.getActive)
+  const add          = useDebtStore(s => s.add)
+  const update       = useDebtStore(s => s.update)
+  const settle       = useDebtStore(s => s.settle)
+  const remove       = useDebtStore(s => s.remove)
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
-  const debts        = getActive()
+  // getActive() derives from debt state → subscribe reactively so the list
+  // re-renders on add/update/settle/remove (a stable action ref alone would not).
+  const debts        = useDebtStore(useShallow(s => s.getActive()))
   const transactions = useTransactionStore(useShallow(s => s.transactions))
   const categories   = useCategoryStore(s => s.categories)
   const openModal    = useUIStore(s => s.openModal)

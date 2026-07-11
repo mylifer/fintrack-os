@@ -147,12 +147,14 @@ export default function AccountsPage() {
         )}
       </div>
 
-      <AccountFormModal
-        key={editingAccount?.id ?? 'new'}
-        open={showForm}
-        account={editingAccount}
-        onClose={() => { setShowForm(false); setEditingAccount(undefined) }}
-      />
+      {showForm && (
+        <AccountFormModal
+          key={editingAccount?.id ?? 'new'}
+          open
+          account={editingAccount}
+          onClose={() => { setShowForm(false); setEditingAccount(undefined) }}
+        />
+      )}
     </>
   )
 }

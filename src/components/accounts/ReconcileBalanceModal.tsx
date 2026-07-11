@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useUIStore, useAccountStore, useTransactionStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
@@ -24,7 +24,9 @@ import { X } from 'lucide-react'
  * analytic can filter it out — it exists strictly to correct the ledger.
  */
 export function ReconcileBalanceModal() {
-  const { modal, modalPayload, closeModal } = useUIStore()
+  const modal        = useUIStore(s => s.modal)
+  const modalPayload = useUIStore(s => s.modalPayload)
+  const closeModal   = useUIStore(s => s.closeModal)
   const accounts = useAccountStore(s => s.accounts)
   const addTx    = useTransactionStore(s => s.add)
 
@@ -35,14 +37,11 @@ export function ReconcileBalanceModal() {
 
   const isCreditCard = account?.type === 'credit_card'
 
+  // Fresh instance per open (keyed remount in layout) → seed state directly,
+  // no reset-on-open effect needed.
   const [actualStr, setActualStr] = useState('')
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState('')
-
-  // Reset whenever the dialog (re)opens for a (possibly different) account.
-  useEffect(() => {
-    if (open) { setActualStr(''); setError(''); setLoading(false) }
-  }, [open, modalPayload?.id])
 
   // App-calculated balance in the app's signed convention (credit-card debt is
   // negative). Credit-card input is entered as a positive debt, mirroring the

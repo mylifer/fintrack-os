@@ -50,8 +50,14 @@ function fmtQty(qty: number, unit: string) {
 /* ── Page ───────────────────────────────────────────────────────── */
 
 export default function InvestmentsPage() {
-  const { load, transactions, prices, pricesLoading, pricesError, fetchPrices, getHoldings, removeTransaction } =
-    useInvestmentStore()
+  const load              = useInvestmentStore(s => s.load)
+  const transactions      = useInvestmentStore(s => s.transactions)
+  const prices            = useInvestmentStore(s => s.prices)
+  const pricesLoading     = useInvestmentStore(s => s.pricesLoading)
+  const pricesError       = useInvestmentStore(s => s.pricesError)
+  const fetchPrices       = useInvestmentStore(s => s.fetchPrices)
+  const getHoldings       = useInvestmentStore(s => s.getHoldings)
+  const removeTransaction = useInvestmentStore(s => s.removeTransaction)
   const accounts = useAccountStore(useShallow(s => s.accounts))
 
   const [modalOpen,    setModalOpen]    = useState(false)

@@ -96,9 +96,12 @@ export function Sidebar() {
     window.location.assign('/login')
   }
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
-  const investValue    = useInvestmentStore(s => s.getPortfolioValue())
   const prices         = useInvestmentStore(s => s.prices)
   const investTxs      = useInvestmentStore(s => s.transactions)
+  const investValue    = useMemo(
+    () => prices ? computeHoldings(investTxs, prices).reduce((s, h) => s + h.currentValue, 0) : 0,
+    [investTxs, prices],
+  )
   const transactions   = useTransactionStore(useShallow(s => s.transactions))
   const getDue         = useRecurringStore(s => s.getDue)
   const dueCount       = getDue(today()).length

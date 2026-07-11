@@ -126,7 +126,8 @@ function BudgetCard({
 export default function BudgetsPage() {
   const transactions  = useTransactionStore(s => s.transactions)
   const categories    = useCategoryStore(useShallow(s => s.getByScope('expense')))
-  const { selectedPeriod, setPeriod } = useUIStore()
+  const selectedPeriod = useUIStore(s => s.selectedPeriod)
+  const setPeriod      = useUIStore(s => s.setPeriod)
   const { budgets: rawBudgets, add, update, remove } = useBudgetStore(
     useShallow(s => ({ budgets: s.budgets, add: s.add, update: s.update, remove: s.remove }))
   )

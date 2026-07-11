@@ -30,7 +30,10 @@ interface Props {
 }
 
 export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: Props) {
-  const { addTransaction, updateTransaction, prices, getHoldings } = useInvestmentStore()
+  const addTransaction    = useInvestmentStore(s => s.addTransaction)
+  const updateTransaction = useInvestmentStore(s => s.updateTransaction)
+  const prices            = useInvestmentStore(s => s.prices)
+  const getHoldings       = useInvestmentStore(s => s.getHoldings)
   const accounts = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
 
   const isEdit = !!editingTx

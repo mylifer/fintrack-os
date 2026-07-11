@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useUIStore, useTransactionStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
@@ -28,7 +28,9 @@ type RefundMode = 'full' | 'partial'
  * refund against the original spend without inflating income or gross expense.
  */
 export function RefundModal() {
-  const { modal, modalPayload, closeModal } = useUIStore()
+  const modal        = useUIStore(s => s.modal)
+  const modalPayload = useUIStore(s => s.modalPayload)
+  const closeModal   = useUIStore(s => s.closeModal)
   const transactions = useTransactionStore(s => s.transactions)
   const addTx        = useTransactionStore(s => s.add)
 
@@ -37,16 +39,13 @@ export function RefundModal() {
     ? transactions.find(t => t.id === modalPayload.id)
     : undefined
 
+  // Fresh instance per open (keyed remount in layout) → seed state directly,
+  // no reset-on-open effect needed.
   const [mode, setMode]         = useState<RefundMode>('full')
   const [amountStr, setAmountStr] = useState('')
   const [dateStr, setDateStr]   = useState(today())
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
-
-  // Reset whenever the dialog (re)opens.
-  useEffect(() => {
-    if (open) { setMode('full'); setAmountStr(''); setDateStr(today()); setError(''); setLoading(false) }
-  }, [open, modalPayload?.id])
 
   const originalAmount = original ? Math.abs(original.amount) : 0
 

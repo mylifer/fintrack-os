@@ -78,7 +78,14 @@ type FormState = ReturnType<typeof emptyForm>
 /* ── Page ───────────────────────────────────────────────────────────── */
 
 export default function RecurringPage() {
-  const { recurring, add, update, remove, toggleActive, getDue, markGenerated, skip } = useRecurringStore()
+  const recurring     = useRecurringStore(s => s.recurring)
+  const add           = useRecurringStore(s => s.add)
+  const update        = useRecurringStore(s => s.update)
+  const remove        = useRecurringStore(s => s.remove)
+  const toggleActive  = useRecurringStore(s => s.toggleActive)
+  const getDue        = useRecurringStore(s => s.getDue)
+  const markGenerated = useRecurringStore(s => s.markGenerated)
+  const skip          = useRecurringStore(s => s.skip)
   const addTransaction  = useTransactionStore(s => s.add)
   const accounts        = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories      = useCategoryStore(s => s.categories)

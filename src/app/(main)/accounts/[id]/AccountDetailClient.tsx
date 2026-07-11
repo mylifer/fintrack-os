@@ -216,13 +216,15 @@ export default function AccountDetailClient({ id }: { id: string }) {
         />
       </div>
 
-      <AccountFormModal
-        key={editingAccount?.id ?? 'none'}
-        open={!!editingAccount}
-        account={editingAccount}
-        onClose={() => setEditingAccount(undefined)}
-        onDeleted={() => router.push('/accounts')}
-      />
+      {editingAccount && (
+        <AccountFormModal
+          key={editingAccount.id}
+          open
+          account={editingAccount}
+          onClose={() => setEditingAccount(undefined)}
+          onDeleted={() => router.push('/accounts')}
+        />
+      )}
     </>
   )
 }

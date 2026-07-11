@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useMemo } from 'react'
 import { useTransactionStore, useUIStore } from '@/store'
 import { calcMonthlyFlow } from '@/lib/utils/calculations'
 import { lastNMonths } from '@/lib/utils/date'
@@ -25,14 +26,16 @@ export function CashflowChart() {
   const transactions   = useTransactionStore(s => s.transactions)
   const selectedPeriod = useUIStore(s => s.selectedPeriod)
 
-  const months = lastNMonths(6)
-  const data: DataPoint[] = months.map(my => {
-    const { income, expense } = calcMonthlyFlow(transactions, my)
-    return {
-      label: new Date(my.year, my.month - 1).toLocaleDateString('tr-TR', { month: 'short' }),
-      income, expense, my,
-    }
-  })
+  const data = useMemo<DataPoint[]>(() => {
+    const months = lastNMonths(6)
+    return months.map(my => {
+      const { income, expense } = calcMonthlyFlow(transactions, my)
+      return {
+        label: new Date(my.year, my.month - 1).toLocaleDateString('tr-TR', { month: 'short' }),
+        income, expense, my,
+      }
+    })
+  }, [transactions])
 
   const currentData = data.find(d => d.my.month === selectedPeriod.month && d.my.year === selectedPeriod.year)
   const net = currentData ? currentData.income - currentData.expense : 0

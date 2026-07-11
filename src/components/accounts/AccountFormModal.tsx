@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/button'
 import { Input }  from '@/components/ui/Input'
@@ -39,52 +39,43 @@ const COLORS = ['#111110','#1A5CA3','#1E7A3E','#B83232','#D4A853','#7B3F9B','#C4
 const CONFIRM_WORD = 'Onaylıyorum'
 
 export function AccountFormModal({ open, onClose, account, onDeleted }: AccountFormModalProps) {
-  const { add, update, remove, recomputeBalances } = useAccountStore()
+  const add               = useAccountStore(s => s.add)
+  const update            = useAccountStore(s => s.update)
+  const remove            = useAccountStore(s => s.remove)
+  const recomputeBalances = useAccountStore(s => s.recomputeBalances)
 
   // Kredi kartı borcu pozitif girilir (DB'de negatif tutulur); diğer hesap
   // türlerinde işaret korunur — abs almak negatif açılış bakiyesini bozar
   const initialBalanceDisplay = (a?: Account) =>
     a ? String(a.type === 'credit_card' ? Math.abs(a.initialBalance) : a.initialBalance) : ''
 
-  const [name, setName]               = useState(account?.name ?? '')
-  const [type, setType]               = useState<AccountType>(account?.type ?? 'checking')
-  const [currency, setCurrency]       = useState<CurrencyCode>(account?.currency ?? 'TRY')
-  const [initialBalStr, setInitialBalStr] = useState(initialBalanceDisplay(account))
-  const [color, setColor]             = useState(account?.color ?? '#1A5CA3')
-  const [limitStr, setLimitStr]     = useState(account?.creditLimit ? String(account.creditLimit) : '')
-  const [stmtDay, setStmtDay]       = useState(account?.statementDay ?? 1)
-  const [icon, setIcon]             = useState(account?.icon ?? '')
+  // Fresh instance per open (mount is keyed + conditional on `open` at both call
+  // sites) → lazy initializers seed straight from the `account` prop; no
+  // reset-on-open effect needed.
+  const [name, setName]               = useState(() => account?.name ?? '')
+  const [type, setType]               = useState<AccountType>(() => account?.type ?? 'checking')
+  const [currency, setCurrency]       = useState<CurrencyCode>(() => account?.currency ?? 'TRY')
+  const [initialBalStr, setInitialBalStr] = useState(() => initialBalanceDisplay(account))
+  const [color, setColor]             = useState(() => account?.color ?? '#1A5CA3')
+  const [limitStr, setLimitStr]     = useState(() => account?.creditLimit ? String(account.creditLimit) : '')
+  const [stmtDay, setStmtDay]       = useState(() => account?.statementDay ?? 1)
+  const [icon, setIcon]             = useState(() => account?.icon ?? '')
   const [iconUrl, setIconUrl]       = useState('')
   const [loading, setLoading]       = useState(false)
   const [errors, setErrors]         = useState<Record<string, string>>({})
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [confirmText, setConfirmText]         = useState('')
 
-  // Modal kapatılıp yeniden açıldığında (aynı key ile) önceki, kaydedilmemiş
-  // form değerleri kalıyordu — açılışta account'tan yeniden doldur
-  useEffect(() => {
-    if (!open) return
-    setName(account?.name ?? '')
-    setType(account?.type ?? 'checking')
-    setCurrency(account?.currency ?? 'TRY')
-    setInitialBalStr(initialBalanceDisplay(account))
-    setColor(account?.color ?? '#1A5CA3')
-    setLimitStr(account?.creditLimit ? String(account.creditLimit) : '')
-    setStmtDay(account?.statementDay ?? 1)
-    setIcon(account?.icon ?? '')
-    setIconUrl('')
-    setErrors({})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, account])
-
   const isCreditCard = type === 'credit_card'
   const canDelete    = confirmText === CONFIRM_WORD
 
-  const txCount = account
-    ? useTransactionStore.getState().transactions.filter(
-        t => t.accountId === account.id || t.toAccountId === account.id,
-      ).length
-    : 0
+  const txs            = useTransactionStore(s => s.transactions)
+  const txCount = useMemo(
+    () => account
+      ? txs.filter(t => t.accountId === account.id || t.toAccountId === account.id).length
+      : 0,
+    [txs, account],
+  )
 
   function applyUrl() {
     const url = iconUrl.trim()
@@ -95,12 +86,14 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = ev => setIcon(ev.target?.result as string ?? '')
+    reader.onload = ev => {
+      const result = ev.target?.result
+      setIcon(typeof result === 'string' ? result : '')
+    }
     reader.readAsDataURL(file)
     e.target.value = ''
   }
 
-  const txs            = useTransactionStore(s => s.transactions)
   const txEffect       = account ? computeTransactionEffect(account, txs) : 0
   const initialBalNum  = isCreditCard
     ? -Math.abs(parseCurrencyInput(initialBalStr))   // borç her zaman negatif tutulur
