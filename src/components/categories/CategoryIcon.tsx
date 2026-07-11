@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Icon } from '@iconify/react'
+import { NOTO_TO_TABLER } from '@/lib/legacy-icon-map'
 import {
   IconWallet, IconCreditCard, IconCash, IconTrendingUp, IconBuildingBank,
   IconBriefcase, IconGift, IconReceipt, IconCoin, IconScale, IconPackage,
@@ -191,25 +191,36 @@ export function CategoryIcon({ icon, color = DEFAULT_COLOR, size = 16, className
   const containerSize = size + 10
   const radius = Math.round(containerSize * 0.28)
 
+  // Legacy Iconify identifiers (e.g. "noto:money-bag") are resolved OFFLINE to a
+  // bundled Tabler icon via the migration map — we NEVER hand a ':' string to a
+  // network icon renderer. A category's `icon` is user-controllable (settable via
+  // backup import), so an arbitrary "set:name" string must not be able to drive a
+  // remote fetch to api.iconify.design. Known legacy names map to a bundled icon;
+  // anything unknown collapses to the default icon. This keeps all rendering local.
+  const resolvedIcon = icon.includes(':')
+    ? (NOTO_TO_TABLER[icon]?.icon ?? DEFAULT_ICON)
+    : icon
+
   // Check static map first (zero flash)
-  const staticTabler = TABLER_MAP[icon]
+  const staticTabler = TABLER_MAP[resolvedIcon]
 
   // State for dynamically loaded icons not in the static map
   const [dynamicIcon, setDynamicIcon] = useState<TablerIcon | null>(() => staticTabler || null)
 
   useEffect(() => {
-    if (icon in TABLER_MAP || icon.includes(':') || icon in ICON_MAP) return
+    if (resolvedIcon in TABLER_MAP || resolvedIcon in ICON_MAP) return
     // Try from already-loaded cache
-    const cached = resolveTablerIcon(icon)
+    const cached = resolveTablerIcon(resolvedIcon)
     if (cached) { setDynamicIcon(cached); return }
     // Lazy load full Tabler module (cached at module level after first call)
     ensureAllTablerIcons().then(() => {
-      const ic = resolveTablerIcon(icon)
+      const ic = resolveTablerIcon(resolvedIcon)
       if (ic) setDynamicIcon(ic)
     })
-  }, [icon, staticTabler])
+  }, [resolvedIcon])
 
-  const TIcon = dynamicIcon
+  // Prefer the statically-mapped icon (survives prop changes even if state is stale)
+  const TIcon = staticTabler ?? dynamicIcon
 
   if (TIcon) {
     return (
@@ -222,20 +233,8 @@ export function CategoryIcon({ icon, color = DEFAULT_COLOR, size = 16, className
     )
   }
 
-  // Legacy Iconify icon (noto:*, etc.)
-  if (icon.includes(':')) {
-    return (
-      <span
-        className={`inline-flex items-center justify-center flex-shrink-0 ${className}`}
-        style={{ width: containerSize, height: containerSize, borderRadius: radius, background: `${color}22` }}
-      >
-        <Icon icon={icon} width={size} height={size} />
-      </span>
-    )
-  }
-
   // Legacy Lucide icon name
-  const LIcon = ICON_MAP[icon]
+  const LIcon = ICON_MAP[resolvedIcon]
   if (LIcon) {
     return (
       <span

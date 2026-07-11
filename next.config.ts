@@ -1,10 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Baseline security headers for a finance app. Deliberately NO Content-Security
-  // -Policy here: the app ships an inline theme script (layout.tsx) and loads
-  // Supabase / the price API / Vercel speed-insights, so a CSP needs a proper
-  // nonce-based pass to avoid breaking those — tracked as a dedicated follow-up.
+  // Baseline security headers for a finance app. The Content-Security-Policy is
+  // NOT set here: it is per-request and nonce-based, generated in src/proxy.ts
+  // (currently shipped as Content-Security-Policy-Report-Only). COOP is static,
+  // so it lives here alongside the other baseline headers.
   async headers() {
     return [
       {
@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },      // cross-origin tab isolation
         ],
       },
     ]

@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect } from 'react'
+
 export default function Error({
   error,
   reset,
@@ -7,12 +9,17 @@ export default function Error({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  useEffect(() => {
+    // Log the real error for debugging; never surface it to the user.
+    console.error('Application error:', error, error.digest ? `(digest: ${error.digest})` : '')
+  }, [error])
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-8 text-center">
       <div className="text-4xl">⚠️</div>
       <h2 className="text-lg font-semibold text-foreground">Bir şeyler ters gitti</h2>
       <p className="text-sm text-muted-foreground max-w-xs">
-        {error.message || 'Beklenmedik bir hata oluştu.'}
+        Beklenmedik bir hata oluştu. Lütfen tekrar deneyin.
       </p>
       <button
         onClick={reset}

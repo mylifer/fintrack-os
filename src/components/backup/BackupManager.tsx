@@ -39,6 +39,67 @@ const TABLE_LABELS: Record<keyof BackupFile['data'], string> = {
   recurringTransactions:  'Tekrarlayan İşlem',
 }
 
+/* ── Per-record validation (type-confusion hardening) ─────────────
+ *
+ * A backup file is fully user-controllable (it can be hand-crafted or corrupted)
+ * and on import it is bulk-written to Dexie AND pushed to Supabase via an
+ * authoritative cloud-replace. Without per-record checks, a malformed file could
+ * inject rows with wrong primitive types (e.g. `amount` as a string, missing
+ * `id`) straight into local + cloud storage — a type-confusion / integrity risk
+ * that would corrupt every downstream aggregation (balances, budgets, PnL).
+ *
+ * This is deliberately proportionate: a single-user app importing its own file
+ * behind a destructive-action confirmation needs corruption/type-confusion
+ * detection, not a full schema validator. We check, per table, that `id` is a
+ * non-empty string, that money/amount/quantity fields are finite numbers, and
+ * that key date/string fields are strings. Enums, optional fields and referential
+ * integrity are intentionally NOT enforced here.
+ *
+ * Policy: REJECT-ALL. If ANY record fails we throw and abort the whole import
+ * (surfacing the existing error UI). This matches the app's UX — the restore is
+ * an all-or-nothing atomic replace of both Dexie and the cloud, and silently
+ * skipping records would produce a partial restore (missing transactions →
+ * wrong balances), which is worse than refusing a bad file for a finance app.
+ */
+
+const isStr        = (v: unknown): v is string  => typeof v === 'string'
+const isNonEmptyStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0
+const isFiniteNum  = (v: unknown): v is number  => typeof v === 'number' && Number.isFinite(v)
+// Optional numeric: absent/null is fine, but if present it must be a finite number.
+const isOptFiniteNum = (v: unknown): boolean =>
+  v === undefined || v === null || (typeof v === 'number' && Number.isFinite(v))
+
+type RecordGuard = (r: Record<string, unknown>) => boolean
+
+const RECORD_GUARDS: Record<keyof BackupFile['data'], RecordGuard> = {
+  accounts: r =>
+    isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.type) && isStr(r.currency) &&
+    isFiniteNum(r.initialBalance) && isStr(r.color) &&
+    isOptFiniteNum(r.creditLimit),
+  transactions: r =>
+    isNonEmptyStr(r.id) && isStr(r.type) && isFiniteNum(r.amount) &&
+    isOptFiniteNum(r.amountTry) && isStr(r.currency) && isNonEmptyStr(r.date) &&
+    isNonEmptyStr(r.accountId) && isStr(r.description),
+  categories: r =>
+    isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.icon) && isStr(r.color) &&
+    isStr(r.scope) && isFiniteNum(r.sortOrder),
+  budgets: r =>
+    isNonEmptyStr(r.id) && isNonEmptyStr(r.categoryId) && isFiniteNum(r.amount) &&
+    isStr(r.period) && isFiniteNum(r.alertThreshold),
+  debts: r =>
+    isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.type) && isStr(r.direction) &&
+    isFiniteNum(r.totalAmount) && isFiniteNum(r.paidAmount) && isStr(r.startDate),
+  investmentTransactions: r =>
+    isNonEmptyStr(r.id) && isStr(r.type) && isStr(r.asset) &&
+    isFiniteNum(r.quantity) && isFiniteNum(r.pricePerUnit) && isNonEmptyStr(r.date),
+  people: r =>
+    isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.role),
+  recurringTransactions: r =>
+    isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.type) && isFiniteNum(r.amount) &&
+    isStr(r.currency) && isNonEmptyStr(r.accountId) && isStr(r.frequency) &&
+    isNonEmptyStr(r.startDate) && isNonEmptyStr(r.nextDueDate),
+}
+
 /* ── Helpers ─────────────────────────────────────────────────── */
 
 function validateBackup(raw: unknown): BackupFile {
@@ -51,6 +112,29 @@ function validateBackup(raw: unknown): BackupFile {
   b.data.investmentTransactions ??= []
   b.data.people                 ??= []
   b.data.recurringTransactions  ??= []
+
+  // Every remaining table must be an array too (later-version tables may have
+  // been present-but-wrong-typed rather than absent).
+  for (const key of ['investmentTransactions', 'people', 'recurringTransactions'] as const) {
+    if (!Array.isArray(b.data[key])) throw new Error(`"${key}" alanı eksik veya bozuk.`)
+  }
+
+  // Per-record type-confusion guard (reject-all): abort on the first bad row.
+  for (const key of Object.keys(RECORD_GUARDS) as Array<keyof BackupFile['data']>) {
+    const rows  = b.data[key]
+    const guard = RECORD_GUARDS[key]
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      if (typeof row !== 'object' || row === null || Array.isArray(row) ||
+          !guard(row as Record<string, unknown>)) {
+        throw new Error(
+          `"${TABLE_LABELS[key]}" kayıtlarından biri geçersiz (satır ${i + 1}). ` +
+          'Yedek dosyası bozuk veya elle değiştirilmiş olabilir.',
+        )
+      }
+    }
+  }
+
   return b
 }
 

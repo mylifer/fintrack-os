@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Geist } from 'next/font/google'
+import { headers } from 'next/headers'
 import Script from 'next/script'
 import './globals.css'
 import { SpeedInsights } from '@vercel/speed-insights/next';
@@ -12,11 +13,17 @@ export const metadata: Metadata = {
   description: 'Kişisel bütçe ve finans takip platformu',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // Per-request CSP nonce set by proxy.ts on the x-nonce request header.
+  // The inline theme <Script> below must carry it so it is allowed under
+  // script-src 'self' 'nonce-...'. Reading headers() opts this tree into
+  // dynamic rendering, which is required for nonce-based CSP.
+  const nonce = (await headers()).get('x-nonce') ?? undefined
+
   return (
     <html lang="tr" className={cn("h-full", geist.variable, "font-sans")} suppressHydrationWarning>
       <body className="min-h-full bg-background text-foreground antialiased">
@@ -24,6 +31,7 @@ export default function RootLayout({
         <Script
           id="theme-restore"
           strategy="beforeInteractive"
+          nonce={nonce}
           dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem('fintrack-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}` }}
         />
         {children}
