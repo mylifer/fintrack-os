@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { Header }          from '@/components/layout/Header'
 import { PeriodTabs }      from '@/components/ui/PeriodTabs'
+import { SelectField }     from '@/components/ui/Select'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore } from '@/store'
 import { getPeriodRange }  from '@/lib/utils/date'
@@ -84,16 +85,17 @@ export default function TransactionsPage() {
           onChange={e => setSearch(e.target.value)}
           className="flex-1 min-w-32 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
         />
-        <select
+        <SelectField
           value={typeFilter}
           onChange={e => setTypeFilter(e.target.value)}
-          className="text-xs border border-border bg-card text-foreground px-3 py-2 rounded-xl focus:outline-none focus:border-accent cursor-pointer"
-        >
-          <option value="">Tüm Türler</option>
-          <option value="expense">Gider</option>
-          <option value="income">Gelir</option>
-          <option value="transfer">Transfer</option>
-        </select>
+          options={[
+            { value: '',         label: 'Tüm Türler' },
+            { value: 'expense',  label: 'Gider' },
+            { value: 'income',   label: 'Gelir' },
+            { value: 'transfer', label: 'Transfer' },
+          ]}
+          className="w-fit bg-card text-xs"
+        />
         <button
           onClick={handleExportCsv}
           disabled={filtered.length === 0}

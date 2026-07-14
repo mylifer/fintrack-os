@@ -5,6 +5,7 @@ import { useInvestmentStore, useAccountStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { formatCurrency } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
+import { SelectField } from '@/components/ui/Select'
 import type { InvestmentAsset, InvestmentTransaction } from '@/types'
 
 const ASSETS: { asset: InvestmentAsset; label: string; emoji: string; unit: string }[] = [
@@ -231,15 +232,12 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           {/* Asset */}
           <div>
             <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">Varlık</label>
-            <select
+            <SelectField
               value={asset}
               onChange={e => { setAsset(e.target.value as InvestmentAsset); setPrice('') }}
-              className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent cursor-pointer"
-            >
-              {visibleAssets.map(a => (
-                <option key={a.asset} value={a.asset}>{a.emoji} {a.label}</option>
-              ))}
-            </select>
+              options={visibleAssets.map(a => ({ value: a.asset, label: `${a.emoji} ${a.label}` }))}
+              className="h-10 bg-background"
+            />
           </div>
 
           {/* Quantity */}
@@ -321,18 +319,15 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">
                 Hangi hesaptan? (isteğe bağlı)
               </label>
-              <select
+              <SelectField
                 value={accountId}
                 onChange={e => setAccountId(e.target.value)}
-                className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent cursor-pointer"
-              >
-                <option value="">Hesap seçme — dış kaynak</option>
-                {accounts.map(a => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({formatCurrency(a.balance, a.currency)})
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Hesap seçme — dış kaynak' },
+                  ...accounts.map(a => ({ value: a.id, label: `${a.name} (${formatCurrency(a.balance, a.currency)})` })),
+                ]}
+                className="h-10 bg-background"
+              />
               {accountId && total > 0 && (
                 <div className="mt-1 text-xs text-muted-foreground">
                   Seçilen hesaptan {formatCurrency(total)} düşülecek.
@@ -347,18 +342,15 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">
                 Nakit hangi hesaba? (isteğe bağlı)
               </label>
-              <select
+              <SelectField
                 value={targetAccId}
                 onChange={e => setTargetAccId(e.target.value)}
-                className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent cursor-pointer"
-              >
-                <option value="">Hesap seçme — dış kaynak</option>
-                {accounts.map(a => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({formatCurrency(a.balance, a.currency)})
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Hesap seçme — dış kaynak' },
+                  ...accounts.map(a => ({ value: a.id, label: `${a.name} (${formatCurrency(a.balance, a.currency)})` })),
+                ]}
+                className="h-10 bg-background"
+              />
               {targetAccId && total > 0 && (
                 <div className="mt-1 text-xs text-muted-foreground">
                   {formatCurrency(total)} seçilen hesaba eklenecek.

@@ -14,6 +14,7 @@ import { tr } from 'date-fns/locale'
 import { Header }           from '@/components/layout/Header'
 import { useTransactionStore, useAccountStore, useCategoryStore } from '@/store'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
+import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
@@ -440,16 +441,15 @@ export default function ReportsPage() {
           </div>
         )}
 
-        <select
+        <SelectField
           value={accountId}
           onChange={e => { setAccountId(e.target.value); resetDrilldown() }}
-          className="ml-auto border border-border rounded-xl px-3 py-2 text-xs text-foreground bg-card focus:outline-none focus:border-primary cursor-pointer"
-        >
-          <option value="all">Tüm Hesaplar</option>
-          {accounts.map(a => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))}
-        </select>
+          options={[
+            { value: 'all', label: 'Tüm Hesaplar' },
+            ...accounts.map(a => ({ value: a.id, label: a.name })),
+          ]}
+          className="ml-auto w-fit bg-card text-xs"
+        />
       </div>
 
       <div className="p-6 flex flex-col gap-6 overflow-auto flex-1">

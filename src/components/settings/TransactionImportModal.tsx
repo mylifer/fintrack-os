@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/button'
+import { SelectField } from '@/components/ui/Select'
 import { useAccountStore, useTransactionStore, useCategoryStore } from '@/store'
 import { localBulkUpsert } from '@/lib/sync/engine'
 import { toBaseTry, rateFor } from '@/lib/utils/fx'
@@ -241,16 +242,13 @@ export function TransactionImportModal({ open, onClose }: Props) {
             <label className="text-xs font-semibold text-foreground">
               Hesap <span className="text-destructive">*</span>
             </label>
-            <select
+            <SelectField
               value={accountId}
               onChange={e => setAccountId(e.target.value)}
-              className="text-sm border border-border bg-background text-foreground px-3 py-2.5 rounded-xl focus:outline-none focus:border-primary cursor-pointer"
-            >
-              <option value="">Hesap seçin…</option>
-              {activeAccounts.map(a => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
+              placeholder="Hesap seçin…"
+              options={activeAccounts.map(a => ({ value: a.id, label: a.name }))}
+              className="h-10 bg-background"
+            />
           </div>
 
           {/* Column mapping table */}
@@ -266,16 +264,15 @@ export function TransactionImportModal({ open, onClose }: Props) {
                     </span>
                     {isRequired && <span className="text-destructive ml-1 text-xs">*</span>}
                   </div>
-                  <select
+                  <SelectField
                     value={mapping[field] ?? ''}
                     onChange={e => setMapping(m => ({ ...m, [field]: e.target.value || undefined }))}
-                    className="flex-1 text-xs border border-border bg-background text-foreground px-3 py-2 rounded-xl focus:outline-none focus:border-primary cursor-pointer"
-                  >
-                    <option value="">{isRequired ? 'Sütun seçin…' : 'Yok (atla)'}</option>
-                    {parsed.headers.map(h => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: isRequired ? 'Sütun seçin…' : 'Yok (atla)' },
+                      ...parsed.headers.map(h => ({ value: h, label: h })),
+                    ]}
+                    className="flex-1 bg-background text-xs"
+                  />
                 </div>
               )
             })}

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear } from 'date-fns'
 import { Header } from '@/components/layout/Header'
+import { SelectField } from '@/components/ui/Select'
 import { useTransactionStore, useAccountStore, useCategoryStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { DetailedStats } from '@/components/reports/DetailedStats'
@@ -115,16 +116,15 @@ export default function StatisticsPage() {
           </div>
         )}
 
-        <select
+        <SelectField
           value={accountId}
           onChange={e => setAccountId(e.target.value)}
-          className="ml-auto border border-border rounded-xl px-3 py-2 text-xs text-foreground bg-card focus:outline-none focus:border-primary cursor-pointer"
-        >
-          <option value="all">Tüm Hesaplar</option>
-          {accounts.map(a => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))}
-        </select>
+          options={[
+            { value: 'all', label: 'Tüm Hesaplar' },
+            ...accounts.map(a => ({ value: a.id, label: a.name })),
+          ]}
+          className="ml-auto w-fit bg-card text-xs"
+        />
       </div>
 
       {/* ── Content ───────────────────────────────────────────────── */}

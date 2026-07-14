@@ -60,16 +60,16 @@ export default function ForecastPage() {
         {/* ── Horizon selector ──────────────────────────────────────── */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Süre</span>
-          <div className="flex gap-0.5 bg-background p-1 rounded-xl border border-border">
+          <div className="flex items-center gap-1">
             {HORIZONS.map(h => (
               <button
                 key={h.months}
                 onClick={() => setHorizonMonths(h.months)}
                 className={[
-                  'px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap',
+                  'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap',
                   horizonMonths === h.months
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
+                    ? 'bg-secondary text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
                 ].join(' ')}
               >
                 {h.label}

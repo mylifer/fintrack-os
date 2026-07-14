@@ -182,7 +182,7 @@ function SelectScrollDownButton({
 
 /* ── SelectField — convenience wrapper with options-based API ── */
 
-interface SelectOption { value: string; label: string }
+interface SelectOption { value: string; label: string; disabled?: boolean }
 
 interface SelectFieldProps {
   value:       string
@@ -193,21 +193,29 @@ interface SelectFieldProps {
   error?:      string
   disabled?:   boolean
   className?:  string
+  size?:       "sm" | "default"
 }
 
+// Radix Select boş string item değerine izin vermez; '' değerli seçenekler
+// (ör. "Tüm Türler" filtreleri) bu sentinel üzerinden eşlenir.
+const EMPTY_SENTINEL = '__empty__'
+const toRadix   = (v: string) => (v === '' ? EMPTY_SENTINEL : v)
+const fromRadix = (v: string) => (v === EMPTY_SENTINEL ? '' : v)
+
 function SelectField({
-  value, onChange, options, label, placeholder, error, disabled, className,
+  value, onChange, options, label, placeholder, error, disabled, className, size,
 }: SelectFieldProps) {
   const id = label?.toLowerCase().replace(/\s+/g, '-')
 
   const trigger = (
     <Select
-      value={value}
-      onValueChange={v => onChange({ target: { value: v } })}
+      value={toRadix(value)}
+      onValueChange={v => onChange({ target: { value: fromRadix(v) } })}
       disabled={disabled}
     >
       <SelectTrigger
         id={id}
+        size={size}
         aria-invalid={!!error}
         className={cn(
           "h-9 w-full rounded-xl border-input bg-transparent text-sm",
@@ -220,7 +228,9 @@ function SelectField({
       </SelectTrigger>
       <SelectContent>
         {options.map(o => (
-          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+          <SelectItem key={o.value} value={toRadix(o.value)} disabled={o.disabled}>
+            {o.label}
+          </SelectItem>
         ))}
       </SelectContent>
     </Select>

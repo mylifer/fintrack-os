@@ -6,6 +6,7 @@ import { useCategoryStore, useTransactionStore } from '@/store'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { CategoryIconPicker } from '@/components/categories/CategoryIconPicker'
 import { TransactionList } from '@/components/transactions/TransactionList'
+import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 
 interface Props { id: string }
@@ -205,28 +206,28 @@ export default function CategoryDetailClient({ id }: Props) {
 
           {/* Üst Kategori (L0) */}
           {l0Options.length > 0 && (
-            <select
+            <SelectField
               value={editParentL0}
               onChange={e => pickL0(e.target.value)}
-              className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[160px]"
-              title="Üst kategori"
-            >
-              <option value="">Üst kategori</option>
-              {l0Options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
+              options={[
+                { value: '', label: 'Üst kategori' },
+                ...l0Options.map(o => ({ value: o.id, label: o.label })),
+              ]}
+              className="w-fit max-w-[160px] flex-shrink-0 rounded-lg bg-background text-xs"
+            />
           )}
 
           {/* Alt Kategori (L1) */}
           {l1Options.length > 0 && (
-            <select
+            <SelectField
               value={editParentL1}
               onChange={e => pickL1(e.target.value)}
-              className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[160px]"
-              title="Alt kategori altına ekle"
-            >
-              <option value="">Alt kategori</option>
-              {l1Options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
+              options={[
+                { value: '', label: 'Alt kategori' },
+                ...l1Options.map(o => ({ value: o.id, label: o.label })),
+              ]}
+              className="w-fit max-w-[160px] flex-shrink-0 rounded-lg bg-background text-xs"
+            />
           )}
 
           <button onClick={saveEdit} disabled={!editName.trim()}
@@ -285,16 +286,17 @@ export default function CategoryDetailClient({ id }: Props) {
           onChange={e => setSearch(e.target.value)}
           className="flex-1 min-w-32 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
         />
-        <select
+        <SelectField
           value={typeFilter}
           onChange={e => setTypeFilter(e.target.value)}
-          className="text-xs border border-border bg-card text-foreground px-3 py-2 rounded-xl focus:outline-none cursor-pointer"
-        >
-          <option value="">Tüm Türler</option>
-          <option value="expense">Gider</option>
-          <option value="income">Gelir</option>
-          <option value="transfer">Transfer</option>
-        </select>
+          options={[
+            { value: '',         label: 'Tüm Türler' },
+            { value: 'expense',  label: 'Gider' },
+            { value: 'income',   label: 'Gelir' },
+            { value: 'transfer', label: 'Transfer' },
+          ]}
+          className="w-fit bg-card text-xs"
+        />
       </div>
 
       {/* ── Transactions ── */}

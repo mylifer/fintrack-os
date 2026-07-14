@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useCategoryStore, useTransactionStore } from '@/store'
 import { CategoryIcon } from './CategoryIcon'
 import { CategoryIconPicker } from './CategoryIconPicker'
+import { SelectField } from '@/components/ui/Select'
 import type { Category, CategoryScope } from '@/types'
 
 const SCOPE_LABELS: Record<CategoryScope, string> = { expense: 'Gider', income: 'Gelir' }
@@ -55,28 +56,28 @@ function InlineForm({ form, onChange, onSave, onCancel, label, l0Options, l1Opti
 
       {/* Üst Kategori (L0) */}
       {l0Options.length > 0 && (
-        <select
+        <SelectField
           value={form.parentL0}
           onChange={e => pickL0(e.target.value)}
-          className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[160px]"
-          title="Üst kategori"
-        >
-          <option value="">Üst kategori</option>
-          {l0Options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-        </select>
+          options={[
+            { value: '', label: 'Üst kategori' },
+            ...l0Options.map(o => ({ value: o.id, label: o.label })),
+          ]}
+          className="w-fit max-w-[160px] flex-shrink-0 rounded-lg bg-background text-xs"
+        />
       )}
 
       {/* Alt Kategori (L1) */}
       {l1Options.length > 0 && (
-        <select
+        <SelectField
           value={form.parentL1}
           onChange={e => pickL1(e.target.value)}
-          className="text-xs border border-border rounded-lg px-2 h-9 bg-background text-foreground focus:outline-none cursor-pointer flex-shrink-0 max-w-[160px]"
-          title="Alt kategori altına ekle"
-        >
-          <option value="">Alt kategori</option>
-          {l1Options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-        </select>
+          options={[
+            { value: '', label: 'Alt kategori' },
+            ...l1Options.map(o => ({ value: o.id, label: o.label })),
+          ]}
+          className="w-fit max-w-[160px] flex-shrink-0 rounded-lg bg-background text-xs"
+        />
       )}
 
       <button onClick={onSave} disabled={!form.name.trim()}

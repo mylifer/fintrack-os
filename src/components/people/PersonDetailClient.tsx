@@ -5,6 +5,7 @@ import { notFound, useRouter } from 'next/navigation'
 import { usePeopleStore, useTransactionStore } from '@/store'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { TransactionList } from '@/components/transactions/TransactionList'
+import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import type { PersonRole } from '@/types'
 
@@ -101,16 +102,17 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
           onChange={e => setSearch(e.target.value)}
           className="flex-1 min-w-32 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
         />
-        <select
+        <SelectField
           value={typeFilter}
           onChange={e => setTypeFilter(e.target.value)}
-          className="text-xs border border-border bg-card text-foreground px-3 py-2 rounded-xl focus:outline-none cursor-pointer"
-        >
-          <option value="">Tüm Türler</option>
-          <option value="expense">Gider</option>
-          <option value="income">Gelir</option>
-          <option value="transfer">Transfer</option>
-        </select>
+          options={[
+            { value: '',         label: 'Tüm Türler' },
+            { value: 'expense',  label: 'Gider' },
+            { value: 'income',   label: 'Gelir' },
+            { value: 'transfer', label: 'Transfer' },
+          ]}
+          className="w-fit bg-card text-xs"
+        />
       </div>
 
       {/* Transaction list */}
