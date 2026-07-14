@@ -261,11 +261,11 @@ export default function DebtsPage() {
 
         {/* Actions */}
         <div className="flex items-center gap-2 pt-1">
-          <Button size="sm" fullWidth onClick={() => setSelectedDebt(debt)}>
+          <Button size="sm" className="flex-1 shrink" onClick={() => setSelectedDebt(debt)}>
             Detay
           </Button>
           {!debt.isSettled && (
-            <Button size="sm" variant="ok" fullWidth onClick={() => settle(debt.id)}>
+            <Button size="sm" variant="ok" className="flex-1 shrink" onClick={() => settle(debt.id)}>
               Kapatıldı
             </Button>
           )}
