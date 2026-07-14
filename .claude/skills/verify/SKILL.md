@@ -27,6 +27,10 @@ AUTH_BYPASS=1 npm run dev -- --port 3457   # background; ready when /debts retur
   absence, and collect `console`/`pageerror` events for React errors.
 - Sync to Supabase fails harmlessly under AUTH_BYPASS (no user); local UI flows
   still work.
+- BUT: on page load, stores pull from Supabase first (`reconcilingPull`) and the
+  empty cloud result wins — rows injected directly into IndexedDB do NOT survive
+  a reload under AUTH_BYPASS. Seed state through the UI in the same session
+  instead of writing to Dexie and reloading.
 
 ## Gotchas
 
