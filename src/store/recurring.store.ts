@@ -1,51 +1,17 @@
 'use client'
 
 import { create } from 'zustand'
-import { addDays, addWeeks, addMonths, addYears, format, parseISO } from 'date-fns'
 import { db } from '@/lib/db'
-import type { RecurringTransaction, RecurringFrequency } from '@/types'
+import type { RecurringTransaction } from '@/types'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
 import { loadEntities } from './entity-helpers'
 import { useUndoStore, type RemoveOptions } from './undo.store'
+import { recurringOccurrences, nextDueAfter } from '@/lib/utils/recurrence'
 
-function advanceDueDate(current: string, frequency: RecurringFrequency): string {
-  const d = parseISO(current)
-  switch (frequency) {
-    case 'daily':   return format(addDays(d, 1),   'yyyy-MM-dd')
-    case 'weekly':  return format(addWeeks(d, 1),  'yyyy-MM-dd')
-    case 'monthly': return format(addMonths(d, 1), 'yyyy-MM-dd')
-    case 'yearly':  return format(addYears(d, 1),  'yyyy-MM-dd')
-  }
-}
-
-const OCCURRENCE_CAP = 1000 // runaway guard for a very stale nextDueDate
-
-/** Every occurrence date from nextDueDate up to & including asOf (endDate-aware).
- *  Drives catch-up generation: months offline → one transaction per missed
- *  period, not a single one. */
-export function recurringOccurrences(r: RecurringTransaction, asOf: string): string[] {
-  const out: string[] = []
-  let d = r.nextDueDate
-  let guard = 0
-  while (d <= asOf && (!r.endDate || d <= r.endDate) && guard < OCCURRENCE_CAP) {
-    out.push(d)
-    d = advanceDueDate(d, r.frequency)
-    guard++
-  }
-  return out
-}
-
-/** First occurrence strictly after asOf — the new nextDueDate after (re)processing. */
-function nextDueAfter(r: RecurringTransaction, asOf: string): string {
-  let d = r.nextDueDate
-  let guard = 0
-  while (d <= asOf && guard < OCCURRENCE_CAP) {
-    d = advanceDueDate(d, r.frequency)
-    guard++
-  }
-  return d
-}
+// recurringOccurrences moved to a store-free util so forecast/analytics can use
+// it without pulling in the Supabase client. Re-exported for existing importers.
+export { recurringOccurrences } from '@/lib/utils/recurrence'
 
 interface RecurringState {
   recurring: RecurringTransaction[]

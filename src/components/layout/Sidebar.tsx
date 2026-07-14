@@ -49,6 +49,8 @@ const IC = {
   recurring:   'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99',
   tags:        'M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5',
   stats:       'M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z M13.5 3v7.5H21A7.5 7.5 0 0 0 13.5 3Z',
+  forecast:    'M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605',
+  subscriptions: 'M6 6.878V6a2.25 2.25 0 0 1 2.25-2.25h7.5A2.25 2.25 0 0 1 18 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 0 0 4.5 9v.878m13.5-3A2.25 2.25 0 0 1 19.5 9v.878m0 0a2.246 2.246 0 0 0-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0 1 21 12v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6c0-.98.626-1.815 1.5-2.122',
 }
 
 const MAIN_NAV = [
@@ -62,11 +64,13 @@ const LOWER_NAV_TOP = [
   { href: '/investments',  label: 'Yatırımlar',   icon: IC.investments },
   { href: '/reports',      label: 'Raporlar',     icon: IC.reports },
   { href: '/statistics',   label: 'İstatistikler', icon: IC.stats },
+  { href: '/forecast',     label: 'Tahmin',       icon: IC.forecast },
 ]
 
 const LOWER_NAV_BOTTOM = [
   { href: '/debts',        label: 'Borçlar',       icon: IC.debts },
   { href: '/recurring',    label: 'Tekrarlayan',   icon: IC.recurring },
+  { href: '/subscriptions', label: 'Abonelikler',  icon: IC.subscriptions },
   { href: '/aile-uyeleri', label: 'Aile Üyeleri', icon: IC.family },
   { href: '/alicilar',     label: 'Alıcılar',      icon: IC.recipient },
 ]
