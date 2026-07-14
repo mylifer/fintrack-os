@@ -316,6 +316,7 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
   { name: 'Alışveriş',         icon: 'shopping-bag',     color: '#EC4899', scope: 'expense', isSystem: true, sortOrder:  6 },
   { name: 'Faturalar',         icon: 'receipt',          color: '#F97316', scope: 'expense', isSystem: true, sortOrder:  7 },
   { name: 'Abonelikler',       icon: 'refresh',          color: '#8B5CF6', scope: 'expense', isSystem: true, sortOrder:  8 },
+  { name: 'Eğlence',           icon: 'movie',            color: '#A855F7', scope: 'expense', isSystem: true, sortOrder: 25 },
   { name: 'Sağlık',            icon: 'building-hospital',color: '#EF4444', scope: 'expense', isSystem: true, sortOrder:  9 },
   { name: 'Sigorta',           icon: 'shield',           color: '#64748B', scope: 'expense', isSystem: true, sortOrder: 10 },
   { name: 'Yatırım',           icon: 'trending-up',      color: '#6366F1', scope: 'expense', isSystem: true, sortOrder: 11 },
