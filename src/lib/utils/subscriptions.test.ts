@@ -1,72 +1,129 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import type { PriceData, RecurringTransaction, RecurringFrequency } from '@/types'
+import type { PriceData, Transaction } from '@/types'
 import { setBaseRates } from './fx'
-import {
-  MONTHLY_FACTOR, monthlyEquivalentTry, monthlyTotalTry, annualTotalTry, summarize,
-} from './subscriptions'
+import { isSubscriptionTx, groupSubscriptions, summarize } from './subscriptions'
+import { detectBrand, SUBSCRIPTION_TAG } from '@/lib/subscriptions/brands'
 
 beforeAll(() => {
   setBaseRates({ usdTry: 34.5, eurTry: 37, gbpTry: 43, goldGramTry: 2800, updatedAt: 0 } as PriceData)
 })
 
-/** Minimal recurring builder — only fields the aggregators read matter. */
-function rec(over: Partial<RecurringTransaction> = {}): RecurringTransaction {
+/** Minimal transaction builder — only fields the aggregators read matter. */
+function tx(over: Partial<Transaction> = {}): Transaction {
   return {
-    id: 'r', name: 'Test', type: 'expense', amount: 100, currency: 'TRY',
-    accountId: 'a', description: '', frequency: 'monthly',
-    startDate: '2026-01-01', nextDueDate: '2026-08-01', isActive: true,
-    createdAt: '2026-01-01T00:00:00Z',
+    id: 't', type: 'expense', amount: 100, currency: 'TRY',
+    date: '2026-07-05', accountId: 'a', description: 'Netflix',
+    tags: [SUBSCRIPTION_TAG], isInstallment: false,
+    createdAt: '2026-07-05T00:00:00Z', updatedAt: '2026-07-05T00:00:00Z',
     ...over,
   }
 }
 
-describe('subscriptions — monthly-equivalent projection', () => {
-  it('monthly is identity', () => {
-    expect(monthlyEquivalentTry(rec({ amount: 200, frequency: 'monthly' }))).toBe(200)
+describe('subscriptions — isSubscriptionTx', () => {
+  it('a tagged expense is a subscription', () => {
+    expect(isSubscriptionTx(tx())).toBe(true)
   })
 
-  it('projects each frequency onto a monthly scale', () => {
-    // 30 TRY/day ≈ 30 × 30.4375 = 913.13
-    expect(monthlyEquivalentTry(rec({ amount: 30, frequency: 'daily' }))).toBeCloseTo(913.13, 2)
-    // 100 TRY/week ≈ 100 × 4.34524 = 434.52
-    expect(monthlyEquivalentTry(rec({ amount: 100, frequency: 'weekly' }))).toBeCloseTo(434.52, 2)
-    // 1200 TRY/year → 100/month
-    expect(monthlyEquivalentTry(rec({ amount: 1200, frequency: 'yearly' }))).toBe(100)
+  it('a tagged income is NOT a subscription', () => {
+    expect(isSubscriptionTx(tx({ type: 'income' }))).toBe(false)
   })
 
-  it('normalizes foreign currency to TRY (10 USD/mo @ 34.5)', () => {
-    expect(monthlyEquivalentTry(rec({ amount: 10, currency: 'USD', frequency: 'monthly' }))).toBe(345)
+  it('an untagged expense is NOT a subscription', () => {
+    expect(isSubscriptionTx(tx({ tags: [] }))).toBe(false)
+    expect(isSubscriptionTx(tx({ tags: undefined }))).toBe(false)
   })
 
-  it('sums monthly + annual across mixed frequencies and currencies', () => {
-    const subs = [
-      rec({ id: '1', amount: 1200, frequency: 'yearly' }),        // 100/mo
-      rec({ id: '2', amount: 10, currency: 'USD' }),              // 345/mo
-      rec({ id: '3', amount: 55, frequency: 'monthly' }),        // 55/mo
-    ]
-    expect(monthlyTotalTry(subs)).toBe(500)
-    expect(annualTotalTry(subs)).toBe(6000)
+  it('tag match is case- and diacritic-insensitive', () => {
+    expect(isSubscriptionTx(tx({ tags: ['Abonelik'] }))).toBe(true)
+    expect(isSubscriptionTx(tx({ tags: ['ABONELİK'] }))).toBe(true)
+    expect(isSubscriptionTx(tx({ tags: ['diger', 'abonelik'] }))).toBe(true)
+  })
+})
+
+describe('subscriptions — detectBrand', () => {
+  it('recognizes Netflix and Spotify', () => {
+    expect(detectBrand('Netflix Türkiye')?.key).toBe('netflix')
+    expect(detectBrand('SPOTIFY Premium')?.key).toBe('spotify')
   })
 
-  it('summarize filters to active expenses only', () => {
-    const s = summarize([
-      rec({ id: '1', amount: 100 }),                              // included
-      rec({ id: '2', amount: 100, isActive: false }),            // paused → excluded
-      rec({ id: '3', amount: 100, type: 'income' }),             // income → excluded
-      rec({ id: '4', amount: 100, type: 'transfer' }),           // transfer → excluded
+  it('is diacritic-insensitive', () => {
+    expect(detectBrand('NETFLİX')?.key).toBe('netflix')
+  })
+
+  it('prefers the more specific (longer) keyword', () => {
+    expect(detectBrand('YouTube Music')?.key).toBe('youtubemusic')
+    expect(detectBrand('Apple Music')?.key).toBe('apple')
+  })
+
+  it('returns null for an unknown merchant', () => {
+    expect(detectBrand('Bakkal Ahmet')).toBeNull()
+    expect(detectBrand('', null, undefined)).toBeNull()
+  })
+})
+
+describe('subscriptions — grouping', () => {
+  it('collapses two Netflix charges into one group', () => {
+    const groups = groupSubscriptions([
+      tx({ id: '1', amount: 149.99, date: '2026-06-05' }),
+      tx({ id: '2', amount: 199.99, date: '2026-07-05' }),
     ])
-    expect(s.count).toBe(1)
-    expect(s.monthlyTotal).toBe(100)
-    expect(s.annualTotal).toBe(1200)
+    expect(groups).toHaveLength(1)
+    const g = groups[0]
+    expect(g.brand?.key).toBe('netflix')
+    expect(g.count).toBe(2)
+    // latest charge = the most recent date
+    expect(g.latestAmount).toBe(199.99)
+    expect(g.lastDate).toBe('2026-07-05')
+    expect(g.totalTry).toBe(349.98)
   })
 
-  it('empty list → zeros', () => {
-    const s = summarize([])
-    expect(s).toEqual({ subs: [], monthlyTotal: 0, annualTotal: 0, count: 0 })
+  it('separates distinct brands and sorts by monthly estimate desc', () => {
+    const groups = groupSubscriptions([
+      tx({ id: '1', description: 'Spotify', amount: 59.99 }),
+      tx({ id: '2', description: 'Netflix', amount: 199.99 }),
+    ])
+    expect(groups).toHaveLength(2)
+    expect(groups[0].brand?.key).toBe('netflix') // higher monthly estimate first
+    expect(groups[1].brand?.key).toBe('spotify')
   })
 
-  it('factor table covers every frequency', () => {
-    const freqs: RecurringFrequency[] = ['daily', 'weekly', 'monthly', 'yearly']
-    for (const f of freqs) expect(MONTHLY_FACTOR[f]).toBeGreaterThan(0)
+  it('normalizes foreign-currency monthly estimate to TRY', () => {
+    const [g] = groupSubscriptions([
+      tx({ description: 'OpenAI ChatGPT', currency: 'USD', amount: 20 }),
+    ])
+    expect(g.brand?.key).toBe('openai')
+    expect(g.monthlyEstimateTry).toBe(690) // 20 USD × 34.5
+  })
+})
+
+describe('subscriptions — summarize', () => {
+  const data = [
+    tx({ id: '1', description: 'Netflix', amount: 199.99, date: '2026-07-05' }),
+    tx({ id: '2', description: 'Spotify', amount: 59.99,  date: '2026-07-10' }),
+    tx({ id: '3', description: 'Netflix', amount: 149.99, date: '2026-06-05' }), // prior month
+    tx({ id: '4', description: 'Migros',  amount: 500,    date: '2026-07-08', tags: [] }), // not a subscription
+  ]
+
+  it('monthTotalTry counts only current-month subscription charges', () => {
+    const s = summarize(data, { monthStr: '2026-07' })
+    expect(s.monthTotalTry).toBe(259.98) // 199.99 + 59.99, June excluded, Migros excluded
+  })
+
+  it('serviceCount is the number of distinct brands/services', () => {
+    const s = summarize(data, { monthStr: '2026-07' })
+    expect(s.serviceCount).toBe(2)
+  })
+
+  it('monthlyEstimateTry sums each group latest charge', () => {
+    const s = summarize(data, { monthStr: '2026-07' })
+    expect(s.monthlyEstimateTry).toBe(259.98) // Netflix latest 199.99 + Spotify 59.99
+  })
+
+  it('empty ledger → zeros', () => {
+    const s = summarize([], { monthStr: '2026-07' })
+    expect(s.groups).toEqual([])
+    expect(s.serviceCount).toBe(0)
+    expect(s.monthTotalTry).toBe(0)
+    expect(s.monthlyEstimateTry).toBe(0)
   })
 })

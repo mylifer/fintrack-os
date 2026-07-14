@@ -25,6 +25,8 @@ import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { TagInput } from '@/components/transactions/TagInput'
 import { useTags } from '@/lib/hooks/useTags'
 import { dedupeTags } from '@/lib/utils/tags'
+import { SUBSCRIPTION_TAG, isSubscriptionTag, detectBrand } from '@/lib/subscriptions/brands'
+import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -568,6 +570,19 @@ export function TransactionFormModal() {
 
   const patch = (p: Partial<ReturnType<typeof newForm>>) => setForm(f => ({ ...f, ...p }))
 
+  // Subscription toggle — marks an expense with the reserved tag. Derives its
+  // checked state from the tag list (case-insensitive) and toggles it without
+  // disturbing other tags; the existing dedupeTags-on-submit flow keeps it tidy.
+  const isSubscription = form.tags.some(isSubscriptionTag)
+  const toggleSubscription = (on: boolean) => {
+    if (on) {
+      if (!form.tags.some(isSubscriptionTag)) patch({ tags: [...form.tags, SUBSCRIPTION_TAG] })
+    } else {
+      patch({ tags: form.tags.filter(t => !isSubscriptionTag(t)) })
+    }
+  }
+  const subBrand = isSubscription ? detectBrand(form.description) : null
+
   return (
     <Dialog open={open} onOpenChange={v => !v && closeModal()}>
       <DialogContent
@@ -859,6 +874,32 @@ export function TransactionFormModal() {
               suggestions={tagSuggestions}
             />
           </Field>
+
+          {/* Subscription toggle (expenses only) */}
+          {tab === 'expense' && (
+            <div className="rounded-lg border border-dashed p-4 flex flex-col gap-2">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isSubscription}
+                  onChange={e => toggleSubscription(e.target.checked)}
+                  className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                />
+                <span className="text-sm font-medium">Abonelik</span>
+                {isSubscription && subBrand && (
+                  <span className="ml-auto flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <BrandLogo brand={subBrand} name={subBrand.name} size={20} />
+                    {subBrand.name} olarak tanındı
+                  </span>
+                )}
+              </label>
+              {isSubscription && !subBrand && (
+                <p className="text-xs text-muted-foreground">
+                  Marka otomatik tanınacak — Abonelikler sayfasında görünür.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Installment */}
           {tab === 'expense' && !isEdit && (
