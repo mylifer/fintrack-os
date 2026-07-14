@@ -107,14 +107,119 @@ alter table public.transactions add column if not exists "amountTry" double prec
 alter table public.transactions add column if not exists "refundOfId" text;
 alter table public.transactions add column if not exists "systemKind" text;
 
--- ── Category feature columns (schema-drift fix) ─────────────────────────────
--- The client Category model carries "isArchived" (soft-hide from pickers, keep
--- historical data) and "sortOrder" (manual ordering). Category tables created
--- before these features lack the columns, so upserts fail with PGRST204
--- ("Could not find the 'isArchived' column of 'categories'") → HTTP 400 and the
--- outbox retries forever. Quoted identifiers match the app's camelCase columns.
+-- ── Schema-drift guard: every column the client can push ────────────────────
+-- The sync engine upserts the FULL row snapshot (toSnapshot() copies all entity
+-- fields except user_id and the COMPUTED[table] fields). If any pushed field has
+-- no matching column, PostgREST rejects the whole request with PGRST204 → HTTP
+-- 400 and the outbox retries forever (this is how categories.isArchived surfaced
+-- on 2026-07-14). This block adds every pushable column for all 8 synced tables.
+-- Idempotent + data-safe: never touches id / user_id / deleted_at or existing
+-- data. Keep in sync with src/types/index.ts as the model evolves.
+alter table public.accounts add column if not exists "name" text;
+alter table public.accounts add column if not exists "type" text;
+alter table public.accounts add column if not exists "currency" text;
+alter table public.accounts add column if not exists "initialBalance" double precision;
+alter table public.accounts add column if not exists "color" text;
+alter table public.accounts add column if not exists "icon" text;
+alter table public.accounts add column if not exists "isArchived" boolean;
+alter table public.accounts add column if not exists "createdAt" text;
+alter table public.accounts add column if not exists "creditLimit" double precision;
+alter table public.accounts add column if not exists "statementDay" double precision;
+alter table public.accounts add column if not exists "dueDay" double precision;
+alter table public.accounts add column if not exists "minPayPct" double precision;
+
+alter table public.transactions add column if not exists "type" text;
+alter table public.transactions add column if not exists "amount" double precision;
+alter table public.transactions add column if not exists "currency" text;
+alter table public.transactions add column if not exists "date" text;
+alter table public.transactions add column if not exists "accountId" text;
+alter table public.transactions add column if not exists "toAccountId" text;
+alter table public.transactions add column if not exists "categoryId" text;
+alter table public.transactions add column if not exists "icon" text;
+alter table public.transactions add column if not exists "description" text;
+alter table public.transactions add column if not exists "notes" text;
+alter table public.transactions add column if not exists "tags" jsonb;
+alter table public.transactions add column if not exists "merchant" text;
+alter table public.transactions add column if not exists "familyMemberId" text;
+alter table public.transactions add column if not exists "recipientId" text;
+alter table public.transactions add column if not exists "isInstallment" boolean;
+alter table public.transactions add column if not exists "installTotal" double precision;
+alter table public.transactions add column if not exists "installIndex" double precision;
+alter table public.transactions add column if not exists "installGroupId" text;
+alter table public.transactions add column if not exists "debtId" text;
+alter table public.transactions add column if not exists "createdAt" text;
+alter table public.transactions add column if not exists "updatedAt" text;
+
+alter table public.categories add column if not exists "name" text;
+alter table public.categories add column if not exists "icon" text;
+alter table public.categories add column if not exists "color" text;
+alter table public.categories add column if not exists "scope" text;
+alter table public.categories add column if not exists "parentId" text;
+alter table public.categories add column if not exists "isSystem" boolean;
 alter table public.categories add column if not exists "isArchived" boolean;
-alter table public.categories add column if not exists "sortOrder" integer;
+alter table public.categories add column if not exists "sortOrder" double precision;
+
+alter table public.budgets add column if not exists "categoryId" text;
+alter table public.budgets add column if not exists "amount" double precision;
+alter table public.budgets add column if not exists "period" text;
+alter table public.budgets add column if not exists "year" double precision;
+alter table public.budgets add column if not exists "month" double precision;
+alter table public.budgets add column if not exists "rollover" boolean;
+alter table public.budgets add column if not exists "alertThreshold" double precision;
+
+alter table public.debts add column if not exists "name" text;
+alter table public.debts add column if not exists "type" text;
+alter table public.debts add column if not exists "direction" text;
+alter table public.debts add column if not exists "totalAmount" double precision;
+alter table public.debts add column if not exists "paidAmount" double precision;
+alter table public.debts add column if not exists "interestRate" double precision;
+alter table public.debts add column if not exists "startDate" text;
+alter table public.debts add column if not exists "dueDate" text;
+alter table public.debts add column if not exists "monthlyPayment" double precision;
+alter table public.debts add column if not exists "totalInstallments" double precision;
+alter table public.debts add column if not exists "paidInstallments" double precision;
+alter table public.debts add column if not exists "counterparty" text;
+alter table public.debts add column if not exists "accountId" text;
+alter table public.debts add column if not exists "notes" text;
+alter table public.debts add column if not exists "isSettled" boolean;
+alter table public.debts add column if not exists "createdAt" text;
+
+alter table public.investment_transactions add column if not exists "type" text;
+alter table public.investment_transactions add column if not exists "asset" text;
+alter table public.investment_transactions add column if not exists "quantity" double precision;
+alter table public.investment_transactions add column if not exists "pricePerUnit" double precision;
+alter table public.investment_transactions add column if not exists "sourceAccountId" text;
+alter table public.investment_transactions add column if not exists "targetAccountId" text;
+alter table public.investment_transactions add column if not exists "linkedTransactionId" text;
+alter table public.investment_transactions add column if not exists "date" text;
+alter table public.investment_transactions add column if not exists "note" text;
+alter table public.investment_transactions add column if not exists "createdAt" text;
+
+alter table public.people add column if not exists "name" text;
+alter table public.people add column if not exists "role" text;
+alter table public.people add column if not exists "url" text;
+alter table public.people add column if not exists "createdAt" text;
+
+alter table public.recurring_transactions add column if not exists "name" text;
+alter table public.recurring_transactions add column if not exists "type" text;
+alter table public.recurring_transactions add column if not exists "amount" double precision;
+alter table public.recurring_transactions add column if not exists "currency" text;
+alter table public.recurring_transactions add column if not exists "accountId" text;
+alter table public.recurring_transactions add column if not exists "toAccountId" text;
+alter table public.recurring_transactions add column if not exists "categoryId" text;
+alter table public.recurring_transactions add column if not exists "description" text;
+alter table public.recurring_transactions add column if not exists "notes" text;
+alter table public.recurring_transactions add column if not exists "frequency" text;
+alter table public.recurring_transactions add column if not exists "dayOfMonth" double precision;
+alter table public.recurring_transactions add column if not exists "monthOfYear" double precision;
+alter table public.recurring_transactions add column if not exists "startDate" text;
+alter table public.recurring_transactions add column if not exists "endDate" text;
+alter table public.recurring_transactions add column if not exists "nextDueDate" text;
+alter table public.recurring_transactions add column if not exists "lastGeneratedDate" text;
+alter table public.recurring_transactions add column if not exists "isActive" boolean;
+alter table public.recurring_transactions add column if not exists "familyMemberId" text;
+alter table public.recurring_transactions add column if not exists "recipientId" text;
+alter table public.recurring_transactions add column if not exists "createdAt" text;
 
 -- ── Verification helpers (optional; run manually after applying) ─────────────
 -- Every table below MUST report rowsecurity = true:
