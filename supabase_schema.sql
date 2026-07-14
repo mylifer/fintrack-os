@@ -166,6 +166,7 @@ alter table public.budgets add column if not exists "year" double precision;
 alter table public.budgets add column if not exists "month" double precision;
 alter table public.budgets add column if not exists "rollover" boolean;
 alter table public.budgets add column if not exists "alertThreshold" double precision;
+alter table public.budgets add column if not exists "categoryName" text;
 
 alter table public.debts add column if not exists "name" text;
 alter table public.debts add column if not exists "type" text;

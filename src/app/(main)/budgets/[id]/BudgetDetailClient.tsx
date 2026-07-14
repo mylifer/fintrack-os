@@ -15,7 +15,7 @@ import {
   formatMonthYear, prevMonth, nextMonth, currentMonthYear, lastNMonths, monthRange,
 } from '@/lib/utils/date'
 import {
-  getBudgetCategoryIds, enrichBudget, calcBudgetSpent,
+  getBudgetCategoryIds, enrichBudget, calcBudgetSpent, resolveBudgetCategories,
 } from '@/lib/utils/calculations'
 import { useShallow } from 'zustand/react/shallow'
 import type { MonthYear } from '@/types'
@@ -154,8 +154,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     )
   }
 
-  const cats      = budgetCatIds.map(cid => categories.find(c => c.id === cid)).filter(Boolean)
-  const title     = cats.map(c => c!.name).join(', ')
+  const { cats, label: title, archived } = resolveBudgetCategories(budget, categories)
   const totalSpent = filtered.reduce((s, t) => s + t.amount, 0)
 
   function navigatePrev() { setAllTime(false); setSelectedMonth(m => prevMonth(m)) }
@@ -173,7 +172,14 @@ export default function BudgetDetailClient({ id }: { id: string }) {
           <ChevronLeft /> Bütçeler
         </button>
         <span className="text-muted-foreground/40 select-none">/</span>
-        <span className="text-sm font-semibold text-foreground truncate flex-1">{title}</span>
+        <span className="text-sm font-semibold text-foreground truncate flex items-center gap-1.5 flex-1">
+          {title}
+          {archived && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground flex-shrink-0">
+              arşiv
+            </span>
+          )}
+        </span>
         <button
           onClick={openEdit}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
@@ -256,17 +262,17 @@ export default function BudgetDetailClient({ id }: { id: string }) {
           </button>
           {cats.map(cat => (
             <button
-              key={cat!.id}
-              onClick={() => setCatFilter(catFilter === cat!.id ? null : cat!.id)}
+              key={cat.id}
+              onClick={() => setCatFilter(catFilter === cat.id ? null : cat.id)}
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                catFilter === cat!.id
+                catFilter === cat.id
                   ? 'bg-primary/10 text-primary border-primary/30'
                   : 'border-border text-muted-foreground hover:text-foreground'
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
-                <CategoryIcon icon={cat!.icon} color={cat!.color} size={13} />
-                {cat!.name}
+                <CategoryIcon icon={cat.icon} color={cat.color} size={13} />
+                {cat.name}
               </span>
             </button>
           ))}

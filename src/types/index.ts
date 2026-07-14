@@ -116,6 +116,7 @@ export interface Budget {
   month?: number            // Legacy; ignored — budgets now apply to all months
   rollover: boolean         // Carry unused budget forward
   alertThreshold: number    // Warn at X% (default: 80)
+  categoryName?: string     // display-name snapshot; shown as "<name> (arşiv)" when the live category is gone
   deleted_at?: string | null // Tombstone (C3)
 }
 

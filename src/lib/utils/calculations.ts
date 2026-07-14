@@ -1,4 +1,4 @@
-import type { Account, Transaction, Budget, BudgetWithSpent, Debt, DebtWithRemaining, MonthYear, PriceData } from '@/types'
+import type { Account, Transaction, Budget, BudgetWithSpent, Category, Debt, DebtWithRemaining, MonthYear, PriceData } from '@/types'
 import { isInRange, monthRange, yearRange } from './date'
 import { isReconciliation } from './reconciliation'
 import { toMinor, toMajor, sumBy, subMoney } from './money'
@@ -64,6 +64,29 @@ export function getBudgetCategoryIds(budget: Budget): string[] {
     } catch {}
   }
   return raw ? [raw] : []
+}
+
+// Resolve a budget's display state against the live categories. When the live
+// category (or categories, for multi-category budgets) still exist, show their
+// names + icons. When they've been deleted, fall back to the name snapshot
+// stamped on the budget ("<name> (arşiv)"); if no snapshot exists, a generic
+// placeholder. Deleted categories aren't pulled to other devices, so the
+// snapshot on the budget itself is the only robust source.
+export function resolveBudgetCategories(
+  budget: Budget,
+  liveCategories: Category[],
+): { cats: Category[]; label: string; archived: boolean } {
+  const ids = getBudgetCategoryIds(budget)
+  const cats = ids
+    .map(id => liveCategories.find(c => c.id === id))
+    .filter((c): c is Category => Boolean(c))
+  if (cats.length > 0) {
+    return { cats, label: cats.map(c => c.name).join(', '), archived: false }
+  }
+  if (budget.categoryName) {
+    return { cats: [], label: `${budget.categoryName} (arşiv)`, archived: true }
+  }
+  return { cats: [], label: 'Bütçe (kategorisi silinmiş)', archived: true }
 }
 
 export function calcBudgetSpent(

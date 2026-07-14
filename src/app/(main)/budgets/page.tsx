@@ -15,7 +15,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import { formatMonthYear, prevMonth, nextMonth } from '@/lib/utils/date'
-import { getBudgetCategoryIds, enrichBudget } from '@/lib/utils/calculations'
+import { getBudgetCategoryIds, enrichBudget, resolveBudgetCategories } from '@/lib/utils/calculations'
 import type { Budget, BudgetWithSpent } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -44,22 +44,27 @@ function BudgetCard({
   onDelete: (id: string) => void
 }) {
   const categories = useCategoryStore(s => s.categories)
-  const cats = getBudgetCategoryIds(b).map(id => categories.find(c => c.id === id)).filter(Boolean)
+  const { cats, label, archived } = resolveBudgetCategories(b, categories)
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-3">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex gap-1 flex-wrap mb-1">
+          <div className="flex gap-1 flex-wrap mb-1 items-center">
             {cats.map(cat => (
-              <span key={cat!.id} title={cat!.name} className="inline-flex">
-                <CategoryIcon icon={cat!.icon} color={cat!.color} size={18} />
+              <span key={cat.id} title={cat.name} className="inline-flex">
+                <CategoryIcon icon={cat.icon} color={cat.color} size={18} />
               </span>
             ))}
+            {archived && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                arşiv
+              </span>
+            )}
           </div>
           <div className="text-sm font-semibold truncate">
-            {cats.map(c => c!.name).join(', ')}
+            {label}
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -187,9 +192,17 @@ export default function BudgetsPage() {
       ? selectedCatIds[0]
       : JSON.stringify(selectedCatIds)
 
+    // Display-name snapshot: capture the selected categories' names so the
+    // budget still shows a meaningful label after those categories are deleted.
+    const categoryName = selectedCatIds
+      .map(id => categories.find(c => c.id === id)?.name)
+      .filter(Boolean)
+      .join(', ')
+
     if (editingBudget) {
       await update(editingBudget.id, {
         categoryId,
+        categoryName,
         amount: parseCurrencyInput(amtStr),
         alertThreshold: Number(threshold) || 80,
       })
@@ -197,6 +210,7 @@ export default function BudgetsPage() {
       const b: Budget = {
         id: crypto.randomUUID(),
         categoryId,
+        categoryName,
         amount: parseCurrencyInput(amtStr),
         period: 'monthly',
         rollover: false,

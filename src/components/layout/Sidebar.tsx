@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { clearLocalData } from '@/lib/auth'
 import { useAccountStore, useInvestmentStore, useRecurringStore, useTransactionStore, useBudgetStore, useCategoryStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import { calcNetWorth, computeTransactionEffect, getBudgetCategoryIds } from '@/lib/utils/calculations'
+import { calcNetWorth, computeTransactionEffect, resolveBudgetCategories } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
 import { formatCompact, formatCurrency } from '@/lib/utils/currency'
@@ -267,14 +267,10 @@ export function Sidebar() {
               Tüm Bütçeler
             </Link>
             {budgets.map(budget => {
-              const cats = getBudgetCategoryIds(budget)
-                .map(id => allCategories.find(c => c.id === id))
-                .filter(Boolean)
               // Kategorileri silinmiş (çözümlenemeyen) bütçe görünmez bir boş
               // satır olmasın — yine tıklanabilir kalsın ki düzeltilebilsin.
-              const label = cats.length
-                ? cats.map(c => c!.name).join(', ')
-                : 'Bütçe (kategorisi silinmiş)'
+              // Silinmiş kategori için isim anlık görüntüsü "(arşiv)" ile gösterilir.
+              const { cats, label } = resolveBudgetCategories(budget, allCategories)
               return (
                 <Link
                   key={budget.id}
@@ -289,7 +285,7 @@ export function Sidebar() {
                   {cats.length > 0 && (
                     <span className="flex items-center gap-0.5 flex-shrink-0">
                       {cats.slice(0, 3).map(c => (
-                        <CategoryIcon key={c!.id} icon={c!.icon} color={c!.color} size={14} />
+                        <CategoryIcon key={c.id} icon={c.icon} color={c.color} size={14} />
                       ))}
                     </span>
                   )}
