@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertDialog } from 'radix-ui'
 import { Header } from '@/components/layout/Header'
 import { useDebtStore, useAccountStore, useTransactionStore, useCategoryStore, useUIStore } from '@/store'
@@ -16,7 +16,8 @@ import { formatDate, daysUntil, isOverdue } from '@/lib/utils/date'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { parseCurrencyInput } from '@/lib/utils/currency'
-import type { Debt, DebtType, DebtDirection, Transaction } from '@/types'
+import type { Debt, DebtType, DebtDirection, DebtWithRemaining, Transaction } from '@/types'
+import { enrichDebt } from '@/lib/utils/calculations'
 import { useShallow } from 'zustand/react/shallow'
 
 const PencilIcon = () => (
@@ -85,15 +86,18 @@ function emptyForm() {
 }
 
 export default function DebtsPage() {
-  const getActive    = useDebtStore(s => s.getActive)
   const add          = useDebtStore(s => s.add)
   const update       = useDebtStore(s => s.update)
   const settle       = useDebtStore(s => s.settle)
   const remove       = useDebtStore(s => s.remove)
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
-  // getActive() derives from debt state → subscribe reactively so the list
-  // re-renders on add/update/settle/remove (a stable action ref alone would not).
-  const debts        = useDebtStore(useShallow(s => s.getActive()))
+  // Subscribe to the raw array and enrich in a memo — getActive() builds new
+  // objects per call, so selecting it (even with useShallow) re-renders forever.
+  const rawDebts     = useDebtStore(s => s.debts)
+  const debts        = useMemo(
+    () => rawDebts.filter(d => !d.isSettled).map(enrichDebt),
+    [rawDebts],
+  )
   const transactions = useTransactionStore(useShallow(s => s.transactions))
   const categories   = useCategoryStore(s => s.categories)
   const openModal    = useUIStore(s => s.openModal)
@@ -103,7 +107,7 @@ export default function DebtsPage() {
   const [editingDebt, setEditingDebt]   = useState<Debt | undefined>()
   const [loading, setLoading]           = useState(false)
   const [form, setForm]                 = useState(emptyForm())
-  const [selectedDebt, setSelectedDebt] = useState<ReturnType<typeof getActive>[0] | undefined>()
+  const [selectedDebt, setSelectedDebt] = useState<DebtWithRemaining | undefined>()
 
   const owe        = debts.filter(d => d.direction === 'owe')
   const owed       = debts.filter(d => d.direction === 'owed')
@@ -189,7 +193,7 @@ export default function DebtsPage() {
     }
   }
 
-  function DebtCard({ debt }: { debt: ReturnType<typeof getActive>[0] }) {
+  function DebtCard({ debt }: { debt: DebtWithRemaining }) {
     const overdue = debt.dueDate && isOverdue(debt.dueDate)
     const days    = debt.dueDate ? daysUntil(debt.dueDate) : null
 
