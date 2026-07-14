@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { PriceData, Transaction } from '@/types'
 import { setBaseRates } from './fx'
-import { isSubscriptionTx, groupSubscriptions, summarize } from './subscriptions'
+import { isSubscriptionTx, groupSubscriptions, summarize, findSubscriptionGroup } from './subscriptions'
 import { detectBrand, SUBSCRIPTION_TAG } from '@/lib/subscriptions/brands'
 
 beforeAll(() => {
@@ -93,6 +93,27 @@ describe('subscriptions — grouping', () => {
     ])
     expect(g.brand?.key).toBe('openai')
     expect(g.monthlyEstimateTry).toBe(690) // 20 USD × 34.5
+  })
+})
+
+describe('subscriptions — findSubscriptionGroup', () => {
+  const data = [
+    tx({ id: '1', description: 'Netflix', amount: 199.99, date: '2026-07-05' }),
+    tx({ id: '2', description: 'Netflix', amount: 149.99, date: '2026-06-05' }),
+    tx({ id: '3', description: 'Spotify', amount: 59.99,  date: '2026-07-10' }),
+  ]
+
+  it('returns the group (with its txs) for a known key', () => {
+    const g = findSubscriptionGroup(data, 'brand:netflix')
+    expect(g).not.toBeNull()
+    expect(g!.brand?.key).toBe('netflix')
+    expect(g!.count).toBe(2)
+    expect(g!.txs.map(t => t.id)).toEqual(['1', '2']) // newest first
+  })
+
+  it('returns null for an unknown key', () => {
+    expect(findSubscriptionGroup(data, 'brand:disneyplus')).toBeNull()
+    expect(findSubscriptionGroup([], 'brand:netflix')).toBeNull()
   })
 })
 

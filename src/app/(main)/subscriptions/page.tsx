@@ -107,7 +107,11 @@ export default function SubscriptionsPage() {
             <Card className="gap-0 py-0">
               <CardContent className="p-0 divide-y divide-border">
                 {sorted.map(g => (
-                  <div key={g.key} className="flex items-center gap-4 px-5 py-4">
+                  <Link
+                    key={g.key}
+                    href={`/subscriptions/${encodeURIComponent(g.key)}`}
+                    className="flex items-center gap-4 px-5 py-4 hover:bg-accent/50 transition-colors"
+                  >
                     <BrandLogo brand={g.brand} name={g.name} size={40} />
 
                     <div className="flex-1 min-w-0">
@@ -134,7 +138,15 @@ export default function SubscriptionsPage() {
                       </div>
                       <div className="text-[11px] font-medium text-muted-foreground">son ödeme</div>
                     </div>
-                  </div>
+
+                    <svg
+                      className="flex-shrink-0 text-muted-foreground/40"
+                      fill="none" stroke="currentColor" strokeWidth={1.5}
+                      viewBox="0 0 24 24" width={16} height={16} aria-hidden
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                    </svg>
+                  </Link>
                 ))}
               </CardContent>
             </Card>

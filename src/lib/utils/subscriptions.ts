@@ -90,6 +90,16 @@ export function groupSubscriptions(transactions: readonly Transaction[]): Subscr
   return groups.sort((a, b) => b.monthlyEstimateTry - a.monthlyEstimateTry)
 }
 
+/** Recompute the subscription groups and return the one matching `key`
+ *  (see `groupSubscriptions` for the key format), or null when none match.
+ *  Pure — used by the detail route to resolve a group from a URL segment. */
+export function findSubscriptionGroup(
+  transactions: readonly Transaction[],
+  key: string,
+): SubscriptionGroup | null {
+  return groupSubscriptions(transactions).find(g => g.key === key) ?? null
+}
+
 export interface SubscriptionsSummary {
   groups: SubscriptionGroup[]
   serviceCount: number
