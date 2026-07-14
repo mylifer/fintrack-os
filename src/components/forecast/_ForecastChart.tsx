@@ -5,13 +5,12 @@ import {
   Tooltip, ReferenceLine, ReferenceDot, ResponsiveContainer,
 } from 'recharts'
 import { formatCompact, formatCurrency, formatAxisCompact } from '@/lib/utils/currency'
-import { formatDate, formatDateShort } from '@/lib/utils/date'
+import { formatDate } from '@/lib/utils/date'
 import type { ForecastPoint } from '@/lib/utils/forecast'
 
 interface ChartRow {
   date: string
   balance: number
-  label: string      // axis tick
   fullLabel: string  // tooltip
 }
 
@@ -68,9 +67,19 @@ export default function ForecastAreaChart({ points, shortfallDate }: Props) {
   const data: ChartRow[] = points.map(p => ({
     date:      p.date,
     balance:   p.balance,
-    label:     formatDateShort(p.date),
     fullLabel: formatDate(p.date),
   }))
+
+  // One tick per month: the first data point of each month on the axis.
+  const seenMonths = new Set<string>()
+  const monthTicks: string[] = []
+  for (const d of data) {
+    const key = d.date.slice(0, 7)
+    if (!seenMonths.has(key)) {
+      seenMonths.add(key)
+      monthTicks.push(d.date)
+    }
+  }
 
   const values = data.map(d => d.balance)
   const ticks  = niceYTicks(Math.min(...values), Math.max(...values))
@@ -90,12 +99,13 @@ export default function ForecastAreaChart({ points, shortfallDate }: Props) {
           </defs>
           <CartesianGrid vertical={false} stroke="currentColor" strokeOpacity={0.07} />
           <XAxis
-            dataKey="label"
+            dataKey="date"
             tickLine={false}
             axisLine={false}
             dy={6}
-            interval="preserveStartEnd"
-            minTickGap={28}
+            ticks={monthTicks}
+            interval={0}
+            tickFormatter={d => formatDate(d as string, 'MMMM')}
             padding={{ left: 16, right: 16 }}
             tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.5 }}
           />
@@ -128,7 +138,7 @@ export default function ForecastAreaChart({ points, shortfallDate }: Props) {
           />
           {shortfallRow && (
             <ReferenceDot
-              x={shortfallRow.label}
+              x={shortfallRow.date}
               y={shortfallRow.balance}
               r={5}
               fill="var(--destructive)"
