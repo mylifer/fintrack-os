@@ -107,6 +107,15 @@ alter table public.transactions add column if not exists "amountTry" double prec
 alter table public.transactions add column if not exists "refundOfId" text;
 alter table public.transactions add column if not exists "systemKind" text;
 
+-- ── Category feature columns (schema-drift fix) ─────────────────────────────
+-- The client Category model carries "isArchived" (soft-hide from pickers, keep
+-- historical data) and "sortOrder" (manual ordering). Category tables created
+-- before these features lack the columns, so upserts fail with PGRST204
+-- ("Could not find the 'isArchived' column of 'categories'") → HTTP 400 and the
+-- outbox retries forever. Quoted identifiers match the app's camelCase columns.
+alter table public.categories add column if not exists "isArchived" boolean;
+alter table public.categories add column if not exists "sortOrder" integer;
+
 -- ── Verification helpers (optional; run manually after applying) ─────────────
 -- Every table below MUST report rowsecurity = true:
 --   select relname, relrowsecurity as rls_enabled
