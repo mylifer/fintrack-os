@@ -13,6 +13,7 @@ import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date
 import { formatCompact, formatCurrency } from '@/lib/utils/currency'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 
 /* ── Minimal inline SVG icon (Heroicons outline) ── */
@@ -269,8 +270,11 @@ export function Sidebar() {
               const cats = getBudgetCategoryIds(budget)
                 .map(id => allCategories.find(c => c.id === id))
                 .filter(Boolean)
-              const label = cats.map(c => c!.name).join(', ')
-              const icons = cats.map(c => c!.icon).join('')
+              // Kategorileri silinmiş (çözümlenemeyen) bütçe görünmez bir boş
+              // satır olmasın — yine tıklanabilir kalsın ki düzeltilebilsin.
+              const label = cats.length
+                ? cats.map(c => c!.name).join(', ')
+                : 'Bütçe (kategorisi silinmiş)'
               return (
                 <Link
                   key={budget.id}
@@ -282,7 +286,13 @@ export function Sidebar() {
                       : 'text-muted-foreground hover:text-foreground hover:bg-accent',
                   ].join(' ')}
                 >
-                  <span className="text-sm leading-none flex-shrink-0">{icons}</span>
+                  {cats.length > 0 && (
+                    <span className="flex items-center gap-0.5 flex-shrink-0">
+                      {cats.slice(0, 3).map(c => (
+                        <CategoryIcon key={c!.id} icon={c!.icon} color={c!.color} size={14} />
+                      ))}
+                    </span>
+                  )}
                   <span className="truncate">{label}</span>
                 </Link>
               )
