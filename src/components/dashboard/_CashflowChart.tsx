@@ -42,7 +42,10 @@ export default function CashflowBarChart({ data }: Props) {
           cursor={false}
           content={
             <ChartTooltipContent
-              formatter={(value, name) => [formatCompact(Number(value)), name]}
+              formatter={(value, name) => [
+                formatCompact(Number(value)),
+                chartConfig[name as keyof typeof chartConfig]?.label ?? name,
+              ]}
             />
           }
         />
