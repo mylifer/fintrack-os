@@ -146,11 +146,14 @@ export function DetailedStats({
     const expenseTotal = sumBy(analyticTxs.filter(t => t.type === 'expense'), baseAmount)
     const incomeTotal  = sumBy(analyticTxs.filter(t => t.type === 'income'),  baseAmount)
 
+    /* Real averages over the elapsed period — total divided by how many
+       months/years the period actually spans (floored at 1 so a short
+       period can never produce an "average" above its own total). */
     const avg = (total: number) => ({
       total,
       daily:   total / days,
-      monthly: (total / days) * 30.44,
-      yearly:  (total / days) * 365,
+      monthly: total / Math.max(1, days / 30.44),
+      yearly:  total / Math.max(1, days / 365),
     })
 
     return { days, expense: avg(expenseTotal), income: avg(incomeTotal) }
