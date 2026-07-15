@@ -11,9 +11,10 @@ import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { formatDate }        from '@/lib/utils/date'
 import { useCountUp }        from '@/lib/hooks/useCountUp'
 import { AnimatedNumber }    from '@/components/ui/AnimatedNumber'
-import type { InvestmentAsset } from '@/types'
+import { isTefasAsset, tefasCode, tefasAsset, tefasCodesIn } from '@/lib/tefas'
+import type { InvestmentAsset, StaticInvestmentAsset, TefasFundPrice } from '@/types'
 
-type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP'
+type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP' | 'TEFAS'
 const GOLD_ASSETS: InvestmentAsset[] = ['GOLD_GRAM', 'GOLD_QUARTER', 'GOLD_HALF', 'GOLD_FULL', 'GOLD_OZ']
 
 // How many grams each gold unit represents
@@ -27,7 +28,9 @@ const GRAM_MULT: Partial<Record<InvestmentAsset, number>> = {
 
 /* ── Asset metadata ──────────────────────────────────────────────── */
 
-const ASSET_META: Record<InvestmentAsset, { label: string; icon: string; unit: string }> = {
+interface AssetMeta { label: string; subLabel?: string; icon: string; unit: string }
+
+const ASSET_META: Record<StaticInvestmentAsset, AssetMeta> = {
   GOLD_GRAM:    { label: 'Gram Altın',       icon: 'Au', unit: 'gr' },
   GOLD_QUARTER: { label: 'Çeyrek Altın',     icon: 'Au', unit: 'adet' },
   GOLD_HALF:    { label: 'Yarım Altın',      icon: 'Au', unit: 'adet' },
@@ -36,6 +39,15 @@ const ASSET_META: Record<InvestmentAsset, { label: string; icon: string; unit: s
   USD:          { label: 'ABD Doları',       icon: '$',  unit: '$' },
   EUR:          { label: 'Euro',             icon: '€',  unit: '€' },
   GBP:          { label: 'İngiliz Sterlini', icon: '£',  unit: '£' },
+}
+
+// TEFAS fonları dinamik: etiket fon kodu, alt etiket fon unvanı (fiyat verisi geldiyse)
+function assetMeta(asset: InvestmentAsset, fundPrices: Record<string, TefasFundPrice>): AssetMeta {
+  if (isTefasAsset(asset)) {
+    const code = tefasCode(asset)
+    return { label: code, subLabel: fundPrices[code]?.name, icon: 'F', unit: 'pay' }
+  }
+  return ASSET_META[asset]
 }
 
 function pnlColor(pnl: number) {
@@ -56,6 +68,7 @@ export default function InvestmentsPage() {
   const pricesLoading     = useInvestmentStore(s => s.pricesLoading)
   const pricesError       = useInvestmentStore(s => s.pricesError)
   const fetchPrices       = useInvestmentStore(s => s.fetchPrices)
+  const fundPrices        = useInvestmentStore(s => s.fundPrices)
   const getHoldings       = useInvestmentStore(s => s.getHoldings)
   const removeTransaction = useInvestmentStore(s => s.removeTransaction)
   const accounts = useAccountStore(useShallow(s => s.accounts))
@@ -87,13 +100,13 @@ export default function InvestmentsPage() {
   // qtyTimeline tracks cumulative quantity at each transaction date so the portfolio
   // line correctly reflects stepwise increases from multiple purchases.
   const chartGroups = useMemo<{
-    key: AssetGroup; label: string
+    key: string; asset: AssetGroup; fundCode?: string; label: string
     currentValue?: number; currentPrice?: number
     buyPoints: BuyPoint[]; qtyTimeline: QtyPoint[]
   }[]>(() => {
     if (!transactions.length) return []
     const groups: {
-      key: AssetGroup; label: string
+      key: string; asset: AssetGroup; fundCode?: string; label: string
       currentValue?: number; currentPrice?: number
       buyPoints: BuyPoint[]; qtyTimeline: QtyPoint[]
     }[] = []
@@ -107,7 +120,7 @@ export default function InvestmentsPage() {
         .reduce((s, h) => s + h.currentValue, 0)
       const buyPoints: BuyPoint[] = goldBuyTxs.map(t => ({
         date: t.date,
-        description: `${t.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} ${ASSET_META[t.asset].label}`,
+        description: `${t.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} ${assetMeta(t.asset, fundPrices).label}`,
         totalCost: t.quantity * t.pricePerUnit,
       }))
 
@@ -121,7 +134,7 @@ export default function InvestmentsPage() {
       })
 
       groups.push({
-        key: 'GOLD', label: 'Altın Portföyü',
+        key: 'GOLD', asset: 'GOLD', label: 'Altın Portföyü',
         currentValue: prices ? goldCurrentValue : undefined,
         currentPrice: prices?.goldGramTry,
         buyPoints,
@@ -151,7 +164,7 @@ export default function InvestmentsPage() {
       })
 
       groups.push({
-        key: a as AssetGroup, label: lbl,
+        key: a, asset: a as AssetGroup, label: lbl,
         currentValue: prices ? (holding?.currentValue ?? 0) : undefined,
         currentPrice: cp,
         buyPoints,
@@ -159,8 +172,40 @@ export default function InvestmentsPage() {
       })
     }
 
+    // ── TEFAS fonları — her fon kodu kendi grafiği ────────────────────
+    for (const code of tefasCodesIn(transactions.map(t => t.asset))) {
+      const asset    = tefasAsset(code)
+      const fundTxs  = transactions.filter(t => t.asset === asset)
+      const buyTxs   = fundTxs.filter(t => t.type === 'buy')
+      if (!buyTxs.length) continue
+
+      const fp      = fundPrices[code]
+      const holding = holdings.find(h => h.asset === asset)
+      const buyPoints: BuyPoint[] = buyTxs.map(t => ({
+        date: t.date,
+        description: `${t.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} pay ${code}`,
+        totalCost: t.quantity * t.pricePerUnit,
+      }))
+
+      const sortedTxs = [...fundTxs].sort((a, b) => a.date.localeCompare(b.date))
+      let cumQty = 0
+      const qtyTimeline: QtyPoint[] = sortedTxs.map(t => {
+        cumQty = Math.max(0, cumQty + (t.type === 'buy' ? t.quantity : -t.quantity))
+        return { date: t.date, qty: cumQty }
+      })
+
+      groups.push({
+        key: asset, asset: 'TEFAS', fundCode: code,
+        label: `${code} Portföyü`,
+        currentValue: fp ? (holding?.currentValue ?? 0) : undefined,
+        currentPrice: fp?.price,
+        buyPoints,
+        qtyTimeline,
+      })
+    }
+
     return groups
-  }, [transactions, prices, holdings])
+  }, [transactions, prices, fundPrices, holdings])
 
   const updatedAt = prices?.updatedAt
     ? new Date(prices.updatedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
@@ -185,6 +230,17 @@ export default function InvestmentsPage() {
             <Ticker label="EUR/TRY"  value={prices.eurTry.toFixed(2)}  current={prices.eurTry}      previous={prices.prevEurTry} />
             <Ticker label="GBP/TRY"  value={prices.gbpTry.toFixed(2)}  current={prices.gbpTry}      previous={prices.prevGbpTry} />
             <Ticker label="Altın/gr" value={`₺${prices.goldGramTry.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`} current={prices.goldGramTry} previous={prices.prevGoldGramTry} />
+            {Object.values(fundPrices)
+              .sort((a, b) => a.code.localeCompare(b.code))
+              .map(fp => (
+                <Ticker
+                  key={fp.code}
+                  label={fp.code}
+                  value={`₺${fp.price.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}`}
+                  current={fp.price}
+                  previous={fp.prevPrice}
+                />
+              ))}
             <div className="ml-auto flex items-center gap-3 flex-shrink-0">
               {pricesError && (
                 <span className="text-xs text-destructive font-medium">{pricesError}</span>
@@ -244,7 +300,8 @@ export default function InvestmentsPage() {
             {chartGroups.map(g => (
               <PriceHistoryChart
                 key={g.key}
-                asset={g.key}
+                asset={g.asset}
+                fundCode={g.fundCode}
                 label={g.label}
                 currentValue={g.currentValue}
                 currentPrice={g.currentPrice}
@@ -287,7 +344,14 @@ export default function InvestmentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {holdings.map(h => <HoldingRow key={h.asset} h={h} hasPrices={!!prices} />)}
+                  {holdings.map(h => (
+                    <HoldingRow
+                      key={h.asset}
+                      h={h}
+                      meta={assetMeta(h.asset, fundPrices)}
+                      hasPrices={isTefasAsset(h.asset) ? !!fundPrices[tefasCode(h.asset)] : !!prices}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -309,7 +373,7 @@ export default function InvestmentsPage() {
           ) : (
             <div className="divide-y divide-border/50">
               {transactions.map(tx => {
-                const meta = ASSET_META[tx.asset]
+                const meta = assetMeta(tx.asset, fundPrices)
                 const total = tx.quantity * tx.pricePerUnit
                 const isBuy = tx.type === 'buy'
                 const isConfirm = confirmDeleteId === tx.id
@@ -326,7 +390,7 @@ export default function InvestmentsPage() {
 
                     {/* Asset + buy/sell pill + date + linked account */}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      <div className="text-sm font-medium text-foreground flex items-center gap-1.5" title={meta.subLabel}>
                         {meta.label}
                         <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${isBuy ? 'bg-green-600/10 text-green-600' : 'bg-destructive/10 text-destructive'}`}>
                           {isBuy ? 'AL' : 'SAT'}
@@ -440,8 +504,7 @@ function Ticker({ label, value, current, previous }: {
 
 type Holding = { asset: InvestmentAsset; quantity: number; avgCostPerUnit: number; currentPrice: number; currentValue: number; pnl: number; pnlPercent: number }
 
-function HoldingRow({ h, hasPrices }: { h: Holding; hasPrices: boolean }) {
-  const meta        = ASSET_META[h.asset]
+function HoldingRow({ h, meta, hasPrices }: { h: Holding; meta: AssetMeta; hasPrices: boolean }) {
   const animAvgCost = useCountUp(h.avgCostPerUnit)
   const animPrice   = useCountUp(h.currentPrice)
   const animValue   = useCountUp(h.currentValue)
@@ -451,7 +514,14 @@ function HoldingRow({ h, hasPrices }: { h: Holding; hasPrices: boolean }) {
       <td className="px-4 py-4 font-medium text-foreground whitespace-nowrap">
         <span className="inline-flex items-center gap-1.5">
           <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-semibold bg-muted/50 text-foreground/60">{meta.icon}</span>
-          {meta.label}
+          <span>
+            {meta.label}
+            {meta.subLabel && (
+              <span className="block text-[10px] font-normal text-muted-foreground max-w-[180px] truncate" title={meta.subLabel}>
+                {meta.subLabel}
+              </span>
+            )}
+          </span>
         </span>
       </td>
       <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">{fmtQty(h.quantity, meta.unit)}</td>

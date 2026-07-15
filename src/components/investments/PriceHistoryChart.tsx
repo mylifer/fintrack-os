@@ -8,17 +8,19 @@ import type { AssetGroup, PricePoint } from '@/app/api/prices/history/route'
 // ── Constants ──────────────────────────────────────────────────────
 
 const COLORS: Record<AssetGroup, string> = {
-  GOLD: '#d97706',
-  USD:  '#2563eb',
-  EUR:  '#7c3aed',
-  GBP:  '#0891b2',
+  GOLD:  '#d97706',
+  USD:   '#2563eb',
+  EUR:   '#7c3aed',
+  GBP:   '#0891b2',
+  TEFAS: '#e11d48',
 }
 
 const RAW_PRICE_LABEL: Record<AssetGroup, string> = {
-  GOLD: 'Gram fiyatı',
-  USD:  'USD/TRY kuru',
-  EUR:  'EUR/TRY kuru',
-  GBP:  'GBP/TRY kuru',
+  GOLD:  'Gram fiyatı',
+  USD:   'USD/TRY kuru',
+  EUR:   'EUR/TRY kuru',
+  GBP:   'GBP/TRY kuru',
+  TEFAS: 'Birim pay fiyatı',
 }
 
 // Each series is independently normalized to its own vertical band on a shared Y-axis.
@@ -50,7 +52,8 @@ function fmtTooltipDate(iso: string) {
 }
 
 function fmtPrice(n: number) {
-  return n.toLocaleString('tr-TR', { maximumFractionDigits: n >= 1000 ? 0 : 2 })
+  // Fon pay fiyatları ₺1-10 aralığında olabildiğinden küçük değerlerde 4 hane göster
+  return n.toLocaleString('tr-TR', { maximumFractionDigits: n >= 1000 ? 0 : n < 10 ? 4 : 2 })
 }
 
 const CHART_H = 170
@@ -92,6 +95,7 @@ export interface QtyPoint {
 
 interface Props {
   asset:         AssetGroup
+  fundCode?:     string   // asset === 'TEFAS' iken zorunlu — fon kodu (örn. AFA)
   label:         string
   currentValue?: number
   currentPrice?: number
@@ -112,7 +116,7 @@ interface ChartRow {
 // ── Component ─────────────────────────────────────────────────────
 
 export function PriceHistoryChart({
-  asset, label, currentValue, currentPrice, buyPoints = [], qtyTimeline = [],
+  asset, fundCode, label, currentValue, currentPrice, buyPoints = [], qtyTimeline = [],
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [chartW, setChartW] = useState(400)
@@ -167,13 +171,14 @@ export function PriceHistoryChart({
     setLoading(true)
     setError(false)
     const params = new URLSearchParams({ asset, from: fetchFrom })
+    if (fundCode) params.set('code', fundCode)
     if (buyDatesStr) params.set('buyDates', buyDatesStr)
     fetch(`/api/prices/history?${params}`, { signal: ctrl.signal })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((d: PricePoint[]) => { setPriceHistory(d); setLoading(false) })
       .catch(() => { if (!ctrl.signal.aborted) { setError(true); setLoading(false) } })
     return () => ctrl.abort()
-  }, [asset, fetchFrom, buyDatesStr])
+  }, [asset, fundCode, fetchFrom, buyDatesStr])
 
   // ── Chart data ───────────────────────────────────────────────────
   // currentValue may be 0 (all sold) — show flat portfolio line at 0.
@@ -270,7 +275,7 @@ export function PriceHistoryChart({
 
   // ── Derived display values ───────────────────────────────────────
   const color  = COLORS[asset]
-  const gradId = `grad-${asset}`
+  const gradId = `grad-${asset}${fundCode ? `-${fundCode}` : ''}`
 
   const firstRealValue = chartData[0]?.realValue
   const pct = firstRealValue && currentValue

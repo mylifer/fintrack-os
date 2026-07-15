@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
+import { fetchTefasSeries, snapPeriod } from '@/lib/server/tefas-api'
 
 export const dynamic = 'force-dynamic'
 
-export type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP'
+export type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP' | 'TEFAS'
 export interface PricePoint { date: string; price: number }
 
 // ── Date sampling ─────────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ async function fetchUsd(date: string): Promise<Record<string, number> | null> {
   return null
 }
 
-function computePrice(asset: AssetGroup, usd: Record<string, number>): number | null {
+function computePrice(asset: Exclude<AssetGroup, 'TEFAS'>, usd: Record<string, number>): number | null {
   const t = usd.try
   if (!t) return null
   switch (asset) {
@@ -66,17 +67,47 @@ function computePrice(asset: AssetGroup, usd: Record<string, number>): number | 
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
+// TEFAS fon serisi: API zaten günlük noktaları topluca döner; `from`'a göre
+// kırpıp grafiğin taşımayacağı kadar seyrekleştirmek yeterli.
+async function tefasHistory(code: string, from: string): Promise<PricePoint[] | null> {
+  const daysBack = Math.ceil((Date.now() - new Date(from + 'T00:00:00Z').getTime()) / 86_400_000)
+  const series = await fetchTefasSeries(code, snapPeriod(daysBack))
+  if (!series) return null
+
+  const points = series.points.filter(p => p.date >= from)
+  if (points.length <= 400) return points
+
+  const step = Math.ceil(points.length / 400)
+  const thinned = points.filter((_, i) => i % step === 0)
+  if (thinned[thinned.length - 1]?.date !== points[points.length - 1].date) {
+    thinned.push(points[points.length - 1])
+  }
+  return thinned
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const asset        = searchParams.get('asset') as AssetGroup | null
   const from         = searchParams.get('from')
   const buyDatesRaw  = searchParams.get('buyDates')
+  const code         = searchParams.get('code')
 
   // `from` feeds new Date(from) → start.toISOString(); a non-date value makes
   // that throw RangeError and surface as an unhandled 500. Validate the shape
   // up front (same YYYY-MM-DD regex used for buyDates below).
-  if (!asset || !from || !['GOLD', 'USD', 'EUR', 'GBP'].includes(asset) || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+  if (!asset || !from || !['GOLD', 'USD', 'EUR', 'GBP', 'TEFAS'].includes(asset) || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
     return NextResponse.json({ error: 'Invalid params' }, { status: 400 })
+  }
+
+  if (asset === 'TEFAS') {
+    if (!code || !/^[A-Z0-9]{2,6}$/.test(code.toUpperCase())) {
+      return NextResponse.json({ error: 'Invalid params' }, { status: 400 })
+    }
+    const points = await tefasHistory(code.toUpperCase(), from)
+    if (!points) {
+      return NextResponse.json({ error: 'Fon verisi alınamadı' }, { status: 502 })
+    }
+    return NextResponse.json(points, { headers: { 'Cache-Control': 'no-store' } })
   }
 
   const mustInclude = buyDatesRaw

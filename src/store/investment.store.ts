@@ -7,9 +7,11 @@ import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
 import { loadEntities } from './entity-helpers'
 import { setBaseRates } from '@/lib/utils/fx'
 import { useTransactionStore } from './transactions.store'
+import { isTefasAsset, tefasCode, tefasCodesIn } from '@/lib/tefas'
 import type {
   InvestmentTransaction, InvestmentHolding,
-  InvestmentAsset, PriceData, Transaction,
+  InvestmentAsset, StaticInvestmentAsset, PriceData, Transaction,
+  TefasFundPrice,
 } from '@/types'
 
 /* ── Asset helpers ───────────────────────────────────────────────── */
@@ -22,7 +24,7 @@ const GOLD_GRAMS: Partial<Record<InvestmentAsset, number>> = {
   GOLD_OZ:      31.1035,
 }
 
-const ASSET_LABELS: Record<InvestmentAsset, string> = {
+const ASSET_LABELS: Record<StaticInvestmentAsset, string> = {
   GOLD_GRAM:    'Gr Altın',
   GOLD_QUARTER: 'Çeyrek Altın',
   GOLD_HALF:    'Yarım Altın',
@@ -33,7 +35,18 @@ const ASSET_LABELS: Record<InvestmentAsset, string> = {
   GBP:          'GBP',
 }
 
-export function getAssetPrice(asset: InvestmentAsset, prices: PriceData): number {
+// TEFAS fonları dinamik olduğundan etiket/ikon sabit map yerine fonksiyonla çözülür
+export function assetLabel(asset: InvestmentAsset): string {
+  return isTefasAsset(asset) ? tefasCode(asset) : ASSET_LABELS[asset]
+}
+
+export function getAssetPrice(
+  asset: InvestmentAsset,
+  prices: PriceData | null,
+  fundPrices?: Record<string, TefasFundPrice>,
+): number {
+  if (isTefasAsset(asset)) return fundPrices?.[tefasCode(asset)]?.price ?? 0
+  if (!prices) return 0
   if (asset in GOLD_GRAMS) return prices.goldGramTry * GOLD_GRAMS[asset]!
   if (asset === 'USD') return prices.usdTry
   if (asset === 'EUR') return prices.eurTry
@@ -48,16 +61,16 @@ function fmtQty(qty: number) {
 }
 
 function buyDescription(asset: InvestmentAsset, qty: number): string {
-  return `${fmtQty(qty)} ${ASSET_LABELS[asset]} Alımı`
+  return `${fmtQty(qty)} ${assetLabel(asset)} Alımı`
 }
 
 function sellDescription(asset: InvestmentAsset, qty: number): string {
-  return `${fmtQty(qty)} ${ASSET_LABELS[asset]} Satışı`
+  return `${fmtQty(qty)} ${assetLabel(asset)} Satışı`
 }
 
 /* ── Linked-transaction helpers (module-level, use store.getState()) ── */
 
-const ASSET_ICONS: Record<InvestmentAsset, string> = {
+const ASSET_ICONS: Record<StaticInvestmentAsset, string> = {
   GOLD_GRAM:    'Au',
   GOLD_QUARTER: 'Au',
   GOLD_HALF:    'Au',
@@ -66,6 +79,10 @@ const ASSET_ICONS: Record<InvestmentAsset, string> = {
   USD:          '$',
   EUR:          '€',
   GBP:          '£',
+}
+
+export function assetIcon(asset: InvestmentAsset): string {
+  return isTefasAsset(asset) ? 'F' : ASSET_ICONS[asset]
 }
 
 async function createLinkedTx(
@@ -84,7 +101,7 @@ async function createLinkedTx(
     currency:      'TRY',
     date,
     accountId:     sourceAccountId,
-    icon:          ASSET_ICONS[asset],
+    icon:          assetIcon(asset),
     description:   buyDescription(asset, quantity),
     isInstallment: false,
     createdAt:     now,
@@ -106,12 +123,12 @@ async function cleanLinkedTxs(investTx: InvestmentTransaction): Promise<void> {
     return
   }
 
-  const assetLabel = ASSET_LABELS[investTx.asset]
+  const label = assetLabel(investTx.asset)
   const toDelete = txStore.transactions.filter(t =>
     t.type === 'expense' &&
     t.accountId === investTx.sourceAccountId &&
     t.date === investTx.date &&
-    t.description.includes(assetLabel) &&
+    t.description.includes(label) &&
     t.description.includes('Alım'),
   )
   for (const t of toDelete) await txStore.remove(t.id, { undoable: false })
@@ -128,7 +145,7 @@ async function createSellLinkedTxs(
 ): Promise<string> {
   const now        = createdAt ?? new Date().toISOString()
   const txStore    = useTransactionStore.getState()
-  const assetLabel = ASSET_LABELS[asset]
+  const label = assetLabel(asset)
 
   const hasCost    = costBasis > 0.001
   const saleAmount = hasCost ? costBasis : total
@@ -141,7 +158,7 @@ async function createSellLinkedTxs(
     currency:      'TRY',
     date,
     accountId:     targetAccountId,
-    icon:          ASSET_ICONS[asset],
+    icon:          assetIcon(asset),
     description:   sellDescription(asset, quantity),
     isInstallment: false,
     createdAt:     now,
@@ -158,10 +175,10 @@ async function createSellLinkedTxs(
       currency:      'TRY',
       date,
       accountId:     targetAccountId,
-      icon:          ASSET_ICONS[asset],
+      icon:          assetIcon(asset),
       description:   isPnlIncome
-        ? `${assetLabel} Satış Kârı`
-        : `${assetLabel} Satış Zararı`,
+        ? `${label} Satış Kârı`
+        : `${label} Satış Zararı`,
       isInstallment: false,
       createdAt:     now,
       updatedAt:     now,
@@ -176,14 +193,14 @@ async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void
   if (!investTx.targetAccountId) return
 
   const txStore    = useTransactionStore.getState()
-  const assetLabel = ASSET_LABELS[investTx.asset]
+  const label = assetLabel(investTx.asset)
 
   if (investTx.linkedTransactionId) {
     await txStore.remove(investTx.linkedTransactionId, { undoable: false })
     const pnlTx = txStore.transactions.find(t =>
       t.accountId === investTx.targetAccountId &&
       t.date === investTx.date &&
-      (t.description === `${assetLabel} Satış Kârı` || t.description === `${assetLabel} Satış Zararı`),
+      (t.description === `${label} Satış Kârı` || t.description === `${label} Satış Zararı`),
     )
     if (pnlTx) await txStore.remove(pnlTx.id, { undoable: false })
     return
@@ -193,7 +210,7 @@ async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void
     (t.type === 'income' || t.type === 'expense') &&
     t.accountId === investTx.targetAccountId &&
     t.date === investTx.date &&
-    t.description.includes(assetLabel) &&
+    t.description.includes(label) &&
     t.description.includes('Satış'),
   )
   for (const t of toDelete) await txStore.remove(t.id, { undoable: false })
@@ -204,6 +221,7 @@ async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void
 export function computeHoldings(
   transactions: InvestmentTransaction[],
   prices: PriceData | null,
+  fundPrices?: Record<string, TefasFundPrice>,
 ): InvestmentHolding[] {
   const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date))
 
@@ -225,7 +243,7 @@ export function computeHoldings(
   for (const [asset, pos] of map) {
     if (pos.qty < 0.000001) continue
     const avgCostPerUnit = pos.qty > 0 ? pos.totalCost / pos.qty : 0
-    const currentPrice   = prices ? getAssetPrice(asset, prices) : 0
+    const currentPrice   = getAssetPrice(asset, prices, fundPrices)
     const currentValue   = pos.qty * currentPrice
     const pnl            = currentValue - pos.totalCost
     const pnlPercent     = pos.totalCost > 0 ? (pnl / pos.totalCost) * 100 : 0
@@ -241,11 +259,13 @@ export function computeHoldings(
 /* ── Store ───────────────────────────────────────────────────────── */
 
 interface InvestmentState {
-  transactions:  InvestmentTransaction[]
-  prices:        PriceData | null
-  pricesLoading: boolean
-  pricesError:   string | null
-  loading:       boolean
+  transactions:      InvestmentTransaction[]
+  prices:            PriceData | null
+  pricesLoading:     boolean
+  pricesError:       string | null
+  fundPrices:        Record<string, TefasFundPrice>
+  fundPricesLoading: boolean
+  loading:           boolean
 
   load:                    () => Promise<void>
   addTransaction:          (tx: InvestmentTransaction) => Promise<void>
@@ -253,16 +273,19 @@ interface InvestmentState {
   removeTransaction:       (id: string) => Promise<void>
   reprocessSellLinkedTxs:  () => Promise<void>
   fetchPrices:             () => Promise<void>
+  fetchFundPrices:         (extraCodes?: string[]) => Promise<void>
   getHoldings:             () => InvestmentHolding[]
   getPortfolioValue:       () => number
 }
 
 export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
-  transactions:  [],
-  prices:        null,
-  pricesLoading: false,
-  pricesError:   null,
-  loading:       false,
+  transactions:      [],
+  prices:            null,
+  pricesLoading:     false,
+  pricesError:       null,
+  fundPrices:        {},
+  fundPricesLoading: false,
+  loading:           false,
 
   load: async () => {
     set({ loading: true })
@@ -275,6 +298,8 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       rows => rows.sort((a, b) => b.date.localeCompare(a.date)),
     )
     set({ transactions: txs, loading: false })
+    // Fon kodları işlemlerden türediği için fiyatları ancak yükleme sonrası çekebiliriz
+    void get().fetchFundPrices()
   },
 
   addTransaction: async (tx) => {
@@ -297,6 +322,11 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     const finalTx = { ...tx, linkedTransactionId }
     await localUpsert('investment_transactions', finalTx)
     set(s => ({ transactions: [finalTx, ...s.transactions] }))
+
+    // Yeni bir TEFAS fonu eklendiyse fiyatı hemen çek (portföy değeri güncellensin)
+    if (isTefasAsset(tx.asset) && !get().fundPrices[tefasCode(tx.asset)]) {
+      void get().fetchFundPrices()
+    }
   },
 
   updateTransaction: async (id, patch) => {
@@ -409,12 +439,36 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     } finally {
       set({ pricesLoading: false })
     }
+    // TEFAS fiyatlarını da tazele — route tarafındaki cache sayesinde 60 sn'lik
+    // polling TEFAS'a en fazla ~10 dk'da bir yansır
+    void get().fetchFundPrices()
   },
 
-  getHoldings:       () => computeHoldings(get().transactions, get().prices),
-  getPortfolioValue: () => {
-    const { prices } = get()
-    if (!prices) return 0
-    return computeHoldings(get().transactions, prices).reduce((s, h) => s + h.currentValue, 0)
+  fetchFundPrices: async (extraCodes = []) => {
+    const codes = new Set([
+      ...tefasCodesIn(get().transactions.map(t => t.asset)),
+      ...extraCodes.map(c => c.trim().toUpperCase()).filter(Boolean),
+    ])
+    if (!codes.size || get().fundPricesLoading) return
+    set({ fundPricesLoading: true })
+    try {
+      const res = await fetch(`/api/prices/tefas?codes=${[...codes].join(',')}`, { cache: 'no-store' })
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data: { funds: Record<string, TefasFundPrice | null> } = await res.json()
+      const merged = { ...get().fundPrices }
+      for (const [code, fp] of Object.entries(data.funds ?? {})) {
+        if (fp) merged[code] = fp
+      }
+      set({ fundPrices: merged })
+    } catch {
+      // FX fiyatlarından bağımsız, sessizce geç — eldeki son fon fiyatı kullanılmaya devam eder
+    } finally {
+      set({ fundPricesLoading: false })
+    }
   },
+
+  getHoldings:       () => computeHoldings(get().transactions, get().prices, get().fundPrices),
+  getPortfolioValue: () =>
+    computeHoldings(get().transactions, get().prices, get().fundPrices)
+      .reduce((s, h) => s + h.currentValue, 0),
 }))

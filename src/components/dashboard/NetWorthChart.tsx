@@ -84,10 +84,11 @@ export function NetWorthChart() {
   const transactions = useTransactionStore(s => s.transactions)
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const prices       = useInvestmentStore(s => s.prices)
+  const fundPrices   = useInvestmentStore(s => s.fundPrices)
   const investTxs    = useInvestmentStore(s => s.transactions)
   const investValue  = useMemo(
-    () => prices ? computeHoldings(investTxs, prices).reduce((s, h) => s + h.currentValue, 0) : 0,
-    [investTxs, prices],
+    () => prices ? computeHoldings(investTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0) : 0,
+    [investTxs, prices, fundPrices],
   )
 
   const currentNW = calcNetWorth(accounts, prices) + investValue
@@ -144,7 +145,7 @@ export function NetWorthChart() {
       if (prices) {
         const investDelta = (investByMonth.get(key) ?? [])
           .reduce((sum, tx) => {
-            const unitPrice    = getAssetPrice(tx.asset, prices)
+            const unitPrice    = getAssetPrice(tx.asset, prices, fundPrices)
             const currentValue = tx.quantity * unitPrice
             return tx.type === 'buy' ? sum - currentValue : sum + currentValue
           }, 0)
@@ -157,7 +158,7 @@ export function NetWorthChart() {
     }
 
     return points
-  }, [transactions, currentNW, investTxs, prices])
+  }, [transactions, currentNW, investTxs, prices, fundPrices])
 
   // Weekly data — computed independently, same backward pattern
   const weeklyData = useMemo<NWDataPoint[]>(() => {
@@ -195,7 +196,7 @@ export function NetWorthChart() {
       if (prices) {
         const investDelta = investByWeek[i]
           .reduce((sum, tx) => {
-            const unitPrice    = getAssetPrice(tx.asset, prices)
+            const unitPrice    = getAssetPrice(tx.asset, prices, fundPrices)
             const currentValue = tx.quantity * unitPrice
             return tx.type === 'buy' ? sum - currentValue : sum + currentValue
           }, 0)

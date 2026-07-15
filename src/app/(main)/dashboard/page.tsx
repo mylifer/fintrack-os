@@ -56,10 +56,11 @@ export default function DashboardPage() {
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories   = useCategoryStore(s => s.categories)
   const prices       = useInvestmentStore(s => s.prices)
+  const fundPrices   = useInvestmentStore(s => s.fundPrices)
   const investTxs    = useInvestmentStore(s => s.transactions)
   const investValue  = useMemo(
-    () => prices ? computeHoldings(investTxs, prices).reduce((s, h) => s + h.currentValue, 0) : 0,
-    [investTxs, prices],
+    () => prices ? computeHoldings(investTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0) : 0,
+    [investTxs, prices, fundPrices],
   )
   const getBudgets   = useBudgetStore(s => s.getMonthBudgets)
   const getDueSoon   = useDebtStore(s => s.getDueSoon)
@@ -99,9 +100,9 @@ export default function DashboardPage() {
       balance: a.initialBalance + computeTransactionEffect(a, prevTxs),
     }))
     const prevInvestTxs = investTxs.filter(t => t.date <= prevRange.to)
-    const prevInvestValue = computeHoldings(prevInvestTxs, prices).reduce((s, h) => s + h.currentValue, 0)
+    const prevInvestValue = computeHoldings(prevInvestTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0)
     return calcNetWorth(prevAccounts, prices) + prevInvestValue
-  }, [accounts, transactions, investTxs, prices, prevRange])
+  }, [accounts, transactions, investTxs, prices, fundPrices, prevRange])
 
   const recent  = useMemo(() => transactions.slice(0, 8), [transactions])
   const budgets = useMemo(() => getBudgets(selectedPeriod, transactions).slice(0, 5), [selectedPeriod, transactions, getBudgets])

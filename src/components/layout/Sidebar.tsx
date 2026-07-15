@@ -108,10 +108,11 @@ export function Sidebar() {
   }
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const prices         = useInvestmentStore(s => s.prices)
+  const fundPrices     = useInvestmentStore(s => s.fundPrices)
   const investTxs      = useInvestmentStore(s => s.transactions)
   const investValue    = useMemo(
-    () => prices ? computeHoldings(investTxs, prices).reduce((s, h) => s + h.currentValue, 0) : 0,
-    [investTxs, prices],
+    () => prices ? computeHoldings(investTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0) : 0,
+    [investTxs, prices, fundPrices],
   )
   const transactions   = useTransactionStore(useShallow(s => s.transactions))
   const getDue         = useRecurringStore(s => s.getDue)
@@ -129,9 +130,9 @@ export function Sidebar() {
     }))
     const prevAccountNetWorth = calcNetWorth(prevAccounts, prices)
     const prevInvestTxs = investTxs.filter(t => t.date <= cutoff)
-    const prevInvestValue = computeHoldings(prevInvestTxs, prices).reduce((s, h) => s + h.currentValue, 0)
+    const prevInvestValue = computeHoldings(prevInvestTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0)
     return totalWealth - (prevAccountNetWorth + prevInvestValue)
-  }, [accounts, transactions, investTxs, prices, totalWealth])
+  }, [accounts, transactions, investTxs, prices, fundPrices, totalWealth])
 
   const budgets       = useBudgetStore(useShallow(s => s.budgets.filter(b => b.period === 'monthly')))
   const allCategories = useCategoryStore(useShallow(s => s.categories))

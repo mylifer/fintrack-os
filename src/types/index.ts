@@ -206,7 +206,7 @@ export interface TransactionFilters {
 
 // ─── Investment ────────────────────────────────────────────────────────────
 
-export type InvestmentAsset =
+export type StaticInvestmentAsset =
   | 'GOLD_GRAM'
   | 'GOLD_QUARTER'
   | 'GOLD_HALF'
@@ -215,6 +215,12 @@ export type InvestmentAsset =
   | 'USD'
   | 'EUR'
   | 'GBP'
+
+// TEFAS yatırım fonu — asset alanında 'TEFAS:AFA' gibi kod gömülü saklanır,
+// böylece holdings hesabı fon bazında ayrışır ve DB şeması değişmez.
+export type TefasAsset = `TEFAS:${string}`
+
+export type InvestmentAsset = StaticInvestmentAsset | TefasAsset
 
 export interface InvestmentTransaction {
   id: string
@@ -242,6 +248,15 @@ export interface PriceData {
   prevGbpTry?: number
   prevGoldGramTry?: number
   updatedAt: number    // Date.now()
+}
+
+// Günlük TEFAS fon fiyatı — /api/prices/tefas yanıtı, store'da kod bazında tutulur
+export interface TefasFundPrice {
+  code: string        // fon kodu, örn. 'AFA'
+  name: string        // fon unvanı
+  price: number       // birim pay değeri (TRY)
+  prevPrice?: number  // bir önceki işlem günü kapanışı
+  date: string        // fiyatın ait olduğu gün (ISO)
 }
 
 export interface InvestmentHolding {

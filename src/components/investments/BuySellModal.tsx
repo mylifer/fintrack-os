@@ -6,7 +6,11 @@ import { useShallow } from 'zustand/react/shallow'
 import { formatCurrency } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
 import { SelectField } from '@/components/ui/Select'
-import type { InvestmentAsset, InvestmentTransaction } from '@/types'
+import { isTefasAsset, tefasCode, tefasAsset, TEFAS_CODE_RE } from '@/lib/tefas'
+import type { InvestmentAsset, InvestmentTransaction, TefasFundPrice } from '@/types'
+
+// Varlık seçiminde 'TEFAS_NEW' sentinel'i: kod girilerek yeni fon eklenir
+type AssetChoice = InvestmentAsset | 'TEFAS_NEW'
 
 const ASSETS: { asset: InvestmentAsset; label: string; emoji: string; unit: string }[] = [
   { asset: 'GOLD_GRAM',    label: 'Gram Altın',       emoji: '🥇', unit: 'gr' },
@@ -34,13 +38,18 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   const addTransaction    = useInvestmentStore(s => s.addTransaction)
   const updateTransaction = useInvestmentStore(s => s.updateTransaction)
   const prices            = useInvestmentStore(s => s.prices)
+  const fundPrices        = useInvestmentStore(s => s.fundPrices)
   const getHoldings       = useInvestmentStore(s => s.getHoldings)
   const accounts = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
 
   const isEdit = !!editingTx
 
   const [txType,         setTxType]         = useState<'buy' | 'sell'>(defaultType)
-  const [asset,          setAsset]          = useState<InvestmentAsset>('GOLD_GRAM')
+  const [asset,          setAsset]          = useState<AssetChoice>('GOLD_GRAM')
+  const [fundCode,       setFundCode]       = useState('')
+  const [fundLookup,     setFundLookup]     = useState<
+    { status: 'idle' | 'loading' | 'ok' | 'notfound' | 'error'; fund?: TefasFundPrice }
+  >({ status: 'idle' })
   const [qty,            setQty]            = useState('')
   const [price,          setPrice]          = useState('')
   const [accountId,      setAccountId]      = useState('')   // buy: source account
@@ -74,16 +83,55 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
       setDate(today())
       setNote('')
     }
+    setFundCode('')
+    setFundLookup({ status: 'idle' })
   }, [open, editingTx, defaultType])
 
+  // TEFAS fon kodu doğrulama — kod şekli oturunca debounce'la fiyat servisine sor
+  useEffect(() => {
+    if (!open || asset !== 'TEFAS_NEW') return
+    const code = fundCode.trim().toUpperCase()
+    if (!TEFAS_CODE_RE.test(code)) {
+      setFundLookup({ status: 'idle' })
+      return
+    }
+
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => {
+      setFundLookup({ status: 'loading' })
+      fetch(`/api/prices/tefas?codes=${code}`, { signal: ctrl.signal, cache: 'no-store' })
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then((d: { funds: Record<string, TefasFundPrice | null> }) => {
+          const fund = d.funds?.[code]
+          setFundLookup(fund ? { status: 'ok', fund } : { status: 'notfound' })
+        })
+        .catch(() => { if (!ctrl.signal.aborted) setFundLookup({ status: 'error' }) })
+    }, 500)
+
+    return () => { clearTimeout(timer); ctrl.abort() }
+  }, [open, asset, fundCode])
+
+  // 'TEFAS_NEW' → doğrulanmış koddan somut varlık; doğrulanmadıysa null (kaydedilemez)
+  const resolvedAsset: InvestmentAsset | null =
+    asset === 'TEFAS_NEW'
+      ? (fundLookup.status === 'ok' && fundLookup.fund ? tefasAsset(fundLookup.fund.code) : null)
+      : asset
+  const isTefas = asset === 'TEFAS_NEW' || isTefasAsset(asset)
+
+  function liveUnitPrice(a: AssetChoice): number {
+    if (a === 'TEFAS_NEW') return fundLookup.fund?.price ?? 0
+    if (isTefasAsset(a))   return fundPrices[tefasCode(a)]?.price ?? 0
+    if (!prices) return 0
+    if (a in GOLD_GRAMS)   return prices.goldGramTry * GOLD_GRAMS[a]!
+    if (a === 'USD') return prices.usdTry
+    if (a === 'EUR') return prices.eurTry
+    if (a === 'GBP') return prices.gbpTry
+    return 0
+  }
+
   function fillLivePrice() {
-    if (!prices) return
-    let livePrice = 0
-    if (asset in GOLD_GRAMS) livePrice = prices.goldGramTry * GOLD_GRAMS[asset]!
-    else if (asset === 'USD') livePrice = prices.usdTry
-    else if (asset === 'EUR') livePrice = prices.eurTry
-    else if (asset === 'GBP') livePrice = prices.gbpTry
-    if (livePrice > 0) setPrice(livePrice.toFixed(2))
+    const p = liveUnitPrice(asset)
+    if (p > 0) setPrice(isTefas ? p.toFixed(6) : p.toFixed(2))
   }
 
   // Auto-fill price when date or asset changes (new transactions only)
@@ -94,31 +142,36 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     const todayStr = today()
 
     if (date === todayStr) {
-      if (!prices) return
-      let p = 0
-      if (asset in GOLD_GRAMS) p = prices.goldGramTry * GOLD_GRAMS[asset]!
-      else if (asset === 'USD') p = prices.usdTry
-      else if (asset === 'EUR') p = prices.eurTry
-      else if (asset === 'GBP') p = prices.gbpTry
-      if (p > 0) setPrice(p.toFixed(2))
+      const p = liveUnitPrice(asset)
+      if (p > 0) setPrice(isTefas ? p.toFixed(6) : p.toFixed(2))
       return
     }
 
     if (date > todayStr) return
 
-    const group = (asset in GOLD_GRAMS ? 'GOLD' : asset) as 'GOLD' | 'USD' | 'EUR' | 'GBP'
-    const gramMult = GOLD_GRAMS[asset] ?? 1
+    const code = asset === 'TEFAS_NEW'
+      ? fundLookup.fund?.code
+      : isTefasAsset(asset) ? tefasCode(asset) : undefined
+    if (isTefas && !code) return
+
+    const group = isTefas ? 'TEFAS' : (asset in GOLD_GRAMS ? 'GOLD' : asset) as 'GOLD' | 'USD' | 'EUR' | 'GBP'
+    const gramMult = GOLD_GRAMS[asset as InvestmentAsset] ?? 1
 
     const ctrl = new AbortController()
     setFetchingPrice(true)
 
-    fetch(`/api/prices/history?asset=${group}&from=${date}&buyDates=${date}`, { signal: ctrl.signal })
+    const params = new URLSearchParams({ asset: group, from: date, buyDates: date })
+    if (code) params.set('code', code)
+
+    fetch(`/api/prices/history?${params}`, { signal: ctrl.signal })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((pts: { date: string; price: number }[]) => {
-        const pt = pts.find(p => p.date === date) ?? pts[pts.length - 1]
+        // TEFAS'ta seçilen gün tatilse ilk sonraki işlem günü; kurlarda seri bugüne
+        // kadar uzandığından son nokta en yakın değerdir
+        const pt = pts.find(p => p.date === date) ?? (group === 'TEFAS' ? pts[0] : pts[pts.length - 1])
         if (pt) {
           const unitPrice = group === 'GOLD' ? pt.price * gramMult : pt.price
-          setPrice(unitPrice.toFixed(2))
+          setPrice(group === 'TEFAS' ? unitPrice.toFixed(6) : unitPrice.toFixed(2))
         }
       })
       .catch(() => {})
@@ -126,18 +179,45 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
       .finally(() => { if (!ctrl.signal.aborted) setFetchingPrice(false) })
 
     return () => ctrl.abort()
-  }, [open, date, asset, editingTx, prices])
+  }, [open, date, asset, editingTx, prices, fundLookup])
 
   const qtyNum    = parseFloat(qty)   || 0
   const priceNum  = parseFloat(price) || 0
   const total     = qtyNum * priceNum
 
-  // Sell validation
-  const holdings        = getHoldings()
-  const sellableAssets  = ASSETS.filter(a => holdings.some(h => h.asset === a.asset && h.quantity > 0.000001))
-  const visibleAssets   = txType === 'sell' && !isEdit ? sellableAssets : ASSETS
-  const assetMeta       = visibleAssets.find(a => a.asset === asset) ?? ASSETS.find(a => a.asset === asset)!
-  const currentHolding  = holdings.find(h => h.asset === asset)
+  // Asset choices — statik varlıklar + portföydeki TEFAS fonları (+ alımda yeni fon)
+  const holdings = getHoldings()
+
+  const tefasChoices: { asset: AssetChoice; label: string; emoji: string; unit: string }[] = [
+    ...holdings
+      .filter(h => isTefasAsset(h.asset) && h.quantity > 0.000001)
+      .map(h => ({
+        asset: h.asset as AssetChoice,
+        label: `${tefasCode(h.asset)} — TEFAS Fonu`,
+        emoji: '📊', unit: 'pay',
+      })),
+    // Düzenlenen işlem tamamen satılmış bir fona aitse seçenek listesinde yine görünsün
+    ...(isEdit && editingTx && isTefasAsset(editingTx.asset) &&
+        !holdings.some(h => h.asset === editingTx.asset && h.quantity > 0.000001)
+      ? [{ asset: editingTx.asset as AssetChoice, label: `${tefasCode(editingTx.asset)} — TEFAS Fonu`, emoji: '📊', unit: 'pay' }]
+      : []),
+  ]
+
+  const sellableAssets  = [
+    ...ASSETS.filter(a => holdings.some(h => h.asset === a.asset && h.quantity > 0.000001)),
+    ...tefasChoices,
+  ]
+  const buyableAssets   = [
+    ...ASSETS,
+    ...tefasChoices,
+    { asset: 'TEFAS_NEW' as AssetChoice, label: 'TEFAS Fonu (kodla ekle)', emoji: '📊', unit: 'pay' },
+  ]
+  const visibleAssets   = txType === 'sell' && !isEdit ? sellableAssets : buyableAssets
+  const assetMeta       =
+    visibleAssets.find(a => a.asset === asset)
+    ?? ASSETS.find(a => a.asset === asset)
+    ?? { asset, label: 'TEFAS Fonu', emoji: '📊', unit: 'pay' }
+  const currentHolding  = resolvedAsset ? holdings.find(h => h.asset === resolvedAsset) : undefined
   const heldQty         = currentHolding?.quantity ?? 0
   const editOffset      = isEdit && editingTx?.type === 'sell' ? editingTx.quantity : 0
   const maxSell         = txType === 'sell'
@@ -145,16 +225,16 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     : Infinity
   const sellExceeded = txType === 'sell' && qtyNum > maxSell
 
-  const canSave = qtyNum > 0 && priceNum > 0 && date && !sellExceeded && !saving
+  const canSave = qtyNum > 0 && priceNum > 0 && !!date && !sellExceeded && !saving && resolvedAsset !== null
 
   async function handleSave() {
-    if (!canSave) return
+    if (!canSave || !resolvedAsset) return
     setSaving(true)
     try {
     if (isEdit && editingTx) {
       await updateTransaction(editingTx.id, {
         type:            txType,
-        asset,
+        asset:           resolvedAsset,
         quantity:        qtyNum,
         pricePerUnit:    priceNum,
         sourceAccountId: txType === 'buy'  && accountId   ? accountId   : undefined,
@@ -166,7 +246,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
       const tx: InvestmentTransaction = {
         id:              crypto.randomUUID(),
         type:            txType,
-        asset,
+        asset:           resolvedAsset,
         quantity:        qtyNum,
         pricePerUnit:    priceNum,
         sourceAccountId: txType === 'buy'  && accountId   ? accountId   : undefined,
@@ -192,7 +272,8 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-md bg-card rounded-2xl shadow-2xl overflow-hidden border border-border">
+      {/* max-h + scroll: TEFAS kod alanı açıkken kısa ekranlarda footer taşmasın */}
+      <div className="w-full max-w-md bg-card rounded-2xl shadow-2xl overflow-y-auto max-h-[calc(100dvh-2rem)] border border-border">
 
         {/* Header */}
         <div className="px-6 py-5 border-b border-border flex items-center justify-between">
@@ -234,11 +315,51 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
             <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">Varlık</label>
             <SelectField
               value={asset}
-              onChange={e => { setAsset(e.target.value as InvestmentAsset); setPrice('') }}
+              onChange={e => {
+                const next = e.target.value as AssetChoice
+                setAsset(next)
+                setPrice('')
+                if (next !== 'TEFAS_NEW') { setFundCode(''); setFundLookup({ status: 'idle' }) }
+              }}
               options={visibleAssets.map(a => ({ value: a.asset, label: `${a.emoji} ${a.label}` }))}
               className="h-10 bg-background"
             />
           </div>
+
+          {/* TEFAS fund code (new fund only) */}
+          {asset === 'TEFAS_NEW' && (
+            <div>
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">
+                Fon Kodu
+              </label>
+              <input
+                type="text"
+                value={fundCode}
+                onChange={e => setFundCode(e.target.value.toUpperCase())}
+                placeholder="Örn. AFA, YAC, TI2"
+                maxLength={6}
+                autoFocus
+                className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground uppercase tracking-widest focus:outline-none focus:border-accent"
+              />
+              {fundLookup.status === 'loading' && (
+                <div className="mt-1 text-xs text-muted-foreground animate-pulse">Fon aranıyor...</div>
+              )}
+              {fundLookup.status === 'ok' && fundLookup.fund && (
+                <div className="mt-1 text-xs text-green-600 font-medium">
+                  ✓ {fundLookup.fund.name}
+                  <span className="text-muted-foreground font-normal">
+                    {' '}· ₺{fundLookup.fund.price.toLocaleString('tr-TR', { maximumFractionDigits: 6 })} ({fundLookup.fund.date})
+                  </span>
+                </div>
+              )}
+              {fundLookup.status === 'notfound' && (
+                <div className="mt-1 text-xs text-destructive font-medium">Bu kodla bir fon bulunamadı.</div>
+              )}
+              {fundLookup.status === 'error' && (
+                <div className="mt-1 text-xs text-destructive font-medium">TEFAS&apos;a ulaşılamadı, tekrar deneyin.</div>
+              )}
+            </div>
+          )}
 
           {/* Quantity */}
           <div>
@@ -289,7 +410,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               </label>
               {fetchingPrice ? (
                 <span className="text-xs text-muted-foreground animate-pulse">Fiyat yükleniyor...</span>
-              ) : prices && (
+              ) : liveUnitPrice(asset) > 0 && (
                 <button
                   onClick={fillLivePrice}
                   className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors"
