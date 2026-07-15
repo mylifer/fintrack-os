@@ -83,7 +83,8 @@ function computePrice(asset: Exclude<AssetGroup, 'TEFAS'>, usd: Record<string, n
 
 // TEFAS fon serisi: API zaten günlük noktaları topluca döner; `from`'a göre
 // kırpıp grafiğin taşımayacağı kadar seyrekleştirmek yeterli.
-async function tefasHistory(code: string, from: string): Promise<PricePoint[] | null> {
+// mustInclude (alım tarihleri) seyrekleştirmede korunur — yoksa işaretçiler kayar.
+async function tefasHistory(code: string, from: string, mustInclude: string[] = []): Promise<PricePoint[] | null> {
   const daysBack = Math.ceil((Date.now() - new Date(from + 'T00:00:00Z').getTime()) / 86_400_000)
   const series = await fetchTefasSeries(code, snapPeriod(daysBack))
   if (!series) return null
@@ -91,8 +92,9 @@ async function tefasHistory(code: string, from: string): Promise<PricePoint[] | 
   const points = series.points.filter(p => p.date >= from)
   if (points.length <= 400) return points
 
+  const keep = new Set(mustInclude)
   const step = Math.ceil(points.length / 400)
-  const thinned = points.filter((_, i) => i % step === 0)
+  const thinned = points.filter((p, i) => i % step === 0 || keep.has(p.date))
   if (thinned[thinned.length - 1]?.date !== points[points.length - 1].date) {
     thinned.push(points[points.length - 1])
   }
@@ -113,20 +115,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Invalid params' }, { status: 400 })
   }
 
+  const mustInclude = buyDatesRaw
+    ? buyDatesRaw.split(',').filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s))
+    : []
+
   if (asset === 'TEFAS') {
     if (!code || !/^[A-Z0-9]{2,6}$/.test(code.toUpperCase())) {
       return NextResponse.json({ error: 'Invalid params' }, { status: 400 })
     }
-    const points = await tefasHistory(code.toUpperCase(), from)
+    const points = await tefasHistory(code.toUpperCase(), from, mustInclude)
     if (!points) {
       return NextResponse.json({ error: 'Fon verisi alınamadı' }, { status: 502 })
     }
     return NextResponse.json(points, { headers: { 'Cache-Control': 'no-store' } })
   }
-
-  const mustInclude = buyDatesRaw
-    ? buyDatesRaw.split(',').filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s))
-    : []
 
   // Üst sınır: "from=1900-01-01" gibi bir istek binlerce paralel CDN fetch'i
   // tetiklemesin — örnekleme adımı zaten seyrekleştiriyor, 400 nokta ≈ 15+ yıl

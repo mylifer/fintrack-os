@@ -152,15 +152,9 @@ export function PriceHistoryChart({
     [buyPoints, fetchFrom],
   )
 
-  const buyByDate = useMemo(() => {
-    const map = new Map<string, BuyPoint[]>()
-    for (const bp of buyPoints) {
-      if (bp.date < fetchFrom) continue
-      const arr = map.get(bp.date) ?? []
-      map.set(bp.date, [...arr, bp])
-    }
-    return map
-  }, [buyPoints, fetchFrom])
+  // NOT: Alım işaretçileri buradan değil, chartData hesaplandıktan sonra
+  // en yakın satıra tutturularak (buyMarkers) türetilir — alım tarihi seride
+  // birebir bulunmayabilir (hafta sonu/tatil, seyrekleştirme, eksik CDN verisi).
 
   // ── Fetch ───────────────────────────────────────────────────────
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([])
@@ -252,6 +246,21 @@ export function PriceHistoryChart({
 
     return data
   }, [priceHistory, currentValue, currentPrice, qtyTimeline])
+
+  // Her alımı grafikteki ilk >= tarihli satıra tuttur; satır yoksa son satıra.
+  // Böylece tarihi seride birebir olmayan alımlar da işaretçi alır.
+  const buyMarkers = useMemo(() => {
+    const map = new Map<string, BuyPoint[]>()
+    if (!chartData.length) return map
+    for (const bp of buyPoints) {
+      if (bp.date < fetchFrom) continue
+      const row = chartData.find(r => r.date >= bp.date) ?? chartData[chartData.length - 1]
+      const arr = map.get(row.date)
+      if (arr) arr.push(bp)
+      else map.set(row.date, [bp])
+    }
+    return map
+  }, [buyPoints, fetchFrom, chartData])
 
   // For month-labeled periods, only the first date of each calendar month gets a label
   const labelDates = useMemo((): Set<string> => {
@@ -389,7 +398,9 @@ export function PriceHistoryChart({
             width={chartW}
             height={CHART_H}
             data={chartData}
-            margin={{ top: 4, right: 12, left: 12, bottom: 0 }}
+            // Üst boşluk alım işaretçisi halesini (r=10–11) barındıracak kadar geniş
+            // olmalı — yoksa zirvedeki işaretçiler SVG sınırında kesiliyor
+            margin={{ top: 14, right: 12, left: 12, bottom: 0 }}
           >
             <defs>
               <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -415,7 +426,7 @@ export function PriceHistoryChart({
               content={({ active, payload, label: lbl }) => {
                 if (!active || !payload?.length) return null
                 const date = lbl as string
-                const buys = buyByDate.get(date)
+                const buys = buyMarkers.get(date)
                 const row = chartData.find(r => r.date === date)
 
                 return (
@@ -480,7 +491,7 @@ export function PriceHistoryChart({
               fill={`url(#${gradId})`}
               dot={(props: any) => {
                 const { cx = 0, cy = 0, payload } = props
-                if (!buyByDate.has(payload?.date)) {
+                if (!buyMarkers.has(payload?.date)) {
                   return <circle key={`nd-${payload?.date}`} cx={cx} cy={cy} r={0} fill="none" />
                 }
                 return (
@@ -492,7 +503,7 @@ export function PriceHistoryChart({
               }}
               activeDot={(props: any) => {
                 const { cx = 0, cy = 0, payload } = props
-                const isBuy = buyByDate.has(payload?.date)
+                const isBuy = buyMarkers.has(payload?.date)
                 return (
                   <g key={`active-v-${payload?.date}`}>
                     {isBuy && <circle cx={cx} cy={cy} r={11} fill={color} fillOpacity={0.2} />}
