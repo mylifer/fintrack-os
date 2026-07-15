@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
@@ -10,7 +10,7 @@ import { useShallow }         from 'zustand/react/shallow'
 import { formatCurrency }     from '@/lib/utils/currency'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
-import { getPeriodRange, today } from '@/lib/utils/date'
+import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { recurringOccurrences } from '@/lib/utils/recurrence'
 import { deterministicUuid }  from '@/lib/utils/id'
 import { addMonths, format, parseISO } from 'date-fns'
@@ -49,20 +49,30 @@ export default function AccountDetailClient({ id }: { id: string }) {
   const [search, setSearch]                 = useState('')
   const [typeFilter, setTypeFilter]         = useState('')
   const [showFuture, setShowFuture]         = useState(false)
+  const [periodOffset, setPeriodOffset]     = useState(0)
 
   const recurring = useRecurringStore(s => s.recurring)
 
-  const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
+  // Dönem türü değişince gezinti sıfırlanır (Aylık'ta Ağustos'a gidip Yıllık'a
+  // geçmek 2027'de bırakmasın).
+  useEffect(() => { setPeriodOffset(0) }, [periodType])
+
+  const { from, to } = useMemo(
+    () => getPeriodRangeAt(periodType, periodOffset),
+    [periodType, periodOffset],
+  )
 
   // Planlanan gelecek işlemler: bu hesaba dokunan aktif tekrarlayan şablonların
-  // dönem sonuna kadar projekte edilmiş oluşumları. Oluşum id'si, gerçek üretimle
-  // aynı deterministik şemayı kullanır — kaydedilmiş bir işlemle çakışan oluşum
-  // elenir. 'Tüm Zamanlar'da ufuk 12 ay ile sınırlanır.
+  // seçili dönem sonuna kadar projekte edilmiş oluşumları. Oluşum id'si, gerçek
+  // üretimle aynı deterministik şemayı kullanır — kaydedilmiş bir işlemle çakışan
+  // oluşum elenir. Sınırlı dönemler (gün/hafta/ay/yıl) doğal ufuktur; yalnızca
+  // 'Tüm Zamanlar' 12 ay ile sınırlanır (sınırsız şablon sonsuza kadar üretir).
   const projectedTxs = useMemo(() => {
     if (!showFuture) return [] as Transaction[]
     const todayStr = today()
-    const cap     = format(addMonths(parseISO(todayStr), 12), 'yyyy-MM-dd')
-    const horizon = to < cap ? to : cap
+    const horizon = periodType === 'all'
+      ? format(addMonths(parseISO(todayStr), 12), 'yyyy-MM-dd')
+      : to
     const existingIds = new Set(accountTxs.map(t => t.id))
     const out: Transaction[] = []
     for (const r of recurring) {
@@ -92,7 +102,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
       }
     }
     return out
-  }, [showFuture, recurring, id, to, accountTxs])
+  }, [showFuture, recurring, id, periodType, to, accountTxs])
 
   const projectedIds = useMemo(() => new Set(projectedTxs.map(t => t.id)), [projectedTxs])
 
@@ -145,6 +155,11 @@ export default function AccountDetailClient({ id }: { id: string }) {
       />
 
       <PeriodTabs
+        nav={{
+          offset:   periodOffset,
+          label:    formatPeriodLabel(periodType, periodOffset),
+          onChange: setPeriodOffset,
+        }}
         rightSlot={
           <label className="flex items-center gap-2 cursor-pointer select-none whitespace-nowrap">
             <input

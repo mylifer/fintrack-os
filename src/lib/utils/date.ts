@@ -2,7 +2,7 @@ import {
   format, parseISO, startOfMonth, endOfMonth,
   subMonths, addMonths, isWithinInterval, startOfYear, endOfYear,
   differenceInDays, isAfter, isBefore, addDays, subDays, subWeeks, subYears,
-  startOfWeek, endOfWeek, startOfDay,
+  addWeeks, addYears, startOfWeek, endOfWeek, startOfDay,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { Account, MonthYear, PeriodType } from '@/types'
@@ -83,27 +83,53 @@ export function daysUntil(iso: string): number {
 }
 
 export function getPeriodRange(type: PeriodType): { from: string; to: string } {
+  return getPeriodRangeAt(type, 0)
+}
+
+/** Period range shifted by `offset` periods from now (offset 0 = current period,
+ *  -1 = previous, +1 = next). 'all' ignores the offset. */
+export function getPeriodRangeAt(type: PeriodType, offset: number): { from: string; to: string } {
   const now = new Date()
   switch (type) {
-    case 'daily':
-      return { from: format(now, 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') }
-    case 'weekly':
+    case 'daily': {
+      const d = addDays(now, offset)
+      return { from: format(d, 'yyyy-MM-dd'), to: format(d, 'yyyy-MM-dd') }
+    }
+    case 'weekly': {
+      const d = addWeeks(now, offset)
       return {
-        from: format(startOfWeek(now, { locale: tr }), 'yyyy-MM-dd'),
-        to:   format(endOfWeek(now,   { locale: tr }), 'yyyy-MM-dd'),
+        from: format(startOfWeek(d, { locale: tr }), 'yyyy-MM-dd'),
+        to:   format(endOfWeek(d,   { locale: tr }), 'yyyy-MM-dd'),
       }
-    case 'monthly':
+    }
+    case 'monthly': {
+      const d = addMonths(now, offset)
       return {
-        from: format(startOfMonth(now), 'yyyy-MM-dd'),
-        to:   format(endOfMonth(now),   'yyyy-MM-dd'),
+        from: format(startOfMonth(d), 'yyyy-MM-dd'),
+        to:   format(endOfMonth(d),   'yyyy-MM-dd'),
       }
-    case 'yearly':
+    }
+    case 'yearly': {
+      const d = addYears(now, offset)
       return {
-        from: format(startOfYear(now), 'yyyy-MM-dd'),
-        to:   format(endOfYear(now),   'yyyy-MM-dd'),
+        from: format(startOfYear(d), 'yyyy-MM-dd'),
+        to:   format(endOfYear(d),   'yyyy-MM-dd'),
       }
+    }
     case 'all':
       return { from: '1900-01-01', to: '2099-12-31' }
+  }
+}
+
+/** Human label for the period at `offset` — e.g. "Temmuz 2026", "2026", "14 Tem – 20 Tem". */
+export function formatPeriodLabel(type: PeriodType, offset: number): string {
+  const { from, to } = getPeriodRangeAt(type, offset)
+  switch (type) {
+    case 'daily':   return format(parseISO(from), 'd MMMM yyyy', { locale: tr })
+    case 'weekly':  return `${format(parseISO(from), 'd MMM', { locale: tr })} – ${format(parseISO(to), 'd MMM', { locale: tr })}`
+    case 'monthly': return format(parseISO(from), 'MMMM yyyy', { locale: tr })
+    case 'yearly':  return format(parseISO(from), 'yyyy')
+    case 'all':     return ''
   }
 }
 

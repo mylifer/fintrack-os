@@ -12,9 +12,17 @@ const PERIODS: { type: PeriodType; label: string }[] = [
   { type: 'all',     label: 'Tüm Zamanlar' },
 ]
 
-export function PeriodTabs({ rightSlot }: { rightSlot?: ReactNode }) {
+interface Nav {
+  offset: number
+  label: string
+  onChange: (offset: number) => void
+}
+
+export function PeriodTabs({ rightSlot, nav }: { rightSlot?: ReactNode; nav?: Nav }) {
   const periodType    = useUIStore(s => s.periodType)
   const setPeriodType = useUIStore(s => s.setPeriodType)
+
+  const navBtnCls = 'w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-sm leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors'
 
   return (
     <div className="flex items-center gap-1 px-6 py-3 border-b border-border/50 bg-transparent overflow-x-auto flex-shrink-0">
@@ -32,6 +40,27 @@ export function PeriodTabs({ rightSlot }: { rightSlot?: ReactNode }) {
           {label}
         </button>
       ))}
+
+      {/* Dönem gezintisi — 'Tüm Zamanlar'da anlamsız, gizlenir */}
+      {nav && periodType !== 'all' && (
+        <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
+          <button onClick={() => nav.onChange(nav.offset - 1)} className={navBtnCls} title="Önceki dönem">‹</button>
+          <button
+            onClick={() => nav.onChange(0)}
+            title={nav.offset !== 0 ? 'Bugüne dön' : undefined}
+            className={[
+              'px-2 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors',
+              nav.offset !== 0
+                ? 'text-primary hover:bg-secondary/60'
+                : 'text-foreground cursor-default',
+            ].join(' ')}
+          >
+            {nav.label}
+          </button>
+          <button onClick={() => nav.onChange(nav.offset + 1)} className={navBtnCls} title="Sonraki dönem">›</button>
+        </div>
+      )}
+
       {rightSlot && <div className="ml-auto pl-3 flex-shrink-0 flex items-center">{rightSlot}</div>}
     </div>
   )
