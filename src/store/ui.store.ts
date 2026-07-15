@@ -27,7 +27,7 @@ export const useUIStore = create<UIState>()(
       modal: null,
       modalPayload: null,
       selectedPeriod: currentMonthYear(),
-      periodType: 'daily',
+      periodType: 'monthly',
       txFilters: {},
       sidebarOpen: false,
 
