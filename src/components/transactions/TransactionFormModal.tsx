@@ -261,7 +261,9 @@ function PersonField({
 }) {
   const allPeople = usePeopleStore(s => s.people)
   const addPerson = usePeopleStore(s => s.add)
-  const people    = allPeople.filter(p => p.role === role)
+  // Archived people stay resolvable on old transactions but are not selectable —
+  // unless the transaction being edited already points at one (keep it visible).
+  const people    = allPeople.filter(p => p.role === role && (!p.isArchived || p.id === value))
 
   const [adding, setAdding]   = useState(false)
   const [newName, setNewName] = useState('')

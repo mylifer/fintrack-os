@@ -17,13 +17,15 @@ export function PeopleManager({ role, emptyText }: Props) {
   const addPerson    = usePeopleStore(s => s.add)
   const renamePerson = usePeopleStore(s => s.rename)
   const setPersonUrl = usePeopleStore(s => s.setUrl)
-  const removePerson = usePeopleStore(s => s.remove)
-  const loadPeople   = usePeopleStore(s => s.load)
-  const transactions = useTransactionStore(s => s.transactions)
+  const removePerson  = usePeopleStore(s => s.remove)
+  const restorePerson = usePeopleStore(s => s.restore)
+  const loadPeople    = usePeopleStore(s => s.load)
+  const transactions  = useTransactionStore(s => s.transactions)
 
   useEffect(() => { loadPeople() }, [loadPeople])
 
-  const people = allPeople.filter(p => p.role === role)
+  const people   = allPeople.filter(p => p.role === role && !p.isArchived)
+  const archived = allPeople.filter(p => p.role === role && p.isArchived)
 
   const [showAdd, setShowAdd]       = useState(false)
   const [newName, setNewName]       = useState('')
@@ -31,6 +33,7 @@ export function PeopleManager({ role, emptyText }: Props) {
   const [editName, setEditName]     = useState('')
   const [editUrl, setEditUrl]       = useState('')
   const [deleteId, setDeleteId]     = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
 
   function navigateToDetail(id: string) {
     const base = role === 'family_member' ? '/aile-uyeleri' : '/alicilar'
@@ -180,11 +183,11 @@ export function PeopleManager({ role, emptyText }: Props) {
                       <PersonAvatar person={person} size="sm" className="flex-shrink-0 opacity-40" />
                       <span className="flex-1 text-sm font-medium text-foreground/40 line-through">{person.name}</span>
                       {count > 0 && (
-                        <span className="text-[10px] text-destructive font-semibold flex-shrink-0">
-                          {count} işlem etkilenecek
+                        <span className="text-[10px] text-muted-foreground font-semibold flex-shrink-0">
+                          {count} işlem korunur
                         </span>
                       )}
-                      <span className="text-[11px] text-destructive font-semibold flex-shrink-0">Sil?</span>
+                      <span className="text-[11px] text-destructive font-semibold flex-shrink-0">Arşivle?</span>
                       <button
                         onClick={() => handleDelete(person.id)}
                         className="w-7 h-7 flex items-center justify-center text-green-600 hover:bg-accent rounded-lg transition-colors font-bold text-sm flex-shrink-0"
@@ -230,6 +233,49 @@ export function PeopleManager({ role, emptyText }: Props) {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* Archived people — kept so old transactions still resolve the name */}
+        {archived.length > 0 && (
+          <div className="mt-8">
+            <button
+              onClick={() => setShowArchived(v => !v)}
+              className="flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <span className={`text-[10px] transition-transform ${showArchived ? 'rotate-90' : ''}`}>▶</span>
+              Arşivlenenler ({archived.length})
+            </button>
+            {showArchived && (
+              <div className="flex flex-col gap-2 mt-3">
+                {archived.map(person => (
+                  <div
+                    key={person.id}
+                    className="flex items-center gap-3 px-4 py-3 bg-card border border-border/60 rounded-xl min-h-[52px] opacity-70"
+                  >
+                    <PersonAvatar person={person} size="sm" className="flex-shrink-0" />
+                    <button
+                      type="button"
+                      onClick={() => navigateToDetail(person.id)}
+                      className="flex-1 min-w-0 text-sm font-medium text-foreground/60 text-left truncate hover:text-primary transition-colors"
+                    >
+                      {person.name}
+                    </button>
+                    {txCount(person.id) > 0 && (
+                      <span className="text-[10px] font-mono text-muted-foreground bg-background px-2 py-0.5 rounded-full flex-shrink-0">
+                        {txCount(person.id)} işlem
+                      </span>
+                    )}
+                    <button
+                      onClick={() => restorePerson(person.id)}
+                      className="px-2.5 h-7 flex items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors flex-shrink-0"
+                    >
+                      Geri Al
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

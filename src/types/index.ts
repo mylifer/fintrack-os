@@ -44,7 +44,8 @@ export interface Person {
   role: PersonRole
   url?: string
   createdAt: string
-  deleted_at?: string | null // Tombstone (C3)
+  isArchived?: boolean       // Archive (soft-hide): linked transactions keep resolving the name
+  deleted_at?: string | null // Tombstone (C3) — legacy hard-remove path; new deletes archive instead
 }
 
 // ─── Transaction ───────────────────────────────────────────────────────────

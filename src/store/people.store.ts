@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { db } from '@/lib/db'
 import type { Person, PersonRole } from '@/types'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { localUpsert, localPatch } from '@/lib/sync/engine'
 import { loadEntities } from './entity-helpers'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 
@@ -17,6 +17,7 @@ interface PeopleState {
   rename: (id: string, name: string) => Promise<void>
   setUrl: (id: string, url: string | undefined) => Promise<void>
   remove: (id: string, opts?: RemoveOptions) => Promise<void>
+  restore: (id: string) => Promise<void>
 }
 
 export const usePeopleStore = create<PeopleState>()((set, get) => ({
@@ -58,15 +59,22 @@ export const usePeopleStore = create<PeopleState>()((set, get) => ({
     set(s => ({ people: s.people.map(p => p.id === id ? { ...p, url: value } : p) }))
   },
 
+  // Archive, don't tombstone: the person stays in the store (flagged) so every
+  // transaction referencing them keeps resolving the name; pickers/lists hide
+  // archived people. Linked transactions are NEVER touched.
   remove: async (id, opts) => {
     const person = get().people.find(p => p.id === id)
-    await softDelete('people', id) // C3 — soft delete via durable outbox
-    set(s => ({ people: s.people.filter(p => p.id !== id) }))
+    await localPatch('people', id, { isArchived: true })
+    set(s => ({ people: s.people.map(p => p.id === id ? { ...p, isArchived: true } : p) }))
     if (person && opts?.undoable !== false) {
-      useUndoStore.getState().pushUndo('Kişi silindi', async () => {
-        await localPatch('people', id, { deleted_at: null })
-        set(s => ({ people: [...s.people, person] }))
+      useUndoStore.getState().pushUndo('Kişi arşivlendi', async () => {
+        await get().restore(id)
       })
     }
+  },
+
+  restore: async (id) => {
+    await localPatch('people', id, { isArchived: false })
+    set(s => ({ people: s.people.map(p => p.id === id ? { ...p, isArchived: false } : p) }))
   },
 }))
