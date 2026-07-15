@@ -8,7 +8,9 @@ import { Header } from '@/components/layout/Header'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAccountStore, useRecurringStore, useInvestmentStore } from '@/store'
+import { computeHoldings } from '@/store/investment.store'
 import { buildForecast } from '@/lib/utils/forecast'
+import { sumBy } from '@/lib/utils/money'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 
@@ -31,13 +33,19 @@ export default function ForecastPage() {
   const recurring      = useRecurringStore(s => s.recurring)
   const recurringReady = useRecurringStore(s => s.ready)
   const prices         = useInvestmentStore(s => s.prices)
+  const fundPrices     = useInvestmentStore(s => s.fundPrices)
+  const investTxs      = useInvestmentStore(s => s.transactions)
+  const investmentsTry = useMemo(
+    () => prices ? sumBy(computeHoldings(investTxs, prices, fundPrices), h => h.currentValue) : 0,
+    [investTxs, prices, fundPrices],
+  )
 
   const [horizonMonths, setHorizonMonths] = useState(6)
   const todayStr = today()
 
   const forecast = useMemo(
-    () => buildForecast({ accounts, recurring, prices, horizonMonths, todayStr }),
-    [accounts, recurring, prices, horizonMonths, todayStr],
+    () => buildForecast({ accounts, recurring, prices, investmentsTry, horizonMonths, todayStr }),
+    [accounts, recurring, prices, investmentsTry, horizonMonths, todayStr],
   )
 
   const isLoading = !accountsReady || !recurringReady
@@ -144,7 +152,7 @@ export default function ForecastPage() {
             <Card className="overflow-hidden gap-0 py-0">
               <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
                 <span className="text-sm font-semibold text-foreground/90">Bakiye Projeksiyonu</span>
-                <span className="text-xs text-muted-foreground">Tahmini likit bakiye (₺)</span>
+                <span className="text-xs text-muted-foreground">Tahmini bakiye, yatırımlar dahil (₺)</span>
               </div>
               <CardContent className="p-0 py-4">
                 <Chart points={points} shortfallDate={shortfallDate} />

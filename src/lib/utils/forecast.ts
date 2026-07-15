@@ -6,10 +6,13 @@ import { toBaseTry } from './fx'
 import { addMoney, mulMoney, subMoney, sumBy } from './money'
 
 /* ────────────────────────────────────────────────────────────────────────
-   Cash-flow forecast — a PURE projection of liquid balance forward.
+   Cash-flow forecast — a PURE projection of total balance forward.
 
    Starting point is the current net liquid position (calcNetWorth over the
-   non-archived accounts). From there we walk every future occurrence of the
+   non-archived accounts) plus the current investment portfolio value
+   (investmentsTry, computed by the caller from holdings at live prices —
+   projected flat, we don't forecast asset prices). From there we walk every
+   future occurrence of the
    user's active recurring income/expense templates, applying each as a signed
    TRY delta on its date. Transfers are skipped: they move money BETWEEN the
    user's own accounts, so at the aggregate (net-worth) level they net to zero.
@@ -44,6 +47,7 @@ export interface BuildForecastInput {
   accounts: Account[]
   recurring: RecurringTransaction[]
   prices?: PriceData | null
+  investmentsTry?: number  // current portfolio value in TRY, held flat over the horizon
   horizonMonths: number
   todayStr: string
 }
@@ -61,10 +65,11 @@ export function buildForecast({
   accounts,
   recurring,
   prices,
+  investmentsTry = 0,
   horizonMonths,
   todayStr,
 }: BuildForecastInput): ForecastResult {
-  const start = calcNetWorth(accounts, prices)
+  const start = addMoney(calcNetWorth(accounts, prices), investmentsTry)
   const horizonEnd = format(addMonths(parseISO(todayStr), horizonMonths), 'yyyy-MM-dd')
 
   // 1. Materialize every future occurrence of an active income/expense template

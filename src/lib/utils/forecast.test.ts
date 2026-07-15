@@ -58,6 +58,19 @@ describe('buildForecast — pure cash-flow projection', () => {
     expect(f.drivers).toEqual([])
   })
 
+  it('investmentsTry is added to the starting balance and carries through the projection', () => {
+    const f = buildForecast({
+      accounts: [account({ balance: 1000 })],
+      recurring: [recurring({ amount: 1500, nextDueDate: '2026-02-01' })],
+      investmentsTry: 2000,
+      horizonMonths: 1,
+      todayStr: TODAY,
+    })
+    expect(f.points[0]).toEqual({ date: TODAY, balance: 3000 })
+    expect(f.points.at(-1)!.balance).toBe(1500) // 3000 − 1500
+    expect(f.shortfallDate).toBeNull() // investments cover the expense
+  })
+
   it('one monthly expense larger than balance → shortfall on first occurrence', () => {
     const f = buildForecast({
       accounts: [account({ balance: 1000 })],
