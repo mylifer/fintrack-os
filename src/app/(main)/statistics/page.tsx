@@ -74,6 +74,18 @@ export default function StatisticsPage() {
     [transactions, dateRange, accountId],
   )
 
+  /* Effective range: the start date is always the date of the first
+     transaction inside the selected period (never the preset's nominal
+     start), so day counts / averages / net-worth replay all begin from
+     actual activity. */
+  const effectiveRange = useMemo(() => {
+    let first: string | null = null
+    for (const tx of filteredTxs) {
+      if (first === null || tx.date < first) first = tx.date
+    }
+    return first && first > dateRange.from ? { ...dateRange, from: first } : dateRange
+  }, [filteredTxs, dateRange])
+
   const isLoading = !txsReady || !accountsReady
 
   return (
@@ -142,7 +154,7 @@ export default function StatisticsPage() {
             transactions={transactions}
             categories={categories}
             accounts={accounts}
-            dateRange={dateRange}
+            dateRange={effectiveRange}
             accountId={accountId}
           />
         )}
