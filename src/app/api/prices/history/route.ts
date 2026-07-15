@@ -39,17 +39,31 @@ function sampleDates(from: string, mustInclude: string[] = []): string[] {
 
 // ── fawazahmed0 fetch ──────────────────────────────────────────────────────────
 
+// Aynı gün için iki kaynak denenir (jsDelivr → Cloudflare Pages); /api/prices
+// canlı rotasıyla aynı yedekleme — tek CDN'e bağımlılık geçmiş tarihli alımlarda
+// fiyatın hiç dolmamasına yol açıyordu.
+function usdUrls(tag: string): string[] {
+  return tag === 'latest'
+    ? [
+        'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json',
+        'https://latest.currency-api.pages.dev/v1/currencies/usd.min.json',
+      ]
+    : [
+        `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${tag}/v1/currencies/usd.min.json`,
+        `https://${tag}.currency-api.pages.dev/v1/currencies/usd.min.json`,
+      ]
+}
+
 async function fetchUsd(date: string): Promise<Record<string, number> | null> {
   for (const tag of [date, 'latest']) {
-    try {
-      const res = await fetch(
-        `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${tag}/v1/currencies/usd.min.json`,
-        { cache: 'no-store', signal: AbortSignal.timeout(6_000) },
-      )
-      if (!res.ok) continue
-      const d = await res.json()
-      if (d?.usd?.try) return d.usd as Record<string, number>
-    } catch {}
+    for (const url of usdUrls(tag)) {
+      try {
+        const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6_000) })
+        if (!res.ok) continue
+        const d = await res.json()
+        if (d?.usd?.try) return d.usd as Record<string, number>
+      } catch {}
+    }
   }
   return null
 }

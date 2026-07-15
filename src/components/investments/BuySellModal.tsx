@@ -58,6 +58,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   const [note,           setNote]           = useState('')
   const [saving,         setSaving]         = useState(false)
   const [fetchingPrice,  setFetchingPrice]  = useState(false)
+  const [priceFetchFailed, setPriceFetchFailed] = useState(false)
 
   // Populate form when modal opens
   useEffect(() => {
@@ -85,6 +86,9 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     }
     setFundCode('')
     setFundLookup({ status: 'idle' })
+    // Önceki açılışta yarıda kesilen geçmiş-fiyat isteğinin göstergesi taşınmasın
+    setFetchingPrice(false)
+    setPriceFetchFailed(false)
   }, [open, editingTx, defaultType])
 
   // TEFAS fon kodu doğrulama — kod şekli oturunca debounce'la fiyat servisine sor
@@ -141,13 +145,17 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
     const todayStr = today()
 
-    if (date === todayStr) {
-      const p = liveUnitPrice(asset)
-      if (p > 0) setPrice(isTefas ? p.toFixed(6) : p.toFixed(2))
+    if (date >= todayStr) {
+      // Yarıda kesilen geçmiş-fiyat isteğinin göstergesi takılı kalmasın
+      // (abort edilen isteğin finally'si bayrağı sıfırlamaz)
+      setFetchingPrice(false)
+      setPriceFetchFailed(false)
+      if (date === todayStr) {
+        const p = liveUnitPrice(asset)
+        if (p > 0) setPrice(isTefas ? p.toFixed(6) : p.toFixed(2))
+      }
       return
     }
-
-    if (date > todayStr) return
 
     const code = asset === 'TEFAS_NEW'
       ? fundLookup.fund?.code
@@ -159,6 +167,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
     const ctrl = new AbortController()
     setFetchingPrice(true)
+    setPriceFetchFailed(false)
 
     const params = new URLSearchParams({ asset: group, from: date, buyDates: date })
     if (code) params.set('code', code)
@@ -172,9 +181,11 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
         if (pt) {
           const unitPrice = group === 'GOLD' ? pt.price * gramMult : pt.price
           setPrice(group === 'TEFAS' ? unitPrice.toFixed(6) : unitPrice.toFixed(2))
+        } else {
+          setPriceFetchFailed(true)
         }
       })
-      .catch(() => {})
+      .catch(() => { if (!ctrl.signal.aborted) setPriceFetchFailed(true) })
       // İptal edilen (eski) isteğin finally'si yeni isteğin göstergesini söndürmesin
       .finally(() => { if (!ctrl.signal.aborted) setFetchingPrice(false) })
 
@@ -424,7 +435,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               <input
                 type="number"
                 value={price}
-                onChange={e => setPrice(e.target.value)}
+                onChange={e => { setPrice(e.target.value); setPriceFetchFailed(false) }}
                 placeholder="0.00"
                 min={0}
                 step="any"
@@ -432,6 +443,11 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 className="w-full text-sm border border-border rounded-xl pl-7 pr-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent disabled:opacity-60"
               />
             </div>
+            {priceFetchFailed && !fetchingPrice && (
+              <div className="mt-1 text-xs text-destructive font-medium">
+                Seçilen tarihin fiyatı alınamadı — fiyatı elle girebilirsiniz.
+              </div>
+            )}
           </div>
 
           {/* Source account (buy only) */}
