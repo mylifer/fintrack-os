@@ -7,6 +7,8 @@ import {
   useRecurringStore,
 } from '@/store'
 import { startAutoSync } from '@/lib/sync/engine'
+import { today } from '@/lib/utils/date'
+import { maybeAutoBackup } from '@/lib/auto-backup'
 
 // Modül seviyesinde tekil koruma: StrictMode'da effect iki kez çalışır ve iki
 // eşzamanlı init, initDefaults'un "mevcutları oku → eksikleri ekle" akışını
@@ -58,6 +60,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // offline) session, and keep draining whenever connectivity returns.
       startAutoSync()
 
+      // Günlük otomatik bulut yedeği. Yüklemeler bittikten sonra çalışır ki
+      // snapshot taze veriyi içersin; best-effort — hata uygulamayı kırmaz.
+      maybeAutoBackup().catch(err => console.warn('[auto-backup]', err))
+
       // Ask the browser to keep our IndexedDB data across eviction pressure.
       // Without this, Safari can wipe local data after ~7 days of no visits.
       // Best-effort: browsers auto-decide based on engagement; never blocks.
@@ -73,6 +79,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })
     }
   }, [loadAccounts, loadTransactions, loadCategories, initCategories, loadBudgets, loadDebts, loadInvestments, fetchPrices, loadPeople, loadRecurring, reprocessSellLinkedTxs])
+
+  // Gün değişince bakiyeleri yeniden hesapla: gelecek tarihli işlemler güncel
+  // bakiyeye dahil edilmez, günü gelen işlem o gün bakiyeye işlenir. Uygulama
+  // (özellikle PWA) günlerce açık kalabildiğinden gece yarısını dakikalık
+  // kontrol + görünürlük değişimiyle yakalıyoruz.
+  useEffect(() => {
+    let lastDay = today()
+    const check = () => {
+      const day = today()
+      if (day === lastDay) return
+      lastDay = day
+      const { transactions } = useTransactionStore.getState()
+      useAccountStore.getState().recomputeBalances(transactions)
+    }
+    const id = setInterval(check, 60_000)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', check)
+    }
+  }, [])
 
   return <>{children}</>
 }

@@ -1,8 +1,9 @@
 import { addMonths, format, parseISO } from 'date-fns'
-import type { Account, PriceData, RecurringFrequency, RecurringTransaction } from '@/types'
+import type { Account, PriceData, RecurringFrequency, RecurringTransaction, Transaction } from '@/types'
 import { calcNetWorth } from './calculations'
+import { isReconciliation } from './reconciliation'
 import { recurringOccurrences } from './recurrence'
-import { toBaseTry } from './fx'
+import { baseAmount, toBaseTry } from './fx'
 import { addMoney, mulMoney, subMoney, sumBy } from './money'
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export interface ForecastResult {
 export interface BuildForecastInput {
   accounts: Account[]
   recurring: RecurringTransaction[]
+  transactions?: Transaction[]  // ledger txs; future-dated one-offs enter the projection on their date
   prices?: PriceData | null
   investmentsTry?: number  // current portfolio value in TRY, held flat over the horizon
   horizonMonths: number
@@ -64,6 +66,7 @@ const MONTHLY_FACTOR: Record<RecurringFrequency, number> = {
 export function buildForecast({
   accounts,
   recurring,
+  transactions = [],
   prices,
   investmentsTry = 0,
   horizonMonths,
@@ -83,6 +86,19 @@ export function buildForecast({
     for (const occ of recurringOccurrences(r, horizonEnd)) {
       if (occ > todayStr) events.push({ date: occ, delta: signed })
     }
+  }
+
+  // 1b. Future-dated one-off ledger transactions: excluded from the current
+  //     balance (they're pending), so they land in the projection on their own
+  //     date. Transfers net to zero at aggregate level; reconciliation ghosts
+  //     never carry forward.
+  for (const t of transactions) {
+    if (t.type !== 'income' && t.type !== 'expense') continue
+    if (isReconciliation(t)) continue
+    const d = t.date.slice(0, 10)
+    if (d <= todayStr || d > horizonEnd) continue
+    const amountTry = baseAmount(t)
+    events.push({ date: d, delta: t.type === 'income' ? amountTry : -amountTry })
   }
 
   // 2. Horizon totals (kuruş-exact).

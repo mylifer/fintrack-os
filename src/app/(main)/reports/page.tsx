@@ -18,6 +18,7 @@ import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
+import { excludeFuture } from '@/lib/utils/calculations'
 import { baseAmount } from '@/lib/utils/fx'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
@@ -200,13 +201,17 @@ function buildTrendData(
   const to    = parseISO(dateRange.to)
   const pts: TrendPoint[] = []
 
+  // account.balance sadece işlenmiş (bugüne kadarki) işlemleri içerir; geri-alma
+  // yürüyüşü de aynı kümede kalmalı — gelecek tarihli işlemler geri alınmaz.
+  const postedTxs = excludeFuture(allTransactions)
+
   let mStart = startOfMonth(from)
   while (mStart <= to) {
     const snap = format(endOfMonth(mStart) > to ? to : endOfMonth(mStart), 'yyyy-MM-dd')
 
     const balance = targets.reduce((sum, account) => {
       let bal = account.balance
-      for (const tx of allTransactions) {
+      for (const tx of postedTxs) {
         if (tx.date <= snap) continue
         if (tx.type === 'income'   && tx.accountId === account.id)   bal -= tx.amount
         if (tx.type === 'expense'  && tx.accountId === account.id)   bal += tx.amount

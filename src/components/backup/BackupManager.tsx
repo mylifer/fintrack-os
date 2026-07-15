@@ -6,6 +6,10 @@ import { db } from '@/lib/db'
 import { getUserId } from '@/lib/auth'
 import { cloudReplaceAll, type BackupData } from '@/lib/backup-sync'
 import {
+  createCloudBackup, listCloudBackups, fetchCloudBackupPayload,
+  readSnapshot, totalRecords, BACKUP_KIND_LABELS, type CloudBackupMeta,
+} from '@/lib/auto-backup'
+import {
   useAccountStore, useTransactionStore, useCategoryStore,
   useBudgetStore, useDebtStore, useInvestmentStore,
   usePeopleStore, useRecurringStore,
@@ -151,6 +155,12 @@ export function BackupManager() {
   const [error,       setError]       = useState('')
   const [success,     setSuccess]     = useState('')
 
+  // Bulut yedekleri
+  const [cloudBackups, setCloudBackups] = useState<CloudBackupMeta[] | null>(null)
+  const [cloudError,   setCloudError]   = useState('')
+  // '' (boşta) | 'create' | işlem yapılan snapshot'ın id'si
+  const [cloudBusy,    setCloudBusy]    = useState('')
+
   const importing = importPhase !== 'idle'
 
   const loadAccounts     = useAccountStore(s => s.load)
@@ -204,6 +214,82 @@ export function BackupManager() {
     }
   }
 
+  /* ── Cloud backups ───────────────────────────────────────── */
+
+  useEffect(() => { void refreshCloud() }, [])
+
+  async function refreshCloud() {
+    try {
+      setCloudBackups(await listCloudBackups())
+      setCloudError('')
+    } catch (e) {
+      console.warn('[backup:cloud-list]', e)
+      setCloudBackups([])
+      setCloudError('Bulut yedeklerine şu an ulaşılamıyor.')
+    }
+  }
+
+  async function handleCloudBackupNow() {
+    setCloudBusy('create')
+    setError('')
+    try {
+      const created = await createCloudBackup('manual')
+      if (!created) {
+        setError('Yedeklenecek veri bulunamadı veya oturum yok.')
+      } else {
+        flash('success', 'Bulut yedeği oluşturuldu.')
+        await refreshCloud()
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bulut yedeği oluşturulamadı.')
+    } finally {
+      setCloudBusy('')
+    }
+  }
+
+  // Snapshot'ı indirip mevcut önizleme/onay akışına sokar: kullanıcı yine
+  // aynı "mevcut veriler silinecek" uyarısını görüp onaylamadan hiçbir şey olmaz.
+  async function handleCloudRestore(b: CloudBackupMeta) {
+    setCloudBusy(b.id)
+    setError('')
+    try {
+      const backup = validateBackup(await fetchCloudBackupPayload(b.id))
+      setPreview(backup)
+      setFileName(`Bulut yedeği — ${cloudDate(b.created_at)}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bulut yedeği okunamadı.')
+    } finally {
+      setCloudBusy('')
+    }
+  }
+
+  async function handleCloudDownload(b: CloudBackupMeta) {
+    setCloudBusy(b.id)
+    setError('')
+    try {
+      const payload = await fetchCloudBackupPayload(b.id)
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url  = URL.createObjectURL(blob)
+      const a    = Object.assign(document.createElement('a'), {
+        href:     url,
+        download: `fintrack-cloud-backup-${b.created_at.slice(0, 10)}.json`,
+      })
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bulut yedeği indirilemedi.')
+    } finally {
+      setCloudBusy('')
+    }
+  }
+
+  function cloudDate(iso: string): string {
+    return new Date(iso).toLocaleString('tr-TR', {
+      day: '2-digit', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    })
+  }
+
   /* ── File select ─────────────────────────────────────────── */
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -229,18 +315,8 @@ export function BackupManager() {
   }
 
   /* ── Import ─────────────────────────────────────────────── */
-
-  // Snapshot every table from Dexie so we can restore local state if the
-  // cloud sync fails partway through.
-  async function readSnapshot(): Promise<BackupData> {
-    const [accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions] =
-      await Promise.all([
-        db.accounts.toArray(), db.transactions.toArray(), db.categories.toArray(),
-        db.budgets.toArray(), db.debts.toArray(), db.investmentTransactions.toArray(),
-        db.people.toArray(), db.recurringTransactions.toArray(),
-      ])
-    return { accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions }
-  }
+  // readSnapshot (tüm Dexie tablolarının kopyası) artık @/lib/auto-backup'tan
+  // geliyor — otomatik bulut yedeğiyle aynı kapsamı kullanır.
 
   // Atomic clear + bulk insert of all tables (auto-rolls-back on any error).
   // The _outbox is cleared in the SAME transaction: a restore is an authoritative
@@ -305,6 +381,13 @@ export function BackupManager() {
       setError('Mevcut veriler okunamadı. Geri yükleme iptal edildi.')
       return
     }
+
+    // Güvenlik ağı: geri yüklemeden önce mevcut durumun bulut snapshot'ını al.
+    // Best-effort — snapshot alınamasa bile kullanıcının onayladığı geri
+    // yükleme devam eder (yerel rollback yedeği zaten elimizde).
+    await createCloudBackup('pre-restore', snapshot)
+      .then(() => refreshCloud())
+      .catch(e => console.warn('[backup:pre-restore]', e))
 
     // Once BOTH the Dexie write and the atomic cloud RPC succeed, the restore is
     // committed and consistent (local == cloud). A failure AFTER this point (only
@@ -480,6 +563,76 @@ export function BackupManager() {
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-border" />
+
+        {/* ── Cloud backups ── */}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold">Bulut Yedekleri</div>
+              <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                Verileriniz uygulama açıldığında günde bir kez otomatik olarak buluta
+                yedeklenir; her geri yükleme öncesinde de güvenlik yedeği alınır.
+                Son 14 otomatik yedek saklanır.
+              </div>
+            </div>
+            <button
+              onClick={handleCloudBackupNow}
+              disabled={cloudBusy !== '' || importing}
+              className="flex-shrink-0 px-4 h-9 rounded-xl border border-border text-xs font-semibold text-foreground hover:bg-accent disabled:opacity-40 transition-colors"
+            >
+              {cloudBusy === 'create' ? 'Yedekleniyor...' : 'Şimdi Yedekle'}
+            </button>
+          </div>
+
+          {cloudError && (
+            <div className="text-xs text-muted-foreground px-4 py-2.5 bg-muted/40 rounded-xl leading-relaxed">
+              {cloudError} Otomatik yedekleme için Supabase&apos;de
+              0005_user_backups.sql migration&apos;ının uygulanmış olması gerekir.
+            </div>
+          )}
+
+          {cloudBackups === null ? (
+            <div className="text-xs text-muted-foreground px-1">Yükleniyor...</div>
+          ) : cloudBackups.length === 0 && !cloudError ? (
+            <div className="text-xs text-muted-foreground px-1">Henüz bulut yedeği yok.</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {cloudBackups.map(b => (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-border px-4 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-foreground truncate">
+                      {cloudDate(b.created_at)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {BACKUP_KIND_LABELS[b.kind]} · {totalRecords(b.counts)} kayıt
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleCloudDownload(b)}
+                      disabled={cloudBusy !== ''}
+                      className="px-3 h-8 rounded-lg border border-border text-[11px] font-semibold text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+                    >
+                      İndir
+                    </button>
+                    <button
+                      onClick={() => handleCloudRestore(b)}
+                      disabled={cloudBusy !== '' || importing}
+                      className="px-3 h-8 rounded-lg border border-border text-[11px] font-semibold text-foreground hover:bg-accent disabled:opacity-40 transition-colors"
+                    >
+                      {cloudBusy === b.id ? '...' : 'Geri Yükle'}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

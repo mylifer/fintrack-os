@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { buildForecast } from './forecast'
 import { setBaseRates } from './fx'
-import type { Account, RecurringTransaction } from '@/types'
+import type { Account, RecurringTransaction, Transaction } from '@/types'
 
 /* ── Factories ──────────────────────────────────────────────────────── */
 
@@ -126,6 +126,34 @@ describe('buildForecast — pure cash-flow projection', () => {
     })
     expect(f.points).toEqual([{ date: TODAY, balance: 1000 }])
     expect(f.drivers).toEqual([]) // transfers never appear as drivers
+  })
+
+  it('future-dated one-off transactions enter the projection on their date', () => {
+    const oneOff = (o: Partial<Transaction>): Transaction => ({
+      id: `t-${++seq}`, type: 'expense', amount: 0, currency: 'TRY', date: TODAY,
+      accountId: 'acc-1', description: '', isInstallment: false, createdAt: '', updatedAt: '', ...o,
+    })
+    const f = buildForecast({
+      accounts: [account({ balance: 1000 })],
+      recurring: [],
+      transactions: [
+        oneOff({ type: 'expense', amount: 300, date: '2026-02-10' }),                 // gelecek → dahil
+        oneOff({ type: 'income',  amount: 500, date: '2026-03-05' }),                 // gelecek → dahil
+        oneOff({ type: 'expense', amount: 999, date: '2025-12-20' }),                 // geçmiş → bakiyede zaten var
+        oneOff({ type: 'expense', amount: 111, date: '2026-09-01' }),                 // ufuk dışı
+        oneOff({ type: 'transfer', amount: 400, date: '2026-02-15', toAccountId: 'acc-2' }), // transfer → net sıfır
+        oneOff({ type: 'expense', amount: 50, date: '2026-02-20', systemKind: 'reconciliation' }), // ghost
+      ],
+      horizonMonths: 6,
+      todayStr: TODAY,
+    })
+    expect(f.points.map(p => [p.date, p.balance])).toEqual([
+      [TODAY, 1000],
+      ['2026-02-10', 700],
+      ['2026-03-05', 1200],
+    ])
+    expect(f.totalIncome).toBe(500)
+    expect(f.totalExpense).toBe(300)
   })
 
   it('drivers express each frequency as a monthly-equivalent, sorted desc', () => {

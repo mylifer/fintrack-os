@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic'
 import { useMemo, useState } from 'react'
 import { useTransactionStore, useAccountStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import { calcNetWorth, calcMonthlyNetRaw } from '@/lib/utils/calculations'
+import { calcNetWorth, calcMonthlyNetRaw, excludeFuture } from '@/lib/utils/calculations'
 import { isInRange, currentMonthYear } from '@/lib/utils/date'
 import { getAssetPrice, computeHoldings } from '@/store/investment.store'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
@@ -81,7 +81,10 @@ type RawPoint = {
 export function NetWorthChart() {
   const [range, setRange] = useState<Range>('all')
 
-  const transactions = useTransactionStore(s => s.transactions)
+  const allTransactions = useTransactionStore(s => s.transactions)
+  // Bakiye artık gelecek tarihli işlemleri içermiyor — geriye dönük yürüyüş de
+  // aynı kümede (sadece işlenmiş işlemler) yapılmalı, yoksa geçmiş aylar kayar.
+  const transactions = useMemo(() => excludeFuture(allTransactions), [allTransactions])
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const prices       = useInvestmentStore(s => s.prices)
   const fundPrices   = useInvestmentStore(s => s.fundPrices)

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Account, Budget, Debt, PriceData, Transaction } from '@/types'
-import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt } from './calculations'
+import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, isPosted } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -25,6 +25,38 @@ describe('calcPeriodFlow (S2/S3)', () => {
     expect(r.income).toBe(2725)
     expect(r.expense).toBe(200)
     expect(r.net).toBe(2525)
+  })
+})
+
+describe('isPosted / excludeFuture (pending transactions)', () => {
+  it('a transaction dated after asOf is pending; on/before asOf is posted', () => {
+    expect(isPosted(tx({ date: '2026-01-16' }), '2026-01-15')).toBe(false)
+    expect(isPosted(tx({ date: '2026-01-15' }), '2026-01-15')).toBe(true)
+    expect(isPosted(tx({ date: '2026-01-14' }), '2026-01-15')).toBe(true)
+  })
+
+  it('tolerates full ISO datetime dates via slice(0,10)', () => {
+    expect(isPosted(tx({ date: '2026-02-01T09:30:00.000Z' }), '2026-01-15')).toBe(false)
+    expect(isPosted(tx({ date: '2026-01-15T23:59:00.000Z' }), '2026-01-15')).toBe(true)
+  })
+
+  it('excludeFuture drops only future-dated transactions', () => {
+    const txs = [
+      tx({ id: 'past',   date: '2026-01-01' }),
+      tx({ id: 'today',  date: '2026-01-15' }),
+      tx({ id: 'future', date: '2026-03-01' }),
+    ]
+    expect(excludeFuture(txs, '2026-01-15').map(t => t.id)).toEqual(['past', 'today'])
+  })
+
+  it('balance effect ignores future transactions once filtered', () => {
+    const acc = { id: 'a', currency: 'TRY' } as Account
+    const txs = [
+      tx({ type: 'income',  amount: 1000, accountId: 'a', date: '2026-01-10' }),
+      tx({ type: 'expense', amount: 400,  accountId: 'a', date: '2026-02-20' }), // gelecek
+    ]
+    expect(computeTransactionEffect(acc, excludeFuture(txs, '2026-01-15'))).toBe(1000)
+    expect(computeTransactionEffect(acc, excludeFuture(txs, '2026-02-20'))).toBe(600)
   })
 })
 

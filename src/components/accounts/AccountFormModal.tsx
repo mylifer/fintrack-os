@@ -8,7 +8,7 @@ import { SelectField as Select } from '@/components/ui/Select'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { useAccountStore, useTransactionStore } from '@/store'
 import { parseCurrencyInput, formatCurrency, formatNumberForInput } from '@/lib/utils/currency'
-import { computeTransactionEffect } from '@/lib/utils/calculations'
+import { computeTransactionEffect, excludeFuture } from '@/lib/utils/calculations'
 import type { Account, AccountType, CurrencyCode } from '@/types'
 
 interface AccountFormModalProps {
@@ -94,7 +94,8 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
     e.target.value = ''
   }
 
-  const txEffect       = account ? computeTransactionEffect(account, txs) : 0
+  // Gelecek tarihli işlemler güncel bakiyeye dahil değil (store ile aynı kural)
+  const txEffect       = account ? computeTransactionEffect(account, excludeFuture(txs)) : 0
   const initialBalNum  = isCreditCard
     ? -Math.abs(parseCurrencyInput(initialBalStr))   // borç her zaman negatif tutulur
     : parseCurrencyInput(initialBalStr)              // işaret kullanıcının girdiği gibi

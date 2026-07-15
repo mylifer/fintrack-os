@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import { computeTransactionEffect } from '@/lib/utils/calculations'
+import { computeTransactionEffect, excludeFuture } from '@/lib/utils/calculations'
 import type { Account, InvestmentTransaction, Transaction } from '@/types'
 import { useTransactionStore } from './transactions.store'
 import { useDebtStore } from './debts.store'
@@ -136,10 +136,14 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
   },
 
   recomputeBalances: (transactions) => {
+    // Gelecek tarihli işlemler güncel bakiyeye dahil edilmez; günü gelince
+    // (DataProvider'daki gün-değişimi tetikleyicisi veya sonraki yükleme ile)
+    // otomatik olarak bakiyeye işlenir.
+    const posted = excludeFuture(transactions)
     set(s => ({
       accounts: s.accounts.map(a => ({
         ...a,
-        balance: a.initialBalance + computeTransactionEffect(a, transactions),
+        balance: a.initialBalance + computeTransactionEffect(a, posted),
       })),
     }))
   },

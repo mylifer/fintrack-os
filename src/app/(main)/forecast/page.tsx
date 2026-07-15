@@ -7,7 +7,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { Header } from '@/components/layout/Header'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { useAccountStore, useRecurringStore, useInvestmentStore } from '@/store'
+import { useAccountStore, useRecurringStore, useInvestmentStore, useTransactionStore } from '@/store'
 import { computeHoldings } from '@/store/investment.store'
 import { buildForecast } from '@/lib/utils/forecast'
 import { sumBy } from '@/lib/utils/money'
@@ -32,6 +32,7 @@ export default function ForecastPage() {
   const accountsReady  = useAccountStore(s => s.ready)
   const recurring      = useRecurringStore(s => s.recurring)
   const recurringReady = useRecurringStore(s => s.ready)
+  const transactions   = useTransactionStore(s => s.transactions)
   const prices         = useInvestmentStore(s => s.prices)
   const fundPrices     = useInvestmentStore(s => s.fundPrices)
   const investTxs      = useInvestmentStore(s => s.transactions)
@@ -44,8 +45,8 @@ export default function ForecastPage() {
   const todayStr = today()
 
   const forecast = useMemo(
-    () => buildForecast({ accounts, recurring, prices, investmentsTry, horizonMonths, todayStr }),
-    [accounts, recurring, prices, investmentsTry, horizonMonths, todayStr],
+    () => buildForecast({ accounts, recurring, transactions, prices, investmentsTry, horizonMonths, todayStr }),
+    [accounts, recurring, transactions, prices, investmentsTry, horizonMonths, todayStr],
   )
 
   const isLoading = !accountsReady || !recurringReady
@@ -93,7 +94,7 @@ export default function ForecastPage() {
               <div className="h-8 w-40 bg-muted rounded animate-pulse" />
             </CardContent>
           </Card>
-        ) : drivers.length === 0 ? (
+        ) : drivers.length === 0 && points.length <= 1 ? (
           <EmptyState
             icon="📈"
             title="Tahmin için yeterli veri yok"

@@ -1,8 +1,22 @@
 import type { Account, Transaction, Budget, BudgetWithSpent, Category, Debt, DebtWithRemaining, MonthYear, PriceData } from '@/types'
-import { isInRange, monthRange, yearRange } from './date'
+import { isInRange, monthRange, yearRange, today } from './date'
 import { isReconciliation } from './reconciliation'
 import { toMinor, toMajor, sumBy, subMoney } from './money'
 import { baseAmount, fromBaseTry } from './fx'
+
+// A transaction is "posted" once its date has arrived. Future-dated entries are
+// pending: they must NOT affect any current balance until their day comes —
+// on that day the daily recompute (DataProvider) folds them in automatically.
+export function isPosted(t: Pick<Transaction, 'date'>, asOf: string = today()): boolean {
+  return t.date.slice(0, 10) <= asOf
+}
+
+export function excludeFuture<T extends Pick<Transaction, 'date'>>(
+  transactions: T[],
+  asOf: string = today(),
+): T[] {
+  return transactions.filter(t => isPosted(t, asOf))
+}
 
 // Sum of all transaction effects on an account, in the ACCOUNT'S OWN currency
 // (a TRY account's balance is TRY, a USD account's is USD). Used to derive the
