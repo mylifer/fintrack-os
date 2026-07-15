@@ -371,12 +371,17 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
     return (await t.toArray()).filter(isLive) as unknown as T[]
   }
 
-  const pending = new Set(
-    (await db._outbox.where('table').equals(table).toArray()).map(e => e.entityId),
-  )
   const cloudIds = new Set(cloudRows.map(r => r.id as string))
 
-  await db.transaction('rw', t, async () => {
+  await db.transaction('rw', t, db._outbox, async () => {
+    // pending MUST be read inside this tx: localUpsert commits entity+outbox
+    // atomically, so a row created while the pull was in flight either isn't
+    // in localRows yet, or its outbox entry is visible here. Reading pending
+    // BEFORE the tx left a window where a just-created row appeared local-only
+    // and got deleted as a "remote deletion" (real data loss).
+    const pending = new Set(
+      (await db._outbox.where('table').equals(table).toArray()).map(e => e.entityId),
+    )
     const localRows = await t.toArray()
     for (const row of cloudRows) {
       if (pending.has(row.id as string)) continue       // don't clobber unsynced local write
