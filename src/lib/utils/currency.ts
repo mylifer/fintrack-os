@@ -29,6 +29,30 @@ export function formatAmount(amount: number, currency: CurrencyCode = 'TRY'): st
   return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(amount)
 }
 
+// Tutar inputları için canlı maske: yazarken TR biçimi uygular
+// (binlik = nokta, ondalık = virgül). Kural: virgül ondalık ayracıdır
+// (ilk virgül geçerli, en fazla 2 hane); kullanıcının yazdığı noktalar
+// binlik ayracı sayılır ve gruplar yeniden hesaplanır.
+export function formatCurrencyInputLive(raw: string): string {
+  const negative = raw.trimStart().startsWith('-')
+  const cleaned  = raw.replace(/[^0-9,]/g, '')
+  if (!cleaned) return negative ? '-' : ''
+  const commaIdx = cleaned.indexOf(',')
+  const hasComma = commaIdx !== -1
+  const intRaw   = (hasComma ? cleaned.slice(0, commaIdx) : cleaned).replace(/^0+(?=\d)/, '')
+  const decRaw   = hasComma ? cleaned.slice(commaIdx + 1).replace(/,/g, '').slice(0, 2) : ''
+  const grouped  = intRaw.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return (negative ? '-' : '') + grouped + (hasComma ? ',' + decRaw : '')
+}
+
+// Kayıtlı bir sayıyı düzenleme inputuna TR biçiminde seed etmek için
+// ("1.234,56"). String(n) kullanmayın: JS'in nokta ondalığı ("1234.5")
+// maske tarafından binlik sanılır.
+export function formatNumberForInput(n: number): string {
+  if (!Number.isFinite(n)) return ''
+  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(n)
+}
+
 export function parseCurrencyInput(raw: string): number {
   const negative = raw.trimStart().startsWith('-')
   const abs = raw.trimStart().replace(/^-/, '').trim()

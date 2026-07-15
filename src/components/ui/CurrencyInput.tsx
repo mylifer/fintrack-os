@@ -3,7 +3,7 @@
 import { forwardRef, type InputHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 import type { CurrencyCode } from '@/types'
-import { getCurrencySymbol } from '@/lib/utils/currency'
+import { getCurrencySymbol, formatCurrencyInputLive } from '@/lib/utils/currency'
 
 interface CurrencyInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   label?:    string
@@ -19,9 +19,21 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
     const symbol  = getCurrencySymbol(currency)
 
     function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-      // Allow digits, comma, period, and a leading minus
-      const filtered = e.target.value.replace(/[^0-9,.-]/g, '')
-      onChange(filtered)
+      const el    = e.target
+      const caret = el.selectionStart ?? el.value.length
+      // Binlik noktaları maske yeniden hesapladığı için imleç konumunu
+      // rakam/virgül/eksi sayısı üzerinden koruyoruz
+      const sigBefore = el.value.slice(0, caret).replace(/[^0-9,-]/g, '').length
+      const masked    = formatCurrencyInputLive(el.value)
+      onChange(masked)
+      requestAnimationFrame(() => {
+        let pos = 0, seen = 0
+        while (pos < masked.length && seen < sigBefore) {
+          if (/[0-9,-]/.test(masked[pos])) seen++
+          pos++
+        }
+        el.setSelectionRange(pos, pos)
+      })
     }
 
     const input = (

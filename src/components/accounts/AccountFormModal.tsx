@@ -7,7 +7,7 @@ import { Input }  from '@/components/ui/Input'
 import { SelectField as Select } from '@/components/ui/Select'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { useAccountStore, useTransactionStore } from '@/store'
-import { parseCurrencyInput, formatCurrency } from '@/lib/utils/currency'
+import { parseCurrencyInput, formatCurrency, formatNumberForInput } from '@/lib/utils/currency'
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import type { Account, AccountType, CurrencyCode } from '@/types'
 
@@ -47,7 +47,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
   // Kredi kartı borcu pozitif girilir (DB'de negatif tutulur); diğer hesap
   // türlerinde işaret korunur — abs almak negatif açılış bakiyesini bozar
   const initialBalanceDisplay = (a?: Account) =>
-    a ? String(a.type === 'credit_card' ? Math.abs(a.initialBalance) : a.initialBalance) : ''
+    a ? formatNumberForInput(a.type === 'credit_card' ? Math.abs(a.initialBalance) : a.initialBalance) : ''
 
   // Fresh instance per open (mount is keyed + conditional on `open` at both call
   // sites) → lazy initializers seed straight from the `account` prop; no
@@ -57,7 +57,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
   const [currency, setCurrency]       = useState<CurrencyCode>(() => account?.currency ?? 'TRY')
   const [initialBalStr, setInitialBalStr] = useState(() => initialBalanceDisplay(account))
   const [color, setColor]             = useState(() => account?.color ?? '#1A5CA3')
-  const [limitStr, setLimitStr]     = useState(() => account?.creditLimit ? String(account.creditLimit) : '')
+  const [limitStr, setLimitStr]     = useState(() => account?.creditLimit ? formatNumberForInput(account.creditLimit) : '')
   const [stmtDay, setStmtDay]       = useState(() => account?.statementDay ?? 1)
   const [icon, setIcon]             = useState(() => account?.icon ?? '')
   const [iconUrl, setIconUrl]       = useState('')
