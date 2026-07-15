@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/components/ui/card'
+import { formatCompact } from '@/lib/utils/currency'
 import { AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import type { AssetGroup, PricePoint } from '@/app/api/prices/history/route'
 
@@ -51,6 +52,8 @@ function fmtTooltipDate(iso: string) {
   return `${parseInt(p[2])} ${TR_MONTHS[parseInt(p[1]) - 1] ?? ''}`
 }
 
+// Yalnızca birim fiyatlar için (altın gramı, kur, fon payı) — portföy değerleri
+// sayfanın geri kalanıyla (özet kartları) birebir aynı görünsün diye formatCompact kullanır
 function fmtPrice(n: number) {
   // Fon pay fiyatları ₺1-10 aralığında olabildiğinden küçük değerlerde 4 hane göster
   return n.toLocaleString('tr-TR', { maximumFractionDigits: n >= 1000 ? 0 : n < 10 ? 4 : 2 })
@@ -300,7 +303,7 @@ export function PriceHistoryChart({
 
           {currentValue !== undefined ? (
             <div className="text-[22px] font-black tabular tracking-tight text-foreground leading-none">
-              ₺{fmtPrice(currentValue)}
+              {formatCompact(currentValue)}
             </div>
           ) : loading ? (
             <div className="h-7 w-28 bg-muted rounded animate-pulse" />
@@ -431,7 +434,7 @@ export function PriceHistoryChart({
                           <div>
                             <div style={{ fontSize: 8, color: '#71717a', marginBottom: 1 }}>Portföy</div>
                             <div style={{ fontSize: 14, fontWeight: 700, color: '#18181b', fontVariantNumeric: 'tabular-nums' }}>
-                              ₺{fmtPrice(row.realValue)}
+                              {formatCompact(row.realValue)}
                             </div>
                           </div>
                         </div>
@@ -456,7 +459,7 @@ export function PriceHistoryChart({
                             <div>
                               <div style={{ fontSize: 9, color: '#71717a', fontWeight: 600, lineHeight: 1.3 }}>{b.description}</div>
                               <div style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color }}>
-                                ₺{fmtPrice(b.totalCost)}
+                                {formatCompact(b.totalCost)}
                               </div>
                             </div>
                           </div>
