@@ -48,6 +48,23 @@ export function calcNetWorth(accounts: Account[], prices?: PriceData | null): nu
   return toMajor(minor)
 }
 
+// Gross assets: only positive balances count — debts (credit cards, loans
+// with negative balance) are excluded, unlike calcNetWorth.
+export function calcTotalAssets(accounts: Account[], prices?: PriceData | null): number {
+  let minor = 0
+  for (const a of accounts) {
+    if (a.isArchived) continue
+    let balance = a.balance
+    if (prices && a.currency !== 'TRY') {
+      if (a.currency === 'USD') balance *= prices.usdTry
+      else if (a.currency === 'EUR') balance *= prices.eurTry
+      else if (a.currency === 'GBP') balance *= prices.gbpTry
+    }
+    if (balance > 0) minor += toMinor(balance)
+  }
+  return toMajor(minor)
+}
+
 export function calcAvailableCredit(account: Account): number {
   if (account.type !== 'credit_card' || !account.creditLimit) return 0
   // Balance is negative for credit card debt

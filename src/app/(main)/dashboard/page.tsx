@@ -8,7 +8,7 @@ import {
   useInvestmentStore, useBudgetStore, useCategoryStore,
   useDebtStore, useRecurringStore, usePeopleStore,
 } from '@/store'
-import { calcNetWorth, calcPeriodFlow, computeTransactionEffect } from '@/lib/utils/calculations'
+import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { getPeriodRange, getPrevPeriodRange, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
@@ -75,16 +75,18 @@ export default function DashboardPage() {
     () => calcPeriodFlow(transactions, from, to),
     [transactions, from, to],
   )
-  const netWorth = calcNetWorth(accounts, prices) + investValue
-  const prefix   = PERIOD_LABEL[periodType]
+  const netWorth    = calcNetWorth(accounts, prices) + investValue
+  const totalAssets = calcTotalAssets(accounts, prices) + investValue
+  const prefix      = PERIOD_LABEL[periodType]
 
   const totalOwed = getActive().filter(d => d.direction === 'owe').reduce((s, d) => s + d.remainingAmount, 0)
 
-  const animExpense   = useCountUp(expense)
-  const animIncome    = useCountUp(income)
-  const animNetWorth  = useCountUp(Math.abs(netWorth))
-  const animNet       = useCountUp(Math.abs(net))
-  const animTotalOwed = useCountUp(totalOwed)
+  const animExpense     = useCountUp(expense)
+  const animIncome      = useCountUp(income)
+  const animNetWorth    = useCountUp(Math.abs(netWorth))
+  const animTotalAssets = useCountUp(totalAssets)
+  const animNet         = useCountUp(Math.abs(net))
+  const animTotalOwed   = useCountUp(totalOwed)
 
   // Previous period comparison
   const prevRange = useMemo(() => getPrevPeriodRange(periodType), [periodType])
@@ -92,7 +94,7 @@ export default function DashboardPage() {
     if (!prevRange) return null
     return calcPeriodFlow(transactions, prevRange.from, prevRange.to)
   }, [transactions, prevRange])
-  const prevNetWorth = useMemo(() => {
+  const prevWorth = useMemo(() => {
     if (!prevRange) return null
     const prevTxs = transactions.filter(t => t.date <= prevRange.to)
     const prevAccounts = accounts.map(a => ({
@@ -101,7 +103,10 @@ export default function DashboardPage() {
     }))
     const prevInvestTxs = investTxs.filter(t => t.date <= prevRange.to)
     const prevInvestValue = computeHoldings(prevInvestTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0)
-    return calcNetWorth(prevAccounts, prices) + prevInvestValue
+    return {
+      netWorth: calcNetWorth(prevAccounts, prices) + prevInvestValue,
+      totalAssets: calcTotalAssets(prevAccounts, prices) + prevInvestValue,
+    }
   }, [accounts, transactions, investTxs, prices, fundPrices, prevRange])
 
   const recent  = useMemo(() => transactions.slice(0, 8), [transactions])
@@ -140,7 +145,7 @@ export default function DashboardPage() {
       <div className="p-6 space-y-6">
 
         {/* ── Stat Cards ─────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           {((): { label: string; value: string; sub: string; ok: boolean; trendDiff: number | null; betterWhenHigher: boolean }[] => [
             {
               label: `${prefix} · Gider`,
@@ -163,7 +168,15 @@ export default function DashboardPage() {
               value: (netWorth < 0 ? '−' : '') + formatCompact(animNetWorth),
               sub: `${accounts.length} hesap`,
               ok: netWorth >= 0,
-              trendDiff: prevNetWorth !== null ? netWorth - prevNetWorth : null,
+              trendDiff: prevWorth ? netWorth - prevWorth.netWorth : null,
+              betterWhenHigher: true,
+            },
+            {
+              label: 'Toplam Varlık',
+              value: formatCompact(animTotalAssets),
+              sub: investValue > 0 ? `${formatCompact(investValue)} yatırım` : 'hesaplar + yatırımlar',
+              ok: true,
+              trendDiff: prevWorth ? totalAssets - prevWorth.totalAssets : null,
               betterWhenHigher: true,
             },
             {
