@@ -57,8 +57,10 @@ export interface ForecastResult {
    'total' — net position over ALL accounts (incl. credit-card debt) plus the
              investment portfolio. Transfers between own accounts net to zero,
              so they never appear as events.
-   'cash'  — liquidity view over liquid accounts only (cash/checking/savings).
-             Card debt, loans, investment accounts and investmentsTry are out
+   'cash'  — liquidity view over liquid accounts (cash/checking/savings) plus
+             near-cash TEFAS fund holdings (fundsTry — T+1/T+2 redeemable, so
+             the user treats them as spendable). Card debt, loans, investment
+             accounts and the rest of the portfolio (gold, FX, stocks) are out
              of the starting balance. A transfer that CROSSES the liquid
              boundary is a real cash event: paying the credit card drains
              cash on the payment date (expense-like), a loan disbursement to
@@ -73,6 +75,7 @@ export interface BuildForecastInput {
   transactions?: Transaction[]  // ledger txs; future-dated one-offs enter the projection on their date
   prices?: PriceData | null
   investmentsTry?: number  // current portfolio value in TRY, held flat over the horizon ('total' only)
+  fundsTry?: number        // TEFAS fund slice of the portfolio in TRY; joins the start in 'cash' mode
   horizonMonths: number
   todayStr: string
   mode?: ForecastMode  // default 'total'
@@ -95,6 +98,7 @@ export function buildForecast({
   transactions = [],
   prices,
   investmentsTry = 0,
+  fundsTry = 0,
   horizonMonths,
   todayStr,
   mode = 'total',
@@ -124,8 +128,9 @@ export function buildForecast({
     return null  // within the liquid pool (or entirely outside it)
   }
 
+  // 'total' carries the whole portfolio; 'cash' only its near-cash TEFAS slice.
   const startAccounts = cash ? accounts.filter(a => LIQUID_TYPES.has(a.type)) : accounts
-  const start = addMoney(calcNetWorth(startAccounts, prices), cash ? 0 : investmentsTry)
+  const start = addMoney(calcNetWorth(startAccounts, prices), cash ? fundsTry : investmentsTry)
   const horizonEnd = format(addMonths(parseISO(todayStr), horizonMonths), 'yyyy-MM-dd')
 
   // 1. Materialize every future occurrence of an active template that moves

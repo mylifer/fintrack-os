@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAccountStore, useRecurringStore, useInvestmentStore, useTransactionStore } from '@/store'
 import { computeHoldings } from '@/store/investment.store'
+import { isTefasAsset } from '@/lib/tefas'
 import { buildForecast, type ForecastMode } from '@/lib/utils/forecast'
 import { sumBy } from '@/lib/utils/money'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
@@ -43,10 +44,14 @@ export default function ForecastPage() {
   const prices         = useInvestmentStore(s => s.prices)
   const fundPrices     = useInvestmentStore(s => s.fundPrices)
   const investTxs      = useInvestmentStore(s => s.transactions)
-  const investmentsTry = useMemo(
-    () => prices ? sumBy(computeHoldings(investTxs, prices, fundPrices), h => h.currentValue) : 0,
-    [investTxs, prices, fundPrices],
-  )
+  const { investmentsTry, fundsTry } = useMemo(() => {
+    if (!prices) return { investmentsTry: 0, fundsTry: 0 }
+    const holdings = computeHoldings(investTxs, prices, fundPrices)
+    return {
+      investmentsTry: sumBy(holdings, h => h.currentValue),
+      fundsTry:       sumBy(holdings.filter(h => isTefasAsset(h.asset)), h => h.currentValue),
+    }
+  }, [investTxs, prices, fundPrices])
 
   const [horizonMonths, setHorizonMonths] = useState(6)
   const [mode, setMode] = useState<ForecastMode>('total')
@@ -54,8 +59,8 @@ export default function ForecastPage() {
   const todayStr = today()
 
   const forecast = useMemo(
-    () => buildForecast({ accounts, recurring, transactions, prices, investmentsTry, horizonMonths, todayStr, mode }),
-    [accounts, recurring, transactions, prices, investmentsTry, horizonMonths, todayStr, mode],
+    () => buildForecast({ accounts, recurring, transactions, prices, investmentsTry, fundsTry, horizonMonths, todayStr, mode }),
+    [accounts, recurring, transactions, prices, investmentsTry, fundsTry, horizonMonths, todayStr, mode],
   )
 
   const isLoading = !accountsReady || !recurringReady
@@ -186,7 +191,7 @@ export default function ForecastPage() {
               <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
                 <span className="text-sm font-semibold text-foreground/90">Bakiye Projeksiyonu</span>
                 <span className="text-xs text-muted-foreground">
-                  {mode === 'cash' ? 'Sadece nakit hesaplar (₺)' : 'Tahmini bakiye, yatırımlar dahil (₺)'}
+                  {mode === 'cash' ? 'Nakit hesaplar + TEFAS fonları (₺)' : 'Tahmini bakiye, yatırımlar dahil (₺)'}
                 </span>
               </div>
               <CardContent className="p-0 py-4">

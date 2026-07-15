@@ -210,15 +210,23 @@ describe('buildForecast — pure cash-flow projection', () => {
       expect(buildForecast({ ...base, mode: 'cash' }).points).toEqual([{ date: TODAY, balance: 5000 }])
     })
 
-    it('liquid→liquid transfers and investmentsTry stay out of the cash view', () => {
+    it('liquid→liquid transfers and investmentsTry stay out of the cash view; TEFAS funds join it', () => {
       const savings = account({ id: 'sv-1', type: 'savings', balance: 1000 })
       const move = recurring({ type: 'transfer', amount: 500, accountId: 'acc-1', toAccountId: 'sv-1', nextDueDate: '2026-02-01' })
       const f = buildForecast({
         accounts: [checking(), savings], recurring: [move],
-        investmentsTry: 9999, horizonMonths: 3, todayStr: TODAY, mode: 'cash',
+        investmentsTry: 9999, fundsTry: 2500, horizonMonths: 3, todayStr: TODAY, mode: 'cash',
       })
-      expect(f.points).toEqual([{ date: TODAY, balance: 6000 }])  // 5000 + 1000, yatırım hariç
+      expect(f.points).toEqual([{ date: TODAY, balance: 8500 }])  // 5000 + 1000 + 2500 TEFAS; altın/döviz (9999) hariç
       expect(f.drivers).toEqual([])
+    })
+
+    it('total mode keeps the whole portfolio and ignores fundsTry (no double count)', () => {
+      const f = buildForecast({
+        accounts: [checking()], recurring: [],
+        investmentsTry: 9999, fundsTry: 2500, horizonMonths: 1, todayStr: TODAY,
+      })
+      expect(f.points).toEqual([{ date: TODAY, balance: 14999 }])  // 5000 + 9999 (fundsTry zaten içinde)
     })
 
     it('future one-off card payment enters the cash projection on its date', () => {
