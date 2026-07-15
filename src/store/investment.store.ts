@@ -22,6 +22,7 @@ const GOLD_GRAMS: Partial<Record<InvestmentAsset, number>> = {
   GOLD_HALF:    3.5,
   GOLD_FULL:    7.0,
   GOLD_OZ:      31.1035,
+  GOLD_BRACELET: 0.916, // 22 ayar milyem — has altın karşılığı; canlı fiyat yoksa fallback
 }
 
 const ASSET_LABELS: Record<StaticInvestmentAsset, string> = {
@@ -30,6 +31,7 @@ const ASSET_LABELS: Record<StaticInvestmentAsset, string> = {
   GOLD_HALF:    'Yarım Altın',
   GOLD_FULL:    'Tam Altın',
   GOLD_OZ:      'Ons Altın',
+  GOLD_BRACELET: 'Gr Bilezik',
   USD:          'USD',
   EUR:          'EUR',
   GBP:          'GBP',
@@ -47,6 +49,8 @@ export function getAssetPrice(
 ): number {
   if (isTefasAsset(asset)) return fundPrices?.[tefasCode(asset)]?.price ?? 0
   if (!prices) return 0
+  // Bilezik: 22 ayar kotasyonu has altından ayrışır — önce canlı bilezik fiyatı
+  if (asset === 'GOLD_BRACELET' && prices.bilezikGramTry) return prices.bilezikGramTry
   if (asset in GOLD_GRAMS) return prices.goldGramTry * GOLD_GRAMS[asset]!
   if (asset === 'USD') return prices.usdTry
   if (asset === 'EUR') return prices.eurTry
@@ -76,6 +80,7 @@ const ASSET_ICONS: Record<StaticInvestmentAsset, string> = {
   GOLD_HALF:    'Au',
   GOLD_FULL:    'Au',
   GOLD_OZ:      'Au',
+  GOLD_BRACELET: 'Au',
   USD:          '$',
   EUR:          '€',
   GBP:          '£',

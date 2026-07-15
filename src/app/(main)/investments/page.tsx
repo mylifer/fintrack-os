@@ -15,7 +15,7 @@ import { isTefasAsset, tefasCode, tefasAsset, tefasCodesIn } from '@/lib/tefas'
 import type { InvestmentAsset, StaticInvestmentAsset, TefasFundPrice } from '@/types'
 
 type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP' | 'TEFAS'
-const GOLD_ASSETS: InvestmentAsset[] = ['GOLD_GRAM', 'GOLD_QUARTER', 'GOLD_HALF', 'GOLD_FULL', 'GOLD_OZ']
+const GOLD_ASSETS: InvestmentAsset[] = ['GOLD_GRAM', 'GOLD_QUARTER', 'GOLD_HALF', 'GOLD_FULL', 'GOLD_OZ', 'GOLD_BRACELET']
 
 // How many grams each gold unit represents
 const GRAM_MULT: Partial<Record<InvestmentAsset, number>> = {
@@ -24,6 +24,7 @@ const GRAM_MULT: Partial<Record<InvestmentAsset, number>> = {
   GOLD_HALF:    3.5,
   GOLD_FULL:    7.0,
   GOLD_OZ:      31.1035,
+  GOLD_BRACELET: 0.916, // 22 ayar milyem — grafikte has altın karşılığı
 }
 
 /* ── Asset metadata ──────────────────────────────────────────────── */
@@ -36,6 +37,7 @@ const ASSET_META: Record<StaticInvestmentAsset, AssetMeta> = {
   GOLD_HALF:    { label: 'Yarım Altın',      icon: 'Au', unit: 'adet' },
   GOLD_FULL:    { label: 'Tam Altın',        icon: 'Au', unit: 'adet' },
   GOLD_OZ:      { label: 'Ons Altın',        icon: 'Au', unit: 'oz' },
+  GOLD_BRACELET:{ label: 'Bilezik (22 Ayar)', icon: 'Au', unit: 'gr' },
   USD:          { label: 'ABD Doları',       icon: '$',  unit: '$' },
   EUR:          { label: 'Euro',             icon: '€',  unit: '€' },
   GBP:          { label: 'İngiliz Sterlini', icon: '£',  unit: '£' },
@@ -230,6 +232,9 @@ export default function InvestmentsPage() {
             <Ticker label="EUR/TRY"  value={prices.eurTry.toFixed(2)}  current={prices.eurTry}      previous={prices.prevEurTry} />
             <Ticker label="GBP/TRY"  value={prices.gbpTry.toFixed(2)}  current={prices.gbpTry}      previous={prices.prevGbpTry} />
             <Ticker label="Altın/gr" value={`₺${prices.goldGramTry.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`} current={prices.goldGramTry} previous={prices.prevGoldGramTry} />
+            {prices.bilezikGramTry ? (
+              <Ticker label="Bilezik/gr" value={`₺${prices.bilezikGramTry.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`} current={prices.bilezikGramTry} previous={prices.prevBilezikGramTry} />
+            ) : null}
             {Object.values(fundPrices)
               .sort((a, b) => a.code.localeCompare(b.code))
               .map(fp => (

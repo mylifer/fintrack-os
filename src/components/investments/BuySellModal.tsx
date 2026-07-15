@@ -18,6 +18,7 @@ const ASSETS: { asset: InvestmentAsset; label: string; emoji: string; unit: stri
   { asset: 'GOLD_HALF',    label: 'Yarım Altın',      emoji: '🥇', unit: 'adet' },
   { asset: 'GOLD_FULL',    label: 'Tam Altın',        emoji: '🥇', unit: 'adet' },
   { asset: 'GOLD_OZ',      label: 'Ons Altın',        emoji: '🥇', unit: 'oz' },
+  { asset: 'GOLD_BRACELET', label: 'Bilezik (22 Ayar)', emoji: '💍', unit: 'gr' },
   { asset: 'USD',          label: 'ABD Doları',       emoji: '🇺🇸', unit: '$' },
   { asset: 'EUR',          label: 'Euro',             emoji: '🇪🇺', unit: '€' },
   { asset: 'GBP',          label: 'İngiliz Sterlini', emoji: '🇬🇧', unit: '£' },
@@ -25,6 +26,7 @@ const ASSETS: { asset: InvestmentAsset; label: string; emoji: string; unit: stri
 
 const GOLD_GRAMS: Partial<Record<InvestmentAsset, number>> = {
   GOLD_GRAM: 1, GOLD_QUARTER: 1.75, GOLD_HALF: 3.5, GOLD_FULL: 7.0, GOLD_OZ: 31.1035,
+  GOLD_BRACELET: 0.916, // 22 ayar milyem — canlı bilezik kotasyonu yoksa/geçmiş tarihte fallback
 }
 
 interface Props {
@@ -126,6 +128,8 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     if (a === 'TEFAS_NEW') return fundLookup.fund?.price ?? 0
     if (isTefasAsset(a))   return fundPrices[tefasCode(a)]?.price ?? 0
     if (!prices) return 0
+    // Bilezik: 22 ayar kotasyonu has altından ayrışır — önce canlı bilezik fiyatı
+    if (a === 'GOLD_BRACELET' && prices.bilezikGramTry) return prices.bilezikGramTry
     if (a in GOLD_GRAMS)   return prices.goldGramTry * GOLD_GRAMS[a]!
     if (a === 'USD') return prices.usdTry
     if (a === 'EUR') return prices.eurTry

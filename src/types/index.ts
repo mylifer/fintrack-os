@@ -215,6 +215,7 @@ export type StaticInvestmentAsset =
   | 'GOLD_HALF'
   | 'GOLD_FULL'
   | 'GOLD_OZ'
+  | 'GOLD_BRACELET' // 22 ayar bilezik — gram bazlı, fiyatı has altından değil 22 ayar bilezik kotasyonundan gelir
   | 'USD'
   | 'EUR'
   | 'GBP'
@@ -245,11 +246,13 @@ export interface PriceData {
   eurTry: number       // 1 EUR = X TRY
   gbpTry: number       // 1 GBP = X TRY
   goldGramTry: number  // 1 gram gold = X TRY
+  bilezikGramTry?: number // 1 gram 22 ayar bilezik = X TRY (kaynak yoksa gram altın × 0.916 ile türetilir)
   // Previous day close — optional (absent if yesterday fetch failed)
   prevUsdTry?: number
   prevEurTry?: number
   prevGbpTry?: number
   prevGoldGramTry?: number
+  prevBilezikGramTry?: number
   updatedAt: number    // Date.now()
 }
 

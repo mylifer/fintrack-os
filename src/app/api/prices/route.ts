@@ -78,6 +78,35 @@ async function fetchGoldUsd(): Promise<{ current: number; prev: number } | null>
   return null
 }
 
+// Truncgil finans API — Türkiye kuyum piyasası fiyatları, ücretsiz, anahtarsız
+// YIA = 22 Ayar Bilezik gram fiyatı (TRY). Change alanı % olarak günlük değişim,
+// bir önceki kapanış oradan geri hesaplanır.
+async function fetchBilezikTry(): Promise<{ current: number; prev: number } | null> {
+  try {
+    // Sunucu UA'sız istekleri kapatıyor (undici varsayılanı reddediliyor)
+    const res = await fetch('https://finans.truncgil.com/v4/today.json', {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const yia = data?.YIA
+    const current = yia?.Selling
+    const change = yia?.Change
+    if (typeof current === 'number' && current > 0) {
+      const prev = typeof change === 'number' && change > -100
+        ? current / (1 + change / 100)
+        : current
+      return { current, prev }
+    }
+  } catch {}
+  return null
+}
+
+// 22 ayar milyem — bilezik kotasyonu alınamazsa gram altından türetme çarpanı
+const BRACELET_MILYEM = 0.916
+
 // usd.* fields: value = units of that currency per 1 USD
 // e.g. usd.try = 34.5  →  1 USD = 34.5 TRY
 // goldUsd = USD per troy ounce  →  gram = troy oz / 31.1035
@@ -87,7 +116,9 @@ function goldGram(goldUsdPerOz: number, usdTry: number): number {
 }
 
 export async function GET() {
-  const [cur, prev, gold] = await Promise.all([currentRates(), prevRates(), fetchGoldUsd()])
+  const [cur, prev, gold, bilezik] = await Promise.all([
+    currentRates(), prevRates(), fetchGoldUsd(), fetchBilezikTry(),
+  ])
 
   if (!cur) {
     return NextResponse.json({ error: 'Fiyatlar alınamadı' }, { status: 502 })
@@ -113,16 +144,31 @@ export async function GET() {
       ? prev.try / (prev.xau * 31.1035)
       : undefined
 
+  // Bilezik: truncgil canlı 22 ayar kotasyonu; alınamazsa gram altın × milyem
+  const bilezikGramTry = bilezik
+    ? bilezik.current
+    : goldGramTry > 0
+      ? goldGramTry * BRACELET_MILYEM
+      : undefined
+
+  const prevBilezikGramTry = bilezik
+    ? bilezik.prev
+    : prevGoldGramTry
+      ? prevGoldGramTry * BRACELET_MILYEM
+      : undefined
+
   return NextResponse.json(
     {
       usdTry,
       eurTry,
       gbpTry,
       goldGramTry,
+      bilezikGramTry,
       prevUsdTry,
       prevEurTry,
       prevGbpTry,
       prevGoldGramTry,
+      prevBilezikGramTry,
       updatedAt: Date.now(),
     },
     { headers: { 'Cache-Control': 'no-store' } },
