@@ -6,7 +6,7 @@ import { AlertDialog } from 'radix-ui'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCategoryStore, useAccountStore, useUIStore, usePeopleStore, useTransactionStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
-import { formatDate } from '@/lib/utils/date'
+import { formatDate, today } from '@/lib/utils/date'
 import { groupByDate } from '@/lib/utils/calculations'
 import { toMinor, toMajor } from '@/lib/utils/money'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -466,7 +466,17 @@ export function TransactionList({
   const personById = useMemo(() => new Map(people.map(p => [p.id, p])), [people])
 
   const grouped     = useMemo(() => groupByDate(transactions), [transactions])
-  const sortedDates = useMemo(() => [...grouped.keys()].sort((a, b) => b.localeCompare(a)), [grouped])
+
+  // Gelecek tarihler EN YAKIN önce (artan), bugün ve geçmiş en yeni önce (azalan).
+  // Salt azalan sıralama, planlanan işlemleri en uzak aydan başlatıyordu —
+  // yıllıkta Aralık en üstte, Ağustos'taki yaklaşan kira beş başlık aşağıdaydı.
+  const sortedDates = useMemo(() => {
+    const todayStr = today()
+    const keys   = [...grouped.keys()]
+    const future = keys.filter(d => d > todayStr).sort((a, b) => a.localeCompare(b))
+    const past   = keys.filter(d => d <= todayStr).sort((a, b) => b.localeCompare(a))
+    return [...future, ...past]
+  }, [grouped])
 
   // Tek düz satır listesi: her tarih için bir başlık + o güne ait sıralı işlemler.
   // sortDay burada bir kez çalışır (eskiden her render'da çalışıyordu).
