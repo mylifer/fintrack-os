@@ -27,6 +27,8 @@ const HORIZONS: { months: number; label: string }[] = [
   { months: 12, label: '12 Ay' },
 ]
 
+const INITIAL_EVENT_COUNT = 15
+
 export default function ForecastPage() {
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const accountsReady  = useAccountStore(s => s.ready)
@@ -42,6 +44,7 @@ export default function ForecastPage() {
   )
 
   const [horizonMonths, setHorizonMonths] = useState(6)
+  const [showAllEvents, setShowAllEvents] = useState(false)
   const todayStr = today()
 
   const forecast = useMemo(
@@ -50,7 +53,9 @@ export default function ForecastPage() {
   )
 
   const isLoading = !accountsReady || !recurringReady
-  const { points, shortfallDate, totalIncome, totalExpense, net, drivers } = forecast
+  const { points, shortfallDate, totalIncome, totalExpense, net, drivers, events } = forecast
+
+  const visibleEvents = showAllEvents ? events : events.slice(0, INITIAL_EVENT_COUNT)
 
   const startBalance = points[0]?.balance ?? 0
   const endBalance   = points.at(-1)?.balance ?? startBalance
@@ -73,7 +78,7 @@ export default function ForecastPage() {
             {HORIZONS.map(h => (
               <button
                 key={h.months}
-                onClick={() => setHorizonMonths(h.months)}
+                onClick={() => { setHorizonMonths(h.months); setShowAllEvents(false) }}
                 className={[
                   'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap',
                   horizonMonths === h.months
@@ -156,9 +161,66 @@ export default function ForecastPage() {
                 <span className="text-xs text-muted-foreground">Tahmini bakiye, yatırımlar dahil (₺)</span>
               </div>
               <CardContent className="p-0 py-4">
-                <Chart points={points} shortfallDate={shortfallDate} />
+                <Chart points={points} shortfallDate={shortfallDate} events={events} />
               </CardContent>
             </Card>
+
+            {/* ── Upcoming transactions ─────────────────────────────── */}
+            {events.length > 0 && (
+              <Card className="overflow-hidden gap-0 py-0">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
+                  <span className="text-sm font-semibold text-foreground/90">Yaklaşan İşlemler</span>
+                  <span className="text-xs text-muted-foreground">{events.length} işlem</span>
+                </div>
+                <CardContent className="p-5 pt-3 flex flex-col">
+                  {visibleEvents.map((e, i) => {
+                    const income = e.type === 'income'
+                    const monthKey = e.date.slice(0, 7)
+                    const newMonth = i === 0 || visibleEvents[i - 1].date.slice(0, 7) !== monthKey
+                    return (
+                      <div key={i}>
+                        {newMonth && (
+                          <div className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground mt-3 mb-1.5 first:mt-0">
+                            {formatDate(e.date, 'MMMM yyyy')}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-accent transition-colors">
+                          <span
+                            className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                            style={{ background: income ? '#00C853' : '#FF1744' }}
+                          />
+                          <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-[13px] text-foreground/80 truncate">{e.name}</div>
+                              <div className="text-[11px] text-muted-foreground tabular-nums">{formatDate(e.date)}</div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className={`text-[13px] tabular-nums font-medium ${income ? 'text-green-600' : 'text-destructive'}`}>
+                                {income ? '+' : '−'}{formatCompact(e.amountTry)}
+                              </div>
+                              <div className={`text-[11px] tabular-nums ${e.balanceAfter < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                {formatCompact(e.balanceAfter)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {events.length > INITIAL_EVENT_COUNT && (
+                    <button
+                      onClick={() => setShowAllEvents(v => !v)}
+                      className="mt-3 self-center px-4 py-1.5 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+                    >
+                      {showAllEvents ? 'Daha az göster' : `Tümünü göster (${events.length})`}
+                    </button>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Sağdaki ikinci satır, işlem sonrası tahmini bakiyeyi gösterir.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* ── Horizon summary ───────────────────────────────────── */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">

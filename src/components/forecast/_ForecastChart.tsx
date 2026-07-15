@@ -6,12 +6,15 @@ import {
 } from 'recharts'
 import { formatCompact, formatCurrency, formatAxisCompact } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
-import type { ForecastPoint } from '@/lib/utils/forecast'
+import type { ForecastEvent, ForecastPoint } from '@/lib/utils/forecast'
+
+const TOOLTIP_EVENT_CAP = 4
 
 interface ChartRow {
   date: string
   balance: number
   fullLabel: string  // tooltip
+  events: ForecastEvent[]  // occurrences landing on this date
 }
 
 interface TooltipProps {
@@ -21,14 +24,31 @@ interface TooltipProps {
 
 function CustomTooltip({ active, payload }: TooltipProps) {
   if (!active || !payload?.length) return null
-  const { fullLabel, balance } = payload[0].payload
+  const { fullLabel, balance, events } = payload[0].payload
   const negative = balance < 0
+  const shown = events.slice(0, TOOLTIP_EVENT_CAP)
+  const hidden = events.length - shown.length
   return (
-    <div className="rounded-xl border border-border bg-background/95 backdrop-blur px-3.5 py-2.5 shadow-xl text-xs min-w-[120px]">
+    <div className="rounded-xl border border-border bg-background/95 backdrop-blur px-3.5 py-2.5 shadow-xl text-xs min-w-[150px] max-w-[240px]">
       <p className="text-muted-foreground mb-1.5 font-medium">{fullLabel}</p>
       <p className={`text-sm font-semibold tabular-nums ${negative ? 'text-destructive' : ''}`}>
         {formatCurrency(balance)}
       </p>
+      {shown.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-border/60 flex flex-col gap-1">
+          {shown.map((e, i) => (
+            <div key={i} className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground truncate">{e.name}</span>
+              <span className={`tabular-nums font-medium flex-shrink-0 ${e.type === 'income' ? 'text-green-600' : 'text-destructive'}`}>
+                {e.type === 'income' ? '+' : '−'}{formatCompact(e.amountTry)}
+              </span>
+            </div>
+          ))}
+          {hidden > 0 && (
+            <p className="text-muted-foreground/70">+{hidden} işlem daha</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -53,9 +73,10 @@ function niceYTicks(minVal: number, maxVal: number): number[] {
 interface Props {
   points: ForecastPoint[]
   shortfallDate: string | null
+  events?: ForecastEvent[]
 }
 
-export default function ForecastAreaChart({ points, shortfallDate }: Props) {
+export default function ForecastAreaChart({ points, shortfallDate, events = [] }: Props) {
   if (points.length < 2) {
     return (
       <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
@@ -64,10 +85,18 @@ export default function ForecastAreaChart({ points, shortfallDate }: Props) {
     )
   }
 
+  const eventsByDate = new Map<string, ForecastEvent[]>()
+  for (const e of events) {
+    const list = eventsByDate.get(e.date)
+    if (list) list.push(e)
+    else eventsByDate.set(e.date, [e])
+  }
+
   const data: ChartRow[] = points.map(p => ({
     date:      p.date,
     balance:   p.balance,
     fullLabel: formatDate(p.date),
+    events:    eventsByDate.get(p.date) ?? [],
   }))
 
   // One tick per month: the first data point of each month on the axis.

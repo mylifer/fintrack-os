@@ -156,6 +156,27 @@ describe('buildForecast — pure cash-flow projection', () => {
     expect(f.totalExpense).toBe(300)
   })
 
+  it('events list every occurrence date-asc with running balanceAfter', () => {
+    const oneOff = (o: Partial<Transaction>): Transaction => ({
+      id: `t-${++seq}`, type: 'expense', amount: 0, currency: 'TRY', date: TODAY,
+      accountId: 'acc-1', description: '', isInstallment: false, createdAt: '', updatedAt: '', ...o,
+    })
+    const f = buildForecast({
+      accounts: [account({ balance: 1000 })],
+      recurring: [recurring({ name: 'Kira', type: 'expense', amount: 700, nextDueDate: '2026-02-01' })],
+      transactions: [oneOff({ type: 'income', amount: 500, date: '2026-02-15', description: 'Prim' })],
+      horizonMonths: 2,
+      todayStr: TODAY,
+    })
+    expect(f.events).toEqual([
+      { date: '2026-02-01', name: 'Kira', type: 'expense', amountTry: 700, balanceAfter: 300 },
+      { date: '2026-02-15', name: 'Prim', type: 'income',  amountTry: 500, balanceAfter: 800 },
+      { date: '2026-03-01', name: 'Kira', type: 'expense', amountTry: 700, balanceAfter: 100 },
+    ])
+    // Last event of each day agrees with that day's chart point.
+    expect(f.points.at(-1)!.balance).toBe(100)
+  })
+
   it('drivers express each frequency as a monthly-equivalent, sorted desc', () => {
     const f = buildForecast({
       accounts: [account()],

@@ -35,6 +35,14 @@ export interface ForecastDriver {
   monthlyEquivTry: number  // magnitude of monthly-equivalent impact in TRY
 }
 
+export interface ForecastEvent {
+  date: string             // yyyy-MM-dd
+  name: string             // template name or one-off description
+  type: 'income' | 'expense'
+  amountTry: number        // magnitude in TRY (always positive)
+  balanceAfter: number     // projected balance right after this event (TRY)
+}
+
 export interface ForecastResult {
   points: ForecastPoint[]
   shortfallDate: string | null  // first date the running balance goes < 0, else null
@@ -42,6 +50,7 @@ export interface ForecastResult {
   totalExpense: number          // absolute sum of negative deltas over the horizon (TRY)
   net: number                   // totalIncome − totalExpense (TRY)
   drivers: ForecastDriver[]     // active income/expense templates, monthly-equiv desc
+  events: ForecastEvent[]       // every projected occurrence, date asc
 }
 
 export interface BuildForecastInput {
@@ -77,14 +86,14 @@ export function buildForecast({
 
   // 1. Materialize every future occurrence of an active income/expense template
   //    as a signed TRY delta on its date.
-  const events: { date: string; delta: number }[] = []
+  const events: { date: string; delta: number; name: string; type: 'income' | 'expense' }[] = []
   for (const r of recurring) {
     if (!r.isActive) continue
     if (r.type !== 'income' && r.type !== 'expense') continue  // transfers net to zero
     const amountTry = toBaseTry(r.amount, r.currency)
     const signed = r.type === 'income' ? amountTry : -amountTry
     for (const occ of recurringOccurrences(r, horizonEnd)) {
-      if (occ > todayStr) events.push({ date: occ, delta: signed })
+      if (occ > todayStr) events.push({ date: occ, delta: signed, name: r.name, type: r.type })
     }
   }
 
@@ -98,7 +107,12 @@ export function buildForecast({
     const d = t.date.slice(0, 10)
     if (d <= todayStr || d > horizonEnd) continue
     const amountTry = baseAmount(t)
-    events.push({ date: d, delta: t.type === 'income' ? amountTry : -amountTry })
+    events.push({
+      date: d,
+      delta: t.type === 'income' ? amountTry : -amountTry,
+      name: t.description || t.merchant || 'İşlem',
+      type: t.type,
+    })
   }
 
   // 2. Horizon totals (kuruş-exact).
@@ -123,6 +137,22 @@ export function buildForecast({
     if (shortfallDate === null && running < 0) shortfallDate = d
   }
 
+  // 3b. Per-event timeline: same walk, but one row per occurrence so the UI can
+  //     show WHICH transaction moves the balance. Stable sort keeps insertion
+  //     order within a day; the last event of a day matches that day's point.
+  const sortedEvents = [...events].sort((a, b) => a.date.localeCompare(b.date))
+  let eventRunning = start
+  const eventRows: ForecastEvent[] = sortedEvents.map(e => {
+    eventRunning = addMoney(eventRunning, e.delta)
+    return {
+      date: e.date,
+      name: e.name,
+      type: e.type,
+      amountTry: Math.abs(e.delta),
+      balanceAfter: eventRunning,
+    }
+  })
+
   // 4. Drivers: monthly-equivalent impact of each active income/expense template.
   const drivers: ForecastDriver[] = recurring
     .filter(r => r.isActive && (r.type === 'income' || r.type === 'expense'))
@@ -134,5 +164,5 @@ export function buildForecast({
     }))
     .sort((a, b) => b.monthlyEquivTry - a.monthlyEquivTry)
 
-  return { points, shortfallDate, totalIncome, totalExpense, net, drivers }
+  return { points, shortfallDate, totalIncome, totalExpense, net, drivers, events: eventRows }
 }
