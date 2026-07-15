@@ -18,6 +18,14 @@ const nextConfig: NextConfig = {
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },      // cross-origin tab isolation
         ],
       },
+      {
+        // Service worker asla önbelleklenmemeli: yeni deploy'da tarayıcı her
+        // zaman güncel sw.js'i görmeli, yoksa eski kabuk günlerce takılı kalır.
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+        ],
+      },
     ]
   },
 };

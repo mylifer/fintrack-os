@@ -130,6 +130,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // sw.js ve manifest.webmanifest auth DIŞINDA: tarayıcı manifest'i cookie'siz
+    // çeker, SW güncelleme kontrolü de oturum süresinden bağımsız çalışmalı.
+    // İkisi de statik/duyarsız içerik — auth gerektirmez.
+    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
