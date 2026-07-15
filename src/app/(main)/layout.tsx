@@ -26,8 +26,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </div>
         <MobileNav />
         <QuickAddFAB />
-        {(modal === 'add-transaction' || modal === 'edit-transaction') && (
-          <TransactionFormModal key={modalPayload?.id ?? 'new'} />
+        {(modal === 'add-transaction' || modal === 'edit-transaction'
+          || modal === 'add-recurring' || modal === 'edit-recurring') && (
+          <TransactionFormModal key={`${modal}-${modalPayload?.id ?? 'new'}`} />
         )}
         {modal === 'refund-transaction' && (
           <RefundModal key={modalPayload?.id ?? 'new'} />

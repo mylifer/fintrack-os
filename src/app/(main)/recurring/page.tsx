@@ -1,40 +1,26 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { Header }             from '@/components/layout/Header'
 import { Button }             from '@/components/ui/button'
-import { Modal }              from '@/components/ui/Modal'
-import { Input }              from '@/components/ui/Input'
-import { SelectField as Select } from '@/components/ui/Select'
 import { CategoryIcon }       from '@/components/categories/CategoryIcon'
-import { CurrencyInput }      from '@/components/ui/CurrencyInput'
 import { EmptyState }         from '@/components/ui/EmptyState'
 import { Badge }              from '@/components/ui/Badge'
 import { Card, CardContent }  from '@/components/ui/card'
 import {
   useRecurringStore, useAccountStore, useCategoryStore,
-  useTransactionStore, usePeopleStore,
+  useTransactionStore, useUIStore,
 } from '@/store'
 import { recurringOccurrences } from '@/store/recurring.store'
 import { deterministicUuid }    from '@/lib/utils/id'
-import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
+import { formatCurrency }     from '@/lib/utils/currency'
 import { today }              from '@/lib/utils/date'
 import { useShallow }         from 'zustand/react/shallow'
-import type {
-  RecurringTransaction, RecurringFrequency,
-  TransactionType, CurrencyCode,
-} from '@/types'
+import type { RecurringTransaction, RecurringFrequency } from '@/types'
 
 /* ── Constants ─────────────────────────────────────────────────────── */
-
-const FREQ_OPTIONS = [
-  { value: 'daily',   label: 'Günlük' },
-  { value: 'weekly',  label: 'Haftalık' },
-  { value: 'monthly', label: 'Aylık' },
-  { value: 'yearly',  label: 'Yıllık' },
-]
 
 const FREQ_LABEL: Record<RecurringFrequency, string> = {
   daily:   'Günlük',
@@ -43,44 +29,10 @@ const FREQ_LABEL: Record<RecurringFrequency, string> = {
   yearly:  'Yıllık',
 }
 
-const TYPE_OPTIONS = [
-  { value: 'expense',  label: 'Gider' },
-  { value: 'income',   label: 'Gelir' },
-  { value: 'transfer', label: 'Transfer' },
-]
-
-const DAY_OPTIONS = Array.from({ length: 28 }, (_, i) => ({
-  value: String(i + 1),
-  label: `${i + 1}. gün`,
-}))
-
-/* ── Empty form ─────────────────────────────────────────────────────── */
-
-function emptyForm() {
-  return {
-    name:        '',
-    type:        'expense' as TransactionType,
-    amountStr:   '',
-    accountId:   '',
-    toAccountId: '',
-    categoryId:  '',
-    description: '',
-    notes:       '',
-    frequency:   'monthly' as RecurringFrequency,
-    dayOfMonth:  '1',
-    startDate:   today(),
-    endDate:     '',
-  }
-}
-
-type FormState = ReturnType<typeof emptyForm>
-
 /* ── Page ───────────────────────────────────────────────────────────── */
 
 export default function RecurringPage() {
   const recurring     = useRecurringStore(s => s.recurring)
-  const add           = useRecurringStore(s => s.add)
-  const update        = useRecurringStore(s => s.update)
   const remove        = useRecurringStore(s => s.remove)
   const toggleActive  = useRecurringStore(s => s.toggleActive)
   const getDue        = useRecurringStore(s => s.getDue)
@@ -89,14 +41,10 @@ export default function RecurringPage() {
   const addTransaction  = useTransactionStore(s => s.add)
   const accounts        = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories      = useCategoryStore(s => s.categories)
-  const people          = usePeopleStore(s => s.people)
+  const openModal       = useUIStore(s => s.openModal)
 
   const todayStr = today()
 
-  const [showForm, setShowForm]           = useState(false)
-  const [editingId, setEditingId]         = useState<string | null>(null)
-  const [form, setForm]                   = useState<FormState>(emptyForm())
-  const [loading, setLoading]             = useState(false)
   const [generatingId, setGeneratingId]   = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
@@ -104,100 +52,10 @@ export default function RecurringPage() {
   const active  = recurring.filter(r => r.isActive && !due.some(d => d.id === r.id))
   const paused  = recurring.filter(r => !r.isActive)
 
-  const accountOptions  = accounts.map(a => ({ value: a.id, label: a.name }))
-  const categoryOptions = useMemo(
-    () => categories
-      .filter(c => c.scope === form.type)
-      .map(c => ({ value: c.id, label: c.name })),
-    [categories, form.type],
-  )
-
-  function openAdd() {
-    setEditingId(null)
-    setForm(emptyForm())
-    setShowForm(true)
-  }
-
-  function openEdit(r: RecurringTransaction) {
-    setEditingId(r.id)
-    setForm({
-      name:        r.name,
-      type:        r.type,
-      amountStr:   new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(r.amount),
-      accountId:   r.accountId,
-      toAccountId: r.toAccountId ?? '',
-      categoryId:  r.categoryId ?? '',
-      description: r.description,
-      notes:       r.notes ?? '',
-      frequency:   r.frequency,
-      dayOfMonth:  String(r.dayOfMonth ?? 1),
-      startDate:   r.startDate,
-      endDate:     r.endDate ?? '',
-    })
-    setShowForm(true)
-  }
-
-  function closeForm() {
-    setShowForm(false)
-    setEditingId(null)
-    setForm(emptyForm())
-  }
-
-  async function handleSave() {
-    const amount = parseCurrencyInput(form.amountStr)
-    if (!form.name.trim() || !amount || !form.accountId || !form.startDate) return
-    if (form.type === 'transfer' && !form.toAccountId) return
-    if (form.type !== 'transfer' && !form.categoryId) return
-
-    setLoading(true)
-    const account  = accounts.find(a => a.id === form.accountId)
-    const currency = (account?.currency ?? 'TRY') as CurrencyCode
-
-    if (editingId) {
-      await update(editingId, {
-        name:        form.name.trim(),
-        type:        form.type,
-        amount,
-        currency,
-        accountId:   form.accountId,
-        toAccountId: form.type === 'transfer' ? form.toAccountId : undefined,
-        categoryId:  form.type !== 'transfer' ? form.categoryId : undefined,
-        description: form.description.trim() || form.name.trim(),
-        notes:       form.notes || undefined,
-        frequency:   form.frequency,
-        dayOfMonth:  form.frequency !== 'daily' && form.frequency !== 'weekly'
-          ? Number(form.dayOfMonth)
-          : undefined,
-        endDate:     form.endDate || undefined,
-      })
-    } else {
-      const r: RecurringTransaction = {
-        id:          crypto.randomUUID(),
-        name:        form.name.trim(),
-        type:        form.type,
-        amount,
-        currency,
-        accountId:   form.accountId,
-        toAccountId: form.type === 'transfer' ? form.toAccountId : undefined,
-        categoryId:  form.type !== 'transfer' ? form.categoryId : undefined,
-        description: form.description.trim() || form.name.trim(),
-        notes:       form.notes || undefined,
-        frequency:   form.frequency,
-        dayOfMonth:  form.frequency !== 'daily' && form.frequency !== 'weekly'
-          ? Number(form.dayOfMonth)
-          : undefined,
-        startDate:   form.startDate,
-        endDate:     form.endDate || undefined,
-        nextDueDate: form.startDate,
-        isActive:    true,
-        createdAt:   new Date().toISOString(),
-      }
-      await add(r)
-    }
-
-    closeForm()
-    setLoading(false)
-  }
+  // Add/edit runs through the shared TransactionFormModal (recurring mode),
+  // mounted in the main layout — the page only opens it.
+  const openAdd = () => openModal('add-recurring')
+  const openEdit = (r: RecurringTransaction) => openModal('edit-recurring', { id: r.id })
 
   async function handleGenerate(r: RecurringTransaction) {
     if (generatingId) return
@@ -327,125 +185,6 @@ export default function RecurringPage() {
         )}
 
       </div>
-
-      {/* ── Form Modal ────────────────────────────────────────────────── */}
-      <Modal
-        open={showForm}
-        onClose={closeForm}
-        title={editingId ? 'Tekrarlayan İşlemi Düzenle' : 'Tekrarlayan İşlem Ekle'}
-        size="md"
-      >
-        <div className="flex flex-col gap-4">
-
-          <Input
-            label="Ad"
-            value={form.name}
-            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Kira, Netflix, Maaş..."
-          />
-
-          {/* Type tabs */}
-          <div>
-            <label className="block text-xs font-medium tracking-wide uppercase text-muted-foreground mb-1.5">Tür</label>
-            <div className="flex border border-border">
-              {TYPE_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setForm(f => ({ ...f, type: opt.value as TransactionType, categoryId: '', toAccountId: '' }))}
-                  className={[
-                    'flex-1 py-2 text-xs font-semibold uppercase tracking-wide transition-colors',
-                    form.type === opt.value
-                      ? 'bg-primary/[0.15] text-primary border-b-2 border-accent'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-background',
-                  ].join(' ')}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <CurrencyInput
-            label="Tutar"
-            value={form.amountStr}
-            onChange={v => setForm(f => ({ ...f, amountStr: v }))}
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Hesap"
-              value={form.accountId}
-              onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))}
-              options={accountOptions}
-              placeholder="Seçin..."
-            />
-            {form.type === 'transfer' ? (
-              <Select
-                label="Hedef Hesap"
-                value={form.toAccountId}
-                onChange={e => setForm(f => ({ ...f, toAccountId: e.target.value }))}
-                options={accountOptions.filter(a => a.value !== form.accountId)}
-                placeholder="Seçin..."
-              />
-            ) : (
-              <Select
-                label="Kategori"
-                value={form.categoryId}
-                onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}
-                options={categoryOptions}
-                placeholder="Seçin..."
-              />
-            )}
-          </div>
-
-          <Input
-            label="Açıklama (opsiyonel)"
-            value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            placeholder="İşlem kaydında gösterilir"
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Tekrar Sıklığı"
-              value={form.frequency}
-              onChange={e => setForm(f => ({ ...f, frequency: e.target.value as RecurringFrequency }))}
-              options={FREQ_OPTIONS}
-            />
-            {(form.frequency === 'monthly' || form.frequency === 'yearly') && (
-              <Select
-                label="Ayın Günü"
-                value={form.dayOfMonth}
-                onChange={e => setForm(f => ({ ...f, dayOfMonth: e.target.value }))}
-                options={DAY_OPTIONS}
-              />
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Başlangıç Tarihi"
-              type="date"
-              value={form.startDate}
-              onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
-            />
-            <Input
-              label="Bitiş Tarihi (opsiyonel)"
-              type="date"
-              value={form.endDate}
-              onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2 pt-1">
-            <Button onClick={handleSave} loading={loading} fullWidth>
-              {editingId ? 'Güncelle' : 'Kaydet'}
-            </Button>
-            <Button variant="secondary" onClick={closeForm} fullWidth>İptal</Button>
-          </div>
-        </div>
-      </Modal>
     </>
   )
 }

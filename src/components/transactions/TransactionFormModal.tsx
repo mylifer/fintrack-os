@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useId } from 'react'
-import { useUIStore, useAccountStore, useCategoryStore, useTransactionStore, usePeopleStore, useDebtStore } from '@/store'
+import { useUIStore, useAccountStore, useCategoryStore, useTransactionStore, usePeopleStore, useDebtStore, useRecurringStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/Input'
@@ -13,7 +13,7 @@ import { parseCurrencyInput, getCurrencySymbol } from '@/lib/utils/currency'
 import { toBaseTry } from '@/lib/utils/fx'
 import { today } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
-import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload } from '@/types'
+import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
 import { Check, X, Plus } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
@@ -37,6 +37,29 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'income',   label: 'Gelir'    },
   { key: 'transfer', label: 'Transfer' },
 ]
+
+const FREQ_OPTIONS = [
+  { value: 'daily',   label: 'Günlük'  },
+  { value: 'weekly',  label: 'Haftalık' },
+  { value: 'monthly', label: 'Aylık'   },
+  { value: 'yearly',  label: 'Yıllık'  },
+]
+
+const DAY_OPTIONS = Array.from({ length: 28 }, (_, i) => ({
+  value: String(i + 1),
+  label: `${i + 1}. gün`,
+}))
+
+// Recurring-only fields, kept beside the shared transaction form state.
+function newRecurringForm() {
+  return {
+    name:       '',
+    frequency:  'monthly' as RecurringFrequency,
+    dayOfMonth: '1',
+    startDate:  today(),
+    endDate:    '',
+  }
+}
 
 function newForm() {
   return {
@@ -64,8 +87,24 @@ function newForm() {
 function buildInitialForm(
   isEdit: boolean,
   editingTx: Transaction | undefined,
+  editingRec: RecurringTransaction | undefined,
   modalPayload: ModalPayload | null,
 ): ReturnType<typeof newForm> {
+  if (editingRec) {
+    return {
+      ...newForm(),
+      type:           editingRec.type as Tab,
+      amount:         editingRec.amount,
+      currency:       editingRec.currency,
+      accountId:      editingRec.accountId,
+      toAccountId:    editingRec.toAccountId,
+      categoryId:     editingRec.categoryId ?? '',
+      description:    editingRec.description,
+      notes:          editingRec.notes,
+      familyMemberId: editingRec.familyMemberId ?? undefined,
+      recipientId:    editingRec.recipientId    ?? undefined,
+    }
+  }
   if (isEdit && editingTx) {
     return {
       type:           editingTx.type as Tab,
@@ -160,7 +199,7 @@ function AppSelect({
 // ── Autocomplete ──────────────────────────────────────────────────────────────
 
 function DescriptionAutocomplete({
-  value, onChange, onSelect, suggestions, categories, people, error,
+  value, onChange, onSelect, suggestions, categories, people, error, autoFocus = true,
 }: {
   value: string
   onChange: (v: string) => void
@@ -169,6 +208,7 @@ function DescriptionAutocomplete({
   categories: { id: string; name: string; icon: string; color: string }[]
   people: Person[]
   error?: string
+  autoFocus?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
@@ -197,7 +237,7 @@ function DescriptionAutocomplete({
       <input
         id={id}
         ref={inputRef}
-        autoFocus
+        autoFocus={autoFocus}
         value={value}
         onChange={e => { onChange(e.target.value); setOpen(true); setHighlighted(0) }}
         onKeyDown={handleKeyDown}
@@ -381,24 +421,44 @@ export function TransactionFormModal() {
   const updateTx     = useTransactionStore(s => s.update)
   const allPeople    = usePeopleStore(s => s.people)
   const activeDebts  = useDebtStore(useShallow(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe')))
+  const recurring    = useRecurringStore(s => s.recurring)
+  const addRec       = useRecurringStore(s => s.add)
+  const updateRec    = useRecurringStore(s => s.update)
   const tags           = useTags()
   const tagSuggestions = useMemo(() => tags.map(t => t.tag), [tags])
 
   const open = modal === 'add-transaction' || modal === 'edit-transaction'
-  const isEdit = modal === 'edit-transaction'
+    || modal === 'add-recurring' || modal === 'edit-recurring'
+  const isRecurring = modal === 'add-recurring' || modal === 'edit-recurring'
+  const isEdit = modal === 'edit-transaction' || modal === 'edit-recurring'
 
-  const editingTx: Transaction | undefined = isEdit && modalPayload?.id
+  const editingTx: Transaction | undefined = modal === 'edit-transaction' && modalPayload?.id
     ? transactions.find(t => t.id === modalPayload.id)
+    : undefined
+  const editingRec: RecurringTransaction | undefined = modal === 'edit-recurring' && modalPayload?.id
+    ? recurring.find(r => r.id === modalPayload.id)
     : undefined
 
   // Lazy initializers run exactly once — the component is remounted (keyed) per
   // open, so first-render values (editingTx / modalPayload) are the correct seed.
-  const [tab, setTab]             = useState<Tab>(() => isEdit && editingTx ? editingTx.type as Tab : 'expense')
-  const [form, setForm]           = useState(() => buildInitialForm(isEdit, editingTx, modalPayload))
-  const [amountStr, setAmountStr] = useState(() =>
-    isEdit && editingTx
-      ? new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2, useGrouping: false }).format(Math.abs(editingTx.amount))
-      : '')
+  const [tab, setTab]             = useState<Tab>(() =>
+    editingRec ? editingRec.type as Tab : isEdit && editingTx ? editingTx.type as Tab : 'expense')
+  const [form, setForm]           = useState(() => buildInitialForm(isEdit, editingTx, editingRec, modalPayload))
+  const [rec, setRec]             = useState(() => editingRec
+    ? {
+        name:       editingRec.name,
+        frequency:  editingRec.frequency,
+        dayOfMonth: String(editingRec.dayOfMonth ?? 1),
+        startDate:  editingRec.startDate,
+        endDate:    editingRec.endDate ?? '',
+      }
+    : newRecurringForm())
+  const [amountStr, setAmountStr] = useState(() => {
+    const seed = editingRec?.amount ?? (isEdit && editingTx ? editingTx.amount : undefined)
+    return seed !== undefined
+      ? new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2, useGrouping: false }).format(Math.abs(seed))
+      : ''
+  })
   // Sign of the amount. Always +1 except when editing a refund (negative
   // expense), where we preserve the negative so a save doesn't flip it positive.
   const [amountSign, setAmountSign] = useState(() => isEdit && editingTx && editingTx.amount < 0 ? -1 : 1)
@@ -477,16 +537,78 @@ export function TransactionFormModal() {
     const amount = parseCurrencyInput(amountStr)
     if (!amount || amount <= 0)                      e.amount      = 'Geçerli bir tutar girin'
     if (!form.accountId)                             e.accountId   = 'Hesap seçin'
-    if (!form.date)                                  e.date        = 'Tarih seçin'
     if (tab !== 'transfer' && !form.categoryId)                         e.categoryId  = 'Kategori seçin'
-    if (tab === 'transfer' && !form.isDebtPayment && !form.toAccountId) e.toAccountId = 'Hedef hesap seçin'
-    if (tab === 'transfer' && form.isDebtPayment && !form.debtId)       e.debtId      = 'Borç seçin'
-    if (!form.description.trim())                    e.description = 'Açıklama girin'
+    if (isRecurring) {
+      // Recurring: name + startDate required; description falls back to name;
+      // transfer target is always an account (no debt payments on templates).
+      if (!rec.name.trim())                          e.name        = 'Ad girin'
+      if (!rec.startDate)                            e.startDate   = 'Başlangıç tarihi seçin'
+      if (tab === 'transfer' && !form.toAccountId)   e.toAccountId = 'Hedef hesap seçin'
+    } else {
+      if (!form.date)                                e.date        = 'Tarih seçin'
+      if (tab === 'transfer' && !form.isDebtPayment && !form.toAccountId) e.toAccountId = 'Hedef hesap seçin'
+      if (tab === 'transfer' && form.isDebtPayment && !form.debtId)       e.debtId      = 'Borç seçin'
+      if (!form.description.trim())                  e.description = 'Açıklama girin'
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
+  // Recurring templates save through the recurring store — none of the debt /
+  // installment / tag machinery below applies to them.
+  async function handleRecurringSubmit() {
+    if (loading || !validate()) return
+    setLoading(true)
+    try {
+      const amount   = parseCurrencyInput(amountStr)
+      const account  = useAccountStore.getState().accounts.find(a => a.id === form.accountId)
+      const currency = (account?.currency ?? editingRec?.currency ?? 'TRY') as CurrencyCode
+      const name     = rec.name.trim()
+      const shared = {
+        name,
+        type:        tab as TransactionType,
+        amount,
+        currency,
+        accountId:   form.accountId,
+        toAccountId: tab === 'transfer' ? form.toAccountId : undefined,
+        categoryId:  tab !== 'transfer' ? (form.categoryId || undefined) : undefined,
+        description: form.description.trim() || name,
+        notes:       form.notes || undefined,
+        familyMemberId: tab !== 'transfer' ? (form.familyMemberId ?? undefined) : undefined,
+        recipientId:    tab !== 'transfer' ? (form.recipientId    ?? undefined) : undefined,
+        frequency:   rec.frequency,
+        dayOfMonth:  rec.frequency === 'monthly' || rec.frequency === 'yearly'
+          ? Number(rec.dayOfMonth)
+          : undefined,
+        startDate:   rec.startDate,
+        endDate:     rec.endDate || undefined,
+      }
+      if (editingRec) {
+        await updateRec(editingRec.id, {
+          ...shared,
+          // Başlangıç tarihi değiştiyse bir sonraki üretim o tarihten başlasın
+          ...(rec.startDate !== editingRec.startDate ? { nextDueDate: rec.startDate } : {}),
+        })
+      } else {
+        await addRec({
+          ...shared,
+          id:          crypto.randomUUID(),
+          nextDueDate: rec.startDate,
+          isActive:    true,
+          createdAt:   new Date().toISOString(),
+        })
+      }
+      closeModal()
+    } catch (err) {
+      console.error('[recurring:submit]', err)
+      setErrors({ name: 'Kaydetme başarısız oldu, tekrar deneyin' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSubmit() {
+    if (isRecurring) return handleRecurringSubmit()
     if (loading || !validate()) return
     setLoading(true)
     try {
@@ -598,7 +720,11 @@ export function TransactionFormModal() {
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-center justify-between">
-            <DialogTitle>{isEdit ? 'İşlemi Düzenle' : 'İşlem Ekle'}</DialogTitle>
+            <DialogTitle>
+              {isRecurring
+                ? (isEdit ? 'Tekrarlayan İşlemi Düzenle' : 'Tekrarlayan İşlem Ekle')
+                : (isEdit ? 'İşlemi Düzenle' : 'İşlem Ekle')}
+            </DialogTitle>
             <button
               type="button"
               onClick={closeModal}
@@ -722,9 +848,26 @@ export function TransactionFormModal() {
         {/* ── Form body ──────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[55vh]">
 
+          {/* Name (recurring only) */}
+          {isRecurring && (
+            <Field label="Ad" error={errors.name}>
+              <Input
+                autoFocus
+                value={rec.name}
+                onChange={e => {
+                  setRec(r => ({ ...r, name: e.target.value }))
+                  if (errors.name) setErrors(prev => ({ ...prev, name: '' }))
+                }}
+                placeholder="Kira, Netflix, Maaş..."
+                error={errors.name}
+              />
+            </Field>
+          )}
+
           {/* Description */}
-          <Field label="Açıklama" error={errors.description}>
+          <Field label="Açıklama" error={errors.description} optional={isRecurring}>
             <DescriptionAutocomplete
+              autoFocus={!isRecurring}
               value={form.description}
               onChange={v => patch({ description: v })}
               onSelect={s => patch({
@@ -753,7 +896,19 @@ export function TransactionFormModal() {
               />
             </Field>
 
-            {tab === 'transfer' ? (
+            {tab === 'transfer' && isRecurring ? (
+              // Recurring transfers always target an account — no debt payments.
+              <Field label="Hedef Hesap" error={errors.toAccountId}>
+                <AppSelect
+                  value={form.toAccountId ?? ''}
+                  onChange={v => patch({ toAccountId: v })}
+                  options={accountOptions.filter(a => a.value !== form.accountId)}
+                  placeholder="Seçin..."
+                  error={!!errors.toAccountId}
+                  onOpenChange={onSelectOpen}
+                />
+              </Field>
+            ) : tab === 'transfer' ? (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
                   <span className={cn("text-sm font-medium", (errors.toAccountId || errors.debtId) && "text-destructive")}>
@@ -829,15 +984,57 @@ export function TransactionFormModal() {
             )}
           </div>
 
-          {/* Date */}
-          <Field label="Tarih" error={errors.date}>
-            <Input
-              type="date"
-              value={form.date}
-              onChange={e => patch({ date: e.target.value })}
-              error={errors.date}
-            />
-          </Field>
+          {/* Date / Recurrence */}
+          {isRecurring ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Tekrar Sıklığı">
+                  <AppSelect
+                    value={rec.frequency}
+                    onChange={v => setRec(r => ({ ...r, frequency: v as RecurringFrequency }))}
+                    options={FREQ_OPTIONS}
+                    onOpenChange={onSelectOpen}
+                  />
+                </Field>
+                {(rec.frequency === 'monthly' || rec.frequency === 'yearly') && (
+                  <Field label="Ayın Günü">
+                    <AppSelect
+                      value={rec.dayOfMonth}
+                      onChange={v => setRec(r => ({ ...r, dayOfMonth: v }))}
+                      options={DAY_OPTIONS}
+                      onOpenChange={onSelectOpen}
+                    />
+                  </Field>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Başlangıç Tarihi" error={errors.startDate}>
+                  <Input
+                    type="date"
+                    value={rec.startDate}
+                    onChange={e => setRec(r => ({ ...r, startDate: e.target.value }))}
+                    error={errors.startDate}
+                  />
+                </Field>
+                <Field label="Bitiş Tarihi" optional>
+                  <Input
+                    type="date"
+                    value={rec.endDate}
+                    onChange={e => setRec(r => ({ ...r, endDate: e.target.value }))}
+                  />
+                </Field>
+              </div>
+            </>
+          ) : (
+            <Field label="Tarih" error={errors.date}>
+              <Input
+                type="date"
+                value={form.date}
+                onChange={e => patch({ date: e.target.value })}
+                error={errors.date}
+              />
+            </Field>
+          )}
 
           {/* People */}
           {tab !== 'transfer' && (
@@ -868,17 +1065,19 @@ export function TransactionFormModal() {
             />
           </Field>
 
-          {/* Tags */}
-          <Field label="Etiketler" optional>
-            <TagInput
-              value={form.tags}
-              onChange={tags => patch({ tags })}
-              suggestions={tagSuggestions}
-            />
-          </Field>
+          {/* Tags — not on the recurring model (needs a Supabase column first) */}
+          {!isRecurring && (
+            <Field label="Etiketler" optional>
+              <TagInput
+                value={form.tags}
+                onChange={tags => patch({ tags })}
+                suggestions={tagSuggestions}
+              />
+            </Field>
+          )}
 
           {/* Subscription toggle (expenses only) */}
-          {tab === 'expense' && (
+          {!isRecurring && tab === 'expense' && (
             <div className="rounded-lg border border-dashed p-4 flex flex-col gap-2">
               <label className="flex items-center gap-2.5 cursor-pointer select-none">
                 <input
@@ -904,7 +1103,7 @@ export function TransactionFormModal() {
           )}
 
           {/* Installment */}
-          {tab === 'expense' && !isEdit && (
+          {!isRecurring && tab === 'expense' && !isEdit && (
             <div className="rounded-lg border border-dashed p-4 flex flex-col gap-3">
               <label className="flex items-center gap-2.5 cursor-pointer select-none">
                 <input
