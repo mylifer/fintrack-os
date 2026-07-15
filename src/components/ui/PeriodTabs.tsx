@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { useUIStore } from '@/store'
 import type { PeriodType } from '@/types'
 
@@ -11,7 +12,7 @@ const PERIODS: { type: PeriodType; label: string }[] = [
   { type: 'all',     label: 'Tüm Zamanlar' },
 ]
 
-export function PeriodTabs() {
+export function PeriodTabs({ rightSlot }: { rightSlot?: ReactNode }) {
   const periodType    = useUIStore(s => s.periodType)
   const setPeriodType = useUIStore(s => s.setPeriodType)
 
@@ -31,6 +32,7 @@ export function PeriodTabs() {
           {label}
         </button>
       ))}
+      {rightSlot && <div className="ml-auto pl-3 flex-shrink-0 flex items-center">{rightSlot}</div>}
     </div>
   )
 }

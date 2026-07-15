@@ -131,7 +131,7 @@ function DateSeparator({ date, topClass }: { date: string; topClass: string }) {
 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
-  tx, cat, account, recipient, family, balanceAfter, isFirst, isLast, openModal, removeTx,
+  tx, cat, account, recipient, family, balanceAfter, isFirst, isLast, projected, openModal, removeTx,
 }: {
   tx: Transaction
   cat?: Category
@@ -141,6 +141,7 @@ const TableTxRow = memo(function TableTxRow({
   balanceAfter?: number
   isFirst: boolean
   isLast: boolean
+  projected?: boolean
   openModal: OpenModal
   removeTx: (id: string) => void
 }) {
@@ -156,6 +157,7 @@ const TableTxRow = memo(function TableTxRow({
         'group grid transition-colors hover:bg-accent/40 bg-card border-x border-t border-border/60',
         isFirst ? 'rounded-t-lg overflow-hidden' : '',
         isLast ? 'rounded-b-lg border-b overflow-hidden' : '',
+        projected ? 'opacity-60' : '',
       ].join(' ')}
       style={{ gridTemplateColumns: TABLE_COLS }}
     >
@@ -187,6 +189,11 @@ const TableTxRow = memo(function TableTxRow({
             {isRefund && (
               <span className="ml-1.5 align-middle rounded-sm bg-green-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-green-600">
                 İade
+              </span>
+            )}
+            {projected && (
+              <span className="ml-1.5 align-middle rounded-sm bg-sky-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-sky-500">
+                Planlandı
               </span>
             )}
           </div>
@@ -269,25 +276,29 @@ const TableTxRow = memo(function TableTxRow({
         )}
       </div>
 
-      {/* Actions */}
+      {/* Actions — planlanan (henüz gerçekleşmemiş) satırlar düzenlenemez/silinemez */}
       <div className="px-2 py-2 flex items-center justify-end gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        {tx.type === 'expense' && tx.amount > 0 && (
-          <button
-            onClick={() => openModal('refund-transaction', { id: tx.id })}
-            className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-colors"
-            title="İade İşle"
-          >
-            <RefundIcon size={12} />
-          </button>
+        {!projected && (
+          <>
+            {tx.type === 'expense' && tx.amount > 0 && (
+              <button
+                onClick={() => openModal('refund-transaction', { id: tx.id })}
+                className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-colors"
+                title="İade İşle"
+              >
+                <RefundIcon size={12} />
+              </button>
+            )}
+            <button
+              onClick={() => openModal('edit-transaction', { id: tx.id })}
+              className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              title="Düzenle"
+            >
+              <PencilIcon size={12} />
+            </button>
+            <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} compact />
+          </>
         )}
-        <button
-          onClick={() => openModal('edit-transaction', { id: tx.id })}
-          className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          title="Düzenle"
-        >
-          <PencilIcon size={12} />
-        </button>
-        <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} compact />
       </div>
     </div>
   )
@@ -295,7 +306,7 @@ const TableTxRow = memo(function TableTxRow({
 
 // ── CARDS row (compact minimal) ───────────────────────────────────────────
 const CardTxRow = memo(function CardTxRow({
-  tx, cat, account, recipient, family, showAccount, openModal, removeTx,
+  tx, cat, account, recipient, family, showAccount, projected, openModal, removeTx,
 }: {
   tx: Transaction
   cat?: Category
@@ -303,6 +314,7 @@ const CardTxRow = memo(function CardTxRow({
   recipient?: Person
   family?: Person
   showAccount: boolean
+  projected?: boolean
   openModal: OpenModal
   removeTx: (id: string) => void
 }) {
@@ -324,7 +336,10 @@ const CardTxRow = memo(function CardTxRow({
   const hasSubline = metaItems.length > 0
 
   return (
-    <div className="group flex items-center gap-2.5 px-2 py-[5px] rounded-lg hover:bg-accent/40 transition-colors">
+    <div className={[
+      'group flex items-center gap-2.5 px-2 py-[5px] rounded-lg hover:bg-accent/40 transition-colors',
+      projected ? 'opacity-60' : '',
+    ].join(' ')}>
       {/* Icon / Avatar */}
       {recipient ? (
         <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
@@ -349,6 +364,11 @@ const CardTxRow = memo(function CardTxRow({
           {isRefund && (
             <span className="ml-1.5 align-middle rounded-sm bg-green-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-green-600">
               İade
+            </span>
+          )}
+          {projected && (
+            <span className="ml-1.5 align-middle rounded-sm bg-sky-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-sky-500">
+              Planlandı
             </span>
           )}
         </div>
@@ -381,25 +401,29 @@ const CardTxRow = memo(function CardTxRow({
         {isIncome || isRefund ? '+' : isXfer ? '' : '−'}{formatCurrency(Math.abs(tx.amount), tx.currency)}
       </span>
 
-      {/* Actions — visible only on row hover */}
+      {/* Actions — visible only on row hover; planlanan satırlar düzenlenemez/silinemez */}
       <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        {tx.type === 'expense' && tx.amount > 0 && (
-          <button
-            onClick={() => openModal('refund-transaction', { id: tx.id })}
-            className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-colors"
-            title="İade İşle"
-          >
-            <RefundIcon size={12} />
-          </button>
+        {!projected && (
+          <>
+            {tx.type === 'expense' && tx.amount > 0 && (
+              <button
+                onClick={() => openModal('refund-transaction', { id: tx.id })}
+                className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-colors"
+                title="İade İşle"
+              >
+                <RefundIcon size={12} />
+              </button>
+            )}
+            <button
+              onClick={() => openModal('edit-transaction', { id: tx.id })}
+              className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              title="Düzenle"
+            >
+              <PencilIcon size={12} />
+            </button>
+            <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} compact />
+          </>
         )}
-        <button
-          onClick={() => openModal('edit-transaction', { id: tx.id })}
-          className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          title="Düzenle"
-        >
-          <PencilIcon size={12} />
-        </button>
-        <DeleteConfirmDialog tx={tx} onDelete={() => removeTx(tx.id)} compact />
       </div>
     </div>
   )
@@ -415,6 +439,9 @@ interface Props {
   /** When viewing a single account's detail page, pass the account id so running
    *  balances are always computed for that account (including incoming transfers). */
   primaryAccountId?: string
+  /** Ids of projected (henüz gerçekleşmemiş, tekrarlayan şablondan türetilmiş)
+   *  transactions — rendered dimmed with a "Planlandı" badge, no edit/delete. */
+  projectedIds?: Set<string>
 }
 
 export function TransactionList({
@@ -424,6 +451,7 @@ export function TransactionList({
   emptyTitle = 'İşlem bulunamadı',
   emptyDescription = 'Filtrelerinizi değiştirin veya yeni işlem ekleyin.',
   primaryAccountId,
+  projectedIds,
 }: Props) {
   const categories = useCategoryStore(s => s.categories)
   const accounts   = useAccountStore(s => s.accounts)
@@ -576,6 +604,7 @@ export function TransactionList({
                         balanceAfter={runningBalances.get(row.tx.id)}
                         isFirst={row.isFirst}
                         isLast={row.isLast}
+                        projected={projectedIds?.has(row.tx.id)}
                         openModal={openModal}
                         removeTx={removeTx}
                       />
@@ -614,6 +643,7 @@ export function TransactionList({
                     recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                     family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                     showAccount={showAccount}
+                    projected={projectedIds?.has(row.tx.id)}
                     openModal={openModal}
                     removeTx={removeTx}
                   />

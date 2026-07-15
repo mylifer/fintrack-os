@@ -5,18 +5,21 @@ import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
 import { AccountAvatar }      from '@/components/accounts/AccountAvatar'
-import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore } from '@/store'
+import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore } from '@/store'
 import { useShallow }         from 'zustand/react/shallow'
 import { formatCurrency }     from '@/lib/utils/currency'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
-import { getPeriodRange }     from '@/lib/utils/date'
+import { getPeriodRange, today } from '@/lib/utils/date'
+import { recurringOccurrences } from '@/lib/utils/recurrence'
+import { deterministicUuid }  from '@/lib/utils/id'
+import { addMonths, format, parseISO } from 'date-fns'
 import { Badge }              from '@/components/ui/Badge'
 import { Button }             from '@/components/ui/button'
 import { SelectField }        from '@/components/ui/Select'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
 import { TransactionList }    from '@/components/transactions/TransactionList'
-import type { Account, PersonRole } from '@/types'
+import type { Account, PersonRole, Transaction } from '@/types'
 
 const TYPE_LABELS: Record<string, string> = {
   cash: 'Nakit', checking: 'Vadesiz', savings: 'Vadeli',
@@ -45,12 +48,57 @@ export default function AccountDetailClient({ id }: { id: string }) {
   const [recipientFilter, setRecipientFilter] = useState<PersonFilter>(null)
   const [search, setSearch]                 = useState('')
   const [typeFilter, setTypeFilter]         = useState('')
+  const [showFuture, setShowFuture]         = useState(false)
+
+  const recurring = useRecurringStore(s => s.recurring)
 
   const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
 
-  // Transactions filtered by period + person + search + type
+  // Planlanan gelecek işlemler: bu hesaba dokunan aktif tekrarlayan şablonların
+  // dönem sonuna kadar projekte edilmiş oluşumları. Oluşum id'si, gerçek üretimle
+  // aynı deterministik şemayı kullanır — kaydedilmiş bir işlemle çakışan oluşum
+  // elenir. 'Tüm Zamanlar'da ufuk 12 ay ile sınırlanır.
+  const projectedTxs = useMemo(() => {
+    if (!showFuture) return [] as Transaction[]
+    const todayStr = today()
+    const cap     = format(addMonths(parseISO(todayStr), 12), 'yyyy-MM-dd')
+    const horizon = to < cap ? to : cap
+    const existingIds = new Set(accountTxs.map(t => t.id))
+    const out: Transaction[] = []
+    for (const r of recurring) {
+      if (!r.isActive || r.deleted_at) continue
+      if (r.accountId !== id && r.toAccountId !== id) continue
+      for (const occ of recurringOccurrences(r, horizon)) {
+        if (occ < todayStr) continue
+        const txId = deterministicUuid(`recur:${r.id}:${occ}`)
+        if (existingIds.has(txId)) continue
+        out.push({
+          id:             txId,
+          type:           r.type,
+          amount:         r.amount,
+          currency:       r.currency,
+          date:           occ,
+          accountId:      r.accountId,
+          toAccountId:    r.toAccountId,
+          categoryId:     r.categoryId,
+          description:    r.description,
+          notes:          r.notes,
+          isInstallment:  false,
+          familyMemberId: r.familyMemberId,
+          recipientId:    r.recipientId,
+          createdAt:      occ,
+          updatedAt:      occ,
+        })
+      }
+    }
+    return out
+  }, [showFuture, recurring, id, to, accountTxs])
+
+  const projectedIds = useMemo(() => new Set(projectedTxs.map(t => t.id)), [projectedTxs])
+
+  // Transactions filtered by period + person + search + type (planlananlar dahil)
   const filteredTxs = useMemo(
-    () => accountTxs.filter(t => {
+    () => [...accountTxs, ...projectedTxs].filter(t => {
       if (from && t.date < from) return false
       if (to   && t.date > to)   return false
       if (familyFilter    && t.familyMemberId !== familyFilter.id)   return false
@@ -59,7 +107,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
       if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false
       return true
     }),
-    [accountTxs, from, to, familyFilter, recipientFilter, typeFilter, search],
+    [accountTxs, projectedTxs, from, to, familyFilter, recipientFilter, typeFilter, search],
   )
 
   function handlePersonClick(role: PersonRole, pid: string) {
@@ -96,7 +144,19 @@ export default function AccountDetailClient({ id }: { id: string }) {
         action={{ label: 'İşlem Ekle', onClick: () => openModal('add-transaction', { accountId: id }) }}
       />
 
-      <PeriodTabs />
+      <PeriodTabs
+        rightSlot={
+          <label className="flex items-center gap-2 cursor-pointer select-none whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={showFuture}
+              onChange={e => setShowFuture(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
+            />
+            <span className="text-xs font-medium text-muted-foreground">Gelecek işlemler</span>
+          </label>
+        }
+      />
 
       {/* Account summary */}
       <div className="px-6 lg:px-8 py-5 border-b border-border bg-card flex-shrink-0">
@@ -209,6 +269,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
       <div className="flex-1 overflow-auto">
         <TransactionList
           transactions={filteredTxs}
+          projectedIds={projectedIds}
           layout="table"
           showAccount={false}
           primaryAccountId={id}
