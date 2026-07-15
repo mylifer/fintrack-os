@@ -24,9 +24,11 @@ const ASSETS: { asset: InvestmentAsset; label: string; emoji: string; unit: stri
   { asset: 'GBP',          label: 'İngiliz Sterlini', emoji: '🇬🇧', unit: '£' },
 ]
 
+// Gram altın karşılıkları — canlı Türkiye kotasyonu yoksa ve geçmiş tarihli
+// alımlarda fiyat türetme için. Ziynetler 22 ayar: brüt gramaj × 0.916 milyem
 const GOLD_GRAMS: Partial<Record<InvestmentAsset, number>> = {
-  GOLD_GRAM: 1, GOLD_QUARTER: 1.75, GOLD_HALF: 3.5, GOLD_FULL: 7.0, GOLD_OZ: 31.1035,
-  GOLD_BRACELET: 0.916, // 22 ayar milyem — canlı bilezik kotasyonu yoksa/geçmiş tarihte fallback
+  GOLD_GRAM: 1, GOLD_QUARTER: 1.6067, GOLD_HALF: 3.2133, GOLD_FULL: 6.4267, GOLD_OZ: 31.1035,
+  GOLD_BRACELET: 0.916,
 }
 
 interface Props {
@@ -128,7 +130,10 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     if (a === 'TEFAS_NEW') return fundLookup.fund?.price ?? 0
     if (isTefasAsset(a))   return fundPrices[tefasCode(a)]?.price ?? 0
     if (!prices) return 0
-    // Bilezik: 22 ayar kotasyonu has altından ayrışır — önce canlı bilezik fiyatı
+    // Ziynet altınları 22 ayar — önce Türkiye kuyum piyasası kotasyonu
+    if (a === 'GOLD_QUARTER'  && prices.goldQuarterTry) return prices.goldQuarterTry
+    if (a === 'GOLD_HALF'     && prices.goldHalfTry)    return prices.goldHalfTry
+    if (a === 'GOLD_FULL'     && prices.goldFullTry)    return prices.goldFullTry
     if (a === 'GOLD_BRACELET' && prices.bilezikGramTry) return prices.bilezikGramTry
     if (a in GOLD_GRAMS)   return prices.goldGramTry * GOLD_GRAMS[a]!
     if (a === 'USD') return prices.usdTry

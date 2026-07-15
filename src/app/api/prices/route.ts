@@ -78,10 +78,21 @@ async function fetchGoldUsd(): Promise<{ current: number; prev: number } | null>
   return null
 }
 
-// Truncgil finans API — Türkiye kuyum piyasası fiyatları, ücretsiz, anahtarsız
-// YIA = 22 Ayar Bilezik gram fiyatı (TRY). Change alanı % olarak günlük değişim,
-// bir önceki kapanış oradan geri hesaplanır.
-async function fetchBilezikTry(): Promise<{ current: number; prev: number } | null> {
+// Truncgil finans API — Türkiye kuyum piyasası (Kapalıçarşı) kotasyonları,
+// ücretsiz, anahtarsız. Sistemdeki tüm altın fiyatları Türkiye ALIŞ (Buying)
+// fiyatını izler; uluslararası spot hesabı yalnızca kaynak erişilemezse
+// fallback olarak devreye girer. Change alanı % günlük değişim — bir önceki
+// kapanış oradan geri hesaplanır.
+interface TrQuote { current: number; prev: number }
+interface TurkishGold {
+  gram?: TrQuote      // GRA  — gram altın
+  quarter?: TrQuote   // CEYREKALTIN
+  half?: TrQuote      // YARIMALTIN
+  full?: TrQuote      // TAMALTIN
+  bracelet?: TrQuote  // YIA  — 22 ayar bilezik (gram)
+}
+
+async function fetchTurkishGold(): Promise<TurkishGold | null> {
   try {
     // Sunucu UA'sız istekleri kapatıyor (undici varsayılanı reddediliyor)
     const res = await fetch('https://finans.truncgil.com/v4/today.json', {
@@ -91,21 +102,37 @@ async function fetchBilezikTry(): Promise<{ current: number; prev: number } | nu
     })
     if (!res.ok) return null
     const data = await res.json()
-    const yia = data?.YIA
-    const current = yia?.Selling
-    const change = yia?.Change
-    if (typeof current === 'number' && current > 0) {
+
+    const parse = (key: string): TrQuote | undefined => {
+      const q = data?.[key]
+      const current = q?.Buying
+      const change = q?.Change
+      if (typeof current !== 'number' || current <= 0) return undefined
       const prev = typeof change === 'number' && change > -100
         ? current / (1 + change / 100)
         : current
       return { current, prev }
     }
+
+    const gold: TurkishGold = {
+      gram:     parse('GRA'),
+      quarter:  parse('CEYREKALTIN'),
+      half:     parse('YARIMALTIN'),
+      full:     parse('TAMALTIN'),
+      bracelet: parse('YIA'),
+    }
+    if (gold.gram || gold.quarter || gold.half || gold.full || gold.bracelet) return gold
   } catch {}
   return null
 }
 
-// 22 ayar milyem — bilezik kotasyonu alınamazsa gram altından türetme çarpanı
+// Türkiye kotasyonu alınamazsa gram altından türetme çarpanları.
+// Ziynetler 22 ayar: has karşılığı = brüt gramaj × 0.916 milyem
+// (çeyrek 1.754 g, yarım 3.508 g, tam 7.016 g)
 const BRACELET_MILYEM = 0.916
+const QUARTER_FINE    = 1.6067
+const HALF_FINE       = 3.2133
+const FULL_FINE       = 6.4267
 
 // usd.* fields: value = units of that currency per 1 USD
 // e.g. usd.try = 34.5  →  1 USD = 34.5 TRY
@@ -116,8 +143,8 @@ function goldGram(goldUsdPerOz: number, usdTry: number): number {
 }
 
 export async function GET() {
-  const [cur, prev, gold, bilezik] = await Promise.all([
-    currentRates(), prevRates(), fetchGoldUsd(), fetchBilezikTry(),
+  const [cur, prev, gold, tr] = await Promise.all([
+    currentRates(), prevRates(), fetchGoldUsd(), fetchTurkishGold(),
   ])
 
   if (!cur) {
@@ -131,31 +158,35 @@ export async function GET() {
   const prevEurTry = prev ? prev.try / prev.eur : undefined
   const prevGbpTry = prev ? prev.try / prev.gbp : undefined
 
-  // Gold: use Yahoo Finance live price; fall back to fawazahmed0 xau if unavailable
-  const goldGramTry = gold
-    ? goldGram(gold.current, usdTry)
-    : cur.xau
-      ? cur.try / (cur.xau * 31.1035)
-      : 0
+  // Gram altın: Türkiye piyasa alış kotasyonu; yoksa Yahoo spot, o da yoksa fawazahmed0 xau
+  const goldGramTry = tr?.gram
+    ? tr.gram.current
+    : gold
+      ? goldGram(gold.current, usdTry)
+      : cur.xau
+        ? cur.try / (cur.xau * 31.1035)
+        : 0
 
-  const prevGoldGramTry = gold && prevUsdTry
-    ? goldGram(gold.prev, prevUsdTry)
-    : prev?.xau
-      ? prev.try / (prev.xau * 31.1035)
-      : undefined
+  const prevGoldGramTry = tr?.gram
+    ? tr.gram.prev
+    : gold && prevUsdTry
+      ? goldGram(gold.prev, prevUsdTry)
+      : prev?.xau
+        ? prev.try / (prev.xau * 31.1035)
+        : undefined
 
-  // Bilezik: truncgil canlı 22 ayar kotasyonu; alınamazsa gram altın × milyem
-  const bilezikGramTry = bilezik
-    ? bilezik.current
-    : goldGramTry > 0
-      ? goldGramTry * BRACELET_MILYEM
-      : undefined
+  // Ziynet altınları: Türkiye kotasyonu; yoksa gram altından has karşılığıyla türet
+  const fromGram = (mult: number) => (goldGramTry > 0 ? goldGramTry * mult : undefined)
+  const prevFromGram = (mult: number) => (prevGoldGramTry ? prevGoldGramTry * mult : undefined)
 
-  const prevBilezikGramTry = bilezik
-    ? bilezik.prev
-    : prevGoldGramTry
-      ? prevGoldGramTry * BRACELET_MILYEM
-      : undefined
+  const goldQuarterTry     = tr?.quarter?.current  ?? fromGram(QUARTER_FINE)
+  const prevGoldQuarterTry = tr?.quarter?.prev     ?? prevFromGram(QUARTER_FINE)
+  const goldHalfTry        = tr?.half?.current     ?? fromGram(HALF_FINE)
+  const prevGoldHalfTry    = tr?.half?.prev        ?? prevFromGram(HALF_FINE)
+  const goldFullTry        = tr?.full?.current     ?? fromGram(FULL_FINE)
+  const prevGoldFullTry    = tr?.full?.prev        ?? prevFromGram(FULL_FINE)
+  const bilezikGramTry     = tr?.bracelet?.current ?? fromGram(BRACELET_MILYEM)
+  const prevBilezikGramTry = tr?.bracelet?.prev    ?? prevFromGram(BRACELET_MILYEM)
 
   return NextResponse.json(
     {
@@ -163,11 +194,17 @@ export async function GET() {
       eurTry,
       gbpTry,
       goldGramTry,
+      goldQuarterTry,
+      goldHalfTry,
+      goldFullTry,
       bilezikGramTry,
       prevUsdTry,
       prevEurTry,
       prevGbpTry,
       prevGoldGramTry,
+      prevGoldQuarterTry,
+      prevGoldHalfTry,
+      prevGoldFullTry,
       prevBilezikGramTry,
       updatedAt: Date.now(),
     },

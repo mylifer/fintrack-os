@@ -245,13 +245,21 @@ export interface PriceData {
   usdTry: number       // 1 USD = X TRY
   eurTry: number       // 1 EUR = X TRY
   gbpTry: number       // 1 GBP = X TRY
-  goldGramTry: number  // 1 gram gold = X TRY
-  bilezikGramTry?: number // 1 gram 22 ayar bilezik = X TRY (kaynak yoksa gram altın × 0.916 ile türetilir)
+  // Altın fiyatları Türkiye kuyum piyasası ALIŞ kotasyonlarıdır (Kapalıçarşı);
+  // kaynak erişilemezse uluslararası spottan / gram altından türetilir
+  goldGramTry: number     // 1 gram altın = X TRY
+  goldQuarterTry?: number // çeyrek altın (TRY/adet)
+  goldHalfTry?: number    // yarım altın (TRY/adet)
+  goldFullTry?: number    // tam altın (TRY/adet)
+  bilezikGramTry?: number // 1 gram 22 ayar bilezik = X TRY
   // Previous day close — optional (absent if yesterday fetch failed)
   prevUsdTry?: number
   prevEurTry?: number
   prevGbpTry?: number
   prevGoldGramTry?: number
+  prevGoldQuarterTry?: number
+  prevGoldHalfTry?: number
+  prevGoldFullTry?: number
   prevBilezikGramTry?: number
   updatedAt: number    // Date.now()
 }

@@ -17,14 +17,15 @@ import type { InvestmentAsset, StaticInvestmentAsset, TefasFundPrice } from '@/t
 type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP' | 'TEFAS'
 const GOLD_ASSETS: InvestmentAsset[] = ['GOLD_GRAM', 'GOLD_QUARTER', 'GOLD_HALF', 'GOLD_FULL', 'GOLD_OZ', 'GOLD_BRACELET']
 
-// How many grams each gold unit represents
+// How many grams of gold each unit represents (grafikte gram-eşdeğeri).
+// Ziynetler 22 ayar: brüt gramaj × 0.916 milyem
 const GRAM_MULT: Partial<Record<InvestmentAsset, number>> = {
   GOLD_GRAM:    1,
-  GOLD_QUARTER: 1.75,
-  GOLD_HALF:    3.5,
-  GOLD_FULL:    7.0,
+  GOLD_QUARTER: 1.6067,
+  GOLD_HALF:    3.2133,
+  GOLD_FULL:    6.4267,
   GOLD_OZ:      31.1035,
-  GOLD_BRACELET: 0.916, // 22 ayar milyem — grafikte has altın karşılığı
+  GOLD_BRACELET: 0.916,
 }
 
 /* ── Asset metadata ──────────────────────────────────────────────── */
