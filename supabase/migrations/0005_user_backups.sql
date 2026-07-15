@@ -28,6 +28,16 @@ create table if not exists public.user_backups (
 create index if not exists user_backups_user_created_idx
   on public.user_backups (user_id, created_at desc);
 
+-- ── Table-level grants ──────────────────────────────────────────────────────
+-- Some projects lack the default-privilege grants for newly created tables,
+-- which surfaces as "permission denied for table user_backups" despite correct
+-- RLS policies (grants and RLS are separate layers: GRANT says the role may
+-- touch the table at all; RLS then narrows WHICH rows).
+-- No UPDATE grant: snapshots are immutable. No grants to anon: backups always
+-- require an authenticated session.
+grant select, insert, delete on table public.user_backups to authenticated;
+grant all on table public.user_backups to service_role;
+
 -- ── RLS: strict owner-only, same pattern as the data tables ────────────────
 alter table public.user_backups enable row level security;
 alter table public.user_backups force row level security;
