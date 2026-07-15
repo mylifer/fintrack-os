@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef } from 'react'
 import { Popover } from 'radix-ui'
-import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { CategoryIcon } from './CategoryIcon'
 import { cn } from '@/lib/utils'
 import type { Category } from '@/types'
@@ -18,6 +18,8 @@ interface Props {
   onChange: (id: string) => void
   error?: boolean
   placeholder?: string
+  /** Aramada sonuç yoksa "yeni ekle" satırı gösterir; yeni kategorinin id'sini döndürmeli. */
+  onCreate?: (name: string) => Promise<string | null>
 }
 
 const ITEM     = 'flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm select-none transition-colors'
@@ -32,11 +34,12 @@ function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
   el.scrollTop += e.deltaY
 }
 
-export function CategoryCascadeSelect({ categories, value, onChange, error, placeholder }: Props) {
+export function CategoryCascadeSelect({ categories, value, onChange, error, placeholder, onCreate }: Props) {
   const [open,      setOpen]      = useState(false)
   const [hoveredL0, setHoveredL0] = useState<string | null>(null)
   const [hoveredL1, setHoveredL1] = useState<string | null>(null)
   const [query,     setQuery]     = useState('')
+  const [creating,  setCreating]  = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
   const active = categories.filter(c => !c.isArchived)
@@ -61,6 +64,18 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
     onChange(id); setOpen(false); setHoveredL0(null); setHoveredL1(null); setQuery('')
   }
   function hoverL0(id: string) { setHoveredL0(id); setHoveredL1(null) }
+
+  async function createFromQuery() {
+    const name = query.trim()
+    if (!name || !onCreate || creating) return
+    setCreating(true)
+    try {
+      const id = await onCreate(name)
+      if (id) select(id)
+    } finally {
+      setCreating(false)
+    }
+  }
 
   function ItemList({ items, activeId, onHover, onSelect, iconSize }: {
     items: Category[]
@@ -153,7 +168,21 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
             /* ── Search results (flat list) ── */
             <div style={{ padding: 4, maxHeight: MAX_H, overflowY: 'auto' }} onWheel={handleWheel}>
               {searchResults.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">Sonuç bulunamadı</p>
+                onCreate ? (
+                  <button
+                    type="button"
+                    disabled={creating}
+                    onClick={createFromQuery}
+                    className={cn(ITEM_DEF, 'text-primary disabled:opacity-50')}
+                  >
+                    <PlusIcon className="size-3.5 shrink-0" />
+                    <span className="flex-1 truncate text-left">
+                      {creating ? 'Ekleniyor...' : <>&ldquo;{query.trim()}&rdquo; kategorisini ekle</>}
+                    </span>
+                  </button>
+                ) : (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Sonuç bulunamadı</p>
+                )
               ) : searchResults.map(cat => {
                 const parent = active.find(p => p.id === cat.parentId)
                 return (

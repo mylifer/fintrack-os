@@ -13,7 +13,7 @@ import { parseCurrencyInput, getCurrencySymbol } from '@/lib/utils/currency'
 import { toBaseTry } from '@/lib/utils/fx'
 import { today } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
-import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency } from '@/types'
+import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency, Category } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
 import { Check, X, Plus } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
@@ -415,6 +415,7 @@ export function TransactionFormModal() {
   const closeModal   = useUIStore(s => s.closeModal)
   const accounts   = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories = useCategoryStore(s => s.categories)
+  const addCategory = useCategoryStore(s => s.add)
   const transactions = useTransactionStore(s => s.transactions)
   const addTx        = useTransactionStore(s => s.add)
   const addGroup     = useTransactionStore(s => s.addInstallmentGroup)
@@ -979,6 +980,19 @@ export function TransactionFormModal() {
                   value={form.categoryId ?? ''}
                   onChange={v => patch({ categoryId: v })}
                   error={!!errors.categoryId}
+                  onCreate={async name => {
+                    const cat: Category = {
+                      id:        crypto.randomUUID(),
+                      name,
+                      icon:      'package',
+                      color:     '#6366F1',
+                      scope:     tab === 'income' ? 'income' : 'expense',
+                      isSystem:  false,
+                      sortOrder: categories.reduce((m, c) => Math.max(m, c.sortOrder), 0) + 1,
+                    }
+                    await addCategory(cat)
+                    return cat.id
+                  }}
                 />
               </Field>
             )}
