@@ -1,5 +1,5 @@
 import { addMonths, format, parseISO } from 'date-fns'
-import type { Account, PriceData, RecurringFrequency, RecurringTransaction, Transaction } from '@/types'
+import type { Account, AccountType, PriceData, RecurringFrequency, RecurringTransaction, Transaction, TransactionType } from '@/types'
 import { calcNetWorth } from './calculations'
 import { isReconciliation } from './reconciliation'
 import { recurringOccurrences } from './recurrence'
@@ -53,15 +53,32 @@ export interface ForecastResult {
   events: ForecastEvent[]       // every projected occurrence, date asc
 }
 
+/* Projection modes:
+   'total' — net position over ALL accounts (incl. credit-card debt) plus the
+             investment portfolio. Transfers between own accounts net to zero,
+             so they never appear as events.
+   'cash'  — liquidity view over liquid accounts only (cash/checking/savings).
+             Card debt, loans, investment accounts and investmentsTry are out
+             of the starting balance. A transfer that CROSSES the liquid
+             boundary is a real cash event: paying the credit card drains
+             cash on the payment date (expense-like), a loan disbursement to
+             checking adds cash (income-like). Expenses charged to a credit
+             card do NOT touch cash when they occur — the cash leaves at
+             payment time, which avoids double-counting. */
+export type ForecastMode = 'total' | 'cash'
+
 export interface BuildForecastInput {
   accounts: Account[]
   recurring: RecurringTransaction[]
   transactions?: Transaction[]  // ledger txs; future-dated one-offs enter the projection on their date
   prices?: PriceData | null
-  investmentsTry?: number  // current portfolio value in TRY, held flat over the horizon
+  investmentsTry?: number  // current portfolio value in TRY, held flat over the horizon ('total' only)
   horizonMonths: number
   todayStr: string
+  mode?: ForecastMode  // default 'total'
 }
+
+const LIQUID_TYPES = new Set<AccountType>(['cash', 'checking', 'savings'])
 
 // Average periods per month, used to express each frequency as a monthly figure
 // for the "drivers" display (Gregorian mean month = 30.4375 days).
@@ -80,38 +97,64 @@ export function buildForecast({
   investmentsTry = 0,
   horizonMonths,
   todayStr,
+  mode = 'total',
 }: BuildForecastInput): ForecastResult {
-  const start = addMoney(calcNetWorth(accounts, prices), investmentsTry)
+  const cash = mode === 'cash'
+  // Unknown accountId (e.g. archived, so not in the array) falls back to
+  // liquid so cash mode degrades to total-mode behavior instead of silently
+  // dropping the event.
+  const liquidById = new Map(accounts.map(a => [a.id, LIQUID_TYPES.has(a.type)]))
+  const isLiquid = (id: string) => liquidById.get(id) ?? true
+
+  // Signed TRY impact of one occurrence on the projected balance, or null if
+  // it doesn't move this mode's balance at all.
+  const eventDelta = (type: TransactionType, amountTry: number, accountId: string, toAccountId?: string): number | null => {
+    if (!cash) {
+      if (type === 'income') return amountTry
+      if (type === 'expense') return -amountTry
+      return null  // transfers net to zero at aggregate level
+    }
+    const fromLiquid = isLiquid(accountId)
+    if (type === 'income') return fromLiquid ? amountTry : null
+    if (type === 'expense') return fromLiquid ? -amountTry : null
+    if (!toAccountId) return null
+    const toLiquid = isLiquid(toAccountId)
+    if (fromLiquid && !toLiquid) return -amountTry  // e.g. kredi kartı ödemesi
+    if (!fromLiquid && toLiquid) return amountTry
+    return null  // within the liquid pool (or entirely outside it)
+  }
+
+  const startAccounts = cash ? accounts.filter(a => LIQUID_TYPES.has(a.type)) : accounts
+  const start = addMoney(calcNetWorth(startAccounts, prices), cash ? 0 : investmentsTry)
   const horizonEnd = format(addMonths(parseISO(todayStr), horizonMonths), 'yyyy-MM-dd')
 
-  // 1. Materialize every future occurrence of an active income/expense template
-  //    as a signed TRY delta on its date.
+  // 1. Materialize every future occurrence of an active template that moves
+  //    this mode's balance as a signed TRY delta on its date.
   const events: { date: string; delta: number; name: string; type: 'income' | 'expense' }[] = []
   for (const r of recurring) {
     if (!r.isActive) continue
-    if (r.type !== 'income' && r.type !== 'expense') continue  // transfers net to zero
-    const amountTry = toBaseTry(r.amount, r.currency)
-    const signed = r.type === 'income' ? amountTry : -amountTry
+    const delta = eventDelta(r.type, toBaseTry(r.amount, r.currency), r.accountId, r.toAccountId)
+    if (delta === null) continue
+    const type = delta >= 0 ? 'income' as const : 'expense' as const
     for (const occ of recurringOccurrences(r, horizonEnd)) {
-      if (occ > todayStr) events.push({ date: occ, delta: signed, name: r.name, type: r.type })
+      if (occ > todayStr) events.push({ date: occ, delta, name: r.name, type })
     }
   }
 
   // 1b. Future-dated one-off ledger transactions: excluded from the current
   //     balance (they're pending), so they land in the projection on their own
-  //     date. Transfers net to zero at aggregate level; reconciliation ghosts
-  //     never carry forward.
+  //     date. Reconciliation ghosts never carry forward.
   for (const t of transactions) {
-    if (t.type !== 'income' && t.type !== 'expense') continue
     if (isReconciliation(t)) continue
     const d = t.date.slice(0, 10)
     if (d <= todayStr || d > horizonEnd) continue
-    const amountTry = baseAmount(t)
+    const delta = eventDelta(t.type, baseAmount(t), t.accountId, t.toAccountId)
+    if (delta === null) continue
     events.push({
       date: d,
-      delta: t.type === 'income' ? amountTry : -amountTry,
+      delta,
       name: t.description || t.merchant || 'İşlem',
-      type: t.type,
+      type: delta >= 0 ? 'income' : 'expense',
     })
   }
 
@@ -153,15 +196,21 @@ export function buildForecast({
     }
   })
 
-  // 4. Drivers: monthly-equivalent impact of each active income/expense template.
+  // 4. Drivers: monthly-equivalent impact of each active template that moves
+  //    this mode's balance (in cash mode that includes boundary-crossing
+  //    transfers, e.g. the card payment, classified by the sign of its delta).
   const drivers: ForecastDriver[] = recurring
-    .filter(r => r.isActive && (r.type === 'income' || r.type === 'expense'))
-    .map(r => ({
-      id:   r.id,
-      name: r.name,
-      type: r.type as 'income' | 'expense',
-      monthlyEquivTry: mulMoney(toBaseTry(r.amount, r.currency), MONTHLY_FACTOR[r.frequency]),
-    }))
+    .filter(r => r.isActive)
+    .flatMap(r => {
+      const delta = eventDelta(r.type, toBaseTry(r.amount, r.currency), r.accountId, r.toAccountId)
+      if (delta === null) return []
+      return [{
+        id:   r.id,
+        name: r.name,
+        type: delta >= 0 ? 'income' as const : 'expense' as const,
+        monthlyEquivTry: mulMoney(Math.abs(delta), MONTHLY_FACTOR[r.frequency]),
+      }]
+    })
     .sort((a, b) => b.monthlyEquivTry - a.monthlyEquivTry)
 
   return { points, shortfallDate, totalIncome, totalExpense, net, drivers, events: eventRows }

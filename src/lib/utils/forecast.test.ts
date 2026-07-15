@@ -177,6 +177,66 @@ describe('buildForecast — pure cash-flow projection', () => {
     expect(f.points.at(-1)!.balance).toBe(100)
   })
 
+  describe('cash mode — liquidity view', () => {
+    const checking = () => account({ id: 'acc-1', type: 'checking', balance: 5000 })
+    const card     = () => account({ id: 'cc-1',  type: 'credit_card', balance: -3000, name: 'Kart' })
+    const ccPayment = () =>
+      recurring({ name: 'Kart Ödemesi', type: 'transfer', amount: 3000, accountId: 'acc-1', toAccountId: 'cc-1', nextDueDate: '2026-02-01' })
+
+    it('credit-card payment: invisible in total mode, cash outflow in cash mode', () => {
+      const base = { accounts: [checking(), card()], recurring: [ccPayment()], horizonMonths: 1, todayStr: TODAY }
+
+      const total = buildForecast(base)
+      expect(total.points).toEqual([{ date: TODAY, balance: 2000 }])  // 5000 − 3000 borç, transfer net sıfır
+      expect(total.events).toEqual([])
+
+      const cash = buildForecast({ ...base, mode: 'cash' })
+      expect(cash.points).toEqual([
+        { date: TODAY, balance: 5000 },            // kart borcu başlangıca dahil değil
+        { date: '2026-02-01', balance: 2000 },     // ödeme günü nakit düşer
+      ])
+      expect(cash.events).toEqual([
+        { date: '2026-02-01', name: 'Kart Ödemesi', type: 'expense', amountTry: 3000, balanceAfter: 2000 },
+      ])
+      expect(cash.drivers).toEqual([
+        { id: expect.any(String), name: 'Kart Ödemesi', type: 'expense', monthlyEquivTry: 3000 },
+      ])
+    })
+
+    it('expense charged to the card moves total but not cash', () => {
+      const exp = recurring({ name: 'Market', type: 'expense', amount: 400, accountId: 'cc-1', nextDueDate: '2026-02-01' })
+      const base = { accounts: [checking(), card()], recurring: [exp], horizonMonths: 1, todayStr: TODAY }
+      expect(buildForecast(base).points.at(-1)!.balance).toBe(1600)                     // 2000 − 400
+      expect(buildForecast({ ...base, mode: 'cash' }).points).toEqual([{ date: TODAY, balance: 5000 }])
+    })
+
+    it('liquid→liquid transfers and investmentsTry stay out of the cash view', () => {
+      const savings = account({ id: 'sv-1', type: 'savings', balance: 1000 })
+      const move = recurring({ type: 'transfer', amount: 500, accountId: 'acc-1', toAccountId: 'sv-1', nextDueDate: '2026-02-01' })
+      const f = buildForecast({
+        accounts: [checking(), savings], recurring: [move],
+        investmentsTry: 9999, horizonMonths: 3, todayStr: TODAY, mode: 'cash',
+      })
+      expect(f.points).toEqual([{ date: TODAY, balance: 6000 }])  // 5000 + 1000, yatırım hariç
+      expect(f.drivers).toEqual([])
+    })
+
+    it('future one-off card payment enters the cash projection on its date', () => {
+      const oneOff: Transaction = {
+        id: 't-cc', type: 'transfer', amount: 1500, currency: 'TRY', date: '2026-02-10',
+        accountId: 'acc-1', toAccountId: 'cc-1', description: 'Şubat ekstresi',
+        isInstallment: false, createdAt: '', updatedAt: '',
+      }
+      const f = buildForecast({
+        accounts: [checking(), card()], recurring: [], transactions: [oneOff],
+        horizonMonths: 2, todayStr: TODAY, mode: 'cash',
+      })
+      expect(f.events).toEqual([
+        { date: '2026-02-10', name: 'Şubat ekstresi', type: 'expense', amountTry: 1500, balanceAfter: 3500 },
+      ])
+    })
+  })
+
   it('drivers express each frequency as a monthly-equivalent, sorted desc', () => {
     const f = buildForecast({
       accounts: [account()],

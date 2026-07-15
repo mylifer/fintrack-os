@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAccountStore, useRecurringStore, useInvestmentStore, useTransactionStore } from '@/store'
 import { computeHoldings } from '@/store/investment.store'
-import { buildForecast } from '@/lib/utils/forecast'
+import { buildForecast, type ForecastMode } from '@/lib/utils/forecast'
 import { sumBy } from '@/lib/utils/money'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
@@ -29,6 +29,11 @@ const HORIZONS: { months: number; label: string }[] = [
 
 const INITIAL_EVENT_COUNT = 15
 
+const MODES: { mode: ForecastMode; label: string }[] = [
+  { mode: 'total', label: 'Tüm Varlıklar' },
+  { mode: 'cash',  label: 'Sadece Nakit' },
+]
+
 export default function ForecastPage() {
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const accountsReady  = useAccountStore(s => s.ready)
@@ -44,12 +49,13 @@ export default function ForecastPage() {
   )
 
   const [horizonMonths, setHorizonMonths] = useState(6)
+  const [mode, setMode] = useState<ForecastMode>('total')
   const [showAllEvents, setShowAllEvents] = useState(false)
   const todayStr = today()
 
   const forecast = useMemo(
-    () => buildForecast({ accounts, recurring, transactions, prices, investmentsTry, horizonMonths, todayStr }),
-    [accounts, recurring, transactions, prices, investmentsTry, horizonMonths, todayStr],
+    () => buildForecast({ accounts, recurring, transactions, prices, investmentsTry, horizonMonths, todayStr, mode }),
+    [accounts, recurring, transactions, prices, investmentsTry, horizonMonths, todayStr, mode],
   )
 
   const isLoading = !accountsReady || !recurringReady
@@ -71,24 +77,45 @@ export default function ForecastPage() {
 
       <div className="p-6 flex flex-col gap-6">
 
-        {/* ── Horizon selector ──────────────────────────────────────── */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Süre</span>
-          <div className="flex items-center gap-1">
-            {HORIZONS.map(h => (
-              <button
-                key={h.months}
-                onClick={() => { setHorizonMonths(h.months); setShowAllEvents(false) }}
-                className={[
-                  'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap',
-                  horizonMonths === h.months
-                    ? 'bg-secondary text-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
-                ].join(' ')}
-              >
-                {h.label}
-              </button>
-            ))}
+        {/* ── Horizon + mode selectors ──────────────────────────────── */}
+        <div className="flex items-center gap-x-6 gap-y-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Süre</span>
+            <div className="flex items-center gap-1">
+              {HORIZONS.map(h => (
+                <button
+                  key={h.months}
+                  onClick={() => { setHorizonMonths(h.months); setShowAllEvents(false) }}
+                  className={[
+                    'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap',
+                    horizonMonths === h.months
+                      ? 'bg-secondary text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
+                  ].join(' ')}
+                >
+                  {h.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Görünüm</span>
+            <div className="flex items-center gap-1">
+              {MODES.map(m => (
+                <button
+                  key={m.mode}
+                  onClick={() => { setMode(m.mode); setShowAllEvents(false) }}
+                  className={[
+                    'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap',
+                    mode === m.mode
+                      ? 'bg-secondary text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
+                  ].join(' ')}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -119,7 +146,7 @@ export default function ForecastPage() {
             <Card>
               <CardContent className="px-5 py-4">
                 <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-2">
-                  {horizonLabel} sonra tahmini bakiye
+                  {horizonLabel} sonra tahmini {mode === 'cash' ? 'nakit ' : ''}bakiye
                 </div>
                 <div className="flex items-end justify-between gap-3">
                   <div className={`text-3xl font-semibold tabular-nums ${endBalance < 0 ? 'text-destructive' : 'text-foreground'}`}>
@@ -158,7 +185,9 @@ export default function ForecastPage() {
             <Card className="overflow-hidden gap-0 py-0">
               <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
                 <span className="text-sm font-semibold text-foreground/90">Bakiye Projeksiyonu</span>
-                <span className="text-xs text-muted-foreground">Tahmini bakiye, yatırımlar dahil (₺)</span>
+                <span className="text-xs text-muted-foreground">
+                  {mode === 'cash' ? 'Sadece nakit hesaplar (₺)' : 'Tahmini bakiye, yatırımlar dahil (₺)'}
+                </span>
               </div>
               <CardContent className="p-0 py-4">
                 <Chart points={points} shortfallDate={shortfallDate} events={events} />
