@@ -8,6 +8,7 @@ import { TransactionFormModal } from '@/components/transactions/TransactionFormM
 import { RefundModal } from '@/components/transactions/RefundModal'
 import { ReconcileBalanceModal } from '@/components/accounts/ReconcileBalanceModal'
 import { UndoToaster } from '@/components/layout/UndoToaster'
+import { SyncStatusBanner } from '@/components/layout/SyncStatusBanner'
 import { useUIStore } from '@/store'
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -37,6 +38,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <ReconcileBalanceModal key={modalPayload?.id ?? 'new'} />
         )}
         <UndoToaster />
+        <SyncStatusBanner />
       </div>
     </DataProvider>
   )

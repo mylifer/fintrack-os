@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import { isLive } from './tombstone'
+import { useSyncStatusStore } from '@/store/sync-status.store'
 import type { OutboxEntry } from '@/types'
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -77,6 +78,11 @@ function toSnapshot(table: SyncTable, row: Record<string, unknown>): Record<stri
     if (k === 'user_id' || strip.includes(k)) continue
     out[k] = v === undefined ? null : v   // undefined → null so cleared fields propagate
   }
+  // deleted_at is ALWAYS explicit in the payload: an entity object that simply
+  // lacks the key (every fresh create) must push null, so re-creating a row
+  // under a previously tombstoned id resurrects it in the cloud instead of the
+  // upsert silently leaving the old tombstone in place.
+  if (!('deleted_at' in out)) out.deleted_at = null
   return out
 }
 
@@ -296,6 +302,7 @@ export async function flushOutbox(): Promise<void> {
     scheduleRetry()
   } finally {
     flushing = false
+    void refreshSyncStatus()
   }
 }
 
@@ -310,33 +317,65 @@ export async function pendingCount(): Promise<number> {
   return db._outbox.count()
 }
 
+/** Publish outbox health to the UI store (SyncStatusBanner). Best-effort. */
+async function refreshSyncStatus(): Promise<void> {
+  try {
+    const entries = await db._outbox.toArray()
+    const stuck = entries.filter(e => e.attempts >= MAX_ATTEMPTS)
+    useSyncStatusStore.getState().report({
+      pending: entries.length,
+      stuck: stuck.length,
+      lastError: stuck[0]?.lastError ?? entries.find(e => e.lastError)?.lastError ?? null,
+    })
+  } catch {
+    // durum rozeti kritik değil — sync'in kendisini asla bloklamasın
+  }
+}
+
+/** Give dead-lettered entries a fresh attempt budget and drain the outbox.
+ *  Called on every app start (a permanent 4xx cause — schema drift, a stale
+ *  CHECK constraint — may have been fixed since) and from the banner's
+ *  "Yeniden dene" button. `lastError` is kept until the next attempt so the
+ *  UI can still show WHY the entry was stuck. */
+export async function retryDeadLetters(): Promise<void> {
+  const entries = await db._outbox.toArray()
+  const stuck = entries.filter(e => e.attempts >= MAX_ATTEMPTS)
+  for (const e of stuck) {
+    await db._outbox.update(e.id, { attempts: 0, updatedAt: now() })
+  }
+  failStreak = 0
+  await flushOutbox()
+}
+
 /** Wire up automatic draining: flush now + whenever connectivity returns. */
 export function startAutoSync(): void {
   if (typeof window === 'undefined') return
   window.addEventListener('online', () => { failStreak = 0; void flushOutbox() })
-  void flushOutbox()
+  void retryDeadLetters()
 }
 
 /* ── Reconciling pull (C2) + pagination (C6) ───────────────────────────── */
 
 const PAGE = 1000
 
-async function fetchAllLive(
+// Tombstones ARE fetched (no deleted_at filter): a remote deletion must arrive
+// as a positive `deleted_at` row, never be inferred from absence — absence can
+// also mean "this row's push failed", and treating that as a deletion is how
+// unsynced data used to get destroyed (GOLD_BRACELET incident, 2026-07).
+async function fetchAllRows(
   table: SyncTable,
+  userId: string,
 ): Promise<{ rows: Record<string, unknown>[]; complete: boolean }> {
   const acc: Record<string, unknown>[] = []
   let from = 0
-  // Defense-in-depth: scope the read to the current user. RLS already enforces
-  // this server-side; adding an explicit filter is belt-and-suspenders against
-  // a future RLS misconfiguration and is a no-op when RLS is correct.
-  const userId = await getUserId()
   for (;;) {
-    let query = supabase
+    // Defense-in-depth: scope the read to the current user. RLS already
+    // enforces this server-side; the explicit filter is belt-and-suspenders
+    // against a future RLS misconfiguration and is a no-op when RLS is correct.
+    const { data, error } = await supabase
       .from(table)
       .select('*')
-      .is('deleted_at', null)
-    if (userId) query = query.eq('user_id', userId)
-    const { data, error } = await query
+      .eq('user_id', userId)
       .order('id', { ascending: true })   // stable order across pages
       .range(from, from + PAGE - 1)
     if (error) {
@@ -352,33 +391,48 @@ async function fetchAllLive(
 }
 
 /**
- * Fetch the full live cloud set (paginated) and reconcile it into Dexie without
- * destroying local state:
+ * Fetch the full cloud set (paginated, tombstones included) and reconcile it
+ * into Dexie without destroying local state:
  *   • cloud rows upsert into Dexie, EXCEPT rows with a pending outbox entry
  *     (a local mutation not yet pushed must win),
- *   • local rows absent from the cloud set are deleted ONLY when the fetch was
- *     complete and the row is not pending (a genuine remote deletion).
- * On a partial/failed fetch nothing is cleared — we return the current local
+ *   • remote deletions arrive as tombstone rows (`deleted_at` set) and are
+ *     upserted like any other update — they vanish from the UI via isLive,
+ *   • a local row ABSENT from a complete cloud set is NEVER deleted: absence
+ *     means its push failed or never ran, so it is RE-ENQUEUED for push
+ *     instead. (Deletion-by-absence destroyed exactly the rows that most
+ *     needed protecting — the not-yet-synced ones.)
+ *   • with no signed-in user the pull is skipped entirely: an anon/expired-
+ *     session query returns an EMPTY set with HTTP 200 (RLS filters silently),
+ *     which is indistinguishable from "user has no data".
+ * On a partial/failed fetch nothing is touched — we return the current local
  * live rows so the UI keeps working offline.
  *
  * Returns the merged live rows for the store to hold in memory.
  */
 export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
   const t = DEXIE[table]
-  const { rows: cloudRows, complete } = await fetchAllLive(table)
+
+  const userId = await getUserId()
+  if (!userId) {
+    return (await t.toArray()).filter(isLive) as unknown as T[]
+  }
+
+  const { rows: cloudRows, complete } = await fetchAllRows(table, userId)
 
   if (!complete) {
     return (await t.toArray()).filter(isLive) as unknown as T[]
   }
 
   const cloudIds = new Set(cloudRows.map(r => r.id as string))
+  const ownerId: string | null = userId   // outbox owner tag (captured pre-tx)
+  let requeued = 0
 
   await db.transaction('rw', t, db._outbox, async () => {
     // pending MUST be read inside this tx: localUpsert commits entity+outbox
     // atomically, so a row created while the pull was in flight either isn't
     // in localRows yet, or its outbox entry is visible here. Reading pending
     // BEFORE the tx left a window where a just-created row appeared local-only
-    // and got deleted as a "remote deletion" (real data loss).
+    // and got re-enqueued/overwritten incorrectly.
     const pending = new Set(
       (await db._outbox.where('table').equals(table).toArray()).map(e => e.entityId),
     )
@@ -389,10 +443,16 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
     }
     for (const lr of localRows) {
       if (!cloudIds.has(lr.id) && !pending.has(lr.id)) {
-        await t.delete(lr.id)                            // deleted on another device
+        await putOutbox(table, lr, ownerId)              // push failed/never ran — retry it
+        requeued++
       }
     }
   })
+
+  if (requeued > 0) {
+    console.warn(`[sync:requeue] ${table}: ${requeued} local row(s) missing from cloud — re-enqueued for push`)
+    kickSync()
+  }
 
   return (await t.toArray()).filter(isLive) as unknown as T[]
 }

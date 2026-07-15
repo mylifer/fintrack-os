@@ -15,3 +15,5 @@ export { useInvestmentStore } from './investment.store'
 export { usePeopleStore } from './people.store'
 
 export { useRecurringStore } from './recurring.store'
+
+export { useSyncStatusStore } from './sync-status.store'

@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { clearLocalData } from '@/lib/auth'
+import { retryDeadLetters, pendingCount } from '@/lib/sync/engine'
 import { useAccountStore, useInvestmentStore, useRecurringStore, useTransactionStore, useBudgetStore, useCategoryStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, computeTransactionEffect, resolveBudgetCategories } from '@/lib/utils/calculations'
@@ -88,6 +89,26 @@ export function Sidebar() {
   const pathname       = usePathname()
 
   async function handleSignOut() {
+    // Çıkış, yerel Dexie'yi VE bekleyen sync kuyruğunu siler — buluta henüz
+    // ulaşmamış her kayıt kalıcı olarak yok olur. Önce kuyruğu boşaltmayı
+    // dene (dead-letter'lara da son bir şans ver); hâlâ bekleyen varsa
+    // kullanıcı açıkça onaylamadan devam etme.
+    try {
+      await retryDeadLetters()
+      const waiting = await pendingCount()
+      if (waiting > 0) {
+        const ok = window.confirm(
+          `${waiting} kayıt henüz buluta senkronlanmadı. Şimdi çıkarsanız bu kayıtlar KALICI olarak silinir.\n\nYine de çıkmak istiyor musunuz?`,
+        )
+        if (!ok) return
+      }
+    } catch (err) {
+      console.error('[signout:flush]', err)
+      const ok = window.confirm(
+        'Senkron durumu doğrulanamadı; çıkış, buluta ulaşmamış kayıtları silebilir.\n\nYine de çıkmak istiyor musunuz?',
+      )
+      if (!ok) return
+    }
     try {
       await clearLocalData()
     } catch (err) {
