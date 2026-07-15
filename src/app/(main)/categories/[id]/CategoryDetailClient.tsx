@@ -8,6 +8,7 @@ import { CategoryIconPicker } from '@/components/categories/CategoryIconPicker'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
+import { compareCategoriesByName } from '@/lib/utils/categories'
 
 interface Props { id: string }
 
@@ -53,7 +54,7 @@ export default function CategoryDetailClient({ id }: Props) {
 
   /* Direct children */
   const children = useMemo(
-    () => categories.filter(c => c.parentId === id).sort((a, b) => a.sortOrder - b.sortOrder),
+    () => categories.filter(c => c.parentId === id).sort(compareCategoriesByName),
     [categories, id],
   )
 
@@ -84,7 +85,7 @@ export default function CategoryDetailClient({ id }: Props) {
     if (!cat) return []
     return categories
       .filter(c => c.scope === cat.scope && getLevel(c.id) === 0 && !descendantIds.has(c.id))
-      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .sort(compareCategoriesByName)
       .map(c => ({ id: c.id, label: c.name }))
   }, [cat, categories, descendantIds, getLevel])
 
@@ -92,7 +93,7 @@ export default function CategoryDetailClient({ id }: Props) {
     if (!cat) return []
     return categories
       .filter(c => c.scope === cat.scope && getLevel(c.id) === 1 && !descendantIds.has(c.id))
-      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .sort(compareCategoriesByName)
       .map(c => {
         const parent = categories.find(p => p.id === c.parentId)
         return { id: c.id, label: `${c.name} (${parent?.name ?? ''})` }

@@ -11,6 +11,7 @@ import { DEFAULT_CATEGORIES } from '@/types'
 // Run every load() so Supabase is always corrected on fetch, regardless of
 // whether prior async Supabase writes succeeded.
 import { NOTO_TO_TABLER, LEGACY_COLOR } from '@/lib/legacy-icon-map'
+import { compareCategoriesByName } from '@/lib/utils/categories'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 
 function applyIconMigration(raw: Category[]): { categories: Category[]; dirty: Category[] } {
@@ -48,7 +49,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     set({ loading: true })
     try {
       const rows = await reconcilingPull<Category>('categories')
-      const { categories, dirty } = applyIconMigration(rows.sort((a, b) => a.sortOrder - b.sortOrder))
+      const { categories, dirty } = applyIconMigration(rows.sort(compareCategoriesByName))
       set({ categories, loading: false, ready: true })
       // Persist migrated icons durably (Dexie + outbox).
       for (const cat of dirty) {
@@ -57,7 +58,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     } catch (err) {
       console.error('[categories:load]', err)
       const raw = (await db.categories.toArray()).filter(isLive)
-      const { categories } = applyIconMigration(raw.sort((a, b) => a.sortOrder - b.sortOrder))
+      const { categories } = applyIconMigration(raw.sort(compareCategoriesByName))
       set({ categories, loading: false, ready: true })
     }
   },
@@ -92,7 +93,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     if (toInsert.length > 0) {
       await localBulkUpsert('categories', toInsert)
       set(s => ({
-        categories: [...s.categories, ...toInsert].sort((a, b) => a.sortOrder - b.sortOrder),
+        categories: [...s.categories, ...toInsert].sort(compareCategoriesByName),
       }))
     }
 
@@ -146,7 +147,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
   add: async (cat) => {
     const entry: Category = { ...cat, isArchived: false }
     await localUpsert('categories', entry)
-    set(s => ({ categories: [...s.categories, entry].sort((a, b) => a.sortOrder - b.sortOrder) }))
+    set(s => ({ categories: [...s.categories, entry].sort(compareCategoriesByName) }))
   },
 
   update: async (id, patch) => {

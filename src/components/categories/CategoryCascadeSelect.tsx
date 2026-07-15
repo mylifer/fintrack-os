@@ -5,6 +5,7 @@ import { Popover } from 'radix-ui'
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { CategoryIcon } from './CategoryIcon'
 import { cn } from '@/lib/utils'
+import { compareCategoriesByName } from '@/lib/utils/categories'
 import type { Category } from '@/types'
 
 const COL_W    = 220
@@ -45,11 +46,11 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   const active = categories.filter(c => !c.isArchived)
 
   const getChildren = useCallback(
-    (pid: string) => active.filter(c => c.parentId === pid).sort((a, b) => a.sortOrder - b.sortOrder),
+    (pid: string) => active.filter(c => c.parentId === pid).sort(compareCategoriesByName),
     [active],
   )
 
-  const roots    = active.filter(c => !c.parentId).sort((a, b) => a.sortOrder - b.sortOrder)
+  const roots    = active.filter(c => !c.parentId).sort(compareCategoriesByName)
   const selected = categories.find(c => c.id === value)  // intentionally searches all (incl. archived) to display existing selections
   const l1List   = hoveredL0 ? getChildren(hoveredL0) : []
   const l2List   = hoveredL1 ? getChildren(hoveredL1) : []

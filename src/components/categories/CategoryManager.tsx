@@ -6,6 +6,7 @@ import { useCategoryStore, useTransactionStore } from '@/store'
 import { CategoryIcon } from './CategoryIcon'
 import { CategoryIconPicker } from './CategoryIconPicker'
 import { SelectField } from '@/components/ui/Select'
+import { compareCategoriesByName } from '@/lib/utils/categories'
 import type { Category, CategoryScope } from '@/types'
 
 const SCOPE_LABELS: Record<CategoryScope, string> = { expense: 'Gider', income: 'Gelir' }
@@ -120,13 +121,13 @@ export function CategoryManager() {
   /* ── Tree helpers ── */
   // Active-only children for the live tree
   const getChildren = useCallback(
-    (pid: string) => categories.filter(c => c.parentId === pid && !c.isArchived).sort((a, b) => a.sortOrder - b.sortOrder),
+    (pid: string) => categories.filter(c => c.parentId === pid && !c.isArchived).sort(compareCategoriesByName),
     [categories],
   )
 
   // All children including archived (used when cascading archive/restore)
   const getAllChildren = useCallback(
-    (pid: string) => categories.filter(c => c.parentId === pid).sort((a, b) => a.sortOrder - b.sortOrder),
+    (pid: string) => categories.filter(c => c.parentId === pid).sort(compareCategoriesByName),
     [categories],
   )
 
@@ -156,12 +157,12 @@ export function CategoryManager() {
   }, [transactions, getAllDescendants])
 
   const roots = useMemo(
-    () => categories.filter(c => c.scope === tab && !c.parentId && !c.isArchived).sort((a, b) => a.sortOrder - b.sortOrder),
+    () => categories.filter(c => c.scope === tab && !c.parentId && !c.isArchived).sort(compareCategoriesByName),
     [categories, tab],
   )
 
   const archivedList = useMemo(
-    () => categories.filter(c => c.scope === tab && c.isArchived).sort((a, b) => a.sortOrder - b.sortOrder),
+    () => categories.filter(c => c.scope === tab && c.isArchived).sort(compareCategoriesByName),
     [categories, tab],
   )
 
@@ -170,7 +171,7 @@ export function CategoryManager() {
     const excluded = new Set(excludeId ? getAllDescendants(excludeId) : [])
     return categories
       .filter(c => c.scope === tab && !c.isArchived && getLevel(c.id) === 0 && !excluded.has(c.id))
-      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .sort(compareCategoriesByName)
       .map(c => ({ id: c.id, label: c.name }))
   }
 
@@ -179,7 +180,7 @@ export function CategoryManager() {
     const excluded = new Set(excludeId ? getAllDescendants(excludeId) : [])
     return categories
       .filter(c => c.scope === tab && !c.isArchived && getLevel(c.id) === 1 && !excluded.has(c.id))
-      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .sort(compareCategoriesByName)
       .map(c => {
         const parent = categories.find(p => p.id === c.parentId)
         return { id: c.id, label: `${c.name} (${parent?.name ?? ''})` }
