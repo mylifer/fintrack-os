@@ -11,9 +11,7 @@ import { formatCurrency }     from '@/lib/utils/currency'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
-import { recurringOccurrences } from '@/lib/utils/recurrence'
-import { deterministicUuid }  from '@/lib/utils/id'
-import { addMonths, format, parseISO } from 'date-fns'
+import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { Badge }              from '@/components/ui/Badge'
 import { Button }             from '@/components/ui/button'
 import { SelectField }        from '@/components/ui/Select'
@@ -48,7 +46,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
   const [recipientFilter, setRecipientFilter] = useState<PersonFilter>(null)
   const [search, setSearch]                 = useState('')
   const [typeFilter, setTypeFilter]         = useState('')
-  const [showFuture, setShowFuture]         = useState(false)
+  const [showFuture, setShowFuture]         = useState(true)
   const [periodOffset, setPeriodOffset]     = useState(0)
 
   const recurring = useRecurringStore(s => s.recurring)
@@ -62,46 +60,17 @@ export default function AccountDetailClient({ id }: { id: string }) {
     [periodType, periodOffset],
   )
 
-  // Planlanan gelecek işlemler: bu hesaba dokunan aktif tekrarlayan şablonların
-  // seçili dönem sonuna kadar projekte edilmiş oluşumları. Oluşum id'si, gerçek
-  // üretimle aynı deterministik şemayı kullanır — kaydedilmiş bir işlemle çakışan
-  // oluşum elenir. Sınırlı dönemler (gün/hafta/ay/yıl) doğal ufuktur; yalnızca
-  // 'Tüm Zamanlar' 12 ay ile sınırlanır (sınırsız şablon sonsuza kadar üretir).
+  // Planlanan gelecek işlemler — bu hesaba dokunan şablonlardan (bkz. planned.ts)
   const projectedTxs = useMemo(() => {
     if (!showFuture) return [] as Transaction[]
-    const todayStr = today()
-    const horizon = periodType === 'all'
-      ? format(addMonths(parseISO(todayStr), 12), 'yyyy-MM-dd')
-      : to
-    const existingIds = new Set(accountTxs.map(t => t.id))
-    const out: Transaction[] = []
-    for (const r of recurring) {
-      if (!r.isActive || r.deleted_at) continue
-      if (r.accountId !== id && r.toAccountId !== id) continue
-      for (const occ of recurringOccurrences(r, horizon)) {
-        if (occ < todayStr) continue
-        const txId = deterministicUuid(`recur:${r.id}:${occ}`)
-        if (existingIds.has(txId)) continue
-        out.push({
-          id:             txId,
-          type:           r.type,
-          amount:         r.amount,
-          currency:       r.currency,
-          date:           occ,
-          accountId:      r.accountId,
-          toAccountId:    r.toAccountId,
-          categoryId:     r.categoryId,
-          description:    r.description,
-          notes:          r.notes,
-          isInstallment:  false,
-          familyMemberId: r.familyMemberId,
-          recipientId:    r.recipientId,
-          createdAt:      occ,
-          updatedAt:      occ,
-        })
-      }
-    }
-    return out
+    return projectPlannedTransactions({
+      recurring,
+      periodType,
+      periodEnd:   to,
+      todayStr:    today(),
+      existingIds: new Set(accountTxs.map(t => t.id)),
+      accountId:   id,
+    })
   }, [showFuture, recurring, id, periodType, to, accountTxs])
 
   const projectedIds = useMemo(() => new Set(projectedTxs.map(t => t.id)), [projectedTxs])

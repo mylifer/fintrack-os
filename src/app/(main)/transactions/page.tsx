@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Header }          from '@/components/layout/Header'
 import { PeriodTabs }      from '@/components/ui/PeriodTabs'
 import { SelectField }     from '@/components/ui/Select'
 import { TransactionList } from '@/components/transactions/TransactionList'
-import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore } from '@/store'
-import { getPeriodRange }  from '@/lib/utils/date'
+import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore } from '@/store'
+import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
+import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { formatCurrency }  from '@/lib/utils/currency'
 import { transactionsToCsvString, downloadCsv } from '@/lib/utils/csv'
-import type { TransactionFilters, PersonRole } from '@/types'
+import type { TransactionFilters, PersonRole, Transaction } from '@/types'
 
 type PersonFilter = { id: string; name: string } | null
 
@@ -21,12 +22,22 @@ export default function TransactionsPage() {
   const people       = usePeopleStore(s => s.people)
   const categories   = useCategoryStore(s => s.categories)
 
+  const recurring = useRecurringStore(s => s.recurring)
+
   const [search, setSearch]         = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [familyFilter, setFamilyFilter] = useState<PersonFilter>(null)
   const [recipientFilter, setRecipientFilter] = useState<PersonFilter>(null)
+  const [showFuture, setShowFuture] = useState(true)
+  const [periodOffset, setPeriodOffset] = useState(0)
 
-  const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
+  // Dönem türü değişince gezinti sıfırlanır
+  useEffect(() => { setPeriodOffset(0) }, [periodType])
+
+  const { from, to } = useMemo(
+    () => getPeriodRangeAt(periodType, periodOffset),
+    [periodType, periodOffset],
+  )
 
   const filters: TransactionFilters = {
     search:          search || undefined,
@@ -41,6 +52,30 @@ export default function TransactionsPage() {
     () => getFiltered(filters),
     [transactions, search, typeFilter, from, to, familyFilter, recipientFilter],
   )
+
+  // Planlanan gelecek işlemler (tüm hesaplar) — aktif filtrelerden geçirilir,
+  // böylece gerçek işlemlerle aynı arama/tür/kişi/dönem kısıtlarına uyarlar.
+  const projectedTxs = useMemo(() => {
+    if (!showFuture) return [] as Transaction[]
+    return projectPlannedTransactions({
+      recurring,
+      periodType,
+      periodEnd:   to,
+      todayStr:    today(),
+      existingIds: new Set(transactions.map(t => t.id)),
+    }).filter(t => {
+      if (from && t.date < from) return false
+      if (to   && t.date > to)   return false
+      if (typeFilter && t.type !== typeFilter) return false
+      if (familyFilter    && t.familyMemberId !== familyFilter.id)    return false
+      if (recipientFilter && t.recipientId    !== recipientFilter.id) return false
+      if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false
+      return true
+    })
+  }, [showFuture, recurring, periodType, from, to, transactions, typeFilter, familyFilter, recipientFilter, search])
+
+  const projectedIds = useMemo(() => new Set(projectedTxs.map(t => t.id)), [projectedTxs])
+  const displayTxs   = useMemo(() => [...filtered, ...projectedTxs], [filtered, projectedTxs])
 
   // Tek geçişte hem gider hem gelir toplamı (eskiden render başına 4 tam tarama).
   const { totalExpense, totalIncome } = useMemo(() => {
@@ -74,7 +109,24 @@ export default function TransactionsPage() {
     <>
       <Header title="İşlemler" action={{ label: 'Ekle', onClick: () => openModal('add-transaction') }} />
 
-      <PeriodTabs />
+      <PeriodTabs
+        nav={{
+          offset:   periodOffset,
+          label:    formatPeriodLabel(periodType, periodOffset),
+          onChange: setPeriodOffset,
+        }}
+        rightSlot={
+          <label className="flex items-center gap-2 cursor-pointer select-none whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={showFuture}
+              onChange={e => setShowFuture(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
+            />
+            <span className="text-xs font-medium text-muted-foreground">Gelecek işlemler</span>
+          </label>
+        }
+      />
 
       {/* Filters */}
       <div className="flex items-center gap-2 px-6 py-4 bg-transparent border-b border-border flex-shrink-0">
@@ -135,7 +187,7 @@ export default function TransactionsPage() {
 
       {/* Transaction list */}
       <div className="flex-1 overflow-auto">
-        <TransactionList transactions={filtered} layout="table" onPersonClick={handlePersonClick} />
+        <TransactionList transactions={displayTxs} projectedIds={projectedIds} layout="table" onPersonClick={handlePersonClick} />
       </div>
     </>
   )
