@@ -162,26 +162,54 @@ function sortDay(dayTxs: Transaction[]) {
   })
 }
 
+// Kullanıcının seçebildiği sıralama seçenekleri (filtre çubuğundaki "Sıralama" alanı).
+export type TxSortOption = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'
+
+export const TX_SORT_OPTIONS: { value: TxSortOption; label: string }[] = [
+  { value: 'date-desc',   label: 'Tarih: Yeni → Eski' },
+  { value: 'date-asc',    label: 'Tarih: Eski → Yeni' },
+  { value: 'amount-desc', label: 'Tutar: Yüksek → Düşük' },
+  { value: 'amount-asc',  label: 'Tutar: Düşük → Yüksek' },
+]
+
 // Flattened, virtualization-friendly row list. One entry per rendered row.
 type Row =
-  | { kind: 'header'; date: string; dateIdx: number }
-  | { kind: 'tx'; tx: Transaction; isFirst: boolean; isLast: boolean }
+  | { kind: 'section'; id: 'future' | 'past'; count: number; first: boolean }
+  | { kind: 'header'; date: string; dateIdx: number; future: boolean }
+  | { kind: 'tx'; tx: Transaction; isFirst: boolean; isLast: boolean; future: boolean }
 
 // ── Date separator (both layouts share the same look, only top spacing differs) ─
-function DateSeparator({ date, topClass }: { date: string; topClass: string }) {
+function DateSeparator({ date, topClass, future }: { date: string; topClass: string; future?: boolean }) {
   return (
     <div className={`flex items-center gap-3 py-1 ${topClass}`}>
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap select-none">
+      <span className={`text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap select-none ${future ? 'text-sky-500/80' : 'text-muted-foreground'}`}>
         {formatDate(date, 'd MMM')} · {formatDate(date, 'EEEE')}
       </span>
-      <div className="flex-1 h-px bg-border/60" />
+      <div className={`flex-1 h-px ${future ? 'bg-sky-500/20' : 'bg-border/60'}`} />
+    </div>
+  )
+}
+
+// ── Section banner: gelecek işlemleri gerçekleşenlerden görsel olarak ayırır ──
+function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: number; topClass: string }) {
+  const future = id === 'future'
+  return (
+    <div className={`flex items-center gap-3 py-1.5 ${topClass}`}>
+      <span className={[
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider select-none',
+        future ? 'bg-sky-500/10 text-sky-500' : 'bg-muted text-muted-foreground',
+      ].join(' ')}>
+        {future ? 'Gelecek İşlemler' : 'Gerçekleşen İşlemler'}
+        <span className="font-semibold opacity-70">{count}</span>
+      </span>
+      <div className={`flex-1 h-px ${future ? 'bg-sky-500/25' : 'bg-border'}`} />
     </div>
   )
 }
 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
-  tx, cat, account, toAccount, recipient, family, balanceAfter, isFirst, isLast, projected, openModal, removeTx,
+  tx, cat, account, toAccount, recipient, family, balanceAfter, isFirst, isLast, projected, future, openModal, removeTx,
 }: {
   tx: Transaction
   cat?: Category
@@ -193,6 +221,7 @@ const TableTxRow = memo(function TableTxRow({
   isFirst: boolean
   isLast: boolean
   projected?: boolean
+  future?: boolean
   openModal: OpenModal
   removeTx: (id: string) => void
 }) {
@@ -202,7 +231,8 @@ const TableTxRow = memo(function TableTxRow({
   return (
     <div
       className={[
-        'group grid transition-colors hover:bg-accent/40 bg-card border-x border-t border-border/60',
+        'group grid transition-colors hover:bg-accent/40 border-x border-t',
+        future ? 'bg-sky-500/[0.04] border-sky-500/15' : 'bg-card border-border/60',
         isFirst ? 'rounded-t-lg overflow-hidden' : '',
         isLast ? 'rounded-b-lg border-b overflow-hidden' : '',
         projected ? 'opacity-60' : '',
@@ -352,7 +382,7 @@ const TableTxRow = memo(function TableTxRow({
 
 // ── CARDS row (compact minimal) ───────────────────────────────────────────
 const CardTxRow = memo(function CardTxRow({
-  tx, cat, account, recipient, family, showAccount, projected, openModal, removeTx,
+  tx, cat, account, recipient, family, showAccount, projected, future, openModal, removeTx,
 }: {
   tx: Transaction
   cat?: Category
@@ -361,6 +391,7 @@ const CardTxRow = memo(function CardTxRow({
   family?: Person
   showAccount: boolean
   projected?: boolean
+  future?: boolean
   openModal: OpenModal
   removeTx: (id: string) => void
 }) {
@@ -381,6 +412,7 @@ const CardTxRow = memo(function CardTxRow({
   return (
     <div className={[
       'group flex items-center gap-2.5 px-2 py-[5px] rounded-lg hover:bg-accent/40 transition-colors',
+      future ? 'bg-sky-500/[0.04]' : '',
       projected ? 'opacity-60' : '',
     ].join(' ')}>
       {/* Icon — yalnızca açıklamadan */}
@@ -471,6 +503,8 @@ interface Props {
   /** Ids of projected (henüz gerçekleşmemiş, tekrarlayan şablondan türetilmiş)
    *  transactions — rendered dimmed with a "Planlandı" badge, no edit/delete. */
   projectedIds?: Set<string>
+  /** Sıralama seçeneği (filtre çubuğundaki alandan gelir). Varsayılan: yeni → eski. */
+  sort?: TxSortOption
 }
 
 export function TransactionList({
@@ -481,6 +515,7 @@ export function TransactionList({
   emptyDescription = 'Filtrelerinizi değiştirin veya yeni işlem ekleyin.',
   primaryAccountId,
   projectedIds,
+  sort = 'date-desc',
 }: Props) {
   const categories = useCategoryStore(s => s.categories)
   const accounts   = useAccountStore(s => s.accounts)
@@ -494,32 +529,55 @@ export function TransactionList({
   const accById    = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts])
   const personById = useMemo(() => new Map(people.map(p => [p.id, p])), [people])
 
-  const grouped     = useMemo(() => groupByDate(transactions), [transactions])
-
-  // Gelecek tarihler EN YAKIN önce (artan), bugün ve geçmiş en yeni önce (azalan).
-  // Salt azalan sıralama, planlanan işlemleri en uzak aydan başlatıyordu —
-  // yıllıkta Aralık en üstte, Ağustos'taki yaklaşan kira beş başlık aşağıdaydı.
-  const sortedDates = useMemo(() => {
-    const todayStr = today()
-    const keys   = [...grouped.keys()]
-    const future = keys.filter(d => d > todayStr).sort((a, b) => a.localeCompare(b))
-    const past   = keys.filter(d => d <= todayStr).sort((a, b) => b.localeCompare(a))
-    return [...future, ...past]
-  }, [grouped])
-
-  // Tek düz satır listesi: her tarih için bir başlık + o güne ait sıralı işlemler.
-  // sortDay burada bir kez çalışır (eskiden her render'da çalışıyordu).
+  // Tek düz satır listesi. Gelecek tarihli işlemler (bugünden sonrası) her zaman
+  // ayrı bir "Gelecek İşlemler" bölümünde, gerçekleşenlerle karışmadan gösterilir.
+  // Her iki bölüm de seçili sıralamaya uyar (varsayılan: yeni → eski).
   const rows = useMemo<Row[]>(() => {
+    const todayStr = today()
+    const futureTxs  = transactions.filter(t => t.date > todayStr)
+    const currentTxs = transactions.filter(t => t.date <= todayStr)
     const out: Row[] = []
-    sortedDates.forEach((date, dateIdx) => {
-      out.push({ kind: 'header', date, dateIdx })
-      const day = sortDay(grouped.get(date)!)
-      day.forEach((tx, i) => {
-        out.push({ kind: 'tx', tx, isFirst: i === 0, isLast: i === day.length - 1 })
+    let dateIdx = 0
+
+    const pushDateGrouped = (txs: Transaction[], future: boolean) => {
+      const grouped = groupByDate(txs)
+      const dates = [...grouped.keys()].sort((a, b) =>
+        sort === 'date-asc' ? a.localeCompare(b) : b.localeCompare(a),
+      )
+      for (const date of dates) {
+        out.push({ kind: 'header', date, dateIdx: dateIdx++, future })
+        const day = sortDay(grouped.get(date)!)
+        day.forEach((tx, i) => {
+          out.push({ kind: 'tx', tx, isFirst: i === 0, isLast: i === day.length - 1, future })
+        })
+      }
+    }
+
+    const pushAmountSorted = (txs: Transaction[], future: boolean) => {
+      const sorted = [...txs].sort((a, b) => {
+        const d = Math.abs(a.amount) - Math.abs(b.amount)
+        return sort === 'amount-asc' ? d : -d
       })
-    })
+      sorted.forEach((tx, i) => {
+        out.push({ kind: 'tx', tx, isFirst: i === 0, isLast: i === sorted.length - 1, future })
+      })
+    }
+
+    const pushSection = (txs: Transaction[], future: boolean) => {
+      if (sort === 'amount-desc' || sort === 'amount-asc') pushAmountSorted(txs, future)
+      else pushDateGrouped(txs, future)
+    }
+
+    if (futureTxs.length > 0) {
+      out.push({ kind: 'section', id: 'future', count: futureTxs.length, first: true })
+      pushSection(futureTxs, true)
+      if (currentTxs.length > 0) {
+        out.push({ kind: 'section', id: 'past', count: currentTxs.length, first: false })
+      }
+    }
+    pushSection(currentTxs, false)
     return out
-  }, [sortedDates, grouped])
+  }, [transactions, sort])
 
   // Güncel bakiye (yalnızca table layout). Eski kod her hesap için tüm defteri
   // filter+sort ediyordu → O(hesap × N log N). Artık defteri BİR kez kronolojik
@@ -582,15 +640,21 @@ export function TransactionList({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: i => (rows[i].kind === 'header' ? 36 : layout === 'table' ? 64 : 60),
+    estimateSize: i => {
+      const r = rows[i]
+      if (r.kind === 'section') return 40
+      if (r.kind === 'header')  return 36
+      return layout === 'table' ? 64 : 60
+    },
     overscan: 12,
     getItemKey: i => {
       const r = rows[i]
-      return r.kind === 'header' ? `h:${r.date}` : `t:${r.tx.id}`
+      if (r.kind === 'section') return `s:${r.id}`
+      return r.kind === 'header' ? `h:${r.future ? 'f' : 'p'}:${r.date}` : `t:${r.tx.id}`
     },
   })
 
-  if (sortedDates.length === 0) {
+  if (transactions.length === 0) {
     return <EmptyState icon="↕" title={emptyTitle} description={emptyDescription} />
   }
 
@@ -631,11 +695,14 @@ export function TransactionList({
                     ref={virtualizer.measureElement}
                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
                   >
-                    {row.kind === 'header' ? (
-                      <DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-3' : 'pt-1'} />
+                    {row.kind === 'section' ? (
+                      <SectionBanner id={row.id} count={row.count} topClass={row.first ? 'pt-1' : 'pt-4'} />
+                    ) : row.kind === 'header' ? (
+                      <DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-3' : 'pt-1'} future={row.future} />
                     ) : (
                       <TableTxRow
                         tx={row.tx}
+                        future={row.future}
                         cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
                         account={accById.get(row.tx.accountId)}
                         toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
@@ -673,11 +740,14 @@ export function TransactionList({
                 ref={virtualizer.measureElement}
                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
               >
-                {row.kind === 'header' ? (
-                  <DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-4' : 'pt-1'} />
+                {row.kind === 'section' ? (
+                  <SectionBanner id={row.id} count={row.count} topClass={row.first ? 'pt-1' : 'pt-5'} />
+                ) : row.kind === 'header' ? (
+                  <DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-4' : 'pt-1'} future={row.future} />
                 ) : (
                   <CardTxRow
                     tx={row.tx}
+                    future={row.future}
                     cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
                     account={accById.get(row.tx.accountId)}
                     recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}

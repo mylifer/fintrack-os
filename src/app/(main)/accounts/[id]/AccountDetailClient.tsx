@@ -18,7 +18,7 @@ import { Badge }              from '@/components/ui/Badge'
 import { Button }             from '@/components/ui/button'
 import { SelectField }        from '@/components/ui/Select'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
-import { TransactionList }    from '@/components/transactions/TransactionList'
+import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import type { Account, PersonRole, Transaction } from '@/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -51,6 +51,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
   const [typeFilter, setTypeFilter]         = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [showFuture, setShowFuture]         = useState(true)
+  const [sortOption, setSortOption]         = useState<TxSortOption>('date-desc')
   const [periodOffset, setPeriodOffset]     = useState(0)
 
   const recurring = useRecurringStore(s => s.recurring)
@@ -283,6 +284,12 @@ export default function AccountDetailClient({ id }: { id: string }) {
           options={recipientOptions}
           className="w-fit bg-card text-xs"
         />
+        <SelectField
+          value={sortOption}
+          onChange={e => setSortOption(e.target.value as TxSortOption)}
+          options={TX_SORT_OPTIONS}
+          className="w-fit bg-card text-xs"
+        />
       </div>
 
       {/* Active person filter chips */}
@@ -309,6 +316,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
           transactions={filteredTxs}
           projectedIds={projectedIds}
           layout="table"
+          sort={sortOption}
           showAccount={false}
           primaryAccountId={id}
           emptyTitle="Bu dönemde işlem yok"

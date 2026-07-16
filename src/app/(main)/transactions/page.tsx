@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Header }          from '@/components/layout/Header'
 import { PeriodTabs }      from '@/components/ui/PeriodTabs'
 import { SelectField }     from '@/components/ui/Select'
-import { TransactionList } from '@/components/transactions/TransactionList'
+import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore } from '@/store'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
@@ -34,6 +34,7 @@ export default function TransactionsPage() {
   const [familyFilter, setFamilyFilter] = useState<PersonFilter>(null)
   const [recipientFilter, setRecipientFilter] = useState<PersonFilter>(null)
   const [showFuture, setShowFuture] = useState(true)
+  const [sortOption, setSortOption] = useState<TxSortOption>('date-desc')
   const [periodOffset, setPeriodOffset] = useState(0)
 
   // Dönem türü değişince gezinti sıfırlanır
@@ -218,6 +219,12 @@ export default function TransactionsPage() {
           options={recipientOptions}
           className="w-fit bg-card text-xs"
         />
+        <SelectField
+          value={sortOption}
+          onChange={e => setSortOption(e.target.value as TxSortOption)}
+          options={TX_SORT_OPTIONS}
+          className="w-fit bg-card text-xs"
+        />
         <button
           onClick={handleExportCsv}
           disabled={filtered.length === 0}
@@ -258,7 +265,7 @@ export default function TransactionsPage() {
 
       {/* Transaction list */}
       <div className="flex-1 overflow-auto">
-        <TransactionList transactions={displayTxs} projectedIds={projectedIds} layout="table" onPersonClick={handlePersonClick} />
+        <TransactionList transactions={displayTxs} projectedIds={projectedIds} layout="table" sort={sortOption} onPersonClick={handlePersonClick} />
       </div>
     </>
   )
