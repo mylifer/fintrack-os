@@ -10,6 +10,7 @@ import {
 } from '@/store'
 import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
+import { isTefasAsset, tefasCode } from '@/lib/tefas'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { getPeriodRange, getPrevPeriodRange, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import dynamic from 'next/dynamic'
@@ -58,10 +59,20 @@ export default function DashboardPage() {
   const prices       = useInvestmentStore(s => s.prices)
   const fundPrices   = useInvestmentStore(s => s.fundPrices)
   const investTxs    = useInvestmentStore(s => s.transactions)
-  const investValue  = useMemo(
-    () => prices ? computeHoldings(investTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0) : 0,
+  const holdings     = useMemo(
+    () => prices ? computeHoldings(investTxs, prices, fundPrices) : [],
     [investTxs, prices, fundPrices],
   )
+  const investValue  = useMemo(() => holdings.reduce((s, h) => s + h.currentValue, 0), [holdings])
+  // TEFAS fonlarının bugünkü değer artışı; net düşüşteyse gelire yansıtılmaz
+  const fundDailyGain = useMemo(() => {
+    const net = holdings.reduce((sum, h) => {
+      if (!isTefasAsset(h.asset)) return sum
+      const fp = fundPrices[tefasCode(h.asset)]
+      return fp?.prevPrice ? sum + h.quantity * (fp.price - fp.prevPrice) : sum
+    }, 0)
+    return net > 0 ? net : 0
+  }, [holdings, fundPrices])
   const getBudgets   = useBudgetStore(s => s.getMonthBudgets)
   const getDueSoon   = useDebtStore(s => s.getDueSoon)
   const getActive    = useDebtStore(s => s.getActive)
@@ -81,8 +92,10 @@ export default function DashboardPage() {
 
   const totalOwed = getActive().filter(d => d.direction === 'owe').reduce((s, d) => s + d.remainingAmount, 0)
 
+  const incomeTotal = income + fundDailyGain
+
   const animExpense     = useCountUp(expense)
-  const animIncome      = useCountUp(income)
+  const animIncome      = useCountUp(incomeTotal)
   const animNetWorth    = useCountUp(Math.abs(netWorth))
   const animTotalAssets = useCountUp(totalAssets)
   const animNet         = useCountUp(Math.abs(net))
@@ -150,7 +163,7 @@ export default function DashboardPage() {
             {
               label: `${prefix} · Gider`,
               value: formatCompact(animExpense),
-              sub: expense === 0 ? 'işlem yok' : `${formatCompact(income)} gelir`,
+              sub: expense === 0 ? 'işlem yok' : `${formatCompact(incomeTotal)} gelir`,
               ok: false,
               trendDiff: prevFlow ? expense - prevFlow.expense : null,
               betterWhenHigher: false,
@@ -158,7 +171,9 @@ export default function DashboardPage() {
             {
               label: `${prefix} · Gelir`,
               value: formatCompact(animIncome),
-              sub: income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
+              sub: fundDailyGain > 0
+                ? `${formatCompact(fundDailyGain)} günlük fon getirisi dahil`
+                : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
               ok: true,
               trendDiff: prevFlow ? income - prevFlow.income : null,
               betterWhenHigher: true,
