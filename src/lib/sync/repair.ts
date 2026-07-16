@@ -1,7 +1,7 @@
 'use client'
 
 import { db } from '@/lib/db'
-import { localBatch, MAX_SYNC_ATTEMPTS, type BatchOp } from './engine'
+import { localBatch, type BatchOp } from './engine'
 import { isLive } from './tombstone'
 import type { Category, OutboxEntry } from '@/types'
 
@@ -26,12 +26,12 @@ export interface RepairResult {
 
 const norm = (s: string) => s.trim().toLocaleLowerCase('tr-TR')
 
+// Deneme sayısına BAKILMAZ: retryDeadLetters her uygulama açılışında sayaçları
+// sıfırlar, yani RLS'e takılan bir kayıt dakikalarca "bekliyor" görünür. RLS
+// hatası deterministiktir — lastError bir kez bu hatayı gösterdiyse kayıt
+// onarımlıktır, dead-letter eşiğini yeniden doldurmasını beklemek anlamsız.
 function isRlsStuck(e: OutboxEntry): boolean {
-  return (
-    e.table === 'categories' &&
-    e.attempts >= MAX_SYNC_ATTEMPTS &&
-    (e.lastError ?? '').includes('row-level security')
-  )
+  return e.table === 'categories' && (e.lastError ?? '').includes('row-level security')
 }
 
 export async function repairStuckCategories(): Promise<RepairResult> {

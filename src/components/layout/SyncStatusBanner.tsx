@@ -23,9 +23,11 @@ export function SyncStatusBanner() {
   const [retrying, setRetrying]   = useState(false)
   const [repairing, setRepairing] = useState(false)
 
-  // RLS'e takılan kategori kayıtları "Yeniden dene" ile çözülmez (hata
-  // deterministik) — bu durumda onarım butonu gösterilir (bkz. sync/repair.ts).
-  const repairable = stuck > 0 && !!lastError?.includes('row-level security')
+  // RLS'e takılan kayıtlar "Yeniden dene" ile çözülmez (hata deterministik) —
+  // onarım butonu gösterilir (bkz. sync/repair.ts). retryDeadLetters her
+  // açılışta sayaçları sıfırladığı için stuck sayısına DEĞİL, hata mesajına
+  // bakılır; yoksa buton dakikalarca görünmez kalırdı.
+  const repairable = !!lastError?.includes('row-level security')
 
   // Kuyruk dolu→boş/boş→dolu geçişinde overdue'yu render sırasında sıfırla
   // (resmî "derive state during render" kalıbı); eşik aşımını efekt yalnızca
@@ -43,7 +45,7 @@ export function SyncStatusBanner() {
     return () => clearTimeout(t)
   }, [pendingSince])
 
-  const isError = stuck > 0
+  const isError = stuck > 0 || repairable
   if (!isError && !(overdue && pending > 0)) return null
 
   async function handleRetry() {
@@ -84,7 +86,7 @@ export function SyncStatusBanner() {
     >
       <div className="font-semibold mb-0.5">
         {isError
-          ? `${stuck} kayıt buluta senkronlanamıyor`
+          ? `${stuck || pending} kayıt buluta senkronlanamıyor`
           : `${pending} kayıt senkron bekliyor…`}
       </div>
       <div className="text-muted-foreground">
