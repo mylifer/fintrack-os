@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { AlertDialog } from 'radix-ui'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -17,6 +17,8 @@ import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { TagBadges } from '@/components/transactions/TagBadges'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { detectBrand } from '@/lib/subscriptions/brands'
+import { getBrandDomain } from '@/lib/people/brands'
+import { resolveBrandDomain } from '@/lib/people/brand-logo'
 
 type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
@@ -105,9 +107,40 @@ const TABLE_MIN_W = 130 + 96 + 96 + 76 + 76 + 76 + 72 + 84 + 76 + 24
 
 type MetaItem = { text: string; href?: string }
 
-// İşlem ikonu yalnızca açıklamadan türetilir: eşleşen marka logosu, yoksa baş harf monogramı.
+// İşlem ikonu yalnızca açıklamadan türetilir, sırasıyla:
+//   1. küratörlü marka eşleşmesi (gömülü SVG logo)
+//   2. açıklamadaki marka deseninden bilinen domain → favicon
+//   3. çevrimiçi birebir isim çözümü (/api/brand-logo) → favicon
+//   4. baş harf monogramı
 const TxIcon = memo(function TxIcon({ description }: { description: string }) {
-  const brand = useMemo(() => detectBrand(description), [description])
+  const brand  = useMemo(() => detectBrand(description), [description])
+  const known  = useMemo(() => (brand ? null : getBrandDomain(description)), [brand, description])
+  const [resolved, setResolved] = useState<{ for: string; domain: string | null } | null>(null)
+  const [failedDomain, setFailedDomain] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Küratörlü eşleşme varken dış servise sorulmaz; uzun serbest metinler de
+    // (API'nin 64 karakter sınırı) birebir marka adı olamayacağı için atlanır.
+    const name = description.trim()
+    if (brand || known || name.length < 2 || name.length > 64) return
+    let alive = true
+    resolveBrandDomain(name).then(d => { if (alive) setResolved({ for: description, domain: d }) })
+    return () => { alive = false }
+  }, [brand, known, description])
+
+  const domain = known ?? (resolved?.for === description ? resolved.domain : null)
+  if (!brand && domain && failedDomain !== domain) {
+    return (
+      <span className="w-5 h-5 flex-shrink-0 inline-flex items-center justify-center rounded-md overflow-hidden bg-card border border-border p-[3px]">
+        <img
+          src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+          alt={description}
+          className="max-w-full max-h-full object-contain"
+          onError={() => setFailedDomain(domain)}
+        />
+      </span>
+    )
+  }
   return <BrandLogo brand={brand} name={description} size={20} />
 })
 
