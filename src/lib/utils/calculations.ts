@@ -188,17 +188,11 @@ export function calcMonthlyFlow(
   return sumFlow(inRange)
 }
 
-// Net worth delta for a month INCLUDING reconciliation. Used only to walk
-// account balances backwards in the Net Worth trend: reconciliation entries
-// move the raw balance, so they must be counted here even though they are
-// ghosted from the flow metrics above.
-export function calcMonthlyNetRaw(
-  transactions: Transaction[],
-  my: MonthYear,
-): number {
-  const { from, to } = monthRange(my)
-  const inRange = transactions.filter(tx => isInRange(tx.date, from, to))
-  return sumFlow(inRange).net
+// Ham net (mutabakat DAHİL) — tarih kapsamı çağıran tarafından belirlenmiş bir
+// dilim için. Net varlık geri yürüyüşü gün gün yapılırken kullanılır; mutabakat
+// kayıtları ham bakiyeyi gerçekten oynattığı için burada sayılmak zorundadır.
+export function calcNetRaw(transactions: Transaction[]): number {
+  return sumFlow(transactions).net
 }
 
 export function enrichDebt(debt: Debt): DebtWithRemaining {

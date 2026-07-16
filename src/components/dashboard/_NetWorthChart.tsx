@@ -60,7 +60,7 @@ export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
   if (data.length < 2) {
     return (
       <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
-        Grafik için en az 2 aylık veri gerekli
+        Grafik için en az 2 günlük veri gerekli
       </div>
     )
   }

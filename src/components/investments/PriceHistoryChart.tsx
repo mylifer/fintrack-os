@@ -147,14 +147,9 @@ export function PriceHistoryChart({
     return d.toISOString().split('T')[0]
   }, [period])
 
-  const buyDatesStr = useMemo(
-    () => buyPoints.filter(b => b.date >= fetchFrom).map(b => b.date).join(','),
-    [buyPoints, fetchFrom],
-  )
-
   // NOT: Alım işaretçileri buradan değil, chartData hesaplandıktan sonra
   // en yakın satıra tutturularak (buyMarkers) türetilir — alım tarihi seride
-  // birebir bulunmayabilir (hafta sonu/tatil, seyrekleştirme, eksik CDN verisi).
+  // birebir bulunmayabilir (hafta sonu/tatil, eksik CDN verisi).
 
   // ── Fetch ───────────────────────────────────────────────────────
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([])
@@ -169,13 +164,12 @@ export function PriceHistoryChart({
     setError(false)
     const params = new URLSearchParams({ asset, from: fetchFrom })
     if (fundCode) params.set('code', fundCode)
-    if (buyDatesStr) params.set('buyDates', buyDatesStr)
     fetch(`/api/prices/history?${params}`, { signal: ctrl.signal })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((d: PricePoint[]) => { setPriceHistory(d); setLoading(false) })
       .catch(() => { if (!ctrl.signal.aborted) { setError(true); setLoading(false) } })
     return () => ctrl.abort()
-  }, [asset, fundCode, fetchFrom, buyDatesStr])
+  }, [asset, fundCode, fetchFrom])
 
   // ── Chart data ───────────────────────────────────────────────────
   // currentValue may be 0 (all sold) — show flat portfolio line at 0.
@@ -441,6 +435,11 @@ export function PriceHistoryChart({
                 const dayPct = row && prevRow?.realRawPrice
                   ? ((row.realRawPrice - prevRow.realRawPrice) / prevRow.realRawPrice) * 100
                   : null
+                // Portföy değerinin güne göre değişimi (alım günlerinde alımı da içerir)
+                const dayVal = row && prevRow ? row.realValue - prevRow.realValue : null
+                const dayValPct = dayVal !== null && prevRow!.realValue > 0
+                  ? (dayVal / prevRow!.realValue) * 100
+                  : null
 
                 return (
                   <div style={{
@@ -459,6 +458,12 @@ export function PriceHistoryChart({
                             <div style={{ fontSize: 8, color: '#71717a', marginBottom: 1 }}>Portföy</div>
                             <div style={{ fontSize: 14, fontWeight: 700, color: '#18181b', fontVariantNumeric: 'tabular-nums' }}>
                               {formatCompact(row.realValue)}
+                              {dayVal !== null && dayVal !== 0 && (
+                                <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: dayVal >= 0 ? '#16a34a' : '#dc2626' }}>
+                                  {dayVal >= 0 ? '▲' : '▼'}{formatCompact(Math.abs(dayVal))}
+                                  {dayValPct !== null && ` (%${Math.abs(dayValPct).toFixed(2)})`}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
