@@ -7,6 +7,8 @@ import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch } from '@/lib/sync/engine'
 import { loadEntities } from './entity-helpers'
 import { useUndoStore, type RemoveOptions } from './undo.store'
+import { getBrandDomain } from '@/lib/people/brands'
+import { resolveBrandDomain } from '@/lib/people/brand-logo'
 
 interface PeopleState {
   people: Person[]
@@ -18,6 +20,41 @@ interface PeopleState {
   setUrl: (id: string, url: string | undefined) => Promise<void>
   remove: (id: string, opts?: RemoveOptions) => Promise<void>
   restore: (id: string) => Promise<void>
+}
+
+// Alıcı logosu otomatik çözümleme (fire-and-forget): internetten BİREBİR isim
+// eşleşmesi bulunursa favicon domain'ini person.url'e kalıcı yazar. Küratörlü
+// liste zaten eşleşiyorsa atlanır — avatar onu kullanır ve online sonuç
+// (ör. migros.ch) yereldeki daha doğru domain'i (migros.com.tr) ezmesin.
+function autoResolveRecipientLogo(id: string, name: string) {
+  if (getBrandDomain(name)) return
+  resolveBrandDomain(name)
+    .then(domain => {
+      if (!domain) return
+      const { people, setUrl } = usePeopleStore.getState()
+      const p = people.find(p => p.id === id)
+      // Kullanıcı bu arada elle URL girdiyse üzerine yazma
+      if (p && !p.url) return setUrl(id, domain)
+    })
+    .catch(() => {})
+}
+
+// Oturum başına bir kez: URL'siz mevcut alıcılar için arka planda logo ara.
+let backfillStarted = false
+async function backfillRecipientLogos(people: Person[]) {
+  if (backfillStarted || typeof window === 'undefined') return
+  backfillStarted = true
+  const targets = people.filter(p => p.role === 'recipient' && !p.url && !p.isArchived)
+  // Sıralı: dış servisleri yoklamamak için (negatif sonuçlar localStorage'da
+  // 7 gün susturulduğundan pratikte yalnızca yeni isimler sorgulanır)
+  for (const p of targets) {
+    if (getBrandDomain(p.name)) continue
+    const domain = await resolveBrandDomain(p.name).catch(() => null)
+    if (!domain) continue
+    const { people: current, setUrl } = usePeopleStore.getState()
+    const live = current.find(x => x.id === p.id)
+    if (live && !live.url) await setUrl(p.id, domain).catch(() => {})
+  }
 }
 
 export const usePeopleStore = create<PeopleState>()((set, get) => ({
@@ -32,6 +69,7 @@ export const usePeopleStore = create<PeopleState>()((set, get) => ({
       async () => (await db.people.toArray()).filter(isLive),
     )
     set({ people, loading: false, ready: true })
+    void backfillRecipientLogos(people)
   },
 
   add: async (name, role) => {
@@ -43,6 +81,7 @@ export const usePeopleStore = create<PeopleState>()((set, get) => ({
     }
     await localUpsert('people', person)
     set(s => ({ people: [...s.people, person] }))
+    if (role === 'recipient') autoResolveRecipientLogo(person.id, person.name)
     return person
   },
 
@@ -50,6 +89,8 @@ export const usePeopleStore = create<PeopleState>()((set, get) => ({
     const trimmed = name.trim()
     await localPatch('people', id, { name: trimmed })
     set(s => ({ people: s.people.map(p => p.id === id ? { ...p, name: trimmed } : p) }))
+    const person = get().people.find(p => p.id === id)
+    if (person?.role === 'recipient' && !person.url) autoResolveRecipientLogo(id, trimmed)
   },
 
   setUrl: async (id, url) => {

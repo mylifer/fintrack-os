@@ -36,8 +36,9 @@ function buildCsp(nonce: string): string {
     // are not nonce-guarded. Kept as-is because a nonce'd style-src would break
     // Tailwind's inline styles.
     `style-src 'self' 'unsafe-inline'`,
-    // data:/blob: for generated images; api.iconify.design for online icons.
-    `img-src 'self' data: blob: https://api.iconify.design`,
+    // data:/blob: for generated images; api.iconify.design for online icons;
+    // www.google.com/s2/favicons for recipient brand logos (PersonAvatar).
+    `img-src 'self' data: blob: https://api.iconify.design https://www.google.com`,
     // Browser calls: same-origin API, Supabase (direct), speed-insights vitals,
     // and Iconify's icon API. The price CDNs are server-side only, so they are
     // intentionally NOT listed here.
