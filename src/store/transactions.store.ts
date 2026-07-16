@@ -11,6 +11,7 @@ import { useUndoStore, type RemoveOptions } from './undo.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
 import { toBaseTry, baseAmount, rateFor } from '@/lib/utils/fx'
+import { splitMoney } from '@/lib/utils/money'
 
 // Snapshot the base-currency (TRY) value at write time (S2/S3). Every creation
 // path funnels through the store, so stamping here covers the form, refunds,
@@ -87,9 +88,12 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const groupId = crypto.randomUUID()
     const now = new Date().toISOString()
     const txs: Transaction[] = []
+    // base.amount toplam satın alma tutarı; her işlem AYLIK taksit tutarını
+    // taşır. splitMoney kuruş kalanını ilk taksitlere dağıtır, toplam korunur.
+    const perInstallment = splitMoney(base.amount, count)
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
-      txs.push(withBase({ ...base, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now }))
+      txs.push(withBase({ ...base, amount: perInstallment[i], id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now }))
     }
     await localBulkUpsert('transactions', txs)
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.

@@ -9,7 +9,8 @@ import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
-import { parseCurrencyInput, getCurrencySymbol } from '@/lib/utils/currency'
+import { parseCurrencyInput, getCurrencySymbol, formatCurrency } from '@/lib/utils/currency'
+import { splitMoney } from '@/lib/utils/money'
 import { toBaseTry } from '@/lib/utils/fx'
 import { today } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
@@ -1141,6 +1142,14 @@ export function TransactionFormModal() {
                   />
                   <span className="text-sm text-muted-foreground">taksit</span>
                 </div>
+              )}
+              {form.isInstallment && parseCurrencyInput(amountStr) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Girilen tutar toplamdır — aylık taksit: {formatCurrency(
+                    splitMoney(parseCurrencyInput(amountStr), installments)[0],
+                    (accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode,
+                  )} × {installments} ay
+                </p>
               )}
             </div>
           )}

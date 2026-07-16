@@ -50,3 +50,14 @@ export function subMoney(a: number, b: number): number {
 export function mulMoney(amount: number, factor: number): number {
   return toMajor(Math.round(toMinor(amount) * factor))
 }
+
+/**
+ * Split a total into `count` parts that sum EXACTLY to the total.
+ * The kuruş remainder goes to the earliest parts: 1000/3 → [333.34, 333.33, 333.33].
+ */
+export function splitMoney(total: number, count: number): number[] {
+  const totalMinor = toMinor(total)
+  const per = Math.floor(totalMinor / count)
+  const remainder = totalMinor - per * count
+  return Array.from({ length: count }, (_, i) => toMajor(per + (i < remainder ? 1 : 0)))
+}
