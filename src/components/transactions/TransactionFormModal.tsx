@@ -733,6 +733,9 @@ export function TransactionFormModal() {
         onInteractOutside={(e) => {
           if (selectWasOpenRef.current) { selectWasOpenRef.current = false; e.preventDefault() }
         }}
+        onOpenAutoFocus={(e) => {
+          if (!isRecurring) { e.preventDefault(); amountInputRef.current?.focus() }
+        }}
       >
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
@@ -886,7 +889,7 @@ export function TransactionFormModal() {
           {/* Description */}
           <Field label="Açıklama" error={errors.description} optional={isRecurring}>
             <DescriptionAutocomplete
-              autoFocus={!isRecurring}
+              autoFocus={false}
               value={form.description}
               onChange={v => patch({ description: v })}
               onSelect={s => patch({
