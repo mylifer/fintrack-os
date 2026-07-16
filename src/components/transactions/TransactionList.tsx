@@ -98,8 +98,8 @@ function DeleteConfirmDialog({
 }
 
 // CSS grid template columns for table layout.
-const TABLE_COLS = 'minmax(130px,1.4fr) minmax(96px,1fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(72px,0.85fr) minmax(84px,0.9fr) 76px'
-const TABLE_MIN_W = 130 + 96 + 76 + 76 + 76 + 72 + 84 + 76 + 24
+const TABLE_COLS = 'minmax(130px,1.4fr) minmax(96px,1fr) minmax(96px,1fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(72px,0.85fr) minmax(84px,0.9fr) 76px'
+const TABLE_MIN_W = 130 + 96 + 96 + 76 + 76 + 76 + 72 + 84 + 76 + 24
 
 type MetaItem = { text: string; href?: string }
 
@@ -140,11 +140,12 @@ function DateSeparator({ date, topClass }: { date: string; topClass: string }) {
 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
-  tx, cat, account, recipient, family, balanceAfter, isFirst, isLast, projected, openModal, removeTx,
+  tx, cat, account, toAccount, recipient, family, balanceAfter, isFirst, isLast, projected, openModal, removeTx,
 }: {
   tx: Transaction
   cat?: Category
   account?: Account
+  toAccount?: Account
   recipient?: Person
   family?: Person
   balanceAfter?: number
@@ -218,6 +219,18 @@ const TableTxRow = memo(function TableTxRow({
             <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{account.name}</span>
           </Link>
         ) : null}
+      </div>
+
+      {/* Alıcı Hesap — yalnızca transferlerde dolu */}
+      <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
+        {isXfer && toAccount ? (
+          <Link href={`/accounts/${tx.toAccountId}`} className="flex items-center gap-1.5 min-w-0 group/link">
+            <AccountAvatar account={toAccount} size="xs" className="flex-shrink-0" />
+            <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{toAccount.name}</span>
+          </Link>
+        ) : (
+          <span className="text-xs text-muted-foreground/25">—</span>
+        )}
       </div>
 
       {/* Alıcı */}
@@ -585,12 +598,12 @@ export function TransactionList({
           {/* Sticky column headers */}
           <div className="sticky top-0 z-10 bg-background border-b border-border">
             <div className="mx-3 grid" style={{ gridTemplateColumns: TABLE_COLS }}>
-              {['Açıklama', 'Hesap', 'Alıcı', 'Aile Üyesi', 'Kategori', 'Miktar', 'Güncel Bakiye', ''].map((h, i) => (
+              {['Açıklama', 'Hesap', 'Alıcı Hesap', 'Alıcı', 'Aile Üyesi', 'Kategori', 'Miktar', 'Güncel Bakiye', ''].map((h, i) => (
                 <div
                   key={i}
                   className={[
                     'py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60 select-none',
-                    i === 0 ? 'px-3' : i === 5 || i === 6 ? 'px-3 text-right' : 'px-2',
+                    i === 0 ? 'px-3' : i === 6 || i === 7 ? 'px-3 text-right' : 'px-2',
                   ].join(' ')}
                 >
                   {h}
@@ -618,6 +631,7 @@ export function TransactionList({
                         tx={row.tx}
                         cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
                         account={accById.get(row.tx.accountId)}
+                        toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
                         recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                         family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                         balanceAfter={runningBalances.get(row.tx.id)}
