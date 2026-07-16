@@ -213,12 +213,19 @@ export function PriceHistoryChart({
       allPortfolios[allPortfolios.length - 1] = todayPortfolio
     }
 
-    const minP = Math.min(...allPortfolios), maxP = Math.max(...allPortfolios)
+    // Portföy bandı yalnızca pozisyonun açık olduğu (değer > 0) günlere normalize
+    // edilir. Alım öncesi 0'lar banda girince pencere içinde açılmış pozisyonlarda
+    // minP=0 oluyor ve günlük oynamalar piksel-altına sıkışıyordu — çizgi yalnız
+    // alım sıçramalarında hareket ediyor gibi görünüyordu. 0 bölgesi clamp ile
+    // bandın tabanında (UPPER_MIN) kalır.
+    const activePortfolios = allPortfolios.filter(v => v > 0)
+    const minP = activePortfolios.length ? Math.min(...activePortfolios) : 0
+    const maxP = activePortfolios.length ? Math.max(...activePortfolios) : 0
     const minR = Math.min(...allPrices),     maxR = Math.max(...allPrices)
 
     const scaleP = (v: number) =>
       maxP === minP ? (UPPER_MIN + UPPER_MAX) / 2
-                    : UPPER_MIN + ((v - minP) / (maxP - minP)) * (UPPER_MAX - UPPER_MIN)
+                    : UPPER_MIN + Math.min(1, Math.max(0, (v - minP) / (maxP - minP))) * (UPPER_MAX - UPPER_MIN)
 
     const scaleR = (v: number) =>
       maxR === minR ? (LOWER_MIN + LOWER_MAX) / 2
@@ -427,7 +434,13 @@ export function PriceHistoryChart({
                 if (!active || !payload?.length) return null
                 const date = lbl as string
                 const buys = buyMarkers.get(date)
-                const row = chartData.find(r => r.date === date)
+                const rowIdx = chartData.findIndex(r => r.date === date)
+                const row = rowIdx >= 0 ? chartData[rowIdx] : undefined
+                // Günlük değişim: bir önceki seri noktasına göre birim fiyat farkı
+                const prevRow = rowIdx > 0 ? chartData[rowIdx - 1] : undefined
+                const dayPct = row && prevRow?.realRawPrice
+                  ? ((row.realRawPrice - prevRow.realRawPrice) / prevRow.realRawPrice) * 100
+                  : null
 
                 return (
                   <div style={{
@@ -456,6 +469,11 @@ export function PriceHistoryChart({
                             <div style={{ fontSize: 8, color: '#71717a', marginBottom: 1 }}>{RAW_PRICE_LABEL[asset]}</div>
                             <div style={{ fontSize: 12, fontWeight: 600, color: '#18181b', fontVariantNumeric: 'tabular-nums' }}>
                               ₺{fmtPrice(row.realRawPrice)}
+                              {dayPct !== null && (
+                                <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: dayPct >= 0 ? '#16a34a' : '#dc2626' }}>
+                                  {dayPct >= 0 ? '▲' : '▼'}{Math.abs(dayPct).toFixed(2)}%
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
