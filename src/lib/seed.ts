@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import { localBulkUpsert } from '@/lib/sync/engine'
+import { createCloudBackup } from '@/lib/auto-backup'
 import type {
   Account, Transaction, Budget, Debt,
   Person, RecurringTransaction, InvestmentTransaction,
@@ -488,6 +489,15 @@ export async function loadDemoData(): Promise<void> {
 
 export async function clearAllData(): Promise<void> {
   const userId = await getUserId()
+
+  // Veri bütünlüğü kuralı: geri dönüşü olmayan bir silmeden önce güvenlik
+  // yedeği ŞART. Yedek alınamazsa silme İPTAL edilir — tersini yapmak
+  // (yedeksiz silmek) tek tıkla tüm canlı verinin kaybı demektir.
+  // createCloudBackup boş veri setinde null döner; silinecek bir şey de
+  // olmadığından bu durumda devam etmek güvenlidir.
+  if (userId) {
+    await createCloudBackup('pre-restore')
+  }
 
   await db.transactions.clear()
   await db.accounts.clear()

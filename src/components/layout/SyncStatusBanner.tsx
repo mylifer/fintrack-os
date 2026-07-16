@@ -15,10 +15,12 @@ import { repairStuckCategories } from '@/lib/sync/repair'
 const PENDING_GRACE_MS = 8000
 
 export function SyncStatusBanner() {
-  const pending      = useSyncStatusStore(s => s.pending)
-  const stuck        = useSyncStatusStore(s => s.stuck)
-  const lastError    = useSyncStatusStore(s => s.lastError)
-  const pendingSince = useSyncStatusStore(s => s.pendingSince)
+  const pending       = useSyncStatusStore(s => s.pending)
+  const stuck         = useSyncStatusStore(s => s.stuck)
+  const lastError     = useSyncStatusStore(s => s.lastError)
+  const pendingSince  = useSyncStatusStore(s => s.pendingSince)
+  const notice        = useSyncStatusStore(s => s.notice)
+  const dismissNotice = useSyncStatusStore(s => s.dismissNotice)
 
   const [retrying, setRetrying]   = useState(false)
   const [repairing, setRepairing] = useState(false)
@@ -46,7 +48,8 @@ export function SyncStatusBanner() {
   }, [pendingSince])
 
   const isError = stuck > 0 || repairable
-  if (!isError && !(overdue && pending > 0)) return null
+  const showStatus = isError || (overdue && pending > 0)
+  if (!showStatus && !notice) return null
 
   async function handleRetry() {
     setRetrying(true)
@@ -75,10 +78,34 @@ export function SyncStatusBanner() {
   }
 
   return (
+    <div className="fixed bottom-24 lg:bottom-4 right-4 z-50 max-w-sm flex flex-col gap-2">
+      {/* Bilgi bandı: motor kendi başına buluta kayıt geri yüklediğinde
+          (requeue) görünür — sessiz veri hareketi yasağı. Kapatılabilir. */}
+      {notice && (
+        <div
+          role="status"
+          className="rounded-xl border px-4 py-3 shadow-lg text-xs bg-sky-500/10 border-sky-500/30 text-sky-700 dark:text-sky-300"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="font-semibold mb-0.5">Senkron bilgisi</div>
+              <div className="opacity-80">{notice}</div>
+            </div>
+            <button
+              type="button"
+              onClick={dismissNotice}
+              className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-sky-500/20 transition-colors font-bold"
+              aria-label="Kapat"
+            >✕</button>
+          </div>
+        </div>
+      )}
+
+      {showStatus && (
     <div
       role="alert"
       className={[
-        'fixed bottom-24 lg:bottom-4 right-4 z-50 max-w-sm rounded-xl border px-4 py-3 shadow-lg text-xs',
+        'rounded-xl border px-4 py-3 shadow-lg text-xs',
         isError
           ? 'bg-destructive/10 border-destructive/30 text-destructive'
           : 'bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400',
@@ -121,6 +148,8 @@ export function SyncStatusBanner() {
             </button>
           )}
         </div>
+      )}
+    </div>
       )}
     </div>
   )

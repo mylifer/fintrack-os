@@ -483,6 +483,14 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
 
   if (requeued > 0) {
     console.warn(`[sync:requeue] ${table}: ${requeued} local row(s) missing from cloud — re-enqueued for push`)
+    // Görünürlük şartı: motorun kendi başına buluta veri geri yüklemesi
+    // kullanıcıya bildirilir. Bu sessiz kaldığında, bu cihazda/oturumda ne
+    // varsa (eski oturum kalıntıları dahil) fark edilmeden canlı veriye
+    // karışabiliyor (Temmuz 2026 vakası).
+    useSyncStatusStore.getState().notify(
+      `${requeued} yerel kayıt (${table}) bulutta yoktu ve buluta geri yüklendi. ` +
+      'Bu kayıtları siz oluşturmadıysanız verilerinizi kontrol edin.',
+    )
     kickSync()
   }
 

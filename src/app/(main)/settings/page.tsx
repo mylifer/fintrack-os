@@ -13,8 +13,11 @@ import { useTransactionStore, useCategoryStore } from '@/store'
 
 export default function SettingsPage() {
   const [demoLoading, setDemoLoading]   = useState(false)
+  const [confirmDemo, setConfirmDemo]   = useState(false)
   const [clearLoading, setClearLoading] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [clearPhrase, setClearPhrase]   = useState('')
+  const [clearError, setClearError]     = useState<string | null>(null)
   const [importOpen, setImportOpen]     = useState(false)
 
   const transactions = useTransactionStore(s => s.transactions)
@@ -34,6 +37,7 @@ export default function SettingsPage() {
     } catch (err) {
       console.error('[settings:load-demo]', err)
       setDemoLoading(false)
+      setConfirmDemo(false)
     }
   }
 
@@ -65,12 +69,17 @@ export default function SettingsPage() {
   }
 
   async function handleClearAll() {
+    if (clearPhrase.trim().toLocaleUpperCase('tr-TR') !== 'SİL') return
     setClearLoading(true)
+    setClearError(null)
     try {
       await clearAllData()
       window.location.reload()
     } catch (err) {
+      // clearAllData silmeden ÖNCE güvenlik yedeği alır; yedek başarısızsa
+      // hiçbir şey silinmeden buraya düşer — kullanıcıya nedenini göster.
       console.error('[settings:clear-all]', err)
+      setClearError(err instanceof Error ? err.message : 'Silme başarısız — hiçbir veri silinmedi.')
       setClearLoading(false)
     }
   }
@@ -107,14 +116,27 @@ export default function SettingsPage() {
                     6 aylık örnek işlem, hesap, bütçe ve borç yükler (Ocak–Haziran 2026)
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  onClick={handleLoadDemo}
-                  loading={demoLoading}
-                  className="flex-shrink-0 rounded-xl px-4 h-9"
-                >
-                  Yükle
-                </Button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {confirmDemo ? (
+                    <>
+                      <Button size="sm" variant="secondary" onClick={() => setConfirmDemo(false)} className="rounded-xl">
+                        İptal
+                      </Button>
+                      <Button size="sm" onClick={handleLoadDemo} loading={demoLoading} className="rounded-xl px-4 h-9">
+                        Evet, Yükle
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setConfirmDemo(true)}
+                      className="rounded-xl px-4 h-9"
+                    >
+                      Yükle
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* Demo leftovers scan & remove */}
@@ -170,30 +192,61 @@ export default function SettingsPage() {
                 )}
               </div>
 
-              {/* Clear all */}
-              <div className="flex items-start justify-between gap-4 pt-4 border-t border-border">
-                <div>
-                  <div className="text-sm font-semibold text-destructive">Tüm Veriyi Sil</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    Tüm hesap, işlem, bütçe ve borçları kalıcı olarak siler. Kategoriler korunur.
+              {/* Clear all — yazılı onay ister; silmeden önce otomatik güvenlik yedeği alınır */}
+              <div className="pt-4 border-t border-border">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-destructive">Tüm Veriyi Sil</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Tüm hesap, işlem, bütçe ve borçları kalıcı olarak siler. Kategoriler korunur.
+                      Silmeden önce buluta otomatik güvenlik yedeği alınır.
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {confirmClear ? (
-                    <>
-                      <Button size="sm" variant="secondary" onClick={() => setConfirmClear(false)} className="rounded-xl">
-                        İptal
-                      </Button>
-                      <Button size="sm" variant="danger" onClick={handleClearAll} loading={clearLoading} className="rounded-xl">
-                        Evet, Sil
-                      </Button>
-                    </>
-                  ) : (
-                    <Button size="sm" variant="secondary" onClick={() => setConfirmClear(true)} className="rounded-xl">
+                  {!confirmClear && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => { setConfirmClear(true); setClearPhrase(''); setClearError(null) }}
+                      className="rounded-xl flex-shrink-0"
+                    >
                       Sıfırla
                     </Button>
                   )}
                 </div>
+                {confirmClear && (
+                  <div className="mt-3 bg-background rounded-lg px-3 py-3">
+                    <div className="text-xs text-muted-foreground mb-2">
+                      Onaylamak için <span className="font-mono font-bold text-destructive">SİL</span> yazın:
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        value={clearPhrase}
+                        onChange={e => setClearPhrase(e.target.value)}
+                        placeholder="SİL"
+                        className="w-24 border border-border px-2 py-1.5 text-sm bg-card text-foreground focus:border-destructive outline-none rounded-lg font-mono"
+                      />
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={handleClearAll}
+                        loading={clearLoading}
+                        disabled={clearPhrase.trim().toLocaleUpperCase('tr-TR') !== 'SİL'}
+                        className="rounded-xl"
+                      >
+                        Kalıcı Olarak Sil
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => { setConfirmClear(false); setClearPhrase(''); setClearError(null) }} className="rounded-xl">
+                        İptal
+                      </Button>
+                    </div>
+                    {clearError && (
+                      <div className="mt-2 text-xs text-destructive">
+                        {clearError} — hiçbir veri silinmedi.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
