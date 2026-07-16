@@ -15,6 +15,8 @@ import type { Transaction, PersonRole, Category, Account, Person, ModalType, Mod
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { TagBadges } from '@/components/transactions/TagBadges'
+import { BrandLogo } from '@/components/subscriptions/BrandLogo'
+import { detectBrand } from '@/lib/subscriptions/brands'
 
 type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
@@ -103,6 +105,12 @@ const TABLE_MIN_W = 130 + 96 + 96 + 76 + 76 + 76 + 72 + 84 + 76 + 24
 
 type MetaItem = { text: string; href?: string }
 
+// İşlem ikonu yalnızca açıklamadan türetilir: eşleşen marka logosu, yoksa baş harf monogramı.
+const TxIcon = memo(function TxIcon({ description }: { description: string }) {
+  const brand = useMemo(() => detectBrand(description), [description])
+  return <BrandLogo brand={brand} name={description} size={20} />
+})
+
 // Günlük işlemleri kararlı bir sırayla dizer (kronolojik + yatırım rank + taksit).
 // Artık render başına değil, tek seferlik `rows` memo'sunda çağrılır.
 function sortDay(dayTxs: Transaction[]) {
@@ -158,9 +166,6 @@ const TableTxRow = memo(function TableTxRow({
   const isIncome    = tx.type === 'income'
   const isXfer      = tx.type === 'transfer'
   const isRefund    = tx.type === 'expense' && tx.amount < 0
-  const iconBg      = cat?.color ? `${cat.color}18` : isXfer ? '#00E5FF18' : 'rgba(255,255,255,0.04)'
-  const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
-  const iconIsText  = !cat?.icon && !!tx.icon
   return (
     <div
       className={[
@@ -173,21 +178,7 @@ const TableTxRow = memo(function TableTxRow({
     >
       {/* Açıklama */}
       <div className="px-3 py-2 flex items-center gap-2 min-w-0 overflow-hidden">
-        {recipient ? (
-          <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
-        ) : cat ? (
-          <CategoryIcon icon={cat.icon} color={cat.color} size={9} className="flex-shrink-0" />
-        ) : (
-          <div
-            className={[
-              'w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-sm',
-              iconIsText ? 'text-[10px] font-medium text-foreground/50' : 'text-[11px]',
-            ].join(' ')}
-            style={{ background: iconBg }}
-          >
-            {displayIcon}
-          </div>
-        )}
+        <TxIcon description={tx.description} />
         <div className="min-w-0 overflow-hidden">
           <div className="text-xs font-medium text-foreground truncate leading-none">
             {tx.description}
@@ -343,9 +334,6 @@ const CardTxRow = memo(function CardTxRow({
   const isIncome  = tx.type === 'income'
   const isXfer    = tx.type === 'transfer'
   const isRefund  = tx.type === 'expense' && tx.amount < 0
-  const iconBg    = cat?.color ? `${cat.color}18` : isXfer ? '#00E5FF15' : 'rgba(255,255,255,0.04)'
-  const displayIcon = cat?.icon ?? tx.icon ?? (isXfer ? '↔' : '·')
-  const iconIsText  = !cat?.icon && !!tx.icon
 
   // Build meta items — each can have an href for navigation
   const metaItems: MetaItem[] = []
@@ -362,22 +350,8 @@ const CardTxRow = memo(function CardTxRow({
       'group flex items-center gap-2.5 px-2 py-[5px] rounded-lg hover:bg-accent/40 transition-colors',
       projected ? 'opacity-60' : '',
     ].join(' ')}>
-      {/* Icon / Avatar */}
-      {recipient ? (
-        <PersonAvatar person={recipient} size="xs" className="flex-shrink-0" />
-      ) : cat ? (
-        <CategoryIcon icon={cat.icon} color={cat.color} size={9} className="flex-shrink-0" />
-      ) : (
-        <div
-          className={[
-            'w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-sm',
-            iconIsText ? 'text-[10px] font-medium text-foreground/50' : 'text-[11px]',
-          ].join(' ')}
-          style={{ background: iconBg }}
-        >
-          {displayIcon}
-        </div>
-      )}
+      {/* Icon — yalnızca açıklamadan */}
+      <TxIcon description={tx.description} />
 
       {/* Description + meta */}
       <div className="flex-1 min-w-0">
