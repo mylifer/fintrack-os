@@ -77,14 +77,15 @@ export default function TransactionsPage() {
   const projectedIds = useMemo(() => new Set(projectedTxs.map(t => t.id)), [projectedTxs])
   const displayTxs   = useMemo(() => [...filtered, ...projectedTxs], [filtered, projectedTxs])
 
-  // Tek geçişte hem gider hem gelir toplamı (eskiden render başına 4 tam tarama).
-  const { totalExpense, totalIncome } = useMemo(() => {
-    let expense = 0, income = 0
+  // Tek geçişte gider, gelir ve transfer toplamı (eskiden render başına 4 tam tarama).
+  const { totalExpense, totalIncome, totalTransfer } = useMemo(() => {
+    let expense = 0, income = 0, transfer = 0
     for (const t of filtered) {
       if (t.type === 'expense') expense += t.amount
       else if (t.type === 'income') income += t.amount
+      else if (t.type === 'transfer') transfer += t.amount
     }
-    return { totalExpense: expense, totalIncome: income }
+    return { totalExpense: expense, totalIncome: income, totalTransfer: transfer }
   }, [filtered])
 
   function handlePersonClick(role: PersonRole, id: string) {
@@ -181,6 +182,7 @@ export default function TransactionsPage() {
         <div className="flex items-center gap-6 px-6 py-2.5 bg-card border-b border-border flex-shrink-0">
           <span className="text-3xl font-normal tabular-nums text-green-600">+{formatCurrency(totalIncome)}</span>
           <span className="text-3xl font-normal tabular-nums text-destructive">−{formatCurrency(totalExpense)}</span>
+          <span className="text-3xl font-normal tabular-nums text-foreground/50">↔{formatCurrency(totalTransfer)}</span>
           <span className="ml-auto text-muted-foreground text-xs">{filtered.length} işlem</span>
         </div>
       )}
