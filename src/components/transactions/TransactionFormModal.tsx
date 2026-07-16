@@ -137,6 +137,7 @@ interface Suggestion {
   categoryId:      string
   familyMemberId?: string
   recipientId?:    string
+  toAccountId?:    string
 }
 
 // ── Field wrapper ─────────────────────────────────────────────────────────────
@@ -202,7 +203,7 @@ function AppSelect({
 // ── Autocomplete ──────────────────────────────────────────────────────────────
 
 function DescriptionAutocomplete({
-  value, onChange, onSelect, suggestions, categories, people, error, autoFocus = true,
+  value, onChange, onSelect, suggestions, categories, people, accounts, error, autoFocus = true,
 }: {
   value: string
   onChange: (v: string) => void
@@ -210,6 +211,7 @@ function DescriptionAutocomplete({
   suggestions: Suggestion[]
   categories: { id: string; name: string; icon: string; color: string }[]
   people: Person[]
+  accounts: { id: string; name: string }[]
   error?: string
   autoFocus?: boolean
 }) {
@@ -267,6 +269,7 @@ function DescriptionAutocomplete({
             const cat = categories.find(c => c.id === s.categoryId)
             const famPerson = people.find(p => p.id === s.familyMemberId)
             const recPerson = people.find(p => p.id === s.recipientId)
+            const toAcc = accounts.find(a => a.id === s.toAccountId)
             return (
               <button
                 key={s.description}
@@ -281,6 +284,7 @@ function DescriptionAutocomplete({
                 <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                   {famPerson && <span>{famPerson.name}</span>}
                   {recPerson && <span>{recPerson.name}</span>}
+                  {toAcc && <span>→ {toAcc.name}</span>}
                   {cat && <span className="inline-flex items-center gap-1"><CategoryIcon icon={cat.icon} color={cat.color} size={12} /> {cat.name}</span>}
                 </span>
               </button>
@@ -503,7 +507,7 @@ export function TransactionFormModal() {
 
   // Autocomplete suggestions
   const suggestions = useMemo<Suggestion[]>(() => {
-    const map = new Map<string, { description: string; categoryId: string; date: string; familyMemberId?: string; recipientId?: string }>()
+    const map = new Map<string, { description: string; categoryId: string; date: string; familyMemberId?: string; recipientId?: string; toAccountId?: string }>()
     transactions
       .filter(tx => tx.type === tab && tx.description?.trim())
       .forEach(tx => {
@@ -516,12 +520,16 @@ export function TransactionFormModal() {
             date:           tx.date,
             familyMemberId: tx.familyMemberId ?? undefined,
             recipientId:    tx.recipientId    ?? undefined,
+            // Transfer önerileri hedef hesabı da taşır — silinmiş/arşivli hesap seçilemez
+            toAccountId:    tx.toAccountId && accounts.some(a => a.id === tx.toAccountId)
+              ? tx.toAccountId
+              : undefined,
           })
         }
       })
-    return Array.from(map.values()).map(({ description, categoryId, familyMemberId, recipientId }) =>
-      ({ description, categoryId, familyMemberId, recipientId }))
-  }, [transactions, tab])
+    return Array.from(map.values()).map(({ description, categoryId, familyMemberId, recipientId, toAccountId }) =>
+      ({ description, categoryId, familyMemberId, recipientId, toAccountId }))
+  }, [transactions, tab, accounts])
 
   // FLIP slide-left animation: fires after React paints the new (wider) number,
   // offsets back to old position instantly, then transitions to the natural position.
@@ -897,10 +905,16 @@ export function TransactionFormModal() {
                 categoryId:     s.categoryId,
                 familyMemberId: s.familyMemberId,
                 recipientId:    s.recipientId,
+                // Transferde alıcı hesabı son işlemden getir — kaynakla aynıysa
+                // veya borç ödeme modundaysa dokunma
+                ...(tab === 'transfer' && !form.isDebtPayment && s.toAccountId && s.toAccountId !== form.accountId
+                  ? { toAccountId: s.toAccountId }
+                  : {}),
               })}
               suggestions={suggestions}
               categories={categories}
               people={allPeople}
+              accounts={accounts}
               error={errors.description}
             />
           </Field>
