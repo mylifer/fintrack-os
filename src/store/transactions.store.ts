@@ -48,6 +48,7 @@ interface TransactionState {
   addInstallmentGroup: (
     base: Omit<Transaction, 'id' | 'installIndex' | 'installGroupId' | 'createdAt' | 'updatedAt'>,
     count: number,
+    amounts?: number[],
   ) => Promise<void>
   update: (id: string, patch: Partial<Transaction>) => Promise<void>
   remove: (id: string, opts?: RemoveOptions) => Promise<void>
@@ -84,13 +85,14 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     useAccountStore.getState().recomputeBalances(next)
   },
 
-  addInstallmentGroup: async (base, count) => {
+  addInstallmentGroup: async (base, count, amounts) => {
     const groupId = crypto.randomUUID()
     const now = new Date().toISOString()
     const txs: Transaction[] = []
     // base.amount toplam satın alma tutarı; her işlem AYLIK taksit tutarını
-    // taşır. splitMoney kuruş kalanını ilk taksitlere dağıtır, toplam korunur.
-    const perInstallment = splitMoney(base.amount, count)
+    // taşır. Kullanıcı elle tutar girdiyse (amounts) onlar kullanılır; yoksa
+    // splitMoney kuruş kalanını ilk taksitlere dağıtır, toplam korunur.
+    const perInstallment = amounts?.length === count ? amounts : splitMoney(base.amount, count)
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
       txs.push(withBase({ ...base, amount: perInstallment[i], id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now }))
@@ -125,34 +127,46 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   },
 
   remove: async (id, opts) => {
-    const tx = get().transactions.find(t => t.id === id)
+    const all = get().transactions
+    const tx = all.find(t => t.id === id)
+    // Taksitli işlem: tek taksit yalnız silinmez — satın almanın TÜM taksitleri
+    // (aynı installGroupId) birlikte silinir ve undo hepsini birlikte geri getirir.
+    const group = tx?.installGroupId
+      ? all.filter(t => t.installGroupId === tx.installGroupId)
+      : tx ? [tx] : []
     // Soft delete (C3) via the durable outbox: syncs as an UPDATE and cannot
     // resurrect on the next reconciling pull.
-    await softDelete('transactions', id)
-    // Revert this transaction's contribution to the linked debt: use the TRY
-    // base value (debts are TRY) and revertPayment so paidInstallments is
-    // decremented too (M3, M4).
-    if (tx?.debtId) {
-      await useDebtStore.getState().revertPayment(tx.debtId, baseAmount(tx))
+    for (const t of group) {
+      await softDelete('transactions', t.id)
+      // Revert this transaction's contribution to the linked debt: use the TRY
+      // base value (debts are TRY) and revertPayment so paidInstallments is
+      // decremented too (M3, M4).
+      if (t.debtId) {
+        await useDebtStore.getState().revertPayment(t.debtId, baseAmount(t))
+      }
     }
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
-    const remaining = get().transactions.filter(t => t.id !== id)
+    const removedIds = new Set(group.map(t => t.id))
+    const remaining = get().transactions.filter(t => !removedIds.has(t.id))
     set({ transactions: remaining })
     useAccountStore.getState().recomputeBalances(remaining)
 
     // Undo: un-tombstone, re-insert (sorted), recompute, and re-apply the debt
     // payment — symmetric with the revertPayment above (recordPayment +amount,
     // +1 installment ↔ revertPayment -amount, -1 installment).
-    if (tx && opts?.undoable !== false) {
-      useUndoStore.getState().pushUndo('İşlem silindi', async () => {
-        await localPatch('transactions', id, { deleted_at: null })
-        const next = [tx, ...get().transactions]
+    if (group.length && opts?.undoable !== false) {
+      const label = group.length > 1 ? `Taksitli işlem silindi (${group.length} taksit)` : 'İşlem silindi'
+      useUndoStore.getState().pushUndo(label, async () => {
+        for (const t of group) {
+          await localPatch('transactions', t.id, { deleted_at: null })
+          if (t.debtId) {
+            await useDebtStore.getState().recordPayment(t.debtId, baseAmount(t))
+          }
+        }
+        const next = [...group, ...get().transactions]
         next.sort(txSortComparator)
         set({ transactions: next })
         useAccountStore.getState().recomputeBalances(next)
-        if (tx.debtId) {
-          await useDebtStore.getState().recordPayment(tx.debtId, baseAmount(tx))
-        }
       })
     }
   },

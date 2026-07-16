@@ -62,10 +62,19 @@ function DeleteConfirmDialog({
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
         ].join(' ')}>
           <AlertDialog.Title className="text-base font-semibold text-foreground mb-1">
-            İşlemi sil
+            {tx.isInstallment ? 'Taksitli işlemi sil' : 'İşlemi sil'}
           </AlertDialog.Title>
           <AlertDialog.Description className="text-sm text-muted-foreground mb-5">
-            <span className="font-medium text-foreground">&ldquo;{tx.description}&rdquo;</span> işlemi kalıcı olarak silinecek. Bu işlem geri alınamaz.
+            {tx.isInstallment && tx.installGroupId ? (
+              <>
+                <span className="font-medium text-foreground">&ldquo;{tx.description}&rdquo;</span> taksitli bir satın almanın parçası — bu satın almaya ait{' '}
+                <span className="font-medium text-foreground">tüm taksitler ({tx.installTotal ?? '?'} adet)</span> kalıcı olarak silinecek.
+              </>
+            ) : (
+              <>
+                <span className="font-medium text-foreground">&ldquo;{tx.description}&rdquo;</span> işlemi kalıcı olarak silinecek. Bu işlem geri alınamaz.
+              </>
+            )}
           </AlertDialog.Description>
           <div className="flex justify-end gap-2">
             <AlertDialog.Cancel asChild>

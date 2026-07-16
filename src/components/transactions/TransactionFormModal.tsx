@@ -10,9 +10,11 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import { parseCurrencyInput, getCurrencySymbol, formatCurrency } from '@/lib/utils/currency'
-import { splitMoney } from '@/lib/utils/money'
+import { splitMoney, sumMoney } from '@/lib/utils/money'
 import { toBaseTry } from '@/lib/utils/fx'
 import { today } from '@/lib/utils/date'
+import { addMonths, format, parseISO } from 'date-fns'
+import { tr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency, Category } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
@@ -399,6 +401,12 @@ function PersonField({
 // amountStr stores raw digits + optional single comma (e.g. "1250,50")
 // Display adds dots as thousands separators (e.g. "1.250,50")
 
+// Sayıyı amountStr'nin raw biçimine çevirir (500.5 → "500,5") — taksit
+// düzenleyicisinin input değerleri de ana tutar alanıyla aynı biçimi kullanır.
+function toAmountStr(v: number): string {
+  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2, useGrouping: false }).format(v)
+}
+
 function formatTurkishDisplay(raw: string): string {
   if (!raw) return '0'
   const commaIdx = raw.indexOf(',')
@@ -465,6 +473,11 @@ export function TransactionFormModal() {
   // expense), where we preserve the negative so a save doesn't flip it positive.
   const [amountSign, setAmountSign] = useState(() => isEdit && editingTx && editingTx.amount < 0 ? -1 : 1)
   const [installments, setInstallments] = useState(() => isEdit && editingTx ? (editingTx.installTotal ?? 1) : 1)
+  // Elle düzenlenen taksit tutarları (amountStr formatında raw string'ler).
+  // null → otomatik bölüşüm (splitMoney). Toplam tutar veya taksit sayısı
+  // değişince elle girilenler geçersizleşir, otomatiğe dönülür (onChange'lerde
+  // sıfırlanır — effect içinde setState lint'e takılıyor).
+  const [manualAmounts, setManualAmounts] = useState<string[] | null>(null)
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
 
@@ -551,6 +564,9 @@ export function TransactionFormModal() {
       if (tab === 'transfer' && !form.isDebtPayment && !form.toAccountId) e.toAccountId = 'Hedef hesap seçin'
       if (tab === 'transfer' && form.isDebtPayment && !form.debtId)       e.debtId      = 'Borç seçin'
       if (!form.description.trim())                  e.description = 'Açıklama girin'
+      if (form.isInstallment && manualAmounts?.some(s => !(parseCurrencyInput(s) > 0))) {
+        e.installments = 'Tüm taksit tutarları 0’dan büyük olmalı'
+      }
     }
     setErrors(e)
     return Object.keys(e).length === 0
@@ -677,7 +693,7 @@ export function TransactionFormModal() {
         tags:        cleanTags.length ? cleanTags : undefined,
       }
       if (formData.isInstallment && installments > 1) {
-        await addGroup(base, installments)
+        await addGroup(base, installments, manualAmounts?.map(s => parseCurrencyInput(s)))
       } else {
         await addTx({ ...base, id: crypto.randomUUID(), isInstallment: false, createdAt: now, updatedAt: now })
       }
@@ -836,6 +852,7 @@ export function TransactionFormModal() {
                 raw = raw.slice(0, firstComma + 1) + raw.slice(firstComma + 1).replace(/,/g, '')
               }
               setAmountStr(raw)
+              setManualAmounts(null)
               if (errors.amount) setErrors(prev => ({ ...prev, amount: '' }))
               requestAnimationFrame(() => {
                 if (mirrorRef.current) setCursorX(mirrorRef.current.offsetWidth)
@@ -1124,7 +1141,10 @@ export function TransactionFormModal() {
                 <input
                   type="checkbox"
                   checked={form.isInstallment}
-                  onChange={e => patch({ isInstallment: e.target.checked })}
+                  onChange={e => {
+                    patch({ isInstallment: e.target.checked })
+                    if (!e.target.checked) setManualAmounts(null)
+                  }}
                   className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
                 />
                 <span className="text-sm font-medium">Taksitli ödeme</span>
@@ -1137,20 +1157,71 @@ export function TransactionFormModal() {
                     min={2}
                     max={60}
                     value={installments}
-                    onChange={e => setInstallments(Math.min(60, Math.max(2, Number(e.target.value) || 2)))}
+                    onChange={e => {
+                      setInstallments(Math.min(60, Math.max(2, Number(e.target.value) || 2)))
+                      setManualAmounts(null)
+                    }}
                     className="w-20 h-9 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm text-center outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
                   />
                   <span className="text-sm text-muted-foreground">taksit</span>
                 </div>
               )}
-              {form.isInstallment && parseCurrencyInput(amountStr) > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Girilen tutar toplamdır — aylık taksit: {formatCurrency(
-                    splitMoney(parseCurrencyInput(amountStr), installments)[0],
-                    (accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode,
-                  )} × {installments} ay
-                </p>
-              )}
+              {form.isInstallment && parseCurrencyInput(amountStr) > 0 && (() => {
+                const total    = parseCurrencyInput(amountStr)
+                const cur      = (accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode
+                const rows     = manualAmounts ?? splitMoney(total, installments).map(toAmountStr)
+                const sum      = sumMoney(rows.map(s => parseCurrencyInput(s) || 0))
+                const sumDiff  = Math.round(sum * 100) !== Math.round(total * 100)
+                return (
+                  <div className="flex flex-col gap-2 border-t border-dashed pt-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        Aylık taksitler {manualAmounts ? '(elle düzenlendi)' : '(otomatik bölündü — düzenlenebilir)'}
+                      </span>
+                      {manualAmounts && (
+                        <button
+                          type="button"
+                          onClick={() => setManualAmounts(null)}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          Otomatik böl
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-44 overflow-y-auto flex flex-col gap-1.5 pr-1">
+                      {rows.map((val, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground w-32 shrink-0">
+                            {i + 1}. taksit · {format(addMonths(parseISO(form.date || today()), i), 'MMM yyyy', { locale: tr })}
+                          </span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={val}
+                            onChange={e => {
+                              let raw = e.target.value.replace(/[^0-9,]/g, '')
+                              const fc = raw.indexOf(',')
+                              if (fc !== -1) raw = raw.slice(0, fc + 1) + raw.slice(fc + 1).replace(/,/g, '')
+                              const next = [...rows]
+                              next[i] = raw
+                              setManualAmounts(next)
+                              if (errors.installments) setErrors(prev => ({ ...prev, installments: '' }))
+                            }}
+                            aria-label={`${i + 1}. taksit tutarı`}
+                            className="flex-1 h-8 rounded-md border border-input bg-background dark:bg-muted px-2.5 text-sm text-right outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
+                          />
+                          <span className="text-xs text-muted-foreground w-8">{getCurrencySymbol(cur)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className={cn('text-xs', sumDiff ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground')}>
+                      Toplam: {formatCurrency(sum, cur)}
+                      {sumDiff && ` — girilen tutardan (${formatCurrency(total, cur)}) farklı`}
+                    </p>
+                    {errors.installments && <p className="text-xs text-destructive">{errors.installments}</p>}
+                  </div>
+                )
+              })()}
             </div>
           )}
         </div>
