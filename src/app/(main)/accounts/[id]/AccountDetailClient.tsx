@@ -5,7 +5,9 @@ import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
 import { AccountAvatar }      from '@/components/accounts/AccountAvatar'
-import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore } from '@/store'
+import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore, useCategoryStore } from '@/store'
+import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
+import { compareCategoriesByName } from '@/lib/utils/categories'
 import { useShallow }         from 'zustand/react/shallow'
 import { formatCurrency }     from '@/lib/utils/currency'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
@@ -34,6 +36,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
   const openModal     = useUIStore(s => s.openModal)
   const periodType    = useUIStore(s => s.periodType)
   const people        = usePeopleStore(s => s.people)
+  const categories    = useCategoryStore(s => s.categories)
 
   const accountTxs = useTransactionStore(useShallow(s =>
     s.transactions.filter(t => t.accountId === id || t.toAccountId === id)
@@ -46,6 +49,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
   const [recipientFilter, setRecipientFilter] = useState<PersonFilter>(null)
   const [search, setSearch]                 = useState('')
   const [typeFilter, setTypeFilter]         = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [showFuture, setShowFuture]         = useState(true)
   const [periodOffset, setPeriodOffset]     = useState(0)
 
@@ -75,7 +79,13 @@ export default function AccountDetailClient({ id }: { id: string }) {
 
   const projectedIds = useMemo(() => new Set(projectedTxs.map(t => t.id)), [projectedTxs])
 
-  // Transactions filtered by period + person + search + type (planlananlar dahil)
+  // Tüm alanlarda arama — kişi/kategori/hesap adları dahil (bkz. txSearch.ts)
+  const searchMatcher = useMemo(
+    () => makeTxSearchMatcher(search, { people, categories, accounts }),
+    [search, people, categories, accounts],
+  )
+
+  // Transactions filtered by period + person + search + type + category (planlananlar dahil)
   const filteredTxs = useMemo(
     () => [...accountTxs, ...projectedTxs].filter(t => {
       if (from && t.date < from) return false
@@ -83,11 +93,37 @@ export default function AccountDetailClient({ id }: { id: string }) {
       if (familyFilter    && t.familyMemberId !== familyFilter.id)   return false
       if (recipientFilter && t.recipientId    !== recipientFilter.id) return false
       if (typeFilter && t.type !== typeFilter) return false
-      if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false
+      if (categoryFilter && t.categoryId !== categoryFilter) return false
+      if (search && !searchMatcher(t)) return false
       return true
     }),
-    [accountTxs, projectedTxs, from, to, familyFilter, recipientFilter, typeFilter, search],
+    [accountTxs, projectedTxs, from, to, familyFilter, recipientFilter, typeFilter, categoryFilter, search, searchMatcher],
   )
+
+  // Filtre alanı seçenekleri
+  const categoryOptions = useMemo(() => [
+    { value: '', label: 'Tüm Kategoriler' },
+    ...[...categories].sort(compareCategoriesByName).map(c => ({ value: c.id, label: c.name })),
+  ], [categories])
+
+  const familyOptions = useMemo(() => [
+    { value: '', label: 'Tüm Aile Üyeleri' },
+    ...people.filter(p => p.role === 'family_member' && !p.isArchived)
+      .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+      .map(p => ({ value: p.id, label: p.name })),
+  ], [people])
+
+  const recipientOptions = useMemo(() => [
+    { value: '', label: 'Tüm Alıcılar' },
+    ...people.filter(p => p.role === 'recipient' && !p.isArchived)
+      .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+      .map(p => ({ value: p.id, label: p.name })),
+  ], [people])
+
+  function selectPerson(setter: (f: PersonFilter) => void, pid: string) {
+    const person = people.find(p => p.id === pid)
+    setter(person ? { id: person.id, name: person.name } : null)
+  }
 
   function handlePersonClick(role: PersonRole, pid: string) {
     const person = people.find(p => p.id === pid)
@@ -209,14 +245,14 @@ export default function AccountDetailClient({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Search + type filter */}
-      <div className="flex items-center gap-2 px-6 py-3 border-b border-border flex-shrink-0">
+      {/* Search + filters */}
+      <div className="flex items-center flex-wrap gap-2 px-6 py-3 border-b border-border flex-shrink-0">
         <input
           type="text"
-          placeholder="İşlem ara..."
+          placeholder="Ara: açıklama, alıcı, aile üyesi, kategori, not, etiket..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-32 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
+          className="flex-1 min-w-48 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
         />
         <SelectField
           value={typeFilter}
@@ -227,6 +263,24 @@ export default function AccountDetailClient({ id }: { id: string }) {
             { value: 'income',   label: 'Gelir' },
             { value: 'transfer', label: 'Transfer' },
           ]}
+          className="w-fit bg-card text-xs"
+        />
+        <SelectField
+          value={categoryFilter}
+          onChange={e => setCategoryFilter(e.target.value)}
+          options={categoryOptions}
+          className="w-fit bg-card text-xs"
+        />
+        <SelectField
+          value={familyFilter?.id ?? ''}
+          onChange={e => selectPerson(setFamilyFilter, e.target.value)}
+          options={familyOptions}
+          className="w-fit bg-card text-xs"
+        />
+        <SelectField
+          value={recipientFilter?.id ?? ''}
+          onChange={e => selectPerson(setRecipientFilter, e.target.value)}
+          options={recipientOptions}
           className="w-fit bg-card text-xs"
         />
       </div>

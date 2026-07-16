@@ -7,6 +7,9 @@ import { isInRange } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
 import { useDebtStore } from './debts.store'
+import { usePeopleStore } from './people.store'
+import { useCategoryStore } from './categories.store'
+import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
@@ -180,8 +183,12 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     if (filters.recipientIds?.length) txs = txs.filter(t => t.recipientId && filters.recipientIds!.includes(t.recipientId))
     if (filters.dateFrom && filters.dateTo) txs = txs.filter(t => isInRange(t.date, filters.dateFrom!, filters.dateTo!))
     if (filters.search) {
-      const q = filters.search.toLowerCase()
-      txs = txs.filter(t => t.description.toLowerCase().includes(q) || t.merchant?.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q))
+      // Tüm alanlarda arama — kişi/kategori/hesap adları dahil (bkz. txSearch.ts)
+      txs = txs.filter(makeTxSearchMatcher(filters.search, {
+        people:     usePeopleStore.getState().people,
+        categories: useCategoryStore.getState().categories,
+        accounts:   useAccountStore.getState().accounts,
+      }))
     }
     return txs
   },
