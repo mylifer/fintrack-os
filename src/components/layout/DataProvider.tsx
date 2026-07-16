@@ -6,7 +6,7 @@ import {
   useBudgetStore, useDebtStore, useInvestmentStore, usePeopleStore,
   useRecurringStore,
 } from '@/store'
-import { startAutoSync } from '@/lib/sync/engine'
+import { startAutoSync, guardUserSwitch } from '@/lib/sync/engine'
 import { today } from '@/lib/utils/date'
 import { maybeAutoBackup } from '@/lib/auto-backup'
 
@@ -30,6 +30,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function init() {
+      // Phase 0: hesap değişimi koruması — farklı kullanıcıyla giriş
+      // yapıldıysa önceki hesabın yerel kalıntıları yüklemeden ÖNCE temizlenir
+      // (yoksa pull onları yeni hesaba itmeye çalışır; bkz. engine.ts).
+      await guardUserSwitch()
+
       // Phase 1: FK parent tablolarını Supabase'e upsert et (await).
       // transactions/budgets/recurring bu tablolara FK referans verdiği için
       // child'lar yüklenmeden önce Supabase'de hazır olmaları şart.

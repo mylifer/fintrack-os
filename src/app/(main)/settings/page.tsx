@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { BackupManager }  from '@/components/backup/BackupManager'
 import { TransactionImportModal } from '@/components/settings/TransactionImportModal'
 import { loadDemoData, clearAllData } from '@/lib/seed'
+import { scanDemoData, removeDemoData, type DemoScan } from '@/lib/demo-cleanup'
 import { transactionsToCsvString, downloadCsv } from '@/lib/utils/csv'
 import { useTransactionStore, useCategoryStore } from '@/store'
 
@@ -33,6 +34,33 @@ export default function SettingsPage() {
     } catch (err) {
       console.error('[settings:load-demo]', err)
       setDemoLoading(false)
+    }
+  }
+
+  const [demoScan, setDemoScan]           = useState<DemoScan | null>(null)
+  const [demoScanLoading, setScanLoading] = useState(false)
+  const [demoRemoving, setDemoRemoving]   = useState(false)
+
+  async function handleDemoScan() {
+    setScanLoading(true)
+    try {
+      setDemoScan(await scanDemoData())
+    } catch (err) {
+      console.error('[settings:demo-scan]', err)
+    } finally {
+      setScanLoading(false)
+    }
+  }
+
+  async function handleDemoRemove() {
+    if (!demoScan || demoScan.total === 0) return
+    setDemoRemoving(true)
+    try {
+      await removeDemoData(demoScan)
+      window.location.reload()
+    } catch (err) {
+      console.error('[settings:demo-remove]', err)
+      setDemoRemoving(false)
     }
   }
 
@@ -87,6 +115,59 @@ export default function SettingsPage() {
                 >
                   Yükle
                 </Button>
+              </div>
+
+              {/* Demo leftovers scan & remove */}
+              <div className="pt-4 border-t border-border">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold">Demo Kalıntılarını Temizle</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Geçmişte yüklenmiş demo kayıtlarını (Garanti BBVA Vadesiz vb.) bulur;
+                      onayınla hem bu cihazdan hem buluttan kaldırır. Kendi kayıtlarına dokunmaz.
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleDemoScan}
+                    loading={demoScanLoading}
+                    className="flex-shrink-0 rounded-xl px-4 h-9"
+                  >
+                    Tara
+                  </Button>
+                </div>
+                {demoScan && (
+                  demoScan.total === 0 ? (
+                    <div className="mt-3 text-xs text-muted-foreground bg-background rounded-lg px-3 py-2">
+                      Demo kalıntısı bulunamadı.
+                    </div>
+                  ) : (
+                    <div className="mt-3 flex items-center justify-between gap-3 bg-background rounded-lg px-3 py-2">
+                      <div className="text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground">{demoScan.total} demo kaydı bulundu: </span>
+                        {[
+                          demoScan.accounts     && `${demoScan.accounts} hesap`,
+                          demoScan.people       && `${demoScan.people} kişi`,
+                          demoScan.transactions && `${demoScan.transactions} işlem`,
+                          demoScan.budgets      && `${demoScan.budgets} bütçe`,
+                          demoScan.debts        && `${demoScan.debts} borç`,
+                          demoScan.recurring    && `${demoScan.recurring} tekrarlayan`,
+                          demoScan.investments  && `${demoScan.investments} yatırım`,
+                        ].filter(Boolean).join(', ')}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={handleDemoRemove}
+                        loading={demoRemoving}
+                        className="flex-shrink-0 rounded-xl"
+                      >
+                        Kaldır
+                      </Button>
+                    </div>
+                  )
+                )}
               </div>
 
               {/* Clear all */}

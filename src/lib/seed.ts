@@ -7,32 +7,38 @@ import type {
   Person, RecurringTransaction, InvestmentTransaction,
 } from '@/types'
 
-// ── Stable UUIDs ────────────────────────────────────────────────────────────
-// Supabase id columns are type uuid — strings like "demo-acc-chk" are rejected.
+// ── Demo IDs ─────────────────────────────────────────────────────────────────
+// Supabase id columns are type uuid. Kimlikler her yüklemede RASTGELE üretilir:
+// sabit UUID'ler, demo verisini birden fazla kullanıcı yüklediğinde bulutta
+// aynı satır kimliğinin iki hesap tarafından sahiplenilmesine ve kalıcı RLS
+// çakışmalarına yol açıyordu (Temmuz 2026 vakası — bkz. lib/demo-cleanup.ts).
 
-const ACC_CHK  = 'a0000000-0000-0000-0000-000000000001'
-const ACC_SAV  = 'a0000000-0000-0000-0000-000000000002'
-const ACC_CC   = 'a0000000-0000-0000-0000-000000000003'
-const ACC_CSH  = 'a0000000-0000-0000-0000-000000000004'
+let ACC_CHK  = ''
+let ACC_SAV  = ''
+let ACC_CC   = ''
+let ACC_CSH  = ''
 
-const PRS_SPOUSE = 'b0000000-0000-0000-0000-000000000001'
-const PRS_CHILD  = 'b0000000-0000-0000-0000-000000000002'
-const PRS_AYSE   = 'b0000000-0000-0000-0000-000000000003'
-const PRS_MEHMET = 'b0000000-0000-0000-0000-000000000004'
+let PRS_SPOUSE = ''
+let PRS_CHILD  = ''
+let PRS_AYSE   = ''
+let PRS_MEHMET = ''
 
-const DEBT_CAR    = 'e0000000-0000-0000-0000-000000000001'
-const DEBT_MEHMET = 'e0000000-0000-0000-0000-000000000002'
-const DEBT_AYSE   = 'e0000000-0000-0000-0000-000000000003'
+let DEBT_CAR    = ''
+let DEBT_MEHMET = ''
+let DEBT_AYSE   = ''
 
-const INST_PHONE  = 'fa000000-0000-0000-0000-000000000001'
-const INST_LAPTOP = 'fa000000-0000-0000-0000-000000000002'
+let INST_PHONE  = ''
+let INST_LAPTOP = ''
 
 // ── Guard ────────────────────────────────────────────────────────────────────
 
+const DEMO_CHK_NAME = 'Garanti BBVA Vadesiz'
+
 export async function isDemoLoaded(): Promise<boolean> {
-  const acc = await db.accounts.get(ACC_CHK)
+  const accounts = await db.accounts.toArray()
+  const acc = accounts.find(a => a.name === DEMO_CHK_NAME && !a.deleted_at)
   if (!acc) return false
-  const txCount = await db.transactions.where('accountId').equals(ACC_CHK).count()
+  const txCount = await db.transactions.where('accountId').equals(acc.id).count()
   return txCount > 5
 }
 
@@ -40,6 +46,20 @@ export async function isDemoLoaded(): Promise<boolean> {
 
 export async function loadDemoData(): Promise<void> {
   if (await isDemoLoaded()) return
+
+  ACC_CHK = crypto.randomUUID()
+  ACC_SAV = crypto.randomUUID()
+  ACC_CC  = crypto.randomUUID()
+  ACC_CSH = crypto.randomUUID()
+  PRS_SPOUSE = crypto.randomUUID()
+  PRS_CHILD  = crypto.randomUUID()
+  PRS_AYSE   = crypto.randomUUID()
+  PRS_MEHMET = crypto.randomUUID()
+  DEBT_CAR    = crypto.randomUUID()
+  DEBT_MEHMET = crypto.randomUUID()
+  DEBT_AYSE   = crypto.randomUUID()
+  INST_PHONE  = crypto.randomUUID()
+  INST_LAPTOP = crypto.randomUUID()
 
   const cats = await db.categories.toArray()
   const c = Object.fromEntries(cats.map(cat => [cat.name, cat.id])) as Record<string, string>
@@ -84,7 +104,6 @@ export async function loadDemoData(): Promise<void> {
     return `2026-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   }
 
-  let _seq = 1
   function tx(opts: {
     date: string
     type: 'expense' | 'income' | 'transfer'
@@ -105,9 +124,8 @@ export async function loadDemoData(): Promise<void> {
     installGroupId?: string
     debtId?: string
   }): Transaction {
-    const seq = String(_seq++).padStart(12, '0')
     return {
-      id: `cc000000-0000-0000-0000-${seq}`,
+      id: crypto.randomUUID(),
       type: opts.type,
       amount: opts.amount,
       amountTry: opts.amount, // demo data is TRY → base value equals amount (S2/S3)
@@ -274,14 +292,14 @@ export async function loadDemoData(): Promise<void> {
 
   // ── Budgets (Haziran 2026) ─────────────────────────────────────────────────
   const budgets: Budget[] = [
-    { id: 'd0000000-0000-0000-0000-000000000001', categoryId: c['Market']       ?? '', amount: 5000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
-    { id: 'd0000000-0000-0000-0000-000000000002', categoryId: c['Kira'] ?? '', amount: 19000, period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 90 },
-    { id: 'd0000000-0000-0000-0000-000000000003', categoryId: c['Ulaşım']       ?? '', amount: 3000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
-    { id: 'd0000000-0000-0000-0000-000000000004', categoryId: c['Faturalar']    ?? '', amount: 2000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 85 },
-    { id: 'd0000000-0000-0000-0000-000000000005', categoryId: c['Yemek'] ?? '', amount: 2500,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
-    { id: 'd0000000-0000-0000-0000-000000000006', categoryId: c['Eğlence']      ?? '', amount: 1200,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 75 },
-    { id: 'd0000000-0000-0000-0000-000000000007', categoryId: c['Teknoloji']    ?? '', amount: 5000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
-    { id: 'd0000000-0000-0000-0000-000000000008', categoryId: c['Sağlık']       ?? '', amount: 2000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
+    { id: crypto.randomUUID(), categoryId: c['Market']       ?? '', amount: 5000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
+    { id: crypto.randomUUID(), categoryId: c['Kira'] ?? '', amount: 19000, period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 90 },
+    { id: crypto.randomUUID(), categoryId: c['Ulaşım']       ?? '', amount: 3000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
+    { id: crypto.randomUUID(), categoryId: c['Faturalar']    ?? '', amount: 2000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 85 },
+    { id: crypto.randomUUID(), categoryId: c['Yemek'] ?? '', amount: 2500,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
+    { id: crypto.randomUUID(), categoryId: c['Eğlence']      ?? '', amount: 1200,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 75 },
+    { id: crypto.randomUUID(), categoryId: c['Teknoloji']    ?? '', amount: 5000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
+    { id: crypto.randomUUID(), categoryId: c['Sağlık']       ?? '', amount: 2000,  period: 'monthly', year: 2026, month: 6, rollover: false, alertThreshold: 80 },
   ].filter(b => b.categoryId) as Budget[]
 
   // ── Debts ──────────────────────────────────────────────────────────────────
@@ -338,7 +356,7 @@ export async function loadDemoData(): Promise<void> {
   // ── Recurring Transactions ─────────────────────────────────────────────────
   const recurring: RecurringTransaction[] = [
     {
-      id: 'f0000000-0000-0000-0000-000000000001',
+      id: crypto.randomUUID(),
       name: 'Maaş',
       type: 'income',
       amount: 42000,
@@ -355,7 +373,7 @@ export async function loadDemoData(): Promise<void> {
       createdAt: now,
     },
     {
-      id: 'f0000000-0000-0000-0000-000000000002',
+      id: crypto.randomUUID(),
       name: 'Kira',
       type: 'expense',
       amount: 18500,
@@ -373,7 +391,7 @@ export async function loadDemoData(): Promise<void> {
       createdAt: now,
     },
     {
-      id: 'f0000000-0000-0000-0000-000000000003',
+      id: crypto.randomUUID(),
       name: 'Netflix & Spotify',
       type: 'expense',
       amount: 320,
@@ -390,7 +408,7 @@ export async function loadDemoData(): Promise<void> {
       createdAt: now,
     },
     {
-      id: 'f0000000-0000-0000-0000-000000000004',
+      id: crypto.randomUUID(),
       name: 'Araba Kredisi',
       type: 'expense',
       amount: 4500,
@@ -407,7 +425,7 @@ export async function loadDemoData(): Promise<void> {
       createdAt: now,
     },
     {
-      id: 'f0000000-0000-0000-0000-000000000005',
+      id: crypto.randomUUID(),
       name: 'Eş Maaşı',
       type: 'income',
       amount: 15000,
@@ -425,7 +443,7 @@ export async function loadDemoData(): Promise<void> {
       familyMemberId: PRS_SPOUSE,
     },
     {
-      id: 'f0000000-0000-0000-0000-000000000006',
+      id: crypto.randomUUID(),
       name: 'İnternet Faturası',
       type: 'expense',
       amount: 350,
@@ -445,13 +463,13 @@ export async function loadDemoData(): Promise<void> {
 
   // ── Investment Transactions ─────────────────────────────────────────────────
   const investTxs: InvestmentTransaction[] = [
-    { id: '10000000-0000-0000-0000-000000000001', type: 'buy',  asset: 'GOLD_GRAM',    quantity: 10,  pricePerUnit: 3200, sourceAccountId: ACC_SAV, date: '2026-01-15', note: 'Altın alımı — birikim amaçlı', createdAt: now },
-    { id: '10000000-0000-0000-0000-000000000002', type: 'buy',  asset: 'USD',          quantity: 500, pricePerUnit: 34.2, sourceAccountId: ACC_CHK, date: '2026-02-10', note: 'Döviz alımı', createdAt: now },
-    { id: '10000000-0000-0000-0000-000000000003', type: 'buy',  asset: 'GOLD_GRAM',    quantity: 5,   pricePerUnit: 3450, sourceAccountId: ACC_SAV, date: '2026-03-20', note: 'Altın alımı', createdAt: now },
-    { id: '10000000-0000-0000-0000-000000000004', type: 'buy',  asset: 'EUR',          quantity: 200, pricePerUnit: 37.5, sourceAccountId: ACC_CHK, date: '2026-04-05', note: 'Yaz tatili için Euro', createdAt: now },
-    { id: '10000000-0000-0000-0000-000000000005', type: 'buy',  asset: 'GOLD_QUARTER', quantity: 2,   pricePerUnit: 5600, sourceAccountId: ACC_SAV, date: '2026-05-01', note: 'Çeyrek altın', createdAt: now },
-    { id: '10000000-0000-0000-0000-000000000006', type: 'buy',  asset: 'USD',          quantity: 300, pricePerUnit: 35.8, sourceAccountId: ACC_CHK, date: '2026-06-01', note: 'Dolar alımı', createdAt: now },
-    { id: '10000000-0000-0000-0000-000000000007', type: 'sell', asset: 'USD',          quantity: 100, pricePerUnit: 36.5, targetAccountId: ACC_CHK, date: '2026-06-20', note: 'Kısmi satış — nakit ihtiyacı', createdAt: now },
+    { id: crypto.randomUUID(), type: 'buy',  asset: 'GOLD_GRAM',    quantity: 10,  pricePerUnit: 3200, sourceAccountId: ACC_SAV, date: '2026-01-15', note: 'Altın alımı — birikim amaçlı', createdAt: now },
+    { id: crypto.randomUUID(), type: 'buy',  asset: 'USD',          quantity: 500, pricePerUnit: 34.2, sourceAccountId: ACC_CHK, date: '2026-02-10', note: 'Döviz alımı', createdAt: now },
+    { id: crypto.randomUUID(), type: 'buy',  asset: 'GOLD_GRAM',    quantity: 5,   pricePerUnit: 3450, sourceAccountId: ACC_SAV, date: '2026-03-20', note: 'Altın alımı', createdAt: now },
+    { id: crypto.randomUUID(), type: 'buy',  asset: 'EUR',          quantity: 200, pricePerUnit: 37.5, sourceAccountId: ACC_CHK, date: '2026-04-05', note: 'Yaz tatili için Euro', createdAt: now },
+    { id: crypto.randomUUID(), type: 'buy',  asset: 'GOLD_QUARTER', quantity: 2,   pricePerUnit: 5600, sourceAccountId: ACC_SAV, date: '2026-05-01', note: 'Çeyrek altın', createdAt: now },
+    { id: crypto.randomUUID(), type: 'buy',  asset: 'USD',          quantity: 300, pricePerUnit: 35.8, sourceAccountId: ACC_CHK, date: '2026-06-01', note: 'Dolar alımı', createdAt: now },
+    { id: crypto.randomUUID(), type: 'sell', asset: 'USD',          quantity: 100, pricePerUnit: 36.5, targetAccountId: ACC_CHK, date: '2026-06-20', note: 'Kısmi satış — nakit ihtiyacı', createdAt: now },
   ]
 
   // ── Durable local write + outbox (C1) ─────────────────────────────────────

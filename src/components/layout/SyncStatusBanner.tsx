@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSyncStatusStore } from '@/store/sync-status.store'
 import { retryDeadLetters } from '@/lib/sync/engine'
+import { repairStuckCategories } from '@/lib/sync/repair'
 
 /* ── Senkron sağlık bandı ────────────────────────────────────────────────
    Buluta yazılamayan kayıt varken kullanıcıyı SESSİZCE bırakmayız: dead-letter
@@ -19,7 +20,12 @@ export function SyncStatusBanner() {
   const lastError    = useSyncStatusStore(s => s.lastError)
   const pendingSince = useSyncStatusStore(s => s.pendingSince)
 
-  const [retrying, setRetrying] = useState(false)
+  const [retrying, setRetrying]   = useState(false)
+  const [repairing, setRepairing] = useState(false)
+
+  // RLS'e takılan kategori kayıtları "Yeniden dene" ile çözülmez (hata
+  // deterministik) — bu durumda onarım butonu gösterilir (bkz. sync/repair.ts).
+  const repairable = stuck > 0 && !!lastError?.includes('row-level security')
 
   // Kuyruk dolu→boş/boş→dolu geçişinde overdue'yu render sırasında sıfırla
   // (resmî "derive state during render" kalıbı); eşik aşımını efekt yalnızca
@@ -51,6 +57,21 @@ export function SyncStatusBanner() {
     }
   }
 
+  async function handleRepair() {
+    setRepairing(true)
+    try {
+      const r = await repairStuckCategories()
+      console.info('[sync:repair]', r)
+      await retryDeadLetters()
+      // Onarım kimlikleri değiştirir (remap/rekey) — bellekteki store'lar
+      // bayatlar; en güvenlisi taze yükleme.
+      window.location.reload()
+    } catch (err) {
+      console.error('[sync:repair]', err)
+      setRepairing(false)
+    }
+  }
+
   return (
     <div
       role="alert"
@@ -77,14 +98,27 @@ export function SyncStatusBanner() {
         </div>
       )}
       {isError && (
-        <button
-          type="button"
-          onClick={handleRetry}
-          disabled={retrying}
-          className="mt-2 px-2.5 py-1 rounded-lg text-xs font-semibold bg-destructive text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-        >
-          {retrying ? 'Deneniyor…' : 'Yeniden dene'}
-        </button>
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={retrying || repairing}
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-destructive text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            {retrying ? 'Deneniyor…' : 'Yeniden dene'}
+          </button>
+          {repairable && (
+            <button
+              type="button"
+              onClick={handleRepair}
+              disabled={retrying || repairing}
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
+              title="Takılan kategorileri hesabına taşır: aynı isimli kategorin varsa işlemler ona bağlanır, yoksa kategori yeni kimlikle kopyalanır. Veri silinmez."
+            >
+              {repairing ? 'Onarılıyor…' : 'Onar'}
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

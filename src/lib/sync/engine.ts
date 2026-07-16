@@ -232,7 +232,8 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
 
 /* ── Background flusher (C1) ────────────────────────────────────────────── */
 
-const MAX_ATTEMPTS = 12 // ~ back-to-back retries before an entry is dead-lettered
+export const MAX_SYNC_ATTEMPTS = 12 // ~ back-to-back retries before an entry is dead-lettered (repair.ts de kullanır)
+const MAX_ATTEMPTS = MAX_SYNC_ATTEMPTS
 let flushing = false
 let rerun = false
 let kickTimer: ReturnType<typeof setTimeout> | null = null
@@ -345,6 +346,37 @@ export async function retryDeadLetters(): Promise<void> {
   }
   failStreak = 0
   await flushOutbox()
+}
+
+/* ── Hesap değişimi koruması ──────────────────────────────────────────────
+   IndexedDB oturuma değil ORIGIN'e bağlıdır: aynı tarayıcıda farklı bir
+   hesapla giriş yapılırsa önceki kullanıcının satırları yerelde kalır.
+   reconcilingPull bu satırları "bulutta yok" diye YENİ hesaba itmeye çalışır —
+   ID bulutta eski sahibindeyse push sonsuza dek RLS'e takılır, değilse yabancı
+   veri yeni hesaba SIZAR (cross-tenant leak). Çözüm: kullanıcı değişimi tespit
+   edilince yerel entity tabloları temizlenir (yeni kullanıcının verisi zaten
+   bulutta; ilk pull geri getirir) ve başka sahibin outbox girdileri düşürülür. */
+
+const LAST_UID_KEY = 'fintrack.lastSyncUserId'
+
+export async function guardUserSwitch(): Promise<void> {
+  if (typeof window === 'undefined') return
+  const uid = await getUserId()
+  if (!uid) return // oturum yokken karar verme — marker'a dokunma
+
+  let prev: string | null = null
+  try { prev = localStorage.getItem(LAST_UID_KEY) } catch { /* storage kapalı */ }
+
+  if (prev && prev !== uid) {
+    console.warn('[sync:user-switch] farklı hesap girişi — önceki hesabın yerel kalıntıları temizleniyor')
+    for (const t of Object.values(DEXIE)) await t.clear()
+    const entries = (await db._outbox.toArray()) as OutboxRow[]
+    for (const e of entries) {
+      if (e.ownerId !== uid) await db._outbox.delete(e.id)
+    }
+  }
+
+  try { localStorage.setItem(LAST_UID_KEY, uid) } catch { /* storage kapalı */ }
 }
 
 /** Wire up automatic draining: flush now + whenever connectivity returns. */
