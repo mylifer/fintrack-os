@@ -4,14 +4,15 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { AlertDialog } from 'radix-ui'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useCategoryStore, useAccountStore, useUIStore, usePeopleStore, useTransactionStore } from '@/store'
+import { useCategoryStore, useAccountStore, useUIStore, usePeopleStore, useTransactionStore, useInvestmentStore } from '@/store'
+import { assetLabel } from '@/store/investment.store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import { groupByDate } from '@/lib/utils/calculations'
 import { toMinor, toMajor } from '@/lib/utils/money'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
-import type { Transaction, PersonRole, Category, Account, Person, ModalType, ModalPayload } from '@/types'
+import type { Transaction, PersonRole, Category, Account, Person, ModalType, ModalPayload, InvestmentTransaction } from '@/types'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { TagBadges } from '@/components/transactions/TagBadges'
@@ -38,6 +39,23 @@ const RefundIcon = ({ size = 13 }: { size?: number }) => (
   </svg>
 )
 
+// Silinmek istenen defter işlemi bir yatırım satışının bacağı mı? İki bacak var:
+// satış geliri (invest tx'in linkedTransactionId'si) ve kâr/zarar satırı
+// (cleanSellLinkedTxs ile aynı sezgisel: hesap + tarih + "X Satış Kârı/Zararı").
+function findLinkedInvestSell(
+  tx: Transaction,
+  investTxs: InvestmentTransaction[],
+): InvestmentTransaction | undefined {
+  return investTxs.find(it => {
+    if (it.type !== 'sell' || !it.targetAccountId) return false
+    if (it.linkedTransactionId === tx.id) return true
+    const label = assetLabel(it.asset)
+    return it.targetAccountId === tx.accountId &&
+      it.date === tx.date &&
+      (tx.description === `${label} Satış Kârı` || tx.description === `${label} Satış Zararı`)
+  })
+}
+
 function DeleteConfirmDialog({
   tx,
   onDelete,
@@ -47,6 +65,10 @@ function DeleteConfirmDialog({
   onDelete: () => void
   compact?: boolean
 }) {
+  const investTxs = useInvestmentStore(s => s.transactions)
+  const removeInvestTx = useInvestmentStore(s => s.removeTransaction)
+  const investSell = useMemo(() => findLinkedInvestSell(tx, investTxs), [tx, investTxs])
+
   const btnCls = compact
     ? 'w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors'
     : 'w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors'
@@ -66,10 +88,16 @@ function DeleteConfirmDialog({
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
         ].join(' ')}>
           <AlertDialog.Title className="text-base font-semibold text-foreground mb-1">
-            {tx.isInstallment ? 'Taksitli işlemi sil' : 'İşlemi sil'}
+            {investSell ? 'Yatırım satışına bağlı işlemi sil' : tx.isInstallment ? 'Taksitli işlemi sil' : 'İşlemi sil'}
           </AlertDialog.Title>
           <AlertDialog.Description className="text-sm text-muted-foreground mb-5">
-            {tx.isInstallment && tx.installGroupId ? (
+            {investSell ? (
+              <>
+                <span className="font-medium text-foreground">&ldquo;{tx.description}&rdquo;</span> bir yatırım satışının parçası — yatırım hesabındaki{' '}
+                <span className="font-medium text-foreground">satış kaydı</span> ve bu satışla hesaba yazılan{' '}
+                <span className="font-medium text-foreground">tüm bağlı işlemler (satış tutarı + kâr/zarar)</span> birlikte kalıcı olarak silinecek. Bu işlem geri alınamaz.
+              </>
+            ) : tx.isInstallment && tx.installGroupId ? (
               <>
                 <span className="font-medium text-foreground">&ldquo;{tx.description}&rdquo;</span> taksitli bir satın almanın parçası — bu satın almaya ait{' '}
                 <span className="font-medium text-foreground">tüm taksitler ({tx.installTotal ?? '?'} adet)</span> kalıcı olarak silinecek.
@@ -88,7 +116,7 @@ function DeleteConfirmDialog({
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
               <button
-                onClick={onDelete}
+                onClick={() => investSell ? void removeInvestTx(investSell.id) : onDelete()}
                 className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors"
               >
                 Sil
