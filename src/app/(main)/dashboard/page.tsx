@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -10,7 +10,8 @@ import {
 } from '@/store'
 import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
-import { isTefasAsset, tefasCode } from '@/lib/tefas'
+import { tefasCodesIn } from '@/lib/tefas'
+import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { getPeriodRange, getPrevPeriodRange, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import { approveRecurring } from '@/lib/utils/recurring-actions'
@@ -41,6 +42,13 @@ const NetWorthChart = dynamic(
 const PERIOD_LABEL: Record<PeriodType, string> = {
   daily: 'Bugün', weekly: 'Bu Hafta', monthly: 'Bu Ay',
   yearly: 'Bu Yıl', all: 'Tüm Zamanlar',
+}
+
+// Gelir kartındaki fon getirisi satırının dönem sıfatı ('Tüm Zamanlar'da
+// yalnız gerçekleşmemiş K/Z — satış kârları zaten gelir işlemi olarak sayılır)
+const FUND_GAIN_LABEL: Record<PeriodType, string> = {
+  daily: 'günlük', weekly: 'bu haftaki', monthly: 'bu ayki',
+  yearly: 'bu yılki', all: 'toplam',
 }
 
 const ACCOUNT_TYPE: Record<string, string> = {
@@ -74,17 +82,6 @@ export default function DashboardPage() {
     [investTxs, prices, fundPrices],
   )
   const investValue  = useMemo(() => holdings.reduce((s, h) => s + h.currentValue, 0), [holdings])
-  // TEFAS fonlarının son işlem günü net değer değişimi; artış gelire eklenir,
-  // net düşüş gelire yansıtılmaz ama kartta bilgi satırı olarak gösterilir
-  // (satır tamamen kaybolursa "fonlar görünmüyor" sanılıyordu).
-  const fundDailyNet = useMemo(() => (
-    holdings.reduce((sum, h) => {
-      if (!isTefasAsset(h.asset)) return sum
-      const fp = fundPrices[tefasCode(h.asset)]
-      return fp?.prevPrice ? sum + h.quantity * (fp.price - fp.prevPrice) : sum
-    }, 0)
-  ), [holdings, fundPrices])
-  const fundDailyGain = fundDailyNet > 0 ? fundDailyNet : 0
   const getBudgets   = useBudgetStore(s => s.getMonthBudgets)
   const getDueSoon   = useDebtStore(s => s.getDueSoon)
   const getActive    = useDebtStore(s => s.getActive)
@@ -92,6 +89,45 @@ export default function DashboardPage() {
   const people       = usePeopleStore(s => s.people)
 
   const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
+
+  // Seçili dönemin TEFAS fon getirisi. Dönem başı kapanışı için fon başına
+  // günlük seri bir kez çekilir (kod+dönem anahtarıyla; tarihi veri değişmez).
+  // 'Bugün' son iki kapanış farkını, 'Tüm Zamanlar' gerçekleşmemiş K/Z'yi
+  // kullandığından ikisi de seri gerektirmez.
+  const fundCodes = useMemo(() => tefasCodesIn(investTxs.map(t => t.asset)), [investTxs])
+  const [fundHistory, setFundHistory] = useState<Record<string, FundPricePoint[]>>({})
+  const histRequested = useRef(new Set<string>())
+  useEffect(() => {
+    if (periodType === 'daily' || periodType === 'all') return
+    // Baz fiyat dönem başından önceki son kapanış → hafta sonu/tatil payıyla 10 gün geriden iste
+    const histFrom = new Date(new Date(from + 'T00:00:00Z').getTime() - 10 * 86_400_000)
+      .toISOString().slice(0, 10)
+    for (const code of fundCodes) {
+      const key = `${code}:${from}`
+      if (histRequested.current.has(key)) continue
+      histRequested.current.add(key)
+      fetch(`/api/prices/history?asset=TEFAS&code=${code}&from=${histFrom}`, { cache: 'no-store' })
+        .then(r => (r.ok ? r.json() : null))
+        .then((pts: FundPricePoint[] | null) => {
+          if (Array.isArray(pts) && pts.length) setFundHistory(h => ({ ...h, [key]: pts }))
+          else histRequested.current.delete(key)
+        })
+        .catch(() => histRequested.current.delete(key))
+    }
+  }, [fundCodes, from, periodType])
+
+  // Net artış gelire eklenir; net düşüş gelire yansıtılmaz ama kartta bilgi
+  // satırı olarak gösterilir (satır tamamen kaybolunca "fonlar görünmüyor"
+  // sanılıyordu).
+  const fundPeriodNet = useMemo(() => {
+    const hist: Record<string, FundPricePoint[]> = {}
+    for (const code of fundCodes) {
+      const pts = fundHistory[`${code}:${from}`]
+      if (pts) hist[code] = pts
+    }
+    return calcFundPeriodGain(investTxs, fundPrices, hist, from, to, periodType === 'daily')
+  }, [fundCodes, fundHistory, investTxs, fundPrices, from, to, periodType])
+  const fundGain = fundPeriodNet > 0 ? fundPeriodNet : 0
   const { income, expense, net } = useMemo(
     () => calcPeriodFlow(transactions, from, to),
     [transactions, from, to],
@@ -102,7 +138,7 @@ export default function DashboardPage() {
 
   const totalOwed = getActive().filter(d => d.direction === 'owe').reduce((s, d) => s + d.remainingAmount, 0)
 
-  const incomeTotal = income + fundDailyGain
+  const incomeTotal = income + fundGain
 
   const animExpense     = useCountUp(expense)
   const animIncome      = useCountUp(incomeTotal)
@@ -175,10 +211,10 @@ export default function DashboardPage() {
             {
               label: `${prefix} · Gelir`,
               value: formatCompact(animIncome),
-              sub: fundDailyNet > 0
-                ? `${formatCompact(fundDailyNet)} günlük fon getirisi dahil`
-                : fundDailyNet < -0.005 // float tozu "−₺0" satırı üretmesin
-                  ? `−${formatCompact(Math.abs(fundDailyNet))} günlük fon değişimi (gelire eklenmedi)`
+              sub: fundPeriodNet > 0.005 // yarım kuruş eşiği: float tozu "±₺0" satırı üretmesin
+                ? `${formatCompact(fundPeriodNet)} ${FUND_GAIN_LABEL[periodType]} fon getirisi dahil`
+                : fundPeriodNet < -0.005
+                  ? `−${formatCompact(Math.abs(fundPeriodNet))} ${FUND_GAIN_LABEL[periodType]} fon değişimi (gelire eklenmedi)`
                   : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
               ok: true,
               trendDiff: prevFlow ? incomeTotal - prevFlow.income : null,
