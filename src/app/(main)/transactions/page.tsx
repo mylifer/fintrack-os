@@ -7,6 +7,7 @@ import { SelectField }     from '@/components/ui/Select'
 import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore } from '@/store'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
+import { sumByType } from '@/lib/utils/calculations'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { formatCurrency }  from '@/lib/utils/currency'
 import { transactionsToCsvString, downloadCsv } from '@/lib/utils/csv'
@@ -93,16 +94,13 @@ export default function TransactionsPage() {
   const projectedIds = useMemo(() => new Set(projectedTxs.map(t => t.id)), [projectedTxs])
   const displayTxs   = useMemo(() => [...filtered, ...projectedTxs], [filtered, projectedTxs])
 
-  // Tek geçişte gider, gelir ve transfer toplamı (eskiden render başına 4 tam tarama).
-  const { totalExpense, totalIncome, totalTransfer } = useMemo(() => {
-    let expense = 0, income = 0, transfer = 0
-    for (const t of filtered) {
-      if (t.type === 'expense') expense += t.amount
-      else if (t.type === 'income') income += t.amount
-      else if (t.type === 'transfer') transfer += t.amount
-    }
-    return { totalExpense: expense, totalIncome: income, totalTransfer: transfer }
-  }, [filtered])
+  // Özet çubuğu ₺ (baz PB) gösterir → TRY-normalize (baseAmount, S2/S3) + kuruş-exact
+  // (S8) topla; ham `amount` USD'yi ₺ gibi sayardı. Görünen listeyle birebir kalması
+  // için mutabakat kayıtları burada ayıklanmaz (liste onları zaten gösteriyor).
+  const { expense: totalExpense, income: totalIncome, transfer: totalTransfer } = useMemo(
+    () => sumByType(filtered),
+    [filtered],
+  )
 
   function handlePersonClick(role: PersonRole, id: string) {
     const person = people.find(p => p.id === id)

@@ -9,6 +9,8 @@ import { TransactionList } from '@/components/transactions/TransactionList'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { compareCategoriesByName } from '@/lib/utils/categories'
+import { sumByType } from '@/lib/utils/calculations'
+import { subMoney } from '@/lib/utils/money'
 
 interface Props { id: string }
 
@@ -71,14 +73,12 @@ export default function CategoryDetailClient({ id }: Props) {
     [transactions, descendantIds, typeFilter, search],
   )
 
-  const totalAmount = useMemo(
-    () => catTxs.reduce((sum, t) => {
-      if (t.type === 'income')  return sum + t.amount
-      if (t.type === 'expense') return sum - t.amount
-      return sum
-    }, 0),
-    [catTxs],
-  )
+  // Net (gelir − gider), TRY-normalize (baseAmount) + kuruş-exact — ham `amount`
+  // karışık para birimini ₺ gibi sayıyordu; calcCategorySpend ile aynı kural.
+  const totalAmount = useMemo(() => {
+    const { income, expense } = sumByType(catTxs)
+    return subMoney(income, expense)
+  }, [catTxs])
 
   /* ── Parent options for the two-dropdown edit form ── */
   const l0Options = useMemo(() => {

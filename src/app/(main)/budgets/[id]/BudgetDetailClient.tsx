@@ -17,6 +17,8 @@ import {
 import {
   getBudgetCategoryIds, enrichBudget, calcBudgetSpent, resolveBudgetCategories,
 } from '@/lib/utils/calculations'
+import { baseAmount } from '@/lib/utils/fx'
+import { sumBy } from '@/lib/utils/money'
 import { useShallow } from 'zustand/react/shallow'
 import type { MonthYear } from '@/types'
 
@@ -155,7 +157,10 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   }
 
   const { cats, label: title, archived } = resolveBudgetCategories(budget, categories)
-  const totalSpent = filtered.reduce((s, t) => s + t.amount, 0)
+  // Bütçe TRY bazlı → calcBudgetSpent/enrichBudget ile aynı kural: TRY-normalize
+  // (baseAmount) + kuruş-exact. Ham `amount` aylık spent ile "Tüm Zamanlar"/özet
+  // arasında (yabancı PB gider varsa) uyumsuzluk yaratıyordu.
+  const totalSpent = sumBy(filtered, baseAmount)
 
   function navigatePrev() { setAllTime(false); setSelectedMonth(m => prevMonth(m)) }
   function navigateNext() { setAllTime(false); setSelectedMonth(m => nextMonth(m)) }

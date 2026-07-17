@@ -7,6 +7,7 @@ import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
+import { sumByType } from '@/lib/utils/calculations'
 import type { PersonRole } from '@/types'
 
 interface Props {
@@ -44,8 +45,8 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
     [allTxs, typeFilter, search],
   )
 
-  const totalIncome  = allTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const totalExpense = allTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+  // ₺ (baz PB) gösterilir → TRY-normalize (baseAmount) + kuruş-exact topla.
+  const { income: totalIncome, expense: totalExpense } = sumByType(allTxs)
 
   if (!peopleReady || !txsReady) return null
   if (!person) return notFound()

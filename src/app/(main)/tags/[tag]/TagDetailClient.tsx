@@ -7,6 +7,7 @@ import { TransactionList } from '@/components/transactions/TransactionList'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { tagKey, tagColor } from '@/lib/utils/tags'
+import { sumByType } from '@/lib/utils/calculations'
 
 interface Props { tag: string }
 
@@ -49,8 +50,8 @@ export default function TagDetailClient({ tag }: Props) {
     [tagTxs, typeFilter, search],
   )
 
-  const totalIncome  = tagTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const totalExpense = tagTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+  // ₺ (baz PB) gösterilir → TRY-normalize (baseAmount) + kuruş-exact topla.
+  const { income: totalIncome, expense: totalExpense } = sumByType(tagTxs)
 
   const color = tagColor(key)
 
