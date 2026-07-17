@@ -19,8 +19,9 @@ import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { excludeFuture, calcNetWorth, calcNetRaw } from '@/lib/utils/calculations'
+import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey } from '@/lib/utils/calculations'
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
+import { sumBy, toMinor, toMajor } from '@/lib/utils/money'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
@@ -79,10 +80,12 @@ function buildCashFlowData(
   const days = differenceInDays(to, from) + 1
   const pts: CashFlowPoint[] = []
 
+  // TRY-normalize (baseAmount, S2/S3) + kuruş-exact (S8) — dashboard'daki
+  // calcMonthlyFlow ile aynı para birimi kuralı; ham `amount` karışık PB toplamaz.
   const income  = (pFrom: string, pTo: string) =>
-    transactions.filter(t => t.type === 'income'  && t.date >= pFrom && t.date <= pTo).reduce((s, t) => s + t.amount, 0)
+    sumBy(transactions.filter(t => t.type === 'income'  && t.date >= pFrom && t.date <= pTo), baseAmount)
   const expense = (pFrom: string, pTo: string) =>
-    transactions.filter(t => t.type === 'expense' && t.date >= pFrom && t.date <= pTo).reduce((s, t) => s + t.amount, 0)
+    sumBy(transactions.filter(t => t.type === 'expense' && t.date >= pFrom && t.date <= pTo), baseAmount)
 
   if (days <= 45) {
     let wStart = startOfWeek(from, { locale: tr })
@@ -110,14 +113,9 @@ function buildCategoryData(
   transactions: Transaction[],
   categories: Array<{ id: string; name: string; color: string }>,
 ): CategorySlice[] {
-  const catMap = new Map<string, number>()
-  for (const tx of transactions) {
-    if (tx.type !== 'expense') continue
-    if (tx.icon) continue  // investment-linked expense — skip
-    if (isReconciliation(tx)) continue  // ghost balance-reconciliation — never an expense
-    const key = tx.categoryId ?? '__none__'
-    catMap.set(key, (catMap.get(key) ?? 0) + tx.amount)
-  }
+  // TRY-normalize + kuruş-exact, skip investment-linked (icon) & reconciliation
+  // ghosts — DetailedStats ve kategori 6-ay trendiyle aynı kural (tek kaynak).
+  const catMap = sumExpenseByKey(transactions, tx => tx.categoryId ?? '__none__')
   // A category whose *net* total is ≤ 0 — fully refunded, or carrying only a
   // refund (negative expense) for a purchase made in an earlier period — is not
   // a positive expense contribution. Drop it before building slices: a negative
@@ -144,12 +142,15 @@ function buildCategoryData(
  ─────────────────────────────────────────────────────────────────────── */
 
 function buildTagExpenseData(transactions: Transaction[]): CategorySlice[] {
-  const map = new Map<string, { amount: number; casings: Map<string, number> }>()
+  // amountMinor: TRY-normalized (baseAmount, S2/S3) integer kuruş (S8) — bir gider
+  // taşıdığı her etikete tam tutarıyla yazılır; ham `amount` karışık PB toplamaz.
+  const map = new Map<string, { amountMinor: number; casings: Map<string, number> }>()
 
   for (const tx of transactions) {
     if (tx.type !== 'expense' || tx.icon) continue
     if (isReconciliation(tx)) continue  // ghost reconciliation carries RECONCILE_TAG — exclude
     if (!tx.tags?.length) continue
+    const amtMinor = toMinor(baseAmount(tx))
     const seen = new Set<string>()
     for (const raw of tx.tags) {
       const norm = normalizeTag(raw)
@@ -158,8 +159,8 @@ function buildTagExpenseData(transactions: Transaction[]): CategorySlice[] {
       if (seen.has(key)) continue
       seen.add(key)
       let entry = map.get(key)
-      if (!entry) { entry = { amount: 0, casings: new Map() }; map.set(key, entry) }
-      entry.amount += tx.amount
+      if (!entry) { entry = { amountMinor: 0, casings: new Map() }; map.set(key, entry) }
+      entry.amountMinor += amtMinor
       entry.casings.set(norm, (entry.casings.get(norm) ?? 0) + 1)
     }
   }
@@ -167,9 +168,9 @@ function buildTagExpenseData(transactions: Transaction[]): CategorySlice[] {
   // Same guard as buildCategoryData: a tag whose net expense is ≤ 0 (its only
   // spend was refunded, or it carries just a refund) must not reach the donut
   // as a negative slice.
-  const entries = [...map.entries()].filter(([, e]) => e.amount > 0)
-  const total = entries.reduce((s, [, e]) => s + e.amount, 0)
-  if (total === 0) return []
+  const entries = [...map.entries()].filter(([, e]) => e.amountMinor > 0)
+  const totalMinor = entries.reduce((s, [, e]) => s + e.amountMinor, 0)
+  if (totalMinor === 0) return []
 
   return entries
     .map(([key, entry]) => {
@@ -179,8 +180,8 @@ function buildTagExpenseData(transactions: Transaction[]): CategorySlice[] {
       return {
         categoryId: key,  // tag key reused as the slice id
         name:       best,
-        amount:     entry.amount,
-        percent:    (entry.amount / total) * 100,
+        amount:     toMajor(entry.amountMinor),
+        percent:    (entry.amountMinor / totalMinor) * 100,
         color:      tagColor(key),
       }
     })
@@ -405,12 +406,13 @@ export default function ReportsPage() {
   )
 
   const kpi = useMemo(() => {
-    const income  = filteredTxs.filter(t => t.type === 'income').reduce( (s, t) => s + t.amount, 0)
-    const expense = filteredTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-    const net     = income - expense
-    const rate    = income > 0 ? (net / income) * 100 : 0
+    // filteredTxs zaten dönem+hesap filtreli ve mutabakat ayıklanmış; calcPeriodFlow
+    // TRY-normalize (baseAmount) + kuruş-exact toplar → dashboard'daki gelir/gider
+    // kartlarıyla (calcPeriodFlow/calcMonthlyFlow) birebir aynı sayı.
+    const { income, expense, net } = calcPeriodFlow(filteredTxs, dateRange.from, dateRange.to)
+    const rate = income > 0 ? (net / income) * 100 : 0
     return { income, expense, net, rate }
-  }, [filteredTxs])
+  }, [filteredTxs, dateRange])
 
   const cashFlowData    = useMemo(() => buildCashFlowData(filteredTxs, dateRange),                    [filteredTxs, dateRange])
   const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
