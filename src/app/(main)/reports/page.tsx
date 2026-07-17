@@ -12,14 +12,15 @@ import {
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { Header }           from '@/components/layout/Header'
-import { useTransactionStore, useAccountStore, useCategoryStore } from '@/store'
+import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore } from '@/store'
+import { getAssetPrice, computeHoldings } from '@/store/investment.store'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { excludeFuture } from '@/lib/utils/calculations'
-import { baseAmount } from '@/lib/utils/fx'
+import { excludeFuture, calcNetWorth, calcNetRaw } from '@/lib/utils/calculations'
+import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
@@ -29,7 +30,7 @@ import type { CashFlowPoint }       from '@/components/reports/_CashFlowBarChart
 import type { CategorySlice }       from '@/components/reports/_CategoryDonutChart'
 import type { TrendPoint }          from '@/components/reports/_BalanceTrendChart'
 import type { CategoryTrendPoint }  from '@/components/reports/_CategoryTrendChart'
-import type { Account, Transaction } from '@/types'
+import type { Account, Transaction, PriceData, InvestmentTransaction, TefasFundPrice } from '@/types'
 
 /* ── Types ────────────────────────────────────────────────────────── */
 
@@ -191,38 +192,80 @@ function buildTrendData(
   allTransactions: Transaction[],
   dateRange: { from: string; to: string },
   selectedAccountId: string,
+  prices: PriceData | null,
+  investTxs: InvestmentTransaction[],
+  fundPrices: Record<string, TefasFundPrice>,
 ): TrendPoint[] {
-  const targets = selectedAccountId === 'all'
-    ? accounts.filter(a => !a.isArchived)
-    : accounts.filter(a => a.id === selectedAccountId)
-  if (targets.length === 0) return []
+  const from = parseISO(dateRange.from)
+  const to   = parseISO(dateRange.to)
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
 
-  const from  = parseISO(dateRange.from)
-  const to    = parseISO(dateRange.to)
-  const pts: TrendPoint[] = []
+  // Ay sonu anlık görüntü tarihleri (artan). Gelecek aylar çizilmez — henüz
+  // işlenmemiş işlemlerle geri yürüyüş yapılamayacağından düz çizgi üretirler.
+  const snaps: { label: string; snap: string }[] = []
+  let mStart = startOfMonth(from)
+  while (mStart <= to) {
+    if (format(mStart, 'yyyy-MM-dd') > todayStr) break
+    const mEnd = endOfMonth(mStart)
+    snaps.push({
+      label: format(mStart, 'MMM yy', { locale: tr }),
+      snap:  format(mEnd > to ? to : mEnd, 'yyyy-MM-dd'),
+    })
+    mStart = addMonths(mStart, 1)
+  }
+  if (snaps.length === 0) return []
 
   // account.balance sadece işlenmiş (bugüne kadarki) işlemleri içerir; geri-alma
   // yürüyüşü de aynı kümede kalmalı — gelecek tarihli işlemler geri alınmaz.
   const postedTxs = excludeFuture(allTransactions)
+  const pts: TrendPoint[] = new Array(snaps.length)
 
-  let mStart = startOfMonth(from)
-  while (mStart <= to) {
-    const snap = format(endOfMonth(mStart) > to ? to : endOfMonth(mStart), 'yyyy-MM-dd')
-
-    const balance = targets.reduce((sum, account) => {
-      let bal = account.balance
-      for (const tx of postedTxs) {
-        if (tx.date <= snap) continue
-        if (tx.type === 'income'   && tx.accountId === account.id)   bal -= tx.amount
-        if (tx.type === 'expense'  && tx.accountId === account.id)   bal += tx.amount
-        if (tx.type === 'transfer' && tx.accountId === account.id)   bal += tx.amount
-        if (tx.type === 'transfer' && tx.toAccountId === account.id) bal -= tx.amount
+  if (selectedAccountId === 'all') {
+    // Net varlık: dashboard'daki NetWorthChart ile aynı yöntem. Bugünkü TRY
+    // değerinden (kur çevirili hesap bakiyeleri + yatırımlar) geriye, her ayın
+    // penceresindeki TRY-normalize ham net akış (mutabakat DAHİL) düşülerek
+    // yürünür. Hesap bakiyeleri kendi para birimlerinde ham toplanamaz; transfer
+    // bacakları da TRY bazında zaten netleştiğinden tek tek geri alınmaz.
+    const investValue = prices
+      ? computeHoldings(investTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0)
+      : 0
+    let nw = calcNetWorth(accounts, prices) + investValue
+    let upper: string | null = null  // bir sonraki (daha yeni) snapshot — pencere üst sınırı
+    for (let i = snaps.length - 1; i >= 0; i--) {
+      const { label, snap } = snaps[i]
+      nw -= calcNetRaw(postedTxs.filter(t => t.date > snap && (upper === null || t.date <= upper)))
+      if (prices) {
+        nw -= investTxs
+          .filter(t => { const d = t.date.slice(0, 10); return d > snap && (upper === null || d <= upper) })
+          .reduce((s, t) => s + (t.type === 'buy' ? 1 : -1) * t.quantity * getAssetPrice(t.asset, prices, fundPrices), 0)
       }
-      return sum + bal
-    }, 0)
+      pts[i] = { label, balance: nw }
+      upper = snap
+    }
+    return pts
+  }
 
-    pts.push({ label: format(mStart, 'MMM yy', { locale: tr }), balance })
-    mStart = addMonths(mStart, 1)
+  const account = accounts.find(a => a.id === selectedAccountId)
+  if (!account) return []
+
+  // Tek hesap: bakiye hesabın KENDİ para biriminde geri yürütülür. Çapraz kur
+  // transferinin gelen bacağı bakiyeye çevrilmiş tutarla işlendiğinden
+  // (computeTransactionEffect), geri alma da aynı çevrilmiş tutarı kullanmalı.
+  let bal = account.balance
+  let upper: string | null = null
+  for (let i = snaps.length - 1; i >= 0; i--) {
+    const { label, snap } = snaps[i]
+    for (const tx of postedTxs) {
+      if (tx.date <= snap || (upper !== null && tx.date > upper)) continue
+      if (tx.type === 'income'   && tx.accountId === account.id)   bal -= tx.amount
+      if (tx.type === 'expense'  && tx.accountId === account.id)   bal += tx.amount
+      if (tx.type === 'transfer' && tx.accountId === account.id)   bal += tx.amount
+      if (tx.type === 'transfer' && tx.toAccountId === account.id) {
+        bal -= tx.currency === account.currency ? tx.amount : fromBaseTry(baseAmount(tx), account.currency)
+      }
+    }
+    pts[i] = { label, balance: bal }
+    upper = snap
   }
   return pts
 }
@@ -316,6 +359,9 @@ export default function ReportsPage() {
   const accountsReady = useAccountStore(s => s.ready)
   const accounts      = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories    = useCategoryStore(s => s.categories)
+  const prices        = useInvestmentStore(s => s.prices)
+  const fundPrices    = useInvestmentStore(s => s.fundPrices)
+  const investTxs     = useInvestmentStore(s => s.transactions)
 
   const [preset,       setPreset]       = useState<Preset>('this-month')
   const [customFrom,   setCustomFrom]   = useState('')
@@ -370,7 +416,10 @@ export default function ReportsPage() {
   const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
   const tagData         = useMemo(() => buildTagExpenseData(filteredTxs),                             [filteredTxs])
   const topTags         = useMemo(() => tagData.slice(0, 8),                                          [tagData])
-  const trendData       = useMemo(() => buildTrendData(accounts, transactions, dateRange, accountId),  [accounts, transactions, dateRange, accountId])
+  const trendData       = useMemo(
+    () => buildTrendData(accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices),
+    [accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices],
+  )
   const comparisonData  = useMemo(() => buildPeriodComparison(transactions, categories, dateRange, accountId), [transactions, categories, dateRange, accountId])
 
   const activeTrendCat  = useMemo(() => {
