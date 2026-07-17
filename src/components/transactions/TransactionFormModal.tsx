@@ -826,7 +826,7 @@ export function TransactionFormModal() {
               </span>
 
               {/* Smooth caret */}
-              {isFocused && amountStr && (
+              {isFocused && (
                 <div
                   className="amount-caret absolute top-[1px] bottom-[1px] w-[2.5px] rounded-full bg-foreground"
                   style={{ left: 0, transform: `translateX(${cursorX}px)`, transition: 'transform 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
