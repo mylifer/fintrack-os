@@ -4,14 +4,20 @@ import { isReconciliation } from './reconciliation'
 import { toMinor, toMajor, sumBy, subMoney } from './money'
 import { baseAmount, fromBaseTry } from './fx'
 
-// A transaction is "posted" once its date has arrived. Future-dated entries are
-// pending: they must NOT affect any current balance until their day comes —
-// on that day the daily recompute (DataProvider) folds them in automatically.
-export function isPosted(t: Pick<Transaction, 'date'>, asOf: string = today()): boolean {
-  return t.date.slice(0, 10) <= asOf
+// A transaction is "posted" once its date has arrived AND it is not waiting for
+// user approval. approvalStatus null/undefined = legacy row: auto-posts on its
+// day (the daily recompute in DataProvider folds it in). 'pending' = approval
+// gate: even a due/past date must NOT affect any balance until the user
+// approves it in the notification center. 'approved' = normal post rule.
+// This is the SINGLE source of truth for "does this row count toward balances".
+export function isPosted(
+  t: Pick<Transaction, 'date' | 'approvalStatus'>,
+  asOf: string = today(),
+): boolean {
+  return t.date.slice(0, 10) <= asOf && t.approvalStatus !== 'pending'
 }
 
-export function excludeFuture<T extends Pick<Transaction, 'date'>>(
+export function excludeFuture<T extends Pick<Transaction, 'date' | 'approvalStatus'>>(
   transactions: T[],
   asOf: string = today(),
 ): T[] {

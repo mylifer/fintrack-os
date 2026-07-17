@@ -260,6 +260,11 @@ const TableTxRow = memo(function TableTxRow({
                 Planlandı
               </span>
             )}
+            {tx.approvalStatus === 'pending' && (
+              <span className="ml-1.5 align-middle rounded-sm bg-orange-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-orange-500">
+                Onay bekliyor
+              </span>
+            )}
           </div>
           <TagBadges tags={tx.tags} className="mt-1" />
         </div>
@@ -430,6 +435,11 @@ const CardTxRow = memo(function CardTxRow({
           {projected && (
             <span className="ml-1.5 align-middle rounded-sm bg-sky-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-sky-500">
               Planlandı
+            </span>
+          )}
+          {tx.approvalStatus === 'pending' && (
+            <span className="ml-1.5 align-middle rounded-sm bg-orange-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-orange-500">
+              Onay bekliyor
             </span>
           )}
         </div>
@@ -607,6 +617,9 @@ export function TransactionList({
     )
 
     for (const tx of sorted) {
+      // Onay kapısı: pending satır bakiyeye hiç işlenmez (isPosted ile tutarlı) —
+      // satırın "Güncel Bakiye" hücresi boş kalır.
+      if (tx.approvalStatus === 'pending') continue
       let winner: string | undefined
       let winnerRank = -1
       const consider = (id: string) => {

@@ -81,6 +81,13 @@ export interface Transaction {
   debtId?: string           // Links to a tracked Debt
   refundOfId?: string       // Set on refund entries → the original transaction they offset (S4)
   systemKind?: 'reconciliation' // First-class marker for system ghost entries (S7); see reconciliation.ts
+
+  // Onay kapısı (bildirim merkezi): null/undefined = legacy satır, tarihi gelince
+  // otomatik post olur (mevcut veriler böyle kalır). 'pending' = tarihi gelse bile
+  // bakiyeye girmez, bildirim merkezinde onay bekler. 'approved' = onaylandı,
+  // normal post kuralı işler. Supabase sütunları: "approvalStatus" / "approvedAt".
+  approvalStatus?: 'pending' | 'approved' | null
+  approvedAt?: string | null
   createdAt: string
   updatedAt: string
   deleted_at?: string | null // Tombstone (C3)

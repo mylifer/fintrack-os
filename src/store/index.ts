@@ -17,3 +17,5 @@ export { usePeopleStore } from './people.store'
 export { useRecurringStore } from './recurring.store'
 
 export { useSyncStatusStore } from './sync-status.store'
+
+export { useNotificationsStore } from './notifications.store'

@@ -40,6 +40,24 @@ describe('isPosted / excludeFuture (pending transactions)', () => {
     expect(isPosted(tx({ date: '2026-01-15T23:59:00.000Z' }), '2026-01-15')).toBe(true)
   })
 
+  it("approval gate: a 'pending' row is NOT posted even when its date has arrived", () => {
+    expect(isPosted(tx({ date: '2026-01-10', approvalStatus: 'pending' }), '2026-01-15')).toBe(false)
+    expect(isPosted(tx({ date: '2026-01-15', approvalStatus: 'pending' }), '2026-01-15')).toBe(false)
+    // approved / legacy (undefined) rows keep the normal date rule
+    expect(isPosted(tx({ date: '2026-01-10', approvalStatus: 'approved' }), '2026-01-15')).toBe(true)
+    expect(isPosted(tx({ date: '2026-01-10', approvalStatus: null }), '2026-01-15')).toBe(true)
+    expect(isPosted(tx({ date: '2026-01-16', approvalStatus: 'approved' }), '2026-01-15')).toBe(false)
+  })
+
+  it('excludeFuture drops pending rows regardless of date, legacy rows only when future', () => {
+    const txs = [
+      tx({ id: 'legacy-past',  date: '2026-01-01' }),
+      tx({ id: 'pending-past', date: '2026-01-02', approvalStatus: 'pending' }),
+      tx({ id: 'approved',     date: '2026-01-03', approvalStatus: 'approved' }),
+    ]
+    expect(excludeFuture(txs, '2026-01-15').map(t => t.id)).toEqual(['legacy-past', 'approved'])
+  })
+
   it('excludeFuture drops only future-dated transactions', () => {
     const txs = [
       tx({ id: 'past',   date: '2026-01-01' }),

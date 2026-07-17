@@ -150,6 +150,18 @@ alter table public.transactions add column if not exists "debtId" text;
 alter table public.transactions add column if not exists "createdAt" text;
 alter table public.transactions add column if not exists "updatedAt" text;
 
+-- ── Onay kapısı (bildirim merkezi) ───────────────────────────────────────────
+-- "approvalStatus": null = legacy satır (tarihi gelince otomatik post — mevcut
+-- davranış), 'pending' = kullanıcı onayı bekliyor (bakiyeye girmez),
+-- 'approved' = onaylandı. Sütun adı camelCase: sync engine tam satır
+-- snapshot'ını alan adlarıyla birebir push eder (bkz. "amountTry"), snake_case
+-- sütun outbox'ı dead-letter yapar.
+alter table public.transactions add column if not exists "approvalStatus" text;
+alter table public.transactions drop constraint if exists transactions_approval_status_check;
+alter table public.transactions add constraint transactions_approval_status_check
+  check ("approvalStatus" is null or "approvalStatus" in ('pending', 'approved'));
+alter table public.transactions add column if not exists "approvedAt" timestamptz;
+
 alter table public.categories add column if not exists "name" text;
 alter table public.categories add column if not exists "icon" text;
 alter table public.categories add column if not exists "color" text;

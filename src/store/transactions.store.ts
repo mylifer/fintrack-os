@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import type { Transaction, TransactionFilters } from '@/types'
-import { isInRange } from '@/lib/utils/date'
+import { isInRange, today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
 import { useDebtStore } from './debts.store'
@@ -25,6 +25,16 @@ import { splitMoney } from '@/lib/utils/money'
 function withBase(tx: Transaction): Transaction {
   if (rateFor(tx.currency) == null) return tx
   return { ...tx, amountTry: toBaseTry(tx.amount, tx.currency) }
+}
+
+// Onay kapısı (bildirim merkezi): gelecek tarihli YENİ işlemler 'pending' doğar —
+// tarihi gelince otomatik post olmaz, bildirim merkezinde onay bekler. Çağıran
+// approvalStatus'u açıkça verdiyse (örn. tekrarlayan üretimi 'approved' yazar)
+// dokunulmaz. Mevcut satırlar bu yoldan geçmez; null/undefined = legacy davranış.
+function withApproval(tx: Transaction): Transaction {
+  if (tx.approvalStatus !== undefined) return tx
+  if (tx.date.slice(0, 10) > today()) return { ...tx, approvalStatus: 'pending' }
+  return tx
 }
 
 function investRank(tx: Transaction): number {
@@ -78,8 +88,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   },
 
   add: async (tx) => {
-    // Base-currency snapshot (S2/S3) + durable write (C1).
-    const stamped = withBase(tx)
+    // Base-currency snapshot (S2/S3) + onay kapısı + durable write (C1).
+    const stamped = withApproval(withBase(tx))
     await localUpsert('transactions', stamped)
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
     const next = [stamped, ...get().transactions]
@@ -98,7 +108,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const perInstallment = amounts?.length === count ? amounts : splitMoney(base.amount, count)
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
-      txs.push(withBase({ ...base, amount: perInstallment[i], id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now }))
+      // Gelecek aylara düşen taksitler de onay kapısından geçer (pending doğar).
+      txs.push(withApproval(withBase({ ...base, amount: perInstallment[i], id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now })))
     }
     await localBulkUpsert('transactions', txs)
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.

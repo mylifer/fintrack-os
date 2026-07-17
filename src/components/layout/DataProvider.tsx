@@ -7,6 +7,7 @@ import {
   useRecurringStore,
 } from '@/store'
 import { startAutoSync, guardUserSwitch } from '@/lib/sync/engine'
+import { useNotificationsStore } from '@/store/notifications.store'
 import { today } from '@/lib/utils/date'
 import { maybeAutoBackup } from '@/lib/auto-backup'
 
@@ -86,7 +87,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [loadAccounts, loadTransactions, loadCategories, initCategories, loadBudgets, loadDebts, loadInvestments, fetchPrices, loadPeople, loadRecurring, reprocessSellLinkedTxs])
 
   // Gün değişince bakiyeleri yeniden hesapla: gelecek tarihli işlemler güncel
-  // bakiyeye dahil edilmez, günü gelen işlem o gün bakiyeye işlenir. Uygulama
+  // bakiyeye dahil edilmez, günü gelen LEGACY (approvalStatus null) işlem o gün
+  // bakiyeye işlenir; 'pending' işlemler onaylanana dek girmez (isPosted bunu
+  // doğal sağlar) ve bildirim merkezinde "Onay bekleyen"e düşer. Uygulama
   // (özellikle PWA) günlerce açık kalabildiğinden gece yarısını dakikalık
   // kontrol + görünürlük değişimiyle yakalıyoruz.
   useEffect(() => {
@@ -97,6 +100,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       lastDay = day
       const { transactions } = useTransactionStore.getState()
       useAccountStore.getState().recomputeBalances(transactions)
+      // Bildirim sayacı today()'e bağlı türetilir — gün atlayınca tazele
+      useNotificationsStore.getState().refresh()
     }
     const id = setInterval(check, 60_000)
     document.addEventListener('visibilitychange', check)

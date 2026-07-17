@@ -8,7 +8,7 @@ import { clearLocalData } from '@/lib/auth'
 import { retryDeadLetters, pendingCount } from '@/lib/sync/engine'
 import { useAccountStore, useInvestmentStore, useRecurringStore, useTransactionStore, useBudgetStore, useCategoryStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import { calcNetWorth, computeTransactionEffect, resolveBudgetCategories } from '@/lib/utils/calculations'
+import { calcNetWorth, computeTransactionEffect, isPosted, resolveBudgetCategories } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
 import { formatCompact, formatCurrency } from '@/lib/utils/currency'
@@ -144,7 +144,7 @@ export function Sidebar() {
 
   const trendAmount = useMemo(() => {
     const cutoff = monthRange(prevMonth(currentMonthYear())).to
-    const prevTxs = transactions.filter(t => t.date <= cutoff)
+    const prevTxs = transactions.filter(t => isPosted(t, cutoff))
     const prevAccounts = accounts.map(a => ({
       ...a,
       balance: a.initialBalance + computeTransactionEffect(a, prevTxs),

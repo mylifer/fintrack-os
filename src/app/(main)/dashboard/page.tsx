@@ -8,11 +8,12 @@ import {
   useInvestmentStore, useBudgetStore, useCategoryStore,
   useDebtStore, useRecurringStore, usePeopleStore,
 } from '@/store'
-import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect } from '@/lib/utils/calculations'
+import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { isTefasAsset, tefasCode } from '@/lib/tefas'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { getPeriodRange, getPrevPeriodRange, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
+import { approveRecurring } from '@/lib/utils/recurring-actions'
 import dynamic from 'next/dynamic'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
@@ -77,9 +78,7 @@ export default function DashboardPage() {
   const getDueSoon   = useDebtStore(s => s.getDueSoon)
   const getActive    = useDebtStore(s => s.getActive)
   const getDue       = useRecurringStore(s => s.getDue)
-  const markGenerated  = useRecurringStore(s => s.markGenerated)
-  const addTransaction = useTransactionStore(s => s.add)
-  const people         = usePeopleStore(s => s.people)
+  const people       = usePeopleStore(s => s.people)
 
   const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
   const { income, expense, net } = useMemo(
@@ -109,7 +108,7 @@ export default function DashboardPage() {
   }, [transactions, prevRange])
   const prevWorth = useMemo(() => {
     if (!prevRange) return null
-    const prevTxs = transactions.filter(t => t.date <= prevRange.to)
+    const prevTxs = transactions.filter(t => isPosted(t, prevRange.to))
     const prevAccounts = accounts.map(a => ({
       ...a,
       balance: a.initialBalance + computeTransactionEffect(a, prevTxs),
@@ -134,15 +133,9 @@ export default function DashboardPage() {
     if (!r || generatingId) return
     setGeneratingId(id)
     try {
-      const now = new Date().toISOString()
-      await addTransaction({
-        id: crypto.randomUUID(), type: r.type, amount: r.amount, currency: r.currency,
-        date: r.nextDueDate, accountId: r.accountId, toAccountId: r.toAccountId,
-        categoryId: r.categoryId, description: r.description, notes: r.notes,
-        isInstallment: false, familyMemberId: r.familyMemberId, recipientId: r.recipientId,
-        createdAt: now, updatedAt: now,
-      })
-      await markGenerated(id, today())
+      // Paylaşılan onay mantığı: catch-up (tüm kaçırılan dönemler) + deterministik
+      // id'ler — recurring sayfası ve bildirim paneliyle birebir aynı davranış.
+      await approveRecurring(r, today())
     } catch (err) {
       console.error('[dashboard:generate]', err)
     } finally {

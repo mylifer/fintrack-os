@@ -156,6 +156,22 @@ class FinTrackDB extends Dexie {
       recurringTransactions:  '&id, type, frequency, nextDueDate, isActive, deleted_at',
       _outbox:                '&id, table, entityId, enqueuedAt',
     })
+
+    // v10: onay kapısı (bildirim merkezi). Gelecek tarihli işlemler artık
+    // `approvalStatus: 'pending'` ile kaydedilir ve tarihi gelse bile kullanıcı
+    // onaylayana dek bakiyeye girmez. Veri dönüşümü YOK — mevcut satırlarda alan
+    // undefined kalır (= legacy, eski otomatik-post davranışı korunur).
+    this.version(10).stores({
+      accounts:               '&id, type, currency, isArchived, deleted_at',
+      transactions:           '&id, type, accountId, toAccountId, categoryId, date, installGroupId, debtId, familyMemberId, recipientId, deleted_at, approvalStatus',
+      categories:             '&id, scope, parentId, isSystem, isArchived, deleted_at',
+      budgets:                '&id, categoryId, period, year, month, deleted_at',
+      debts:                  '&id, type, direction, isSettled, dueDate, deleted_at',
+      investmentTransactions: '&id, type, asset, date, deleted_at',
+      people:                 '&id, role, deleted_at',
+      recurringTransactions:  '&id, type, frequency, nextDueDate, isActive, deleted_at',
+      _outbox:                '&id, table, entityId, enqueuedAt',
+    })
   }
 }
 

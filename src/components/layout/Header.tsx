@@ -1,6 +1,7 @@
 'use client'
 
 import { useUIStore } from '@/store'
+import { NotificationBell } from '@/components/layout/NotificationBell'
 
 interface HeaderProps {
   title: string
@@ -18,6 +19,8 @@ export function Header({ title, action }: HeaderProps) {
       <h1 className="text-base font-semibold text-foreground">{title}</h1>
 
       <div className="flex items-center gap-2">
+        {/* Bildirim merkezi — Header her sayfada olduğundan zil tek noktadan gelir */}
+        <NotificationBell />
         {action && (
           <button
             onClick={action.onClick}

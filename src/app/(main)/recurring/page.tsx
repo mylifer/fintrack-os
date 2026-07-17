@@ -10,11 +10,9 @@ import { EmptyState }         from '@/components/ui/EmptyState'
 import { Badge }              from '@/components/ui/Badge'
 import { Card, CardContent }  from '@/components/ui/card'
 import {
-  useRecurringStore, useAccountStore, useCategoryStore,
-  useTransactionStore, useUIStore,
+  useRecurringStore, useAccountStore, useCategoryStore, useUIStore,
 } from '@/store'
-import { recurringOccurrences } from '@/store/recurring.store'
-import { deterministicUuid }    from '@/lib/utils/id'
+import { approveRecurring }   from '@/lib/utils/recurring-actions'
 import { formatCurrency }     from '@/lib/utils/currency'
 import { today }              from '@/lib/utils/date'
 import { useShallow }         from 'zustand/react/shallow'
@@ -36,9 +34,7 @@ export default function RecurringPage() {
   const remove        = useRecurringStore(s => s.remove)
   const toggleActive  = useRecurringStore(s => s.toggleActive)
   const getDue        = useRecurringStore(s => s.getDue)
-  const markGenerated = useRecurringStore(s => s.markGenerated)
   const skip          = useRecurringStore(s => s.skip)
-  const addTransaction  = useTransactionStore(s => s.add)
   const accounts        = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories      = useCategoryStore(s => s.categories)
   const openModal       = useUIStore(s => s.openModal)
@@ -61,30 +57,9 @@ export default function RecurringPage() {
     if (generatingId) return
     setGeneratingId(r.id)
     try {
-      const now = new Date().toISOString()
-      // Catch-up: one transaction per MISSED period (not just one), each with a
-      // deterministic id so a double-click / second tab / retry can't duplicate
-      // it — the same (template, date) always maps to the same row.
-      for (const occ of recurringOccurrences(r, todayStr)) {
-        await addTransaction({
-          id:            deterministicUuid(`recur:${r.id}:${occ}`),
-          type:          r.type,
-          amount:        r.amount,
-          currency:      r.currency,
-          date:          occ,
-          accountId:     r.accountId,
-          toAccountId:   r.toAccountId,
-          categoryId:    r.categoryId,
-          description:   r.description,
-          notes:         r.notes,
-          isInstallment: false,
-          familyMemberId: r.familyMemberId,
-          recipientId:   r.recipientId,
-          createdAt:     now,
-          updatedAt:     now,
-        })
-      }
-      await markGenerated(r.id, todayStr)
+      // Paylaşılan onay mantığı (catch-up + deterministik id'ler) — bildirim
+      // paneli ve dashboard ile aynı modül, bkz. lib/utils/recurring-actions.ts
+      await approveRecurring(r, todayStr)
     } catch (err) {
       console.error('[recurring:generate]', err)
     } finally {
