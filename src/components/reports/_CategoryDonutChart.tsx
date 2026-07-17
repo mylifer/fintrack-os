@@ -1,5 +1,6 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { formatCurrency } from '@/lib/utils/currency'
+import { sumBy } from '@/lib/utils/money'
 
 export type CategorySlice = {
   categoryId: string | null   // null = uncategorized
@@ -44,7 +45,7 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick }: Pro
   }
 
   const top        = data.slice(0, 8)
-  const totalLabel = formatCurrency(data.reduce((s, d) => s + d.amount, 0))
+  const totalLabel = formatCurrency(sumBy(data, d => d.amount))
 
   const handlePieClick = (pieData: any, index: number) => {
     onSliceClick(pieData as CategorySlice, index)
