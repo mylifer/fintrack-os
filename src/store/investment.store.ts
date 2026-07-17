@@ -6,6 +6,7 @@ import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
 import { loadEntities } from './entity-helpers'
 import { setBaseRates } from '@/lib/utils/fx'
+import { sellCleanupTxIds } from '@/lib/utils/investment-links'
 import { useTransactionStore } from './transactions.store'
 import { isTefasAsset, tefasCode, tefasCodesIn } from '@/lib/tefas'
 import type {
@@ -150,11 +151,11 @@ async function createSellLinkedTxs(
   targetAccountId: string,
   asset: InvestmentAsset,
   quantity: number,
-  total: number,      
-  costBasis: number,  
+  total: number,
+  costBasis: number,
   date: string,
   createdAt?: string,
-): Promise<string> {
+): Promise<{ saleId: string; pnlId?: string }> {
   const now        = createdAt ?? new Date().toISOString()
   const txStore    = useTransactionStore.getState()
   const label = assetLabel(asset)
@@ -178,6 +179,7 @@ async function createSellLinkedTxs(
   }
   await txStore.add(saleLinked)
 
+  let pnlId: string | undefined
   if (hasCost && Math.abs(pnl) >= 0.01) {
     const isPnlIncome = pnl > 0
     const pnlLinked: Transaction = {
@@ -196,36 +198,16 @@ async function createSellLinkedTxs(
       updatedAt:     now,
     }
     await txStore.add(pnlLinked)
+    pnlId = pnlLinked.id
   }
 
-  return saleLinked.id
+  return { saleId: saleLinked.id, pnlId }
 }
 
 async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void> {
-  if (!investTx.targetAccountId) return
-
-  const txStore    = useTransactionStore.getState()
-  const label = assetLabel(investTx.asset)
-
-  if (investTx.linkedTransactionId) {
-    await txStore.remove(investTx.linkedTransactionId, { undoable: false })
-    const pnlTx = txStore.transactions.find(t =>
-      t.accountId === investTx.targetAccountId &&
-      t.date === investTx.date &&
-      (t.description === `${label} Satış Kârı` || t.description === `${label} Satış Zararı`),
-    )
-    if (pnlTx) await txStore.remove(pnlTx.id, { undoable: false })
-    return
-  }
-
-  const toDelete = txStore.transactions.filter(t =>
-    (t.type === 'income' || t.type === 'expense') &&
-    t.accountId === investTx.targetAccountId &&
-    t.date === investTx.date &&
-    t.description.includes(label) &&
-    t.description.includes('Satış'),
-  )
-  for (const t of toDelete) await txStore.remove(t.id, { undoable: false })
+  const txStore = useTransactionStore.getState()
+  const ids = sellCleanupTxIds(investTx, assetLabel(investTx.asset), txStore.transactions)
+  for (const id of ids) await txStore.remove(id, { undoable: false })
 }
 
 /* ── Portfolio calculation ───────────────────────────────────────── */
@@ -316,6 +298,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
   addTransaction: async (tx) => {
     let linkedTransactionId: string | undefined
+    let pnlLinkedTransactionId: string | undefined
     const total = tx.quantity * tx.pricePerUnit
 
     if (tx.type === 'buy' && tx.sourceAccountId) {
@@ -326,12 +309,14 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       const holdings  = computeHoldings(get().transactions, null)
       const holding   = holdings.find(h => h.asset === tx.asset)
       const costBasis = holding ? tx.quantity * holding.avgCostPerUnit : 0
-      linkedTransactionId = await createSellLinkedTxs(
+      const linked = await createSellLinkedTxs(
         tx.targetAccountId, tx.asset, tx.quantity, total, costBasis, tx.date, tx.createdAt,
       )
+      linkedTransactionId    = linked.saleId
+      pnlLinkedTransactionId = linked.pnlId
     }
 
-    const finalTx = { ...tx, linkedTransactionId }
+    const finalTx = { ...tx, linkedTransactionId, pnlLinkedTransactionId }
     await localUpsert('investment_transactions', finalTx)
     set(s => ({ transactions: [finalTx, ...s.transactions] }))
 
@@ -351,6 +336,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     const newTx    = { ...oldTx, ...patch }
     const newTotal = newTx.quantity * newTx.pricePerUnit
     let linkedTransactionId: string | undefined
+    let pnlLinkedTransactionId: string | undefined
 
     if (newTx.type === 'buy' && newTx.sourceAccountId) {
       linkedTransactionId = await createLinkedTx(
@@ -361,12 +347,16 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       const holdings      = computeHoldings(txsWithoutOld, null)
       const holding       = holdings.find(h => h.asset === newTx.asset)
       const costBasis     = holding ? newTx.quantity * holding.avgCostPerUnit : 0
-      linkedTransactionId = await createSellLinkedTxs(
+      const linked = await createSellLinkedTxs(
         newTx.targetAccountId, newTx.asset, newTx.quantity, newTotal, costBasis, newTx.date, newTx.createdAt,
       )
+      linkedTransactionId    = linked.saleId
+      pnlLinkedTransactionId = linked.pnlId
     }
 
-    const finalPatch = { ...patch, linkedTransactionId }
+    // undefined bacaklar localPatch'te null'a çevrilip alanı temizler (buy'a
+    // dönüşen satışın eski P&L bağı kalıntı bırakmasın)
+    const finalPatch = { ...patch, linkedTransactionId, pnlLinkedTransactionId }
     await localPatch('investment_transactions', id, finalPatch as Record<string, unknown>)
     set(s => ({
       transactions: s.transactions.map(t => t.id === id ? { ...t, ...finalPatch } : t),
@@ -416,11 +406,14 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
 
           if (tx.targetAccountId) {
             await cleanSellLinkedTxs(tx)
-            const total       = tx.quantity * tx.pricePerUnit
-            const newLinkedId = await createSellLinkedTxs(
+            const total  = tx.quantity * tx.pricePerUnit
+            const linked = await createSellLinkedTxs(
               tx.targetAccountId, tx.asset, tx.quantity, total, costBasis, tx.date, tx.createdAt,
             )
-            await localPatch('investment_transactions', tx.id, { linkedTransactionId: newLinkedId })
+            await localPatch('investment_transactions', tx.id, {
+              linkedTransactionId:    linked.saleId,
+              pnlLinkedTransactionId: linked.pnlId,
+            })
           }
 
           const newQty = Math.max(0, pos.qty - tx.quantity)

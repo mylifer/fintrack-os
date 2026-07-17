@@ -242,6 +242,7 @@ export interface InvestmentTransaction {
   sourceAccountId?: string  // buy: account to debit from (optional)
   targetAccountId?: string  // sell: account to credit to (optional)
   linkedTransactionId?: string // id of the linked transaction in transactions table
+  pnlLinkedTransactionId?: string // sell: id of the linked "Satış Kârı/Zararı" P&L transaction
   date: string            // ISO 8601 date
   note?: string
   createdAt: string

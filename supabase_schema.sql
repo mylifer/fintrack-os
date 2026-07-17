@@ -204,6 +204,7 @@ alter table public.investment_transactions add column if not exists "pricePerUni
 alter table public.investment_transactions add column if not exists "sourceAccountId" text;
 alter table public.investment_transactions add column if not exists "targetAccountId" text;
 alter table public.investment_transactions add column if not exists "linkedTransactionId" text;
+alter table public.investment_transactions add column if not exists "pnlLinkedTransactionId" text;
 alter table public.investment_transactions add column if not exists "date" text;
 alter table public.investment_transactions add column if not exists "note" text;
 alter table public.investment_transactions add column if not exists "createdAt" text;
