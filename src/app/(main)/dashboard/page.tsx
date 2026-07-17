@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -60,20 +60,31 @@ export default function DashboardPage() {
   const prices       = useInvestmentStore(s => s.prices)
   const fundPrices   = useInvestmentStore(s => s.fundPrices)
   const investTxs    = useInvestmentStore(s => s.transactions)
+  const fetchPrices  = useInvestmentStore(s => s.fetchPrices)
+
+  // Yatırımlar sayfasındaki polling'in aynısı: açılıştaki tek fetch sessizce
+  // başarısız olursa fon/FX fiyatları dashboard'da da kendini toparlasın
+  useEffect(() => {
+    fetchPrices()
+    const id = setInterval(fetchPrices, 60 * 1000)
+    return () => clearInterval(id)
+  }, [fetchPrices])
   const holdings     = useMemo(
     () => prices ? computeHoldings(investTxs, prices, fundPrices) : [],
     [investTxs, prices, fundPrices],
   )
   const investValue  = useMemo(() => holdings.reduce((s, h) => s + h.currentValue, 0), [holdings])
-  // TEFAS fonlarının bugünkü değer artışı; net düşüşteyse gelire yansıtılmaz
-  const fundDailyGain = useMemo(() => {
-    const net = holdings.reduce((sum, h) => {
+  // TEFAS fonlarının son işlem günü net değer değişimi; artış gelire eklenir,
+  // net düşüş gelire yansıtılmaz ama kartta bilgi satırı olarak gösterilir
+  // (satır tamamen kaybolursa "fonlar görünmüyor" sanılıyordu).
+  const fundDailyNet = useMemo(() => (
+    holdings.reduce((sum, h) => {
       if (!isTefasAsset(h.asset)) return sum
       const fp = fundPrices[tefasCode(h.asset)]
       return fp?.prevPrice ? sum + h.quantity * (fp.price - fp.prevPrice) : sum
     }, 0)
-    return net > 0 ? net : 0
-  }, [holdings, fundPrices])
+  ), [holdings, fundPrices])
+  const fundDailyGain = fundDailyNet > 0 ? fundDailyNet : 0
   const getBudgets   = useBudgetStore(s => s.getMonthBudgets)
   const getDueSoon   = useDebtStore(s => s.getDueSoon)
   const getActive    = useDebtStore(s => s.getActive)
@@ -164,11 +175,13 @@ export default function DashboardPage() {
             {
               label: `${prefix} · Gelir`,
               value: formatCompact(animIncome),
-              sub: fundDailyGain > 0
-                ? `${formatCompact(fundDailyGain)} günlük fon getirisi dahil`
-                : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
+              sub: fundDailyNet > 0
+                ? `${formatCompact(fundDailyNet)} günlük fon getirisi dahil`
+                : fundDailyNet < -0.005 // float tozu "−₺0" satırı üretmesin
+                  ? `−${formatCompact(Math.abs(fundDailyNet))} günlük fon değişimi (gelire eklenmedi)`
+                  : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
               ok: true,
-              trendDiff: prevFlow ? income - prevFlow.income : null,
+              trendDiff: prevFlow ? incomeTotal - prevFlow.income : null,
               betterWhenHigher: true,
             },
             {
