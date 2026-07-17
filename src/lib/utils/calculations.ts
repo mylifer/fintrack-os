@@ -201,6 +201,44 @@ export function calcNetRaw(transactions: Transaction[]): number {
   return sumFlow(transactions).net
 }
 
+// Bir (çağıran tarafından zaten kapsamlanmış: tarih/hesap/etiket/kişi) dilimi
+// türe göre toplar; para birimi TRY-normalize (baseAmount, S2/S3), kuruş-exact
+// (S8). Mutabakat AYIKLANMAZ — çağıran gösterdiği listeye ne dahilse onu geçirir
+// (işlem listesi özet çubuğu gibi). Akış metriklerinde mutabakatı dışlaması
+// gereken çağıranlar calcPeriodFlow/calcMonthlyFlow kullanmalı. Ham `amount`
+// toplayıp ₺+$ karıştıran her yüzeyin (etiket/kişi/bütçe/kategori/işlem özeti)
+// tek doğruluk kaynağı.
+export function sumByType(
+  transactions: Transaction[],
+): { income: number; expense: number; transfer: number } {
+  return {
+    income:   sumBy(transactions.filter(t => t.type === 'income'),   baseAmount),
+    expense:  sumBy(transactions.filter(t => t.type === 'expense'),  baseAmount),
+    transfer: sumBy(transactions.filter(t => t.type === 'transfer'), baseAmount),
+  }
+}
+
+// Giderleri bir anahtar (kategori/etiket vb.) altında TRY-normalize (baseAmount)
+// ve kuruş-exact (minor birim biriktirme, S8) gruplar. Yatırıma bağlı gider
+// satırları (`icon` işaretli) ve mutabakat ghost'ları dışlanır — kategori/etiket
+// dağılım grafikleriyle DetailedStats aynı kuralı paylaşsın diye. Dönen değerler
+// major-unit float; net'i ≤0 olan anahtarları çağıran ayıklar.
+export function sumExpenseByKey(
+  transactions: Transaction[],
+  keyOf: (t: Transaction) => string,
+): Map<string, number> {
+  const minor = new Map<string, number>()
+  for (const t of transactions) {
+    if (t.type !== 'expense' || t.icon) continue
+    if (isReconciliation(t)) continue
+    const k = keyOf(t)
+    minor.set(k, (minor.get(k) ?? 0) + toMinor(baseAmount(t)))
+  }
+  const out = new Map<string, number>()
+  for (const [k, m] of minor) out.set(k, toMajor(m))
+  return out
+}
+
 export function enrichDebt(debt: Debt): DebtWithRemaining {
   const remainingAmount = Math.max(0, subMoney(debt.totalAmount, debt.paidAmount))
   const progressPercent = debt.totalAmount > 0

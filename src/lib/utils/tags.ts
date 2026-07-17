@@ -1,4 +1,7 @@
 import type { Transaction } from '@/types'
+import { baseAmount } from './fx'
+import { toMinor, toMajor } from './money'
+import { isReconciliation } from './reconciliation'
 
 // ─── Normalization ───────────────────────────────────────────────────────────
 // Tags are free-form strings. We preserve the user's chosen display casing but
@@ -56,19 +59,26 @@ export interface TagAggregate {
 }
 
 /** Aggregate all unique tags across the given transactions. A transaction is
- *  counted once per distinct tag key even if it lists the tag twice. */
+ *  counted once per distinct tag key even if it lists the tag twice.
+ *
+ *  income/expense/volume are TRY-normalized (baseAmount, S2/S3) and accumulated
+ *  kuruş-exact in integer minor units (S8) — never a bare `amount` sum that
+ *  would add ₺ + $ as raw numbers. Balance-reconciliation ("Bakiye Eşitleme")
+ *  ghost entries are excluded entirely so the `#BakiyeEşitleme` tag never
+ *  surfaces as a row and its ghost volume never inflates any tag total. */
 export function aggregateTags(transactions: readonly Transaction[]): TagAggregate[] {
   interface Acc {
     key: string
     count: number
-    income: number
-    expense: number
+    incomeMinor: number
+    expenseMinor: number
     casings: Map<string, number>  // display casing → occurrences (insertion = first-seen)
   }
   const map = new Map<string, Acc>()
 
   for (const tx of transactions) {
     if (!tx.tags?.length) continue
+    if (isReconciliation(tx)) continue
     const seenInTx = new Set<string>()
     for (const raw of tx.tags) {
       const norm = normalizeTag(raw)
@@ -79,12 +89,12 @@ export function aggregateTags(transactions: readonly Transaction[]): TagAggregat
 
       let acc = map.get(key)
       if (!acc) {
-        acc = { key, count: 0, income: 0, expense: 0, casings: new Map() }
+        acc = { key, count: 0, incomeMinor: 0, expenseMinor: 0, casings: new Map() }
         map.set(key, acc)
       }
       acc.count++
-      if (tx.type === 'income')  acc.income  += tx.amount
-      if (tx.type === 'expense') acc.expense += tx.amount
+      if (tx.type === 'income')  acc.incomeMinor  += toMinor(baseAmount(tx))
+      if (tx.type === 'expense') acc.expenseMinor += toMinor(baseAmount(tx))
       acc.casings.set(norm, (acc.casings.get(norm) ?? 0) + 1)
     }
   }
@@ -97,13 +107,15 @@ export function aggregateTags(transactions: readonly Transaction[]): TagAggregat
     for (const [casing, n] of acc.casings) {
       if (n > bestN) { bestN = n; best = casing }
     }
+    const income  = toMajor(acc.incomeMinor)
+    const expense = toMajor(acc.expenseMinor)
     result.push({
       tag:     best,
       key:     acc.key,
       count:   acc.count,
-      income:  acc.income,
-      expense: acc.expense,
-      volume:  acc.income + acc.expense,
+      income,
+      expense,
+      volume:  toMajor(acc.incomeMinor + acc.expenseMinor),
     })
   }
 

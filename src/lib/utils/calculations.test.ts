@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Account, Budget, Debt, PriceData, Transaction } from '@/types'
-import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, isPosted } from './calculations'
+import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, isPosted, sumByType, sumExpenseByKey } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -96,6 +96,50 @@ describe('computeTransactionEffect (S2 balances)', () => {
     const txs = [tx({ type: 'transfer', amount: 100, currency: 'USD', accountId: 'usd', toAccountId: 'try', amountTry: 3450 })]
     expect(computeTransactionEffect(acc('usd', 'USD'), txs)).toBe(-100)   // native USD out
     expect(computeTransactionEffect(acc('try', 'TRY'), txs)).toBe(3450)   // TRY in
+  })
+})
+
+describe('sumByType (currency-safe per-type totals)', () => {
+  it('TRY-normalizes each type via baseAmount (never adds ₺+$ raw)', () => {
+    const r = sumByType([
+      tx({ type: 'income',  amount: 1000, amountTry: 1000 }),
+      tx({ type: 'income',  amount: 50, currency: 'USD', amountTry: 1725 }),   // 50 * 34.5
+      tx({ type: 'expense', amount: 300,  amountTry: 300 }),
+      tx({ type: 'expense', amount: 10, currency: 'USD', amountTry: 345 }),    // 10 * 34.5
+      tx({ type: 'transfer', amount: 200, amountTry: 200 }),
+    ])
+    expect(r.income).toBe(2725)
+    expect(r.expense).toBe(645)
+    expect(r.transfer).toBe(200)
+  })
+
+  it('is kuruş-exact (no float drift accumulating many rows)', () => {
+    const r = sumByType([
+      tx({ type: 'expense', amount: 0.1, amountTry: 0.1 }),
+      tx({ type: 'expense', amount: 0.2, amountTry: 0.2 }),
+    ])
+    expect(r.expense).toBe(0.3)
+  })
+
+  it('legacy foreign row (no amountTry) uses the live rate', () => {
+    const r = sumByType([tx({ type: 'income', amount: 100, currency: 'USD' })])
+    expect(r.income).toBe(3450)
+  })
+})
+
+describe('sumExpenseByKey (category/tag donut grouping)', () => {
+  it('groups expenses by key in TRY, skipping investment-linked & reconciliation', () => {
+    const m = sumExpenseByKey([
+      tx({ type: 'expense', amount: 100, amountTry: 100, categoryId: 'food' }),
+      tx({ type: 'expense', amount: 5, currency: 'USD', amountTry: 172.5, categoryId: 'food' }), // 5*34.5
+      tx({ type: 'expense', amount: 40, amountTry: 40, categoryId: 'transport' }),
+      tx({ type: 'income',  amount: 999, amountTry: 999, categoryId: 'food' }),                  // not expense
+      tx({ type: 'expense', amount: 500, amountTry: 500, categoryId: 'food', icon: 'Au' }),      // investment-linked
+      tx({ type: 'expense', amount: 700, amountTry: 700, categoryId: 'food', systemKind: 'reconciliation' }), // ghost
+    ], t => t.categoryId ?? '__none__')
+    expect(m.get('food')).toBe(272.5)
+    expect(m.get('transport')).toBe(40)
+    expect(m.size).toBe(2)
   })
 })
 
