@@ -7,7 +7,7 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   format, parseISO, startOfMonth, endOfMonth,
   subMonths, subDays, startOfYear, endOfYear,
-  differenceInDays, addMonths, addWeeks,
+  differenceInDays, addMonths, addWeeks, addDays,
   startOfWeek, endOfWeek,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -201,18 +201,30 @@ function buildTrendData(
   const to   = parseISO(dateRange.to)
   const todayStr = format(new Date(), 'yyyy-MM-dd')
 
-  // Ay sonu anlık görüntü tarihleri (artan). Gelecek aylar çizilmez — henüz
-  // işlenmemiş işlemlerle geri yürüyüş yapılamayacağından düz çizgi üretirler.
+  // Anlık görüntü tarihleri (artan). Kısa dönemlerde (≤ ~3 ay) günlük, uzunlarda
+  // ay sonu — "Bu Ay" gibi tek aya sığan dönemler aylık kovalamada tek noktaya
+  // düşer ve AreaChart çizgi çizemez. Gelecek günler çizilmez — henüz işlenmemiş
+  // işlemlerle geri yürüyüş yapılamayacağından düz çizgi üretirler.
   const snaps: { label: string; snap: string }[] = []
-  let mStart = startOfMonth(from)
-  while (mStart <= to) {
-    if (format(mStart, 'yyyy-MM-dd') > todayStr) break
-    const mEnd = endOfMonth(mStart)
-    snaps.push({
-      label: format(mStart, 'MMM yy', { locale: tr }),
-      snap:  format(mEnd > to ? to : mEnd, 'yyyy-MM-dd'),
-    })
-    mStart = addMonths(mStart, 1)
+  if (differenceInDays(to, from) + 1 <= 92) {
+    let d = from
+    while (d <= to) {
+      const ds = format(d, 'yyyy-MM-dd')
+      if (ds > todayStr) break
+      snaps.push({ label: format(d, 'd MMM', { locale: tr }), snap: ds })
+      d = addDays(d, 1)
+    }
+  } else {
+    let mStart = startOfMonth(from)
+    while (mStart <= to) {
+      if (format(mStart, 'yyyy-MM-dd') > todayStr) break
+      const mEnd = endOfMonth(mStart)
+      snaps.push({
+        label: format(mStart, 'MMM yy', { locale: tr }),
+        snap:  format(mEnd > to ? to : mEnd, 'yyyy-MM-dd'),
+      })
+      mStart = addMonths(mStart, 1)
+    }
   }
   if (snaps.length === 0) return []
 
