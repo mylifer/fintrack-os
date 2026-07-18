@@ -15,7 +15,7 @@ export function calcFundPeriodGain(
   history: Record<string, FundPricePoint[]>, // fon kodu → dönem başı öncesini de kapsayan günlük seri
   from: string,
   to: string,
-  daily: boolean, // 'Bugün': TEFAS'ın son iki kapanışı (yayın gecikmesi nedeniyle takvim günü birebir değildir)
+  daily: boolean, // 'Bugün': yalnızca TEFAS `to` günü (bugün) taze kapanış yayınladıysa son iki kapanış farkı; aksi halde 0
 ): number {
   let net = 0
   for (const code of tefasCodesIn(investTxs.map(t => t.asset))) {
@@ -45,7 +45,14 @@ export function calcFundPeriodGain(
 
     const fp = fundPrices[code]
     const dailyChange = fp?.prevPrice ? qty * (fp.price - fp.prevPrice) : 0
-    if (daily) { net += dailyChange; continue }
+    if (daily) {
+      // Günlük değişimi yalnızca TEFAS bugün (`to`) taze bir kapanış yayınladıysa
+      // say. Hafta sonu/tatilde son kapanış Cuma'nındır ve zaten Cuma
+      // gösterilmiştir; Pazartesi TEFAS yeni fiyatı yayınlayınca hafta sonu
+      // birikimi o gün yansır. Aksi halde aynı değişim Cts/Paz tekrar sayılırdı.
+      if (fp?.date === to) net += dailyChange
+      continue
+    }
 
     const pts  = history[code]
     const pNow = fp?.price ?? (pts?.length ? pts[pts.length - 1].price : undefined)

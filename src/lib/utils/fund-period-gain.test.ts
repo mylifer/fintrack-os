@@ -62,10 +62,16 @@ describe('calcFundPeriodGain', () => {
     expect(calcFundPeriodGain(txs, FP, {}, '1900-01-01', '2099-12-31', false)).toBeCloseTo(300, 6)
   })
 
-  it("'Bugün': son iki kapanış farkı × eldeki miktar", () => {
+  it("'Bugün': TEFAS bugün taze kapanış yayınladıysa son iki kapanış farkı × eldeki miktar", () => {
     const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 80, date: '2026-05-01' })]
-    // 10 × (130 − 125)
-    expect(calcFundPeriodGain(txs, FP, {}, '2026-07-18', '2026-07-18', true)).toBeCloseTo(50, 6)
+    // to = fiyat tarihi (2026-07-17) → taze: 10 × (130 − 125)
+    expect(calcFundPeriodGain(txs, FP, {}, '2026-07-17', '2026-07-17', true)).toBeCloseTo(50, 6)
+  })
+
+  it("'Bugün': fiyat bayatsa (hafta sonu/tatil, son kapanış ≠ bugün) günlük getiri 0", () => {
+    const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 80, date: '2026-05-01' })]
+    // to = Pazar (2026-07-19); son kapanış Cuma (FP.date 2026-07-17) → 0
+    expect(calcFundPeriodGain(txs, FP, {}, '2026-07-19', '2026-07-19', true)).toBe(0)
   })
 
   it('geçmiş seri yüklenemezse günlük değişime düşer', () => {
