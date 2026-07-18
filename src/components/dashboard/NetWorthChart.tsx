@@ -125,7 +125,13 @@ export function NetWorthChart() {
       points[i].delta = Math.round((points[i].netWorth - points[i - 1].netWorth) * 100) / 100
     }
 
-    return points
+    // Baştaki düz kısmı kırp: net varlığı hiç oynatmayan erken günler (kendi
+    // hesapları arası transferler, yatırım alımları vb.) grafiği boş bir yatay
+    // çizgiyle başlatır. İlk gerçek harekete kadar olan günleri at; son düz gün,
+    // ilk yükselişin çıkış noktası olarak korunur.
+    let start = 0
+    while (start < points.length - 1 && points[start + 1].delta === 0) start++
+    return start > 0 && points.length - start >= 2 ? points.slice(start) : points
   }, [transactions, currentNW, investTxs, prices, fundPrices])
 
   const { data, trendLabel } = useMemo(() => {
