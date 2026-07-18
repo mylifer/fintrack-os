@@ -8,9 +8,10 @@ import { Header } from '@/components/layout/Header'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAccountStore, useRecurringStore, useInvestmentStore, useTransactionStore } from '@/store'
-import { computeHoldings } from '@/store/investment.store'
+import { computeHoldings, getAssetPrice } from '@/store/investment.store'
 import { isTefasAsset } from '@/lib/tefas'
 import { buildForecast, type ForecastMode } from '@/lib/utils/forecast'
+import { buildBalanceHistory, type InvestEvent } from '@/lib/utils/balance-history'
 import { sumBy } from '@/lib/utils/money'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
@@ -22,11 +23,18 @@ const Chart = dynamic(() => import('@/components/forecast/_ForecastChart'), {
   ),
 })
 
-const HORIZONS: { months: number; label: string }[] = [
-  { months: 3,  label: '3 Ay'  },
-  { months: 6,  label: '6 Ay'  },
-  { months: 12, label: '12 Ay' },
+type Horizon = number | 'all'
+
+const HORIZONS: { key: Horizon; label: string }[] = [
+  { key: 3,     label: '3 Ay'  },
+  { key: 6,     label: '6 Ay'  },
+  { key: 12,    label: '12 Ay' },
+  { key: 'all', label: 'Tüm Zamanlar' },
 ]
+
+// 'Tüm Zamanlar' geçmişin tamamını gösterir; ileri projeksiyon en geniş
+// standart ufukla (12 ay) devam eder.
+const ALL_TIME_FORWARD_MONTHS = 12
 
 const INITIAL_EVENT_COUNT = 15
 
@@ -53,10 +61,13 @@ export default function ForecastPage() {
     }
   }, [investTxs, prices, fundPrices])
 
-  const [horizonMonths, setHorizonMonths] = useState(6)
+  const [horizon, setHorizon] = useState<Horizon>(6)
   const [mode, setMode] = useState<ForecastMode>('total')
   const [showAllEvents, setShowAllEvents] = useState(false)
   const todayStr = today()
+
+  const allTime = horizon === 'all'
+  const horizonMonths = allTime ? ALL_TIME_FORWARD_MONTHS : horizon
 
   const forecast = useMemo(
     () => buildForecast({ accounts, recurring, transactions, prices, investmentsTry, fundsTry, horizonMonths, todayStr, mode }),
@@ -66,6 +77,29 @@ export default function ForecastPage() {
   const isLoading = !accountsReady || !recurringReady
   const { points, horizonEnd, shortfallDate, totalIncome, totalExpense, net, drivers, events } = forecast
 
+  // Yatırım defteri satırları, güncel birim fiyatla TRY'ye çevrilmiş halde —
+  // geçmiş yürüyüşü de projeksiyon gibi fiyatları sabit tutar.
+  const investEvents = useMemo<InvestEvent[]>(() => {
+    if (!prices) return []
+    return investTxs.map(tx => ({
+      date: tx.date.slice(0, 10),
+      type: tx.type === 'buy' ? 'buy' as const : 'sell' as const,
+      valueTry: tx.quantity * getAssetPrice(tx.asset, prices, fundPrices),
+      isTefas: isTefasAsset(tx.asset),
+    }))
+  }, [investTxs, prices, fundPrices])
+
+  // 'Tüm Zamanlar': ilk işlem tarihinden bugüne gerçek bakiye geçmişi.
+  // Bugünün noktası projeksiyonun ilk noktasıyla aynı değerdir; grafikte
+  // teklemesin diye geçmişin son (bugün) noktası atılır.
+  const history = useMemo(
+    () => allTime
+      ? buildBalanceHistory({ accounts, transactions, investEvents, mode, todayStr, endBalance: points[0]?.balance ?? 0 })
+      : null,
+    [allTime, accounts, transactions, investEvents, mode, todayStr, points],
+  )
+  const chartPoints = history ? [...history.slice(0, -1), ...points] : points
+
   const visibleEvents = showAllEvents ? events : events.slice(0, INITIAL_EVENT_COUNT)
 
   const startBalance = points[0]?.balance ?? 0
@@ -73,7 +107,7 @@ export default function ForecastPage() {
   const delta        = endBalance - startBalance
   const up           = delta >= 0
 
-  const horizonLabel = HORIZONS.find(h => h.months === horizonMonths)?.label ?? `${horizonMonths} Ay`
+  const horizonLabel = `${horizonMonths} Ay`
   const maxDriver    = drivers[0]?.monthlyEquivTry ?? 0
 
   return (
@@ -89,11 +123,11 @@ export default function ForecastPage() {
             <div className="flex items-center gap-1">
               {HORIZONS.map(h => (
                 <button
-                  key={h.months}
-                  onClick={() => { setHorizonMonths(h.months); setShowAllEvents(false) }}
+                  key={h.key}
+                  onClick={() => { setHorizon(h.key); setShowAllEvents(false) }}
                   className={[
                     'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap',
-                    horizonMonths === h.months
+                    horizon === h.key
                       ? 'bg-secondary text-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
                   ].join(' ')}
@@ -131,7 +165,7 @@ export default function ForecastPage() {
               <div className="h-8 w-40 bg-muted rounded animate-pulse" />
             </CardContent>
           </Card>
-        ) : drivers.length === 0 && points.length <= 1 ? (
+        ) : drivers.length === 0 && chartPoints.length <= 1 ? (
           <EmptyState
             icon="📈"
             title="Tahmin için yeterli veri yok"
@@ -195,7 +229,7 @@ export default function ForecastPage() {
                 </span>
               </div>
               <CardContent className="p-0 py-4">
-                <Chart points={points} shortfallDate={shortfallDate} events={events} horizonEnd={horizonEnd} />
+                <Chart points={chartPoints} shortfallDate={shortfallDate} events={events} horizonEnd={horizonEnd} todayStr={todayStr} />
               </CardContent>
             </Card>
 

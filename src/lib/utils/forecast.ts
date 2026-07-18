@@ -82,7 +82,35 @@ export interface BuildForecastInput {
   mode?: ForecastMode  // default 'total'
 }
 
-const LIQUID_TYPES = new Set<AccountType>(['cash', 'checking', 'savings'])
+export const LIQUID_TYPES = new Set<AccountType>(['cash', 'checking', 'savings'])
+
+/* Signed TRY impact of one ledger movement on the given mode's balance, or
+   null if it doesn't move that balance at all. Shared by the forward forecast
+   and the backward balance-history walk (Tüm Zamanlar) so both views apply
+   identical mode semantics. Unknown accountId (e.g. archived, so not in the
+   array) falls back to liquid so cash mode degrades to total-mode behavior
+   instead of silently dropping the event. */
+export function makeEventDelta(accounts: Pick<Account, 'id' | 'type'>[], mode: ForecastMode) {
+  const cash = mode === 'cash'
+  const liquidById = new Map(accounts.map(a => [a.id, LIQUID_TYPES.has(a.type)]))
+  const isLiquid = (id: string) => liquidById.get(id) ?? true
+
+  return (type: TransactionType, amountTry: number, accountId: string, toAccountId?: string): number | null => {
+    if (!cash) {
+      if (type === 'income') return amountTry
+      if (type === 'expense') return -amountTry
+      return null  // transfers net to zero at aggregate level
+    }
+    const fromLiquid = isLiquid(accountId)
+    if (type === 'income') return fromLiquid ? amountTry : null
+    if (type === 'expense') return fromLiquid ? -amountTry : null
+    if (!toAccountId) return null
+    const toLiquid = isLiquid(toAccountId)
+    if (fromLiquid && !toLiquid) return -amountTry  // e.g. kredi kartı ödemesi
+    if (!fromLiquid && toLiquid) return amountTry
+    return null  // within the liquid pool (or entirely outside it)
+  }
+}
 
 // Average periods per month, used to express each frequency as a monthly figure
 // for the "drivers" display (Gregorian mean month = 30.4375 days).
@@ -105,29 +133,7 @@ export function buildForecast({
   mode = 'total',
 }: BuildForecastInput): ForecastResult {
   const cash = mode === 'cash'
-  // Unknown accountId (e.g. archived, so not in the array) falls back to
-  // liquid so cash mode degrades to total-mode behavior instead of silently
-  // dropping the event.
-  const liquidById = new Map(accounts.map(a => [a.id, LIQUID_TYPES.has(a.type)]))
-  const isLiquid = (id: string) => liquidById.get(id) ?? true
-
-  // Signed TRY impact of one occurrence on the projected balance, or null if
-  // it doesn't move this mode's balance at all.
-  const eventDelta = (type: TransactionType, amountTry: number, accountId: string, toAccountId?: string): number | null => {
-    if (!cash) {
-      if (type === 'income') return amountTry
-      if (type === 'expense') return -amountTry
-      return null  // transfers net to zero at aggregate level
-    }
-    const fromLiquid = isLiquid(accountId)
-    if (type === 'income') return fromLiquid ? amountTry : null
-    if (type === 'expense') return fromLiquid ? -amountTry : null
-    if (!toAccountId) return null
-    const toLiquid = isLiquid(toAccountId)
-    if (fromLiquid && !toLiquid) return -amountTry  // e.g. kredi kartı ödemesi
-    if (!fromLiquid && toLiquid) return amountTry
-    return null  // within the liquid pool (or entirely outside it)
-  }
+  const eventDelta = makeEventDelta(accounts, mode)
 
   // 'total' carries the whole portfolio; 'cash' only its near-cash TEFAS slice.
   const startAccounts = cash ? accounts.filter(a => LIQUID_TYPES.has(a.type)) : accounts

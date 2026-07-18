@@ -76,9 +76,10 @@ interface Props {
   shortfallDate: string | null
   events?: ForecastEvent[]
   horizonEnd?: string  // yyyy-MM-dd — extend the daily series to this date
+  todayStr?: string    // yyyy-MM-dd — marks today when the series starts in the past
 }
 
-export default function ForecastAreaChart({ points, shortfallDate, events = [], horizonEnd }: Props) {
+export default function ForecastAreaChart({ points, shortfallDate, events = [], horizonEnd, todayStr }: Props) {
   if (points.length < 2) {
     return (
       <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
@@ -126,6 +127,15 @@ export default function ForecastAreaChart({ points, shortfallDate, events = [], 
       monthTicks.push(d.date)
     }
   }
+  // Long (Tüm Zamanlar) series: add the year to the labels and thin the ticks
+  // so a multi-year axis stays readable (~12 labels max).
+  const multiYear = data.length > 366
+  const tickStep = Math.max(1, Math.ceil(monthTicks.length / 12))
+  const xTicks = tickStep > 1 ? monthTicks.filter((_, i) => i % tickStep === 0) : monthTicks
+  const tickFmt = multiYear ? "MMM ''yy" : tickStep > 1 ? 'MMM' : 'MMMM'
+
+  // With history in view, mark where the actual past ends and the projection begins.
+  const showTodayRef = Boolean(todayStr && data[0].date < todayStr && data.at(-1)!.date > todayStr)
 
   const values = data.map(d => d.balance)
   const ticks  = niceYTicks(Math.min(...values), Math.max(...values))
@@ -149,9 +159,9 @@ export default function ForecastAreaChart({ points, shortfallDate, events = [], 
             tickLine={false}
             axisLine={false}
             dy={6}
-            ticks={monthTicks}
+            ticks={xTicks}
             interval={0}
-            tickFormatter={d => formatDate(d as string, 'MMMM')}
+            tickFormatter={d => formatDate(d as string, tickFmt)}
             padding={{ left: 16, right: 16 }}
             tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.5 }}
           />
@@ -167,6 +177,15 @@ export default function ForecastAreaChart({ points, shortfallDate, events = [], 
           />
           {showZeroRef && (
             <ReferenceLine y={0} stroke="var(--destructive)" strokeOpacity={0.45} strokeDasharray="4 4" />
+          )}
+          {showTodayRef && (
+            <ReferenceLine
+              x={todayStr}
+              stroke="currentColor"
+              strokeOpacity={0.3}
+              strokeDasharray="4 4"
+              label={{ value: 'Bugün', position: 'insideTop', fontSize: 9, fill: 'currentColor', opacity: 0.5 }}
+            />
           )}
           <Tooltip
             content={<CustomTooltip />}
