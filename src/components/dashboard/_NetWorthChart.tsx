@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts'
 import { formatCompact, formatCurrency, formatAxisCompact } from '@/lib/utils/currency'
@@ -83,7 +83,15 @@ export default function NetWorthLineChart({ data }: Props) {
   return (
     <div className="w-full px-4">
       <ResponsiveContainer width="100%" height={240}>
-        <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+        <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+          <defs>
+            {/* Çizgi altı yumuşak gradyan dolgu — tepede belirgin, dibe doğru şeffaf */}
+            <linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor="var(--primary)" stopOpacity={0.28} />
+              <stop offset="70%"  stopColor="var(--primary)" stopOpacity={0.04} />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
           <CartesianGrid
             vertical={false}
             stroke="currentColor"
@@ -122,11 +130,15 @@ export default function NetWorthLineChart({ data }: Props) {
             content={<CustomTooltip />}
             cursor={{ stroke: 'currentColor', strokeOpacity: 0.12, strokeWidth: 1 }}
           />
-          <Line
+          <Area
             type="monotone"
             dataKey="netWorth"
             stroke="var(--primary)"
             strokeWidth={2}
+            fill="url(#nwFill)"
+            fillOpacity={1}
+            // Dolgu, çizgiden grafiğin dibine (alan alt sınırına) kadar iner
+            baseValue={ticks[0] ?? 0}
             dot={false}
             activeDot={{
               r: 4,
@@ -136,7 +148,7 @@ export default function NetWorthLineChart({ data }: Props) {
             }}
             isAnimationActive={false}
           />
-        </LineChart>
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   )
