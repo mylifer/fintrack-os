@@ -49,7 +49,10 @@ export default function ForecastPage() {
   const recurring      = useRecurringStore(s => s.recurring)
   const recurringReady = useRecurringStore(s => s.ready)
   const transactions   = useTransactionStore(s => s.transactions)
+  const txReady        = useTransactionStore(s => s.ready)
   const prices         = useInvestmentStore(s => s.prices)
+  const pricesError    = useInvestmentStore(s => s.pricesError)
+  const fundPricesLoading = useInvestmentStore(s => s.fundPricesLoading)
   const fundPrices     = useInvestmentStore(s => s.fundPrices)
   const investTxs      = useInvestmentStore(s => s.transactions)
   const { investmentsTry, fundsTry } = useMemo(() => {
@@ -74,7 +77,12 @@ export default function ForecastPage() {
     [accounts, recurring, transactions, prices, investmentsTry, fundsTry, horizonMonths, todayStr, mode],
   )
 
-  const isLoading = !accountsReady || !recurringReady
+  // Fiyatlar gelmeden (DataProvider açılışta çeker) tahmin portföysüz hesaplanır
+  // ve yanlış bir "eksiye düşebilir" uyarısı parlar — fiyat (veya fiyat hatası)
+  // ve işlem defteri hazır olana kadar iskelet göster. Hata durumunda beklemeyi
+  // bırakırız: eldeki veriyle dürüstçe çizeriz.
+  const pricesSettled = prices !== null || pricesError !== null
+  const isLoading = !accountsReady || !recurringReady || !txReady || !pricesSettled || fundPricesLoading
   const { points, horizonEnd, shortfallDate, totalIncome, totalExpense, net, drivers, events } = forecast
 
   // Yatırım defteri satırları, güncel birim fiyatla TRY'ye çevrilmiş halde —
