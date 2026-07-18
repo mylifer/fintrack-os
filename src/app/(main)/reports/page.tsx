@@ -400,21 +400,27 @@ export default function ReportsPage() {
     [preset, customFrom, customTo],
   )
 
+  // Analitik akış yüzeylerinin ortak temeli: yalnız İŞLENMİŞ satırlar (isPosted —
+  // pending/gelecek tarihli satırlar hiçbir gelir/gider toplamına girmez; bakiye
+  // ile aynı kural). Bakiye/net varlık trendleri ham `transactions` okumaya devam
+  // eder (kendi excludeFuture'ları var, ghost'ları da bilerek tutarlar).
+  const postedTxs = useMemo(() => excludeFuture(transactions), [transactions])
+
   // Base analytic scope: period + account filtered, with ghost balance-
   // reconciliation entries stripped out. Every income/expense aggregate below
   // (KPIs, cash-flow, category & tag donuts, drill-downs) derives from this, so
-  // reconciliation never inflates them. Balance/net-worth trends read the full
-  // `transactions` list instead and keep the ghosts (that IS the raw balance).
+  // reconciliation never inflates them.
   const filteredTxs = useMemo(() =>
-    transactions.filter(tx => {
-      if (tx.date < dateRange.from || tx.date > dateRange.to) return false
+    postedTxs.filter(tx => {
+      const d = tx.date.slice(0, 10)
+      if (d < dateRange.from || d > dateRange.to) return false
       if (isReconciliation(tx)) return false
       if (accountId !== 'all') {
         if (tx.accountId !== accountId && tx.toAccountId !== accountId) return false
       }
       return true
     }),
-    [transactions, dateRange, accountId],
+    [postedTxs, dateRange, accountId],
   )
 
   const kpi = useMemo(() => {
@@ -434,7 +440,7 @@ export default function ReportsPage() {
     () => buildTrendData(accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices),
     [accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices],
   )
-  const comparisonData  = useMemo(() => buildPeriodComparison(transactions, categories, dateRange, accountId), [transactions, categories, dateRange, accountId])
+  const comparisonData  = useMemo(() => buildPeriodComparison(postedTxs, categories, dateRange, accountId), [postedTxs, categories, dateRange, accountId])
 
   const activeTrendCat  = useMemo(() => {
     if (!trendCatKey) return comparisonData[0] ?? null
@@ -442,8 +448,8 @@ export default function ReportsPage() {
   }, [trendCatKey, comparisonData])
 
   const catTrendData    = useMemo(
-    () => activeTrendCat ? buildCategoryTrendData(transactions, activeTrendCat.categoryId) : [],
-    [transactions, activeTrendCat],
+    () => activeTrendCat ? buildCategoryTrendData(postedTxs, activeTrendCat.categoryId) : [],
+    [postedTxs, activeTrendCat],
   )
 
   const prevPeriodLabel = useMemo(() => {

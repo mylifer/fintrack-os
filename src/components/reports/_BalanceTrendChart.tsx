@@ -54,6 +54,10 @@ export function BalanceTrendChartInner({ data }: { data: TrendPoint[] }) {
             tickLine={false}
           />
           <YAxis
+            /* Bakiye negatife düşebilir (kredi kartı / eksi hesap); recharts'ın
+               varsayılan [0, auto] domain'i negatif kısmı kırpar. Pozitif
+               veride 0 taban korunur. */
+            domain={[(dataMin: number) => Math.min(0, dataMin), 'auto']}
             tickFormatter={v => formatAxisCompact(v as number)}
             tick={{ fontSize: 11, fill: '#71717a' }}
             axisLine={false}

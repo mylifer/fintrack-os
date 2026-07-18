@@ -47,6 +47,9 @@ export function CashFlowBarChartInner({ data }: { data: CashFlowPoint[] }) {
             tickLine={false}
           />
           <YAxis
+            /* İade ağırlıklı bir dönemde gelir/gider toplamı negatife düşebilir;
+               varsayılan [0, auto] domain negatif barı kırpar. */
+            domain={[(dataMin: number) => Math.min(0, dataMin), 'auto']}
             tickFormatter={v => formatAxisCompact(v as number)}
             tick={{ fontSize: 11, fill: '#71717a' }}
             axisLine={false}

@@ -37,9 +37,13 @@ export function CashflowChart() {
     })
   }, [transactions])
 
+  // Seçili dönem 6 aylık pencerenin dışındaysa uydurma bir "+₺0 net" göstermek
+  // yerine footer satırı gizlenir (null ≠ sıfır).
   const currentData = data.find(d => d.my.month === selectedPeriod.month && d.my.year === selectedPeriod.year)
-  const net = currentData ? currentData.income - currentData.expense : 0
-  const up  = net >= 0
+  const net = currentData ? currentData.income - currentData.expense : null
+  const up  = (net ?? 0) >= 0
+  const periodLabel = new Date(selectedPeriod.year, selectedPeriod.month - 1)
+    .toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
 
   return (
     <Card>
@@ -51,13 +55,17 @@ export function CashflowChart() {
         <Chart data={data} selectedPeriod={selectedPeriod} />
       </CardContent>
       <CardFooter className="flex-col items-start gap-2 text-sm">
-        <div className={`flex gap-2 font-medium leading-none ${up ? 'text-green-600' : 'text-destructive'}`}>
-          {up ? 'Bu ay +' : 'Bu ay '}{formatCompact(Math.abs(net))} net{' '}
-          {up ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-        </div>
-        <div className="text-muted-foreground leading-none">
-          Seçili dönem: {new Date(selectedPeriod.year, selectedPeriod.month - 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
-        </div>
+        {net !== null && (
+          <div className={`flex gap-2 font-medium leading-none ${up ? 'text-green-600' : 'text-destructive'}`}>
+            {periodLabel} {up ? '+' : '−'}{formatCompact(Math.abs(net))} net{' '}
+            {up ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+          </div>
+        )}
+        {net === null && (
+          <div className="text-muted-foreground leading-none">
+            Seçili dönem ({periodLabel}) grafikteki 6 aylık pencerenin dışında
+          </div>
+        )}
       </CardFooter>
     </Card>
   )

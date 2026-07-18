@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { formatCompact } from '@/lib/utils/currency'
+import { today } from '@/lib/utils/date'
 import { AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import type { AssetGroup, PricePoint } from '@/app/api/prices/history/route'
 
@@ -179,7 +180,10 @@ export function PriceHistoryChart({
   const chartData = useMemo((): ChartRow[] => {
     if (!priceHistory.length || !currentPrice || currentValue === undefined) return []
 
-    const today = new Date().toISOString().split('T')[0]
+    // Yerel gün — işlem tarihleri (today() util) ile aynı sözleşme; UTC gün
+    // TR saatiyle 00:00-03:00 arasında bir gün geride kalıp bugünkü alımı
+    // grafiğin dışında bırakıyordu.
+    const todayStr = today()
 
     // Quantity held at a given date (qtyTimeline sorted asc by date).
     // Returns 0 before any purchase and tracks each buy/sell accurately.
@@ -194,18 +198,18 @@ export function PriceHistoryChart({
 
     const portfolioAt = (date: string, price: number): number => qtyAt(date) * price
 
-    const allPrices     = priceHistory.map(p => p.price)
-    const allPortfolios = priceHistory.map(p => portfolioAt(p.date, p.price))
-
-    // Today's anchor uses the authoritative current value from the store
-    const todayPortfolio = currentValue
-    if (!priceHistory.some(p => p.date === today)) {
-      allPrices.push(currentPrice)
-      allPortfolios.push(todayPortfolio)
-    } else {
-      allPrices[allPrices.length - 1]        = currentPrice
-      allPortfolios[allPortfolios.length - 1] = todayPortfolio
+    // Satırlar ham (tarih, fiyat, değer) kurulur. Bugün seride YOKSA canlı
+    // kotasyon ankraj olarak eklenir; seride VARSA üzerine yazılmaz — geçmiş
+    // seri (fawazahmed spot türevi / TEFAS) ile canlı kaynak (Kapalıçarşı,
+    // ziynet premium'lu store değeri) farklı fiyat evrenleri: karışım son
+    // noktada her gün suni sıçrama ve tooltip'te sahte günlük % üretiyordu.
+    const rows = priceHistory.map(p => ({ date: p.date, price: p.price, value: portfolioAt(p.date, p.price) }))
+    if (!rows.some(r => r.date === todayStr)) {
+      rows.push({ date: todayStr, price: currentPrice, value: currentValue })
     }
+
+    const allPrices     = rows.map(r => r.price)
+    const allPortfolios = rows.map(r => r.value)
 
     // Portföy bandı yalnızca pozisyonun açık olduğu (değer > 0) günlere normalize
     // edilir. Alım öncesi 0'lar banda girince pencere içinde açılmış pozisyonlarda
@@ -233,19 +237,7 @@ export function PriceHistoryChart({
       realRawPrice: price,
     })
 
-    const data = priceHistory.map(p =>
-      makeRow(p.date, p.price, portfolioAt(p.date, p.price))
-    )
-
-    const todayRow = makeRow(today, currentPrice, todayPortfolio)
-    const last = data[data.length - 1]
-    if (!last || last.date < today) {
-      data.push(todayRow)
-    } else {
-      data[data.length - 1] = todayRow
-    }
-
-    return data
+    return rows.map(r => makeRow(r.date, r.price, r.value))
   }, [priceHistory, currentValue, currentPrice, qtyTimeline])
 
   // Her alımı grafikteki ilk >= tarihli satıra tuttur; satır yoksa son satıra.
@@ -474,7 +466,7 @@ export function PriceHistoryChart({
                             <div style={{ fontSize: 8, color: '#71717a', marginBottom: 1 }}>{RAW_PRICE_LABEL[asset]}</div>
                             <div style={{ fontSize: 12, fontWeight: 600, color: '#18181b', fontVariantNumeric: 'tabular-nums' }}>
                               ₺{fmtPrice(row.realRawPrice)}
-                              {dayPct !== null && (
+                              {dayPct !== null && dayPct !== 0 && (
                                 <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: dayPct >= 0 ? '#16a34a' : '#dc2626' }}>
                                   {dayPct >= 0 ? '▲' : '▼'}{Math.abs(dayPct).toFixed(2)}%
                                 </span>

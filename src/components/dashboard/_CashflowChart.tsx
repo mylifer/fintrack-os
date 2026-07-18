@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Bar, BarChart, CartesianGrid, XAxis,
+  Bar, BarChart, CartesianGrid, XAxis, YAxis,
 } from 'recharts'
 import {
   ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent,
@@ -38,14 +38,33 @@ export default function CashflowBarChart({ data }: Props) {
           tickMargin={10}
           axisLine={false}
         />
+        {/* İade ağırlıklı ayda toplam negatife düşebilir; varsayılan [0,auto]
+            domain negatif barı kırpar. Eksen gizli, yalnız domain için. */}
+        <YAxis hide domain={[(dataMin: number) => Math.min(0, dataMin), 'auto']} />
         <ChartTooltip
           cursor={false}
           content={
             <ChartTooltipContent
-              formatter={(value, name) => [
-                formatCompact(Number(value)),
-                chartConfig[name as keyof typeof chartConfig]?.label ?? name,
-              ]}
+              /* ChartTooltipContent, formatter dönüşünü satırın TAMAMI olarak
+                 render eder — [değer, isim] tuple'ı recharts'ın kendi Tooltip
+                 sözleşmesidir ve burada bitişik metin olarak basılır. Satır
+                 (gösterge + isim + değer) burada eksiksiz kurulur. */
+              formatter={(value, name) => (
+                <div className="flex w-full items-center gap-2">
+                  <div
+                    className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                    style={{ background: `var(--color-${name})` }}
+                  />
+                  <div className="flex flex-1 items-center justify-between gap-4 leading-none">
+                    <span className="text-muted-foreground">
+                      {chartConfig[name as keyof typeof chartConfig]?.label ?? name}
+                    </span>
+                    <span className="text-foreground font-medium tabular-nums">
+                      {formatCompact(Number(value))}
+                    </span>
+                  </div>
+                </div>
+              )}
             />
           }
         />

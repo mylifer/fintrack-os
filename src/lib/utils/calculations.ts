@@ -181,7 +181,13 @@ export function calcPeriodFlow(
   from: string,
   to: string,
 ): { income: number; expense: number; net: number } {
-  const inRange = transactions.filter(tx => tx.date >= from && tx.date <= to && !isReconciliation(tx))
+  // isPosted: onay bekleyen (pending) ve tarihi gelmemiş satırlar hiçbir akış
+  // toplamına girmez — bakiyelerle aynı kural (tek doğruluk kaynağı).
+  // slice(0,10): legacy tam-ISO datetime tarih de gün sınırında doğru kıyaslanır.
+  const inRange = transactions.filter(tx => {
+    const d = tx.date.slice(0, 10)
+    return d >= from && d <= to && isPosted(tx) && !isReconciliation(tx)
+  })
   return sumFlow(inRange)
 }
 
@@ -190,7 +196,8 @@ export function calcMonthlyFlow(
   my: MonthYear,
 ): { income: number; expense: number; net: number } {
   const { from, to } = monthRange(my)
-  const inRange = transactions.filter(tx => isInRange(tx.date, from, to) && !isReconciliation(tx))
+  // isPosted: calcPeriodFlow ile aynı kural — pending/gelecek satırlar akışa girmez
+  const inRange = transactions.filter(tx => isInRange(tx.date, from, to) && isPosted(tx) && !isReconciliation(tx))
   return sumFlow(inRange)
 }
 

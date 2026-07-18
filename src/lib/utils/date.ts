@@ -50,7 +50,9 @@ export function isInRange(date: string, from: string, to: string): boolean {
   // Tolerate a reversed range (user enters dateTo < dateFrom): isWithinInterval
   // throws RangeError when start > end, which would crash the filter.
   if (start > end) [start, end] = [end, start]
-  return isWithinInterval(parseISO(date), { start, end })
+  // slice(0,10): legacy tam-ISO datetime tarih (isPosted ile aynı tolerans) —
+  // '2026-07-31T15:00' aralığın son günü 00:00'ından büyük diye ay dışına düşmesin
+  return isWithinInterval(parseISO(date.slice(0, 10)), { start, end })
 }
 
 export function prevMonth(my: MonthYear): MonthYear {

@@ -49,6 +49,10 @@ export function CategoryTrendChartInner({ data, color }: { data: CategoryTrendPo
             tickLine={false}
           />
           <YAxis
+            /* İade ağırlıklı bir ay negatife düşebilir; varsayılan [0, auto]
+               domain noktayı çizim alanı dışına taşırır. Pozitif veride 0
+               taban korunur, negatifte alt sınır genişler. */
+            domain={[(dataMin: number) => Math.min(0, dataMin), 'auto']}
             tickFormatter={v => formatAxisCompact(v as number)}
             tick={{ fontSize: 11, fill: '#71717a' }}
             axisLine={false}

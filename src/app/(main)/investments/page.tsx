@@ -128,7 +128,7 @@ export default function InvestmentsPage() {
       }))
 
       // Build gram-quantity timeline from all gold txs (buys + sells)
-      const sortedGold = [...goldTxs].sort((a, b) => a.date.localeCompare(b.date))
+      const sortedGold = [...goldTxs].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt))
       let cumGrams = 0
       const goldQtyTimeline: QtyPoint[] = sortedGold.map(t => {
         const mult = GRAM_MULT[t.asset] ?? 1
@@ -159,7 +159,7 @@ export default function InvestmentsPage() {
         totalCost: t.quantity * t.pricePerUnit,
       }))
 
-      const sortedTxs = [...assetTxs].sort((a, b) => a.date.localeCompare(b.date))
+      const sortedTxs = [...assetTxs].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt))
       let cumQty = 0
       const qtyTimeline: QtyPoint[] = sortedTxs.map(t => {
         cumQty = Math.max(0, cumQty + (t.type === 'buy' ? t.quantity : -t.quantity))
@@ -190,7 +190,7 @@ export default function InvestmentsPage() {
         totalCost: t.quantity * t.pricePerUnit,
       }))
 
-      const sortedTxs = [...fundTxs].sort((a, b) => a.date.localeCompare(b.date))
+      const sortedTxs = [...fundTxs].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt))
       let cumQty = 0
       const qtyTimeline: QtyPoint[] = sortedTxs.map(t => {
         cumQty = Math.max(0, cumQty + (t.type === 'buy' ? t.quantity : -t.quantity))

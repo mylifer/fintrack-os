@@ -45,9 +45,17 @@ export async function fetchTefasSeries(
     const body = await res.json()
     const rows: RawRow[] = Array.isArray(body?.resultList) ? body.resultList : []
 
-    const points: TefasPoint[] = rows
-      .filter(r => typeof r.fiyat === 'number' && r.fiyat > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.tarih ?? ''))
-      .map(r => ({ date: r.tarih!, price: r.fiyat! }))
+    // Tarih bazlı tekilleştirme: TEFAS aynı `tarih`i iki kez döndürürse grafikte
+    // yinelenen dataKey oluşur; recharts hover'da (findEntryInArray) hep ilk
+    // eşleşeni gösterir. Aynı tarih için son satır tutulur.
+    const byDate = new Map<string, number>()
+    for (const r of rows) {
+      if (typeof r.fiyat === 'number' && r.fiyat > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.tarih ?? '')) {
+        byDate.set(r.tarih!, r.fiyat!)
+      }
+    }
+    const points: TefasPoint[] = [...byDate.entries()]
+      .map(([date, price]) => ({ date, price }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
     if (!points.length) return null

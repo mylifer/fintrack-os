@@ -217,7 +217,11 @@ export function computeHoldings(
   prices: PriceData | null,
   fundPrices?: Record<string, TefasFundPrice>,
 ): InvestmentHolding[] {
-  const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date))
+  // createdAt tiebreak: aynı gün al+sat sırası belirsiz kalırsa Math.max(0,…)
+  // kırpması qty'yi şişirebilir (satış önce işlenirse). Grafik zaman çizelgesi
+  // (investments/page.tsx) ile aynı sıralama — özet ve grafik hizalı kalsın.
+  const sorted = [...transactions].sort((a, b) =>
+    a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt))
 
   const map = new Map<InvestmentAsset, { qty: number; totalCost: number }>()
   for (const tx of sorted) {

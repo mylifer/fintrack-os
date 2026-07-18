@@ -44,11 +44,28 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick }: Pro
     )
   }
 
-  const top        = data.slice(0, 8)
+  // İlk 8 dilim + kalanı "Diğer" olarak TEK dilimde. Recharts yay açılarını
+  // verilen dilimler üzerinden normalize eder; kalan kategoriler çizilmezse
+  // görünen yaylar etiketlerindeki yüzdeden büyük olur ve merkezdeki Toplam
+  // (tüm veri) ile dilimler tutmaz.
+  const OTHER_ID = '__other__'
+  const rest = data.slice(8)
+  const top: CategorySlice[] = rest.length === 0 ? data.slice(0, 8) : [
+    ...data.slice(0, 8),
+    {
+      categoryId: OTHER_ID,
+      name:       'Diğer',
+      amount:     sumBy(rest, d => d.amount),
+      percent:    rest.reduce((s, d) => s + d.percent, 0),
+      color:      '#9CA3AF',
+    },
+  ]
   const totalLabel = formatCurrency(sumBy(data, d => d.amount))
 
   const handlePieClick = (pieData: any, index: number) => {
-    onSliceClick(pieData as CategorySlice, index)
+    const slice = pieData as CategorySlice
+    if (slice.categoryId === OTHER_ID) return  // "Diğer" toplama dilimi — drill-down hedefi yok
+    onSliceClick(slice, index)
   }
 
   return (
@@ -118,7 +135,7 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick }: Pro
           return (
             <button
               key={i}
-              onClick={() => onSliceClick(slice, i)}
+              onClick={() => handlePieClick(slice, i)}
               className={[
                 'flex items-center gap-2 min-w-0 rounded-lg px-1.5 py-1 -mx-1.5 text-left transition-colors',
                 isActive  ? 'bg-muted/50' : 'hover:bg-accent',

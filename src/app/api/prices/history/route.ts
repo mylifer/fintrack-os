@@ -42,7 +42,13 @@ function usdUrls(tag: string): string[] {
 }
 
 async function fetchUsd(date: string): Promise<Record<string, number> | null> {
-  for (const tag of [date, 'latest']) {
+  // 'latest' yedeği YALNIZ son 1-2 gün için: eski bir tarihe bugünün kuru
+  // yazılırsa grafiğin geçmiş ucu bugünkü değerde düzleşir / seri ortasında
+  // sivri uç oluşur ve bu yanlış değer süreç önbelleğine kalıcı mühürlenir.
+  const cutoff = new Date()
+  cutoff.setUTCDate(cutoff.getUTCDate() - 1)
+  const tags = date >= cutoff.toISOString().split('T')[0] ? [date, 'latest'] : [date]
+  for (const tag of tags) {
     for (const url of usdUrls(tag)) {
       try {
         const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6_000) })
