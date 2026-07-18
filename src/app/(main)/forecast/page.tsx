@@ -64,7 +64,7 @@ export default function ForecastPage() {
   )
 
   const isLoading = !accountsReady || !recurringReady
-  const { points, shortfallDate, totalIncome, totalExpense, net, drivers, events } = forecast
+  const { points, horizonEnd, shortfallDate, totalIncome, totalExpense, net, drivers, events } = forecast
 
   const visibleEvents = showAllEvents ? events : events.slice(0, INITIAL_EVENT_COUNT)
 
@@ -195,7 +195,7 @@ export default function ForecastPage() {
                 </span>
               </div>
               <CardContent className="p-0 py-4">
-                <Chart points={points} shortfallDate={shortfallDate} events={events} />
+                <Chart points={points} shortfallDate={shortfallDate} events={events} horizonEnd={horizonEnd} />
               </CardContent>
             </Card>
 

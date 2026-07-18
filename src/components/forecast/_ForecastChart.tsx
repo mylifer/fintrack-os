@@ -4,6 +4,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ReferenceDot, ResponsiveContainer,
 } from 'recharts'
+import { addDays, format, parseISO } from 'date-fns'
 import { formatCompact, formatCurrency, formatAxisCompact } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import type { ForecastEvent, ForecastPoint } from '@/lib/utils/forecast'
@@ -74,9 +75,10 @@ interface Props {
   points: ForecastPoint[]
   shortfallDate: string | null
   events?: ForecastEvent[]
+  horizonEnd?: string  // yyyy-MM-dd — extend the daily series to this date
 }
 
-export default function ForecastAreaChart({ points, shortfallDate, events = [] }: Props) {
+export default function ForecastAreaChart({ points, shortfallDate, events = [], horizonEnd }: Props) {
   if (points.length < 2) {
     return (
       <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
@@ -92,12 +94,27 @@ export default function ForecastAreaChart({ points, shortfallDate, events = [] }
     else eventsByDate.set(e.date, [e])
   }
 
-  const data: ChartRow[] = points.map(p => ({
-    date:      p.date,
-    balance:   p.balance,
-    fullLabel: formatDate(p.date),
-    events:    eventsByDate.get(p.date) ?? [],
-  }))
+  // Densify the sparse event-day points into one row per calendar day, carrying
+  // the balance forward on quiet days, so the tooltip walks the chart gün gün.
+  const lastPointDate = points[points.length - 1].date
+  const endDate = horizonEnd && horizonEnd > lastPointDate ? horizonEnd : lastPointDate
+  const data: ChartRow[] = []
+  let idx = 0
+  let balance = points[0].balance
+  for (let d = parseISO(points[0].date); ; d = addDays(d, 1)) {
+    const date = format(d, 'yyyy-MM-dd')
+    while (idx < points.length && points[idx].date <= date) {
+      balance = points[idx].balance
+      idx++
+    }
+    data.push({
+      date,
+      balance,
+      fullLabel: formatDate(date),
+      events: eventsByDate.get(date) ?? [],
+    })
+    if (date >= endDate) break
+  }
 
   // One tick per month: the first data point of each month on the axis.
   const seenMonths = new Set<string>()

@@ -45,6 +45,7 @@ export interface ForecastEvent {
 
 export interface ForecastResult {
   points: ForecastPoint[]
+  horizonEnd: string            // yyyy-MM-dd — last date the projection covers
   shortfallDate: string | null  // first date the running balance goes < 0, else null
   totalIncome: number           // sum of positive deltas over the horizon (TRY)
   totalExpense: number          // absolute sum of negative deltas over the horizon (TRY)
@@ -218,5 +219,5 @@ export function buildForecast({
     })
     .sort((a, b) => b.monthlyEquivTry - a.monthlyEquivTry)
 
-  return { points, shortfallDate, totalIncome, totalExpense, net, drivers, events: eventRows }
+  return { points, horizonEnd, shortfallDate, totalIncome, totalExpense, net, drivers, events: eventRows }
 }

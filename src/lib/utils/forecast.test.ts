@@ -51,6 +51,7 @@ describe('buildForecast — pure cash-flow projection', () => {
   it('no recurring → flat line at the current balance', () => {
     const f = buildForecast({ accounts: [account({ balance: 5000 })], recurring: [], horizonMonths: 6, todayStr: TODAY })
     expect(f.points).toEqual([{ date: TODAY, balance: 5000 }])
+    expect(f.horizonEnd).toBe('2026-07-01')
     expect(f.shortfallDate).toBeNull()
     expect(f.totalIncome).toBe(0)
     expect(f.totalExpense).toBe(0)
