@@ -1,5 +1,5 @@
 import type { Account, Transaction } from '@/types'
-import { makeEventDelta, type ForecastMode, type ForecastPoint } from './forecast'
+import { makeEventDelta, type ForecastEvent, type ForecastMode, type ForecastPoint } from './forecast'
 import { excludeFuture } from './calculations'
 import { baseAmount } from './fx'
 import { addMoney, subMoney } from './money'
@@ -29,9 +29,19 @@ import { addMoney, subMoney } from './money'
 
 export interface InvestEvent {
   date: string             // yyyy-MM-dd
+  name: string             // display label, e.g. "GLD alımı"
   type: 'buy' | 'sell'
   valueTry: number         // quantity × current unit price, in TRY
   isTefas: boolean
+}
+
+// One past movement, for the chart tooltip — same shape as a forecast event
+// minus the running balance (the tooltip doesn't show it).
+export type HistoryEvent = Omit<ForecastEvent, 'balanceAfter'>
+
+export interface BalanceHistory {
+  points: ForecastPoint[]
+  events: HistoryEvent[]   // every counted movement, date asc
 }
 
 export interface BuildBalanceHistoryInput {
@@ -50,24 +60,29 @@ export function buildBalanceHistory({
   mode = 'total',
   todayStr,
   endBalance,
-}: BuildBalanceHistoryInput): ForecastPoint[] {
+}: BuildBalanceHistoryInput): BalanceHistory {
   const eventDelta = makeEventDelta(accounts, mode)
 
-  // Fold every posted movement into a signed TRY delta per day.
+  // Fold every posted movement into a signed TRY delta per day, keeping a
+  // per-movement row alongside for the chart tooltip.
   const dayDelta = new Map<string, number>()
-  const add = (date: string, delta: number) =>
+  const events: HistoryEvent[] = []
+  const add = (date: string, delta: number, name: string) => {
     dayDelta.set(date, addMoney(dayDelta.get(date) ?? 0, delta))
+    events.push({ date, name, type: delta >= 0 ? 'income' : 'expense', amountTry: Math.abs(delta) })
+  }
 
   for (const t of excludeFuture(transactions, todayStr)) {
     const delta = eventDelta(t.type, baseAmount(t), t.accountId, t.toAccountId)
-    if (delta !== null) add(t.date.slice(0, 10), delta)
+    if (delta !== null) add(t.date.slice(0, 10), delta, t.description || t.merchant || 'İşlem')
   }
   for (const e of investEvents) {
     const d = e.date.slice(0, 10)
     if (d > todayStr) continue
     if (mode === 'cash' && !e.isTefas) continue
-    add(d, e.type === 'buy' ? e.valueTry : -e.valueTry)
+    add(d, e.type === 'buy' ? e.valueTry : -e.valueTry, e.name)
   }
+  events.sort((a, b) => a.date.localeCompare(b.date))
 
   // Walk backward from today's balance, undoing each active day's delta.
   // Point for day d = end-of-day balance; days without activity are implied
@@ -80,5 +95,5 @@ export function buildBalanceHistory({
     if (d < todayStr) reversed.push({ date: d, balance: running })
     running = subMoney(running, dayDelta.get(d)!)
   }
-  return reversed.reverse()
+  return { points: reversed.reverse(), events }
 }

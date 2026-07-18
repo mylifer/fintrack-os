@@ -37,23 +37,28 @@ describe('buildBalanceHistory — backward daily walk', () => {
 
   it('no transactions → single point at today', () => {
     const h = buildBalanceHistory({ accounts: [account()], transactions: [], todayStr: TODAY, endBalance: 5000 })
-    expect(h).toEqual([{ date: TODAY, balance: 5000 }])
+    expect(h.points).toEqual([{ date: TODAY, balance: 5000 }])
+    expect(h.events).toEqual([])
   })
 
   it('undoes income/expense per day, oldest point first, today last', () => {
     const h = buildBalanceHistory({
       accounts: [account()],
       transactions: [
-        tx({ type: 'income',  amount: 4000, date: '2026-03-01' }),
-        tx({ type: 'expense', amount: 1500, date: '2026-05-10' }),
+        tx({ type: 'income',  amount: 4000, date: '2026-03-01', description: 'Maaş' }),
+        tx({ type: 'expense', amount: 1500, date: '2026-05-10', description: 'Kira' }),
       ],
       todayStr: TODAY,
       endBalance: 3500,  // bugünkü bakiye: 1000 başlangıç + 4000 − 1500
     })
-    expect(h).toEqual([
+    expect(h.points).toEqual([
       { date: '2026-03-01', balance: 5000 },  // gün sonu: 1000 + 4000
       { date: '2026-05-10', balance: 3500 },  // gün sonu: 5000 − 1500
       { date: TODAY,        balance: 3500 },
+    ])
+    expect(h.events).toEqual([
+      { date: '2026-03-01', name: 'Maaş', type: 'income',  amountTry: 4000 },
+      { date: '2026-05-10', name: 'Kira', type: 'expense', amountTry: 1500 },
     ])
   })
 
@@ -67,8 +72,9 @@ describe('buildBalanceHistory — backward daily walk', () => {
       todayStr: TODAY,
       endBalance: 1200,
     })
-    expect(h[0]).toEqual({ date: '2026-02-01', balance: 1200 })
-    expect(h).toHaveLength(2)
+    expect(h.points[0]).toEqual({ date: '2026-02-01', balance: 1200 })
+    expect(h.points).toHaveLength(2)
+    expect(h.events).toHaveLength(2)  // tooltip satırları katlanmaz: hareket başına bir kayıt
   })
 
   it('pending and future-dated rows never enter the walk', () => {
@@ -81,7 +87,8 @@ describe('buildBalanceHistory — backward daily walk', () => {
       todayStr: TODAY,
       endBalance: 1000,
     })
-    expect(h).toEqual([{ date: TODAY, balance: 1000 }])
+    expect(h.points).toEqual([{ date: TODAY, balance: 1000 }])
+    expect(h.events).toEqual([])
   })
 
   it('total mode: transfers ignored, reconciliation included, investments enter on buy day', () => {
@@ -91,15 +98,16 @@ describe('buildBalanceHistory — backward daily walk', () => {
         tx({ type: 'transfer', amount: 900, date: '2026-03-05', toAccountId: 'acc-2' }),
         tx({ type: 'expense',  amount: 250, date: '2026-04-02', systemKind: 'reconciliation' }),
       ],
-      investEvents: [{ date: '2026-05-01', type: 'buy', valueTry: 2000, isTefas: false }],
+      investEvents: [{ date: '2026-05-01', name: 'Gram Altın alımı', type: 'buy', valueTry: 2000, isTefas: false }],
       todayStr: TODAY,
       endBalance: 2750,  // 1000 − 250 mutabakat + 2000 varlık
     })
-    expect(h).toEqual([
+    expect(h.points).toEqual([
       { date: '2026-04-02', balance: 750 },   // mutabakat ham bakiyeyi düşürdü
       { date: '2026-05-01', balance: 2750 },  // alım günü portföy değeri girer
       { date: TODAY,        balance: 2750 },
     ])
+    expect(h.events.map(e => e.name)).toEqual(['İşlem', 'Gram Altın alımı'])  // transfer olay üretmez
   })
 
   it('cash mode: boundary transfer counts, card expense and non-TEFAS buys stay out', () => {
@@ -111,17 +119,23 @@ describe('buildBalanceHistory — backward daily walk', () => {
         tx({ type: 'expense',  amount: 400,  date: '2026-06-10', accountId: 'cc-1' }),                        // karta harcama
       ],
       investEvents: [
-        { date: '2026-06-05', type: 'buy', valueTry: 999,  isTefas: false },  // altın vb. — nakit görünümü dışı
-        { date: '2026-06-15', type: 'buy', valueTry: 1500, isTefas: true },   // TEFAS — near-cash havuza girer
+        { date: '2026-06-05', name: 'Gram Altın alımı', type: 'buy', valueTry: 999,  isTefas: false },  // nakit görünümü dışı
+        { date: '2026-06-15', name: 'AFT alımı',        type: 'buy', valueTry: 1500, isTefas: true },   // TEFAS — near-cash havuza girer
       ],
       mode: 'cash',
       todayStr: TODAY,
       endBalance: 3500,  // 5000 − 3000 ödeme + 1500 TEFAS
     })
-    expect(h).toEqual([
+    expect(h.points).toEqual([
       { date: '2026-06-01', balance: 2000 },
       { date: '2026-06-15', balance: 3500 },
       { date: TODAY,        balance: 3500 },
+    ])
+    // Nakit görünümünde tooltip yalnızca nakit havuzunu oynatan hareketleri listeler:
+    // kart ödemesi (gider gibi) + TEFAS alımı; karta harcama ve altın alımı yok.
+    expect(h.events).toEqual([
+      { date: '2026-06-01', name: 'İşlem',     type: 'expense', amountTry: 3000 },
+      { date: '2026-06-15', name: 'AFT alımı', type: 'income',  amountTry: 1500 },
     ])
   })
 })

@@ -7,15 +7,24 @@ import {
 import { addDays, format, parseISO } from 'date-fns'
 import { formatCompact, formatCurrency, formatAxisCompact } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
-import type { ForecastEvent, ForecastPoint } from '@/lib/utils/forecast'
+import type { ForecastPoint } from '@/lib/utils/forecast'
 
 const TOOLTIP_EVENT_CAP = 4
+
+// Minimal movement shape the tooltip needs — satisfied by both forecast
+// events (future occurrences) and history events (posted transactions).
+export interface ChartEvent {
+  date: string
+  name: string
+  type: 'income' | 'expense'
+  amountTry: number
+}
 
 interface ChartRow {
   date: string
   balance: number
   fullLabel: string  // tooltip
-  events: ForecastEvent[]  // occurrences landing on this date
+  events: ChartEvent[]  // movements landing on this date
 }
 
 interface TooltipProps {
@@ -74,7 +83,7 @@ function niceYTicks(minVal: number, maxVal: number): number[] {
 interface Props {
   points: ForecastPoint[]
   shortfallDate: string | null
-  events?: ForecastEvent[]
+  events?: ChartEvent[]
   horizonEnd?: string  // yyyy-MM-dd — extend the daily series to this date
   todayStr?: string    // yyyy-MM-dd — marks today when the series starts in the past
 }
@@ -88,7 +97,7 @@ export default function ForecastAreaChart({ points, shortfallDate, events = [], 
     )
   }
 
-  const eventsByDate = new Map<string, ForecastEvent[]>()
+  const eventsByDate = new Map<string, ChartEvent[]>()
   for (const e of events) {
     const list = eventsByDate.get(e.date)
     if (list) list.push(e)

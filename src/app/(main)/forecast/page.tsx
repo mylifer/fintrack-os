@@ -8,7 +8,7 @@ import { Header } from '@/components/layout/Header'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAccountStore, useRecurringStore, useInvestmentStore, useTransactionStore } from '@/store'
-import { computeHoldings, getAssetPrice } from '@/store/investment.store'
+import { assetLabel, computeHoldings, getAssetPrice } from '@/store/investment.store'
 import { isTefasAsset } from '@/lib/tefas'
 import { buildForecast, type ForecastMode } from '@/lib/utils/forecast'
 import { buildBalanceHistory, type InvestEvent } from '@/lib/utils/balance-history'
@@ -83,6 +83,7 @@ export default function ForecastPage() {
     if (!prices) return []
     return investTxs.map(tx => ({
       date: tx.date.slice(0, 10),
+      name: `${assetLabel(tx.asset)} ${tx.type === 'buy' ? 'alımı' : 'satışı'}`,
       type: tx.type === 'buy' ? 'buy' as const : 'sell' as const,
       valueTry: tx.quantity * getAssetPrice(tx.asset, prices, fundPrices),
       isTefas: isTefasAsset(tx.asset),
@@ -98,7 +99,8 @@ export default function ForecastPage() {
       : null,
     [allTime, accounts, transactions, investEvents, mode, todayStr, points],
   )
-  const chartPoints = history ? [...history.slice(0, -1), ...points] : points
+  const chartPoints = history ? [...history.points.slice(0, -1), ...points] : points
+  const chartEvents = history ? [...history.events, ...events] : events
 
   const visibleEvents = showAllEvents ? events : events.slice(0, INITIAL_EVENT_COUNT)
 
@@ -229,7 +231,7 @@ export default function ForecastPage() {
                 </span>
               </div>
               <CardContent className="p-0 py-4">
-                <Chart points={chartPoints} shortfallDate={shortfallDate} events={events} horizonEnd={horizonEnd} todayStr={todayStr} />
+                <Chart points={chartPoints} shortfallDate={shortfallDate} events={chartEvents} horizonEnd={horizonEnd} todayStr={todayStr} />
               </CardContent>
             </Card>
 
