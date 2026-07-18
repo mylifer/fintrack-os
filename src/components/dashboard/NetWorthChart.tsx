@@ -128,36 +128,50 @@ export function NetWorthChart() {
     return points
   }, [transactions, currentNW, investTxs, prices, fundPrices])
 
-  const { data, tickInterval, trendLabel } = useMemo(() => {
+  const { data, trendLabel } = useMemo(() => {
     const windowDays = RANGE_DAYS[range]
     const window = windowDays ? dailyData.slice(-windowDays) : dailyData
 
-    // ≤40 nokta: her güne "12 Tem" etiketi; üstü: yalnızca ay başları etiketlenir
+    // X ekseni dataKey'i benzersiz `date`; `label` yalnızca tick metni. Boş
+    // etiketli günler tick'lenmez — seyreltme burada yapılır ve en fazla ~8
+    // etiket kalır (uzun aralıklarda ay etiketleri üst üste binmesin).
     const monthLabels = window.length > 40
     const withYear    = window.length > 366
-    const seenMonths  = new Set<string>()
 
     const data = window.map((p): NWDataPoint => {
       const d = parseLocalDate(p.date)
-      const fullLabel = d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
-      let label = ''
-      if (!monthLabels) {
-        label = d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
-      } else {
-        const monthKey = p.date.slice(0, 7)
-        if (!seenMonths.has(monthKey)) {
-          seenMonths.add(monthKey)
-          label = d.toLocaleDateString('tr-TR', { month: 'short' }) + (withYear ? ` '${p.date.slice(2, 4)}` : '')
-        }
+      return {
+        date:      p.date,
+        label:     '',
+        fullLabel: d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }),
+        netWorth:  p.netWorth,
+        delta:     p.delta,
       }
-      return { label, fullLabel, netWorth: p.netWorth, delta: p.delta }
     })
 
-    return {
-      data,
-      tickInterval: monthLabels ? 0 : Math.max(0, Math.ceil(window.length / 8) - 1),
-      trendLabel: TREND_LABEL[range],
+    if (!monthLabels) {
+      // ≤40 nokta: her step. güne "12 Tem"
+      const step = Math.max(1, Math.ceil(data.length / 8))
+      for (let i = 0; i < data.length; i += step) {
+        data[i].label = parseLocalDate(data[i].date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
+      }
+    } else {
+      // >40 nokta: ay başları; ay sayısı 8'i aşarsa her step. ay
+      const monthStarts: number[] = []
+      let seenMonth = ''
+      data.forEach((p, i) => {
+        const mk = p.date.slice(0, 7)
+        if (mk !== seenMonth) { seenMonth = mk; monthStarts.push(i) }
+      })
+      const step = Math.max(1, Math.ceil(monthStarts.length / 8))
+      for (let j = 0; j < monthStarts.length; j += step) {
+        const i = monthStarts[j]
+        data[i].label = parseLocalDate(data[i].date).toLocaleDateString('tr-TR', { month: 'short' })
+          + (withYear ? ` '${data[i].date.slice(2, 4)}` : '')
+      }
     }
+
+    return { data, trendLabel: TREND_LABEL[range] }
   }, [dailyData, range])
 
   const first   = data[0]?.netWorth ?? currentNW
@@ -207,7 +221,7 @@ export function NetWorthChart() {
       </CardHeader>
 
       <CardContent className="p-0">
-        <Chart data={data} tickInterval={tickInterval} />
+        <Chart data={data} />
       </CardContent>
     </Card>
   )

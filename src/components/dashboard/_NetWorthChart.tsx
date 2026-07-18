@@ -7,6 +7,11 @@ import {
 import { formatCompact, formatCurrency, formatAxisCompact } from '@/lib/utils/currency'
 
 export interface NWDataPoint {
+  date: string       // 'yyyy-MM-dd' — X ekseni dataKey'i. BENZERSİZ olmak zorunda:
+                     // recharts eksen-tooltip'i payload'ı indeksle değil dataKey
+                     // değeriyle arar (findEntryInArray); tekrar eden değer
+                     // (örn. boş etiket) tooltip'in hep İLK eşleşen günü
+                     // göstermesine yol açar.
   label: string      // axis tick — empty string = invisible tick
   fullLabel: string  // tooltip ("Ocak 2024")
   netWorth: number
@@ -53,10 +58,9 @@ function niceYTicks(minVal: number, maxVal: number): number[] {
 
 interface Props {
   data: NWDataPoint[]
-  tickInterval?: number
 }
 
-export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
+export default function NetWorthLineChart({ data }: Props) {
   if (data.length < 2) {
     return (
       <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
@@ -71,6 +75,11 @@ export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
   const ticks  = niceYTicks(minVal, maxVal)
   const showRef = ticks[0] < 0
 
+  // Etiketli günler açık tick listesi olarak verilir (dataKey benzersiz `date`
+  // olduğundan hangi günlerin etiketleneceğini `label` alanı belirler)
+  const labelOf = new Map(data.map(p => [p.date, p.label]))
+  const xTicks  = data.filter(p => p.label !== '').map(p => p.date)
+
   return (
     <div className="w-full px-4">
       <ResponsiveContainer width="100%" height={240}>
@@ -81,11 +90,13 @@ export default function NetWorthLineChart({ data, tickInterval = 0 }: Props) {
             strokeOpacity={0.07}
           />
           <XAxis
-            dataKey="label"
+            dataKey="date"
+            ticks={xTicks}
+            tickFormatter={d => labelOf.get(d as string) ?? ''}
             tickLine={false}
             axisLine={false}
             dy={6}
-            interval={tickInterval}
+            interval={0}
             padding={{ left: 16, right: 16 }}
             tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.5 }}
           />
