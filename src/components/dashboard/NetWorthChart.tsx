@@ -120,13 +120,18 @@ export function NetWorthChart() {
     () => [...new Set(investTxs.map(tx => seriesKeyOf(tx.asset)))].sort(),
     [investTxs],
   )
+  // Effect bağımlılığı DEĞER olarak string: investTxs referansı her store
+  // güncellemesinde (Dexie load → bulut senkron pull) değişir; dizi referansına
+  // bağlanmak içerik aynıyken bile yarıdaki fetch'i iptal edip baştan başlatıyordu.
+  const seriesKeysStr = seriesKeys.join(',')
 
   // null = henüz hazır değil (ne önbellek ne fetch) → grafik yükleniyor gösterir.
   // Yanlış (canlı-fiyat sabitli) şekli önce çizip sonra düzeltmek kafa karıştırıyordu.
   const [histories, setHistories] = useState<Record<string, PricePoint[]> | null>(null)
 
   useEffect(() => {
-    if (!investEarliest || !seriesKeys.length) return
+    if (!investEarliest || !seriesKeysStr) return
+    const keys = seriesKeysStr.split(',')
     const ctrl = new AbortController()
 
     // 1) Önbellekten anında doldur — sonraki açılışlar doğru şekliyle başlar.
@@ -136,7 +141,7 @@ export function NetWorthChart() {
       if (ctrl.signal.aborted) return
       const cache = readHistCache()
       const hit: Record<string, PricePoint[]> = {}
-      for (const key of seriesKeys) {
+      for (const key of keys) {
         const entry = cache[key]
         // Önbellek yalnızca istenen aralığın tamamını kapsıyorsa geçerli
         // (daha eski tarihli bir işlem eklendiyse yeniden çekilmeli)
@@ -146,33 +151,36 @@ export function NetWorthChart() {
       if (Object.keys(hit).length) setHistories(h => ({ ...hit, ...(h ?? {}) }))
     })
 
-    // 2) Taze veriyi çek, state + önbelleği güncelle
-    Promise.all(seriesKeys.map(async (key): Promise<[string, PricePoint[] | null]> => {
-      const [group, code] = key.split(':')
-      const params = new URLSearchParams({ asset: group, from: investEarliest })
-      if (code) params.set('code', code)
-      try {
-        const res = await fetch(`/api/prices/history?${params}`, { signal: ctrl.signal })
-        if (!res.ok) return [key, null]
-        const data: PricePoint[] = await res.json()
-        return [key, Array.isArray(data) && data.length ? data : null]
-      } catch { return [key, null] }
-    })).then(entries => {
-      if (ctrl.signal.aborted) return
-      // Alınamayan seriler map'e girmez → o varlık canlı fiyat sabitine düşer;
-      // fetch tamamen boş dönse bile null→{} geçişi yükleniyor durumunu bitirir
-      const fetched = Object.fromEntries(entries.filter((e): e is [string, PricePoint[]] => e[1] !== null))
-      setHistories(h => ({ ...(h ?? {}), ...fetched }))
-      if (Object.keys(fetched).length) {
+    // 2) Taze veriyi çek — seri başına BAĞIMSIZ: her seri gelir gelmez grafiğe
+    // ve önbelleğe işlenir. Promise.all hepsini en yavaş kaynağa (TEFAS API
+    // saniyelerce sürebiliyor) kilitliyordu; altın/döviz artık onu beklemez.
+    let pending = keys.length
+    for (const key of keys) {
+      ;(async () => {
+        const [group, code] = key.split(':')
+        const params = new URLSearchParams({ asset: group, from: investEarliest })
+        if (code) params.set('code', code)
         try {
-          const cache = readHistCache()
-          for (const [key, points] of Object.entries(fetched)) cache[key] = { from: investEarliest, points }
-          localStorage.setItem(HIST_CACHE_KEY, JSON.stringify(cache))
-        } catch { /* quota/serialize hatası önbelleksiz devam */ }
-      }
-    })
+          const res = await fetch(`/api/prices/history?${params}`, { signal: ctrl.signal })
+          if (!res.ok) return
+          const data: PricePoint[] = await res.json()
+          if (ctrl.signal.aborted || !Array.isArray(data) || !data.length) return
+          setHistories(h => ({ ...(h ?? {}), [key]: data }))
+          try {
+            const cache = readHistCache()
+            cache[key] = { from: investEarliest, points: data }
+            localStorage.setItem(HIST_CACHE_KEY, JSON.stringify(cache))
+          } catch { /* quota/serialize hatası önbelleksiz devam */ }
+        } catch { /* alınamayan seri map'e girmez → canlı fiyat sabitine düşer */ }
+        finally {
+          // Tüm seriler sonuçlandıysa (hepsi başarısız olsa bile) null→{}
+          // geçişiyle yükleniyor durumu kapanır
+          if (!ctrl.signal.aborted && --pending === 0) setHistories(h => h ?? {})
+        }
+      })()
+    }
     return () => ctrl.abort()
-  }, [investEarliest, seriesKeys])
+  }, [investEarliest, seriesKeysStr])
 
   // Yatırım var ama seriler henüz hazır değil → grafik çizme, yükleniyor göster
   const histLoading = seriesKeys.length > 0 && histories === null

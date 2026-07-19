@@ -132,9 +132,10 @@ export async function GET(request: Request) {
   // tetiklemesin — MAX dönemi 1095 gün, 1100 tavanı onu kırpmadan korur
   const dates = sampleDates(from).slice(-1100)
 
-  // CDN'e nazik: aynı anda en çok 25 tarih; önbellek dolu olduğunda anlık
+  // CDN'e nazik: aynı anda en çok 50 tarih; önbellek dolu olduğunda anlık
+  // (25 idi — soğuk başlangıçta ~170 günlük tarama dalga sayısını yarıya indirir)
   const points: (PricePoint | null)[] = []
-  const CHUNK = 25
+  const CHUNK = 50
   for (let i = 0; i < dates.length; i += CHUNK) {
     points.push(...await Promise.all(
       dates.slice(i, i + CHUNK).map(async (date): Promise<PricePoint | null> => {
