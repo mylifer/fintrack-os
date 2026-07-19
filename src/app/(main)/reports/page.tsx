@@ -37,9 +37,10 @@ import type { Account, Transaction, PriceData, InvestmentTransaction, TefasFundP
 
 /* ── Types ────────────────────────────────────────────────────────── */
 
-type Preset = 'this-month' | 'last-month' | '3-months' | 'this-year' | 'custom'
+type Preset = 'today' | 'this-month' | 'last-month' | '3-months' | 'this-year' | 'custom'
 
 const PRESETS: { key: Preset; label: string }[] = [
+  { key: 'today',      label: 'Bugün' },
   { key: 'this-month', label: 'Bu Ay' },
   { key: 'last-month', label: 'Geçen Ay' },
   { key: '3-months',   label: 'Son 3 Ay' },
@@ -52,6 +53,10 @@ const PRESETS: { key: Preset; label: string }[] = [
 function getPresetRange(preset: Preset, customFrom: string, customTo: string) {
   const now = new Date()
   switch (preset) {
+    case 'today': {
+      const t = format(now, 'yyyy-MM-dd')
+      return { from: t, to: t }
+    }
     case 'this-month':
       return { from: format(startOfMonth(now), 'yyyy-MM-dd'), to: format(endOfMonth(now), 'yyyy-MM-dd') }
     case 'last-month': {
