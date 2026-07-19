@@ -178,7 +178,7 @@ function AppSelect({
       <SelectTrigger
         aria-invalid={!!error}
         className={cn(
-          "h-9 w-full rounded-md",
+          "h-9 data-[size=default]:h-9 w-full rounded-md",
           error && "border-destructive aria-invalid:ring-destructive/20",
         )}
       >
@@ -376,7 +376,7 @@ function PersonField({
             }}
             onOpenChange={onSelectOpen}
           >
-            <SelectTrigger className="h-9 flex-1 rounded-md">
+            <SelectTrigger className="h-9 data-[size=default]:h-9 flex-1 rounded-md">
               <SelectValue placeholder="— Seçin —" />
             </SelectTrigger>
             <SelectContent>
