@@ -6,6 +6,11 @@ import {
 } from 'recharts'
 import { formatCompact, formatCurrency, formatAxisCompact } from '@/lib/utils/currency'
 
+// Günün deltasını oluşturan kalem: işlem (TRY-normalize net etki), portföy
+// giriş/çıkışı ya da kalan piyasa/kur hareketi. Liste üretici tarafta en fazla
+// ~6 satıra indirgenmiş gelir ("+n işlem daha" toplamı dahil).
+export interface NWTxItem { label: string; amount: number }
+
 export interface NWDataPoint {
   date: string       // 'yyyy-MM-dd' — X ekseni dataKey'i. BENZERSİZ olmak zorunda:
                      // recharts eksen-tooltip'i payload'ı indeksle değil dataKey
@@ -16,6 +21,7 @@ export interface NWDataPoint {
   fullLabel: string  // tooltip ("Ocak 2024")
   netWorth: number
   delta: number
+  items: NWTxItem[]  // günün değişimini açıklayan kalemler
 }
 
 interface TooltipProps {
@@ -25,15 +31,27 @@ interface TooltipProps {
 
 function CustomTooltip({ active, payload }: TooltipProps) {
   if (!active || !payload?.length) return null
-  const { fullLabel, netWorth, delta } = payload[0].payload
+  const { fullLabel, netWorth, delta, items } = payload[0].payload
   return (
-    <div className="rounded-xl border border-border bg-background/95 backdrop-blur px-3.5 py-2.5 shadow-xl text-xs min-w-[120px]">
+    <div className="rounded-xl border border-border bg-background/95 backdrop-blur px-3.5 py-2.5 shadow-xl text-xs min-w-[120px] max-w-[260px]">
       <p className="text-muted-foreground mb-1.5 font-medium">{fullLabel}</p>
       <p className="text-sm font-semibold tabular-nums">{formatCurrency(netWorth)}</p>
       {delta !== 0 && (
         <p className={`mt-1 tabular-nums font-medium ${delta > 0 ? 'text-green-500' : 'text-destructive'}`}>
           {delta > 0 ? '+' : ''}{formatCompact(delta)}
         </p>
+      )}
+      {items.length > 0 && (
+        <div className="mt-1.5 pt-1.5 border-t border-border/60 space-y-0.5">
+          {items.map((it, i) => (
+            <div key={i} className="flex items-baseline justify-between gap-3">
+              <span className="text-muted-foreground truncate">{it.label}</span>
+              <span className={`tabular-nums shrink-0 ${it.amount > 0 ? 'text-green-500' : it.amount < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {it.amount > 0 ? '+' : ''}{formatCompact(it.amount)}
+              </span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

@@ -5,13 +5,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTransactionStore, useAccountStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, calcNetRaw, excludeFuture } from '@/lib/utils/calculations'
-import { getAssetPrice, computeHoldings, GOLD_GRAMS } from '@/store/investment.store'
+import { getAssetPrice, computeHoldings, GOLD_GRAMS, assetLabel } from '@/store/investment.store'
 import { isTefasAsset, tefasCode } from '@/lib/tefas'
+import { baseAmount } from '@/lib/utils/fx'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
-import type { Transaction, InvestmentAsset } from '@/types'
+import type { Transaction, InvestmentAsset, InvestmentTransaction } from '@/types'
 import type { PricePoint } from '@/app/api/prices/history/route'
-import type { NWDataPoint } from './_NetWorthChart'
+import type { NWDataPoint, NWTxItem } from './_NetWorthChart'
 
 const Chart = dynamic(() => import('./_NetWorthChart'), {
   ssr: false,
@@ -50,7 +51,15 @@ function parseLocalDate(s: string): Date {
   return new Date(y, m - 1, d)
 }
 
-interface DayPoint { date: string; netWorth: number; delta: number }
+interface DayPoint { date: string; netWorth: number; delta: number; items: NWTxItem[] }
+
+// Tooltip'te gün başına en fazla bu kadar işlem kalemi; kalanlar "+n işlem
+// daha" toplamına katlanır (piyasa/kur satırı bu sınırın dışında, hep görünür)
+const MAX_TOOLTIP_ITEMS = 4
+
+function fmtQty(q: number): string {
+  return q.toLocaleString('tr-TR', { maximumFractionDigits: 4 })
+}
 
 // Bir yatırım varlığının geçmiş fiyat serisi anahtarı: TEFAS fonları kod
 // bazında ayrı seri, tüm altın türleri tek GOLD (gram) serisinden çarpanla,
@@ -144,13 +153,16 @@ export function NetWorthChart() {
     const todayStr = localDateStr(new Date())
 
     // Gün bazında miktar değişimi (alış +, satış −); gelecek tarihli işlemler hariç
-    const qtyDeltaByDay = new Map<string, Map<InvestmentAsset, number>>()
+    const qtyDeltaByDay  = new Map<string, Map<InvestmentAsset, number>>()
+    const investTxByDay  = new Map<string, InvestmentTransaction[]>()
     for (const tx of investTxs) {
       const key = tx.date.slice(0, 10)
       if (key > todayStr) continue
       let m = qtyDeltaByDay.get(key)
       if (!m) { m = new Map(); qtyDeltaByDay.set(key, m) }
       m.set(tx.asset, (m.get(tx.asset) ?? 0) + (tx.type === 'buy' ? tx.quantity : -tx.quantity))
+      const bucket = investTxByDay.get(key)
+      if (bucket) bucket.push(tx); else investTxByDay.set(key, [tx])
       if (!earliest || key < earliest) earliest = key
     }
     if (!earliest) return []
@@ -189,6 +201,12 @@ export function NetWorthChart() {
       const scale = live > 0 && histToday > 0 ? live / histToday : 1
       return { asset, row, mult, scale, live }
     })
+    const seriesByAsset = new Map(assetSeries.map(s => [s.asset, s]))
+    const priceOf = (asset: InvestmentAsset, i: number): number => {
+      const s = seriesByAsset.get(asset)
+      if (!s) return 0
+      return s.row ? s.row[i] * s.mult * s.scale : s.live
+    }
 
     // Günlük yatırım değeri: ileri yönde kümülatif miktar × günün fiyatı
     const investVal = new Array<number>(days.length).fill(0)
@@ -201,7 +219,7 @@ export function NetWorthChart() {
         let v = 0
         for (const s of assetSeries) {
           const q = qty.get(s.asset)
-          if (q) v += q * (s.row ? s.row[i] * s.mult * s.scale : s.live)
+          if (q) v += q * priceOf(s.asset, i)
         }
         investVal[i] = v
       }
@@ -213,8 +231,28 @@ export function NetWorthChart() {
 
     for (let i = days.length - 1; i >= 0; i--) {
       const key = days[i]
+
+      // Günün deltasını açıklayan kalemler: nakit işlemler (calcNetRaw ile aynı
+      // kural — TRY-normalize gelir +, gider −, transfer etkisiz, mutabakat
+      // dahil) + portföy giriş/çıkışları (günün fiyatıyla değerlenmiş)
+      const items: NWTxItem[] = []
+      for (const t of txByDay.get(key) ?? []) {
+        if (t.type === 'transfer') continue
+        const amount = t.type === 'income' ? baseAmount(t) : -baseAmount(t)
+        if (amount !== 0) items.push({ label: t.description || (t.type === 'income' ? 'Gelir' : 'Gider'), amount })
+      }
+      if (prices) {
+        for (const itx of investTxByDay.get(key) ?? []) {
+          const value = itx.quantity * priceOf(itx.asset, i)
+          if (value !== 0) items.push({
+            label:  `Portföy: ${itx.type === 'buy' ? '+' : '−'}${fmtQty(itx.quantity)} ${assetLabel(itx.asset)}`,
+            amount: itx.type === 'buy' ? value : -value,
+          })
+        }
+      }
+
       // Günün noktası = gün SONU bakiyesi; sonra günün neti çıkarılıp önceki güne geçilir
-      points[i] = { date: key, netWorth: Math.round((cash + investVal[i]) * 100) / 100, delta: 0 }
+      points[i] = { date: key, netWorth: Math.round((cash + investVal[i]) * 100) / 100, delta: 0, items }
 
       // Ham net (mutabakat DAHİL) — mutabakat kayıtları ham bakiyeyi gerçekten oynattı
       cash -= calcNetRaw(txByDay.get(key) ?? [])
@@ -222,6 +260,24 @@ export function NetWorthChart() {
 
     for (let i = 1; i < points.length; i++) {
       points[i].delta = Math.round((points[i].netWorth - points[i - 1].netWorth) * 100) / 100
+    }
+
+    // Kalem listesini tooltip boyutuna indir ve açıklanamayan kalanı (mevcut
+    // pozisyonların günlük fiyat/kur oynaması) tek satır olarak ekle
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i]
+      p.items.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+      if (p.items.length > MAX_TOOLTIP_ITEMS) {
+        const rest = p.items.splice(MAX_TOOLTIP_ITEMS)
+        const restSum = Math.round(rest.reduce((s, it) => s + it.amount, 0) * 100) / 100
+        p.items.push({ label: `+${rest.length} işlem daha`, amount: restSum })
+      }
+      if (i > 0) {
+        const explained = p.items.reduce((s, it) => s + it.amount, 0)
+        const residual  = Math.round((p.delta - explained) * 100) / 100
+        // 5 kuruş eşiği: gün-sonu yuvarlama gürültüsü sahte satır üretmesin
+        if (Math.abs(residual) >= 0.05) p.items.push({ label: 'Piyasa/kur hareketi', amount: residual })
+      }
     }
 
     // Baştaki düz kısmı kırp: net varlığı hiç oynatmayan erken günler (kendi
@@ -251,6 +307,7 @@ export function NetWorthChart() {
         fullLabel: d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }),
         netWorth:  p.netWorth,
         delta:     p.delta,
+        items:     p.items,
       }
     })
 
