@@ -61,6 +61,21 @@ function fmtQty(q: number): string {
   return q.toLocaleString('tr-TR', { maximumFractionDigits: 4 })
 }
 
+// Geçmiş fiyat serileri localStorage'da tutulur ki grafik ilk boyamada doğru
+// şekliyle açılsın; taze veri arka planda çekilip önbelleğin üzerine yazılır.
+// (Tarihi fiyatlar değişmez — bayatlama riski yalnızca son 1-2 gün, onu da
+// ileri doldurma + canlı fiyat oran-ankrajı kapatır.)
+const HIST_CACHE_KEY = 'networth-price-history-v1'
+
+interface HistCacheEntry { from: string; points: PricePoint[] }
+
+function readHistCache(): Record<string, HistCacheEntry> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HIST_CACHE_KEY) ?? '{}')
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch { return {} }
+}
+
 // Bir yatırım varlığının geçmiş fiyat serisi anahtarı: TEFAS fonları kod
 // bazında ayrı seri, tüm altın türleri tek GOLD (gram) serisinden çarpanla,
 // dövizler kendi serisinden okunur.
@@ -106,11 +121,32 @@ export function NetWorthChart() {
     [investTxs],
   )
 
-  const [histories, setHistories] = useState<Record<string, PricePoint[]>>({})
+  // null = henüz hazır değil (ne önbellek ne fetch) → grafik yükleniyor gösterir.
+  // Yanlış (canlı-fiyat sabitli) şekli önce çizip sonra düzeltmek kafa karıştırıyordu.
+  const [histories, setHistories] = useState<Record<string, PricePoint[]> | null>(null)
 
   useEffect(() => {
     if (!investEarliest || !seriesKeys.length) return
     const ctrl = new AbortController()
+
+    // 1) Önbellekten anında doldur — sonraki açılışlar doğru şekliyle başlar.
+    // Microtask: effect gövdesinde senkron setState cascading render uyarısı
+    // veriyor; davranışça fark yok (fetch saniyeler, bu milisaniyeler sonra).
+    Promise.resolve().then(() => {
+      if (ctrl.signal.aborted) return
+      const cache = readHistCache()
+      const hit: Record<string, PricePoint[]> = {}
+      for (const key of seriesKeys) {
+        const entry = cache[key]
+        // Önbellek yalnızca istenen aralığın tamamını kapsıyorsa geçerli
+        // (daha eski tarihli bir işlem eklendiyse yeniden çekilmeli)
+        if (entry && entry.from <= investEarliest && entry.points.length) hit[key] = entry.points
+      }
+      // Taze fetch sonuçları önbelleğin üzerine yazsın diye mevcut state öncelikli
+      if (Object.keys(hit).length) setHistories(h => ({ ...hit, ...(h ?? {}) }))
+    })
+
+    // 2) Taze veriyi çek, state + önbelleği güncelle
     Promise.all(seriesKeys.map(async (key): Promise<[string, PricePoint[] | null]> => {
       const [group, code] = key.split(':')
       const params = new URLSearchParams({ asset: group, from: investEarliest })
@@ -123,11 +159,23 @@ export function NetWorthChart() {
       } catch { return [key, null] }
     })).then(entries => {
       if (ctrl.signal.aborted) return
-      // Alınamayan seriler map'e girmez → o varlık canlı fiyat sabitine düşer
-      setHistories(Object.fromEntries(entries.filter((e): e is [string, PricePoint[]] => e[1] !== null)))
+      // Alınamayan seriler map'e girmez → o varlık canlı fiyat sabitine düşer;
+      // fetch tamamen boş dönse bile null→{} geçişi yükleniyor durumunu bitirir
+      const fetched = Object.fromEntries(entries.filter((e): e is [string, PricePoint[]] => e[1] !== null))
+      setHistories(h => ({ ...(h ?? {}), ...fetched }))
+      if (Object.keys(fetched).length) {
+        try {
+          const cache = readHistCache()
+          for (const [key, points] of Object.entries(fetched)) cache[key] = { from: investEarliest, points }
+          localStorage.setItem(HIST_CACHE_KEY, JSON.stringify(cache))
+        } catch { /* quota/serialize hatası önbelleksiz devam */ }
+      }
     })
     return () => ctrl.abort()
   }, [investEarliest, seriesKeys])
+
+  // Yatırım var ama seriler henüz hazır değil → grafik çizme, yükleniyor göster
+  const histLoading = seriesKeys.length > 0 && histories === null
 
   // Günlük tam geçmiş — bugünden ilk işleme GÜN GÜN geriye yürür. Aylık/haftalık
   // kova yok; aralıklar bu diziden kesit alır. Tooltip delta'sı böylece her
@@ -178,7 +226,7 @@ export function NetWorthChart() {
     // son bilinen fiyatla ileri doldurulur; seri başından önceki günler ilk
     // bilinen fiyatla geri doldurulur (sıfır-değer uçurumu olmasın).
     const priceRows = new Map<string, number[]>()
-    for (const [key, pts] of Object.entries(histories)) {
+    for (const [key, pts] of Object.entries(histories ?? {})) {
       const sorted = [...pts].sort((a, b) => (a.date < b.date ? -1 : 1))
       const row = new Array<number>(days.length)
       let j = 0, last = sorted[0].price
@@ -340,7 +388,9 @@ export function NetWorthChart() {
   const trend   = currentNW - first
   const pct     = first !== 0 ? (trend / Math.abs(first)) * 100 : 0
   const up      = trend >= 0
-  const hasData = data.length >= 2
+  // Seriler yüklenirken trend sayıları da yanlış (canlı-fiyat sabitli) seriden
+  // gelir — grafiğiyle birlikte gizlenir
+  const hasData = data.length >= 2 && !histLoading
 
   return (
     <Card className="overflow-hidden min-w-0">
@@ -383,7 +433,11 @@ export function NetWorthChart() {
       </CardHeader>
 
       <CardContent className="p-0">
-        <Chart data={data} />
+        {histLoading ? (
+          <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">Yükleniyor…</div>
+        ) : (
+          <Chart data={data} />
+        )}
       </CardContent>
     </Card>
   )
