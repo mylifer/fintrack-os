@@ -20,6 +20,12 @@ const Inner = dynamic(
   }
 )
 
-export function CashFlowBarChart({ data }: { data: CashFlowPoint[] }) {
-  return <Inner data={data} />
+export function CashFlowBarChart({
+  data,
+  onBarClick,
+}: {
+  data: CashFlowPoint[]
+  onBarClick?: (point: CashFlowPoint) => void
+}) {
+  return <Inner data={data} onBarClick={onBarClick} />
 }

@@ -8,6 +8,9 @@ export type CashFlowPoint = {
   label: string
   income: number
   expense: number
+  /** Bu barın kapsadığı tarih aralığı — detay overlay'i bu aralığı okur. */
+  from: string
+  to: string
 }
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -34,7 +37,23 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
-export function CashFlowBarChartInner({ data }: { data: CashFlowPoint[] }) {
+export function CashFlowBarChartInner({
+  data,
+  onBarClick,
+}: {
+  data: CashFlowPoint[]
+  onBarClick?: (point: CashFlowPoint) => void
+}) {
+  // Recharts Bar onClick, tıklanan noktanın payload'ını (label/from/to dahil)
+  // döndürür. Payload doğrudan da spread edilmiş gelebilir; ikisini de karşıla.
+  const handleClick = onBarClick
+    ? (entry: unknown) => {
+        const e = entry as { payload?: CashFlowPoint } | CashFlowPoint | null
+        const p = (e && 'payload' in e ? e.payload : e) as CashFlowPoint | undefined
+        if (p?.from && p?.to) onBarClick(p)
+      }
+    : undefined
+
   return (
     <div className="px-4 pt-4 pb-2">
       <ResponsiveContainer width="100%" height={220}>
@@ -57,8 +76,16 @@ export function CashFlowBarChartInner({ data }: { data: CashFlowPoint[] }) {
             width={56}
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.04)', radius: 4 }} />
-          <Bar dataKey="income"  name="Gelir" fill="#16a34a" radius={[3, 3, 0, 0]} maxBarSize={28} />
-          <Bar dataKey="expense" name="Gider" fill="#dc2626" radius={[3, 3, 0, 0]} maxBarSize={28} />
+          <Bar
+            dataKey="income"  name="Gelir" fill="#16a34a" radius={[3, 3, 0, 0]} maxBarSize={28}
+            onClick={handleClick}
+            className={onBarClick ? 'cursor-pointer' : undefined}
+          />
+          <Bar
+            dataKey="expense" name="Gider" fill="#dc2626" radius={[3, 3, 0, 0]} maxBarSize={28}
+            onClick={handleClick}
+            className={onBarClick ? 'cursor-pointer' : undefined}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>

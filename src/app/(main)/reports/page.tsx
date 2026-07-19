@@ -23,10 +23,12 @@ import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKe
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
 import { sumBy, toMinor, toMajor } from '@/lib/utils/money'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
+import { CashFlowDetailOverlay } from '@/components/reports/CashFlowDetailOverlay'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
 import { CategoryTrendChart }  from '@/components/reports/CategoryTrendChart'
 import { TransactionList }     from '@/components/transactions/TransactionList'
+import { ListFilter }          from 'lucide-react'
 import type { CashFlowPoint }       from '@/components/reports/_CashFlowBarChart'
 import type { CategorySlice }       from '@/components/reports/_CategoryDonutChart'
 import type { TrendPoint }          from '@/components/reports/_BalanceTrendChart'
@@ -93,7 +95,7 @@ function buildCashFlowData(
       const wEnd  = endOfWeek(wStart, { locale: tr })
       const pFrom = format(wStart < from ? from : wStart, 'yyyy-MM-dd')
       const pTo   = format(wEnd   > to   ? to   : wEnd,   'yyyy-MM-dd')
-      pts.push({ label: format(wStart < from ? from : wStart, 'd MMM', { locale: tr }), income: income(pFrom, pTo), expense: expense(pFrom, pTo) })
+      pts.push({ label: format(wStart < from ? from : wStart, 'd MMM', { locale: tr }), income: income(pFrom, pTo), expense: expense(pFrom, pTo), from: pFrom, to: pTo })
       wStart = addWeeks(wStart, 1)
     }
   } else {
@@ -102,7 +104,7 @@ function buildCashFlowData(
       const mEnd  = endOfMonth(mStart)
       const pFrom = format(mStart < from ? from : mStart, 'yyyy-MM-dd')
       const pTo   = format(mEnd   > to   ? to   : mEnd,   'yyyy-MM-dd')
-      pts.push({ label: format(mStart, 'MMM yy', { locale: tr }), income: income(pFrom, pTo), expense: expense(pFrom, pTo) })
+      pts.push({ label: format(mStart, 'MMM yy', { locale: tr }), income: income(pFrom, pTo), expense: expense(pFrom, pTo), from: pFrom, to: pTo })
       mStart = addMonths(mStart, 1)
     }
   }
@@ -385,6 +387,16 @@ export default function ReportsPage() {
   const [tagSliceIdx,   setTagSliceIdx]   = useState<number | null>(null)
   const [trendCatKey,   setTrendCatKey]   = useState<string>('')  // '' = auto (first in comparison list)
 
+  // Nakit akışı detay overlay'i — dönem geneli ("Detay" butonu) veya tek bir
+  // bar kovası (grafiğe tıklama) için aynı panel. `detail` içerik (kapanış
+  // animasyonu boyunca korunur), `detailOpen` görünürlük.
+  const [detail, setDetail] = useState<{ from: string; to: string; label: string } | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const openDetail = useCallback((d: { from: string; to: string; label: string }) => {
+    setDetail(d)
+    setDetailOpen(true)
+  }, [])
+
   // Filtre (dönem/hesap) değişince tüm drill-down seçimlerini sıfırla. Filtreyi
   // değiştiren AYNI event handler içinde çağrılır — böylece bayat bir ara render
   // (eski seçim + yeni filtre) hiç oluşmaz.
@@ -393,6 +405,7 @@ export default function ReportsPage() {
     setActiveSliceIdx(null)
     setTagSliceIdx(null)
     setTrendCatKey('')
+    setDetailOpen(false)
   }, [])
 
   const dateRange = useMemo(
@@ -578,16 +591,37 @@ export default function ReportsPage() {
           <Card className="overflow-hidden gap-0 py-0">
             <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
               <span className="text-sm font-semibold text-foreground/90">Nakit Akışı</span>
-              {!isLoading && (
-                <span className={`text-xs font-medium tabular-nums ${kpi.net >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  Net: {kpi.net >= 0 ? '+' : '−'}{formatCurrency(animNet)}
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {!isLoading && (
+                  <span className={`text-xs font-medium tabular-nums ${kpi.net >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                    Net: {kpi.net >= 0 ? '+' : '−'}{formatCurrency(animNet)}
+                  </span>
+                )}
+                {!isLoading && (
+                  <button
+                    onClick={() => openDetail({
+                      from:  dateRange.from,
+                      to:    dateRange.to,
+                      label: PRESETS.find(p => p.key === preset)?.label ?? 'Dönem',
+                    })}
+                    className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-accent transition-colors"
+                    title="İşlemleri görüntüle"
+                  >
+                    <ListFilter size={13} />
+                    Detay
+                  </button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <div className="min-w-[360px]">
-                  {isLoading ? <BarSkeleton /> : <CashFlowBarChart data={cashFlowData} />}
+                  {isLoading ? <BarSkeleton /> : (
+                    <CashFlowBarChart
+                      data={cashFlowData}
+                      onBarClick={p => openDetail({ from: p.from, to: p.to, label: p.label })}
+                    />
+                  )}
                 </div>
               </div>
               <div className="px-5 pb-4 flex gap-4">
@@ -851,6 +885,17 @@ export default function ReportsPage() {
         </Card>
 
       </div>
+
+      {detail && (
+        <CashFlowDetailOverlay
+          open={detailOpen}
+          from={detail.from}
+          to={detail.to}
+          label={detail.label}
+          transactions={filteredTxs}
+          onClose={() => setDetailOpen(false)}
+        />
+      )}
     </>
   )
 }
