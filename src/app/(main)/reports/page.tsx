@@ -570,6 +570,12 @@ export default function ReportsPage() {
   const animNet     = useCountUp(Math.abs(kpi.net))
   const animTrend   = useCountUp(trendData.at(-1)?.balance ?? 0)
 
+  // Seçili aralıktaki net değişim (ilk → son nokta), trend başlığında gösterilir
+  const trendFirst = trendData[0]?.balance ?? 0
+  const trendLast  = trendData.at(-1)?.balance ?? 0
+  const trendDelta = trendLast - trendFirst
+  const trendPct   = trendFirst !== 0 ? (trendDelta / Math.abs(trendFirst)) * 100 : 0
+
   return (
     <>
       <Header title="Raporlar" />
@@ -877,8 +883,16 @@ export default function ReportsPage() {
               {accountId === 'all' ? 'Net Varlık Trendi' : 'Hesap Bakiye Trendi'}
             </span>
             {!isLoading && trendData.length > 0 && (
-              <span className={`text-xs font-medium tabular-nums ${(trendData.at(-1)?.balance ?? 0) >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                Güncel: {formatCurrency(animTrend)}
+              <span className="flex items-center gap-3 text-xs font-medium tabular-nums">
+                {trendData.length >= 2 && trendDelta !== 0 && (
+                  <span className={trendDelta >= 0 ? 'text-green-600' : 'text-destructive'}>
+                    {trendDelta >= 0 ? '+' : ''}{formatCompact(trendDelta)}
+                    {' '}({trendPct >= 0 ? '+' : ''}{trendPct.toFixed(1)}%)
+                  </span>
+                )}
+                <span className={trendLast >= 0 ? 'text-green-600' : 'text-destructive'}>
+                  Güncel: {formatCurrency(animTrend)}
+                </span>
               </span>
             )}
           </CardHeader>
