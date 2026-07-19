@@ -20,7 +20,7 @@ import type {
 // Gram altın karşılıkları — canlı Türkiye kotasyonu yoksa fallback ve grafikte
 // gram-eşdeğeri hesabı için. Ziynetler 22 ayar: brüt gramaj × 0.916 milyem
 // (çeyrek 1.754 g, yarım 3.508 g, tam 7.016 g)
-const GOLD_GRAMS: Partial<Record<InvestmentAsset, number>> = {
+export const GOLD_GRAMS: Partial<Record<InvestmentAsset, number>> = {
   GOLD_GRAM:    1,
   GOLD_QUARTER: 1.6067,
   GOLD_HALF:    3.2133,

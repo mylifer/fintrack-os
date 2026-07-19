@@ -1,14 +1,16 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTransactionStore, useAccountStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, calcNetRaw, excludeFuture } from '@/lib/utils/calculations'
-import { getAssetPrice, computeHoldings } from '@/store/investment.store'
+import { getAssetPrice, computeHoldings, GOLD_GRAMS } from '@/store/investment.store'
+import { isTefasAsset, tefasCode } from '@/lib/tefas'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
-import type { Transaction } from '@/types'
+import type { Transaction, InvestmentAsset } from '@/types'
+import type { PricePoint } from '@/app/api/prices/history/route'
 import type { NWDataPoint } from './_NetWorthChart'
 
 const Chart = dynamic(() => import('./_NetWorthChart'), {
@@ -50,6 +52,15 @@ function parseLocalDate(s: string): Date {
 
 interface DayPoint { date: string; netWorth: number; delta: number }
 
+// Bir yatırım varlığının geçmiş fiyat serisi anahtarı: TEFAS fonları kod
+// bazında ayrı seri, tüm altın türleri tek GOLD (gram) serisinden çarpanla,
+// dövizler kendi serisinden okunur.
+function seriesKeyOf(asset: InvestmentAsset): string {
+  if (isTefasAsset(asset)) return `TEFAS:${tefasCode(asset)}`
+  if (asset.startsWith('GOLD')) return 'GOLD'
+  return asset // USD | EUR | GBP
+}
+
 export function NetWorthChart() {
   const [range, setRange] = useState<Range>('all')
 
@@ -68,13 +79,59 @@ export function NetWorthChart() {
 
   const currentNW = calcNetWorth(accounts, prices) + investValue
 
+  // ── Geçmiş fiyat serileri ─────────────────────────────────────────
+  // Yatırımlar gün gün GÜNÜN fiyatıyla değerlenmeli; bugünkü fiyatla değerleme
+  // tüm kazancı alım gününe yığıp (dik sıçrama) sonrasını düz bırakıyordu.
+  // İlk yatırım işleminden bugüne günlük seri /api/prices/history'den çekilir.
+  const investEarliest = useMemo(() => {
+    let min: string | null = null
+    for (const tx of investTxs) {
+      const key = tx.date.slice(0, 10)
+      if (!min || key < min) min = key
+    }
+    return min
+  }, [investTxs])
+
+  const seriesKeys = useMemo(
+    () => [...new Set(investTxs.map(tx => seriesKeyOf(tx.asset)))].sort(),
+    [investTxs],
+  )
+
+  const [histories, setHistories] = useState<Record<string, PricePoint[]>>({})
+
+  useEffect(() => {
+    if (!investEarliest || !seriesKeys.length) return
+    const ctrl = new AbortController()
+    Promise.all(seriesKeys.map(async (key): Promise<[string, PricePoint[] | null]> => {
+      const [group, code] = key.split(':')
+      const params = new URLSearchParams({ asset: group, from: investEarliest })
+      if (code) params.set('code', code)
+      try {
+        const res = await fetch(`/api/prices/history?${params}`, { signal: ctrl.signal })
+        if (!res.ok) return [key, null]
+        const data: PricePoint[] = await res.json()
+        return [key, Array.isArray(data) && data.length ? data : null]
+      } catch { return [key, null] }
+    })).then(entries => {
+      if (ctrl.signal.aborted) return
+      // Alınamayan seriler map'e girmez → o varlık canlı fiyat sabitine düşer
+      setHistories(Object.fromEntries(entries.filter((e): e is [string, PricePoint[]] => e[1] !== null)))
+    })
+    return () => ctrl.abort()
+  }, [investEarliest, seriesKeys])
+
   // Günlük tam geçmiş — bugünden ilk işleme GÜN GÜN geriye yürür. Aylık/haftalık
   // kova yok; aralıklar bu diziden kesit alır. Tooltip delta'sı böylece her
   // aralıkta gerçek gün-gün değişimdir.
+  //
+  // Seri iki bileşenden kurulur:
+  //  1. Nakit: bugünkü hesap bakiyelerinden calcNetRaw ile gün gün geriye
+  //     (yatırım alım/satımlarının bağlı gider/gelir kayıtları zaten burada).
+  //  2. Yatırım: gün sonu kümülatif miktar × o GÜNÜN fiyatı (geçmiş seri).
+  //     Geçmiş seri yoksa canlı fiyat sabitine düşülür (eski davranış).
   const dailyData = useMemo<DayPoint[]>(() => {
     // Tek geçişte gün bazında kovalama — gün başına tüm defteri filtrelemek yerine
-    const txByDay     = new Map<string, Transaction[]>()
-    const investByDay = new Map<string, typeof investTxs>()
+    const txByDay = new Map<string, Transaction[]>()
     let earliest: string | null = null
 
     for (const tx of transactions) {
@@ -83,15 +140,21 @@ export function NetWorthChart() {
       if (bucket) bucket.push(tx); else txByDay.set(key, [tx])
       if (!earliest || key < earliest) earliest = key
     }
+
+    const todayStr = localDateStr(new Date())
+
+    // Gün bazında miktar değişimi (alış +, satış −); gelecek tarihli işlemler hariç
+    const qtyDeltaByDay = new Map<string, Map<InvestmentAsset, number>>()
     for (const tx of investTxs) {
       const key = tx.date.slice(0, 10)
-      const bucket = investByDay.get(key)
-      if (bucket) bucket.push(tx); else investByDay.set(key, [tx])
+      if (key > todayStr) continue
+      let m = qtyDeltaByDay.get(key)
+      if (!m) { m = new Map(); qtyDeltaByDay.set(key, m) }
+      m.set(tx.asset, (m.get(tx.asset) ?? 0) + (tx.type === 'buy' ? tx.quantity : -tx.quantity))
       if (!earliest || key < earliest) earliest = key
     }
     if (!earliest) return []
 
-    const todayStr = localDateStr(new Date())
     const days: string[] = []
     const cur = parseLocalDate(earliest)
     while (localDateStr(cur) <= todayStr) {
@@ -99,26 +162,62 @@ export function NetWorthChart() {
       cur.setDate(cur.getDate() + 1)
     }
 
+    // Seri → gün indeksli fiyat dizisi. Boş günler (hafta sonu, eksik CDN verisi)
+    // son bilinen fiyatla ileri doldurulur; seri başından önceki günler ilk
+    // bilinen fiyatla geri doldurulur (sıfır-değer uçurumu olmasın).
+    const priceRows = new Map<string, number[]>()
+    for (const [key, pts] of Object.entries(histories)) {
+      const sorted = [...pts].sort((a, b) => (a.date < b.date ? -1 : 1))
+      const row = new Array<number>(days.length)
+      let j = 0, last = sorted[0].price
+      for (let i = 0; i < days.length; i++) {
+        while (j < sorted.length && sorted[j].date <= days[i]) { last = sorted[j].price; j++ }
+        row[i] = last
+      }
+      priceRows.set(key, row)
+    }
+
+    // Varlık başına fiyat çözümü. Oran ankrajı: geçmiş seri (spot türevi) ile
+    // canlı kaynak (Kapalıçarşı, ziynet premium'u) farklı fiyat evrenleri —
+    // seri, bugünkü canlı fiyata oturacak şekilde ölçeklenir ki son gün
+    // header'daki net varlıkla birebir kapansın.
+    const assetSeries = [...new Set(investTxs.map(tx => tx.asset))].map(asset => {
+      const live = prices ? getAssetPrice(asset, prices, fundPrices) : 0
+      const mult = asset.startsWith('GOLD') ? (GOLD_GRAMS[asset] ?? 1) : 1
+      const row  = priceRows.get(seriesKeyOf(asset))
+      const histToday = row ? row[row.length - 1] * mult : 0
+      const scale = live > 0 && histToday > 0 ? live / histToday : 1
+      return { asset, row, mult, scale, live }
+    })
+
+    // Günlük yatırım değeri: ileri yönde kümülatif miktar × günün fiyatı
+    const investVal = new Array<number>(days.length).fill(0)
+    if (prices) {
+      const qty = new Map<InvestmentAsset, number>()
+      for (let i = 0; i < days.length; i++) {
+        const deltas = qtyDeltaByDay.get(days[i])
+        // computeHoldings ile aynı kural: aşırı satış miktarı negatife düşürmez
+        if (deltas) for (const [a, dq] of deltas) qty.set(a, Math.max(0, (qty.get(a) ?? 0) + dq))
+        let v = 0
+        for (const s of assetSeries) {
+          const q = qty.get(s.asset)
+          if (q) v += q * (s.row ? s.row[i] * s.mult * s.scale : s.live)
+        }
+        investVal[i] = v
+      }
+    }
+
+    // Nakit serisi: bugünkü hesap bakiyelerinden gün gün geriye
     const points: DayPoint[] = new Array(days.length)
-    let nw = currentNW
+    let cash = calcNetWorth(accounts, prices)
 
     for (let i = days.length - 1; i >= 0; i--) {
       const key = days[i]
       // Günün noktası = gün SONU bakiyesi; sonra günün neti çıkarılıp önceki güne geçilir
-      points[i] = { date: key, netWorth: Math.round(nw * 100) / 100, delta: 0 }
+      points[i] = { date: key, netWorth: Math.round((cash + investVal[i]) * 100) / 100, delta: 0 }
 
       // Ham net (mutabakat DAHİL) — mutabakat kayıtları ham bakiyeyi gerçekten oynattı
-      nw -= calcNetRaw(txByDay.get(key) ?? [])
-
-      if (prices) {
-        const investDelta = (investByDay.get(key) ?? [])
-          .reduce((sum, tx) => {
-            const unitPrice    = getAssetPrice(tx.asset, prices, fundPrices)
-            const currentValue = tx.quantity * unitPrice
-            return tx.type === 'buy' ? sum - currentValue : sum + currentValue
-          }, 0)
-        nw += investDelta
-      }
+      cash -= calcNetRaw(txByDay.get(key) ?? [])
     }
 
     for (let i = 1; i < points.length; i++) {
@@ -132,7 +231,7 @@ export function NetWorthChart() {
     let start = 0
     while (start < points.length - 1 && points[start + 1].delta === 0) start++
     return start > 0 && points.length - start >= 2 ? points.slice(start) : points
-  }, [transactions, currentNW, investTxs, prices, fundPrices])
+  }, [transactions, accounts, investTxs, prices, fundPrices, histories])
 
   const { data, trendLabel } = useMemo(() => {
     const windowDays = RANGE_DAYS[range]
