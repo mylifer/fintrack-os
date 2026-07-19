@@ -140,6 +140,45 @@ export default function DashboardPage() {
 
   const incomeTotal = income + fundGain
 
+  // ── TEMP DEBUG: haftalık gelir kırılımı (fon getirisi teşhisi) ──────────
+  // Kaldırılacak. Dönem-içi gelir işlemlerini ve fon-getirisi bileşenlerini
+  // (fon başına adet / dönem-başı fiyat / güncel fiyat) doğrudan sayfaya basar.
+  const debugIncomeRows = transactions
+    .filter(t => {
+      const d = t.date.slice(0, 10)
+      return d >= from && d <= to && isPosted(t) && t.type === 'income'
+    })
+    .map(t => ({
+      date: t.date.slice(0, 10), desc: t.description,
+      amount: t.amount, currency: t.currency, amountTry: t.amountTry,
+      cat: t.categoryId,
+    }))
+  const debugFundRows = fundCodes.map(code => {
+    const pts = fundHistory[`${code}:${from}`]
+    const before = pts?.filter(p => p.date < from)
+    const pStart = before?.length ? before[before.length - 1] : pts?.[0]
+    const txs = investTxs
+      .filter(t => t.asset === `TEFAS:${code}` && t.date <= to)
+      .slice().sort((a, b) => a.date.localeCompare(b.date))
+    let qty = 0, qtyStart = 0
+    for (const tx of txs) {
+      qty = tx.type === 'buy' ? qty + tx.quantity : Math.max(0, qty - tx.quantity)
+      if (tx.date < from) qtyStart = qty
+    }
+    const fp = fundPrices[code]
+    const delta = pStart && fp ? qty * (fp.price - pStart.price) : null
+    return {
+      code, qty, qtyStart,
+      pStart: pStart?.price ?? null, pStartDate: pStart?.date ?? '—',
+      pNow: fp?.price ?? null, pNowDate: fp?.date ?? '—',
+      histLen: pts?.length ?? 0,
+      histFirst: pts?.[0]?.date ?? '—', histLast: pts?.[pts.length - 1]?.date ?? '—',
+      periodTxs: txs.filter(t => t.date >= from).length,
+      delta,
+    }
+  })
+  // ── /TEMP DEBUG ─────────────────────────────────────────────────────────
+
   const animExpense     = useCountUp(expense)
   const animIncome      = useCountUp(incomeTotal)
   const animNetWorth    = useCountUp(Math.abs(netWorth))
@@ -196,6 +235,28 @@ export default function DashboardPage() {
       <PeriodTabs />
 
       <div className="p-6 space-y-6">
+
+        {/* ── TEMP DEBUG PANEL (kaldırılacak) ─────────────────── */}
+        <div style={{ border: '2px solid #d00', borderRadius: 8, padding: 12, fontFamily: 'monospace', fontSize: 12, background: '#1a0000', color: '#eee', overflowX: 'auto' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 6 }}>
+            🐞 DEBUG · {prefix} ({from} → {to}) · incomeTotal={incomeTotal.toFixed(2)} = income {income.toFixed(2)} + fundGain {fundGain.toFixed(2)} · fundPeriodNet={fundPeriodNet.toFixed(2)}
+          </div>
+          <div style={{ marginTop: 6 }}>Gelir işlemleri (type=income, dönem içi) — {debugIncomeRows.length} adet:</div>
+          {debugIncomeRows.length === 0 ? <div>— yok —</div> : (
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <thead><tr>{['date', 'desc', 'amount', 'currency', 'amountTry', 'cat'].map(h => <th key={h} style={{ textAlign: 'left', borderBottom: '1px solid #555', padding: '2px 8px' }}>{h}</th>)}</tr></thead>
+              <tbody>{debugIncomeRows.map((r, i) => <tr key={i}>{[r.date, r.desc, r.amount, r.currency, r.amountTry, r.cat].map((c, j) => <td key={j} style={{ padding: '2px 8px', borderBottom: '1px solid #333' }}>{String(c ?? '')}</td>)}</tr>)}</tbody>
+            </table>
+          )}
+          <div style={{ marginTop: 8 }}>Fon getirisi bileşenleri — {debugFundRows.length} fon:</div>
+          {debugFundRows.length === 0 ? <div>— TEFAS fonu yok —</div> : (
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <thead><tr>{['code', 'adet', 'dönemBaşıAdet', 'dönemBaşıFiyat', '@tarih', 'güncelFiyat', '@tarih', 'delta≈adet×fark', 'histNokta', 'histİlk', 'histSon', 'dönemİçiİşlem'].map(h => <th key={h} style={{ textAlign: 'left', borderBottom: '1px solid #555', padding: '2px 8px' }}>{h}</th>)}</tr></thead>
+              <tbody>{debugFundRows.map((r, i) => <tr key={i}>{[r.code, r.qty, r.qtyStart, r.pStart, r.pStartDate, r.pNow, r.pNowDate, r.delta?.toFixed(2), r.histLen, r.histFirst, r.histLast, r.periodTxs].map((c, j) => <td key={j} style={{ padding: '2px 8px', borderBottom: '1px solid #333' }}>{String(c ?? '')}</td>)}</tr>)}</tbody>
+            </table>
+          )}
+        </div>
+        {/* ── /TEMP DEBUG PANEL ───────────────────────────────── */}
 
         {/* ── Stat Cards ─────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
