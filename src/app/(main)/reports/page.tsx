@@ -393,6 +393,7 @@ export default function ReportsPage() {
   const [customFrom,   setCustomFrom]   = useState('')
   const [customTo,     setCustomTo]     = useState('')
   const [accountId,    setAccountId]    = useState('all')
+  const [includeInvestmentIncome, setIncludeInvestmentIncome] = useState(true)
   const [selectedCat,   setSelectedCat]   = useState<CategorySlice | null>(null)
   const [activeSliceIdx, setActiveSliceIdx] = useState<number | null>(null)
   const [tagSliceIdx,   setTagSliceIdx]   = useState<number | null>(null)
@@ -439,12 +440,16 @@ export default function ReportsPage() {
       const d = tx.date.slice(0, 10)
       if (d < dateRange.from || d > dateRange.to) return false
       if (isReconciliation(tx)) return false
+      // Yatırım geliri = income + icon (yatırım store'u Transaction.icon yazan tek
+      // yer; satış geliri ve "Satış Kârı" satırları). İşaret kaldırılınca bu
+      // satırlar gelir toplamlarından, nakit akışından ve detay overlay'inden düşer.
+      if (!includeInvestmentIncome && tx.type === 'income' && tx.icon) return false
       if (accountId !== 'all') {
         if (tx.accountId !== accountId && tx.toAccountId !== accountId) return false
       }
       return true
     }),
-    [postedTxs, dateRange, accountId],
+    [postedTxs, dateRange, accountId, includeInvestmentIncome],
   )
 
   const kpi = useMemo(() => {
@@ -539,6 +544,16 @@ export default function ReportsPage() {
           </div>
         )}
 
+        <label className="ml-auto flex items-center gap-2 cursor-pointer select-none whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={includeInvestmentIncome}
+            onChange={e => setIncludeInvestmentIncome(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
+          />
+          <span className="text-xs font-medium text-muted-foreground">Yatırım gelirleri</span>
+        </label>
+
         <SelectField
           value={accountId}
           onChange={e => { setAccountId(e.target.value); resetDrilldown() }}
@@ -546,7 +561,7 @@ export default function ReportsPage() {
             { value: 'all', label: 'Tüm Hesaplar' },
             ...accounts.map(a => ({ value: a.id, label: a.name })),
           ]}
-          className="ml-auto w-fit bg-card text-xs"
+          className="w-fit bg-card text-xs"
         />
       </div>
 
