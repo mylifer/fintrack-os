@@ -12,7 +12,7 @@ export interface FundPricePoint { date: string; price: number }
 export function calcFundPeriodGain(
   investTxs: InvestmentTransaction[],
   fundPrices: Record<string, TefasFundPrice>,
-  history: Record<string, FundPricePoint[]>, // fon kodu → dönem başı öncesini de kapsayan günlük seri
+  history: Record<string, FundPricePoint[]>, // fon kodu → günlük seri (baz = dönem içindeki ilk kapanış)
   from: string,
   to: string,
   daily: boolean, // 'Bugün': yalnızca TEFAS `to` günü (bugün) taze kapanış yayınladıysa son iki kapanış farkı; aksi halde 0
@@ -59,12 +59,17 @@ export function calcFundPeriodGain(
     if (pNow === undefined) continue
 
     if (qtyStart > 1e-6) {
-      // Baz fiyat: dönem başından önceki son kapanış (seri o kadar geriye
-      // gitmiyorsa ilk nokta); seri hiç yüklenemediyse günlük değişime düş
-      const before = pts?.filter(p => p.date < from)
-      const pStart = before?.length ? before[before.length - 1].price : pts?.[0]?.price
-      if (pStart === undefined) { net += dailyChange; continue }
-      net += qty * pNow - qtyStart * pStart - buys + sells - realized
+      // Baz fiyat: dönem İÇİNDEKİ ilk kapanış. TEFAS'ta T gününün fiyatı T-1
+      // portföy değerini yansıttığından (T+1 gecikme) dönemin ilk kapanışı
+      // ekonomik olarak önceki dönemin son değeridir — aracı kurumların tarih
+      // aralığı görünümüyle de birebir uyumlu. (Eski davranış dönem öncesi son
+      // kapanışı baz alıyordu ve haftalık getiriyi Pazartesi hareketi kadar
+      // şişiriyordu.) Seri hiç yüklenemediyse günlük değişime düş; dönem içinde
+      // henüz kapanış yayınlanmadıysa getiri 0 sayılır.
+      if (!pts?.length) { net += dailyChange; continue }
+      const within = pts.filter(p => p.date >= from && p.date <= to)
+      if (!within.length) continue
+      net += qty * pNow - qtyStart * within[0].price - buys + sells - realized
     } else {
       // Dönem başında pozisyon yok → baz fiyat gerekmez ('Tüm Zamanlar' dahil)
       net += qty * pNow - buys + sells - realized

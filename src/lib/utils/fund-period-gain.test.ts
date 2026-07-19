@@ -23,10 +23,16 @@ const FROM = '2026-07-01'
 const TO   = '2026-07-31'
 
 describe('calcFundPeriodGain', () => {
-  it('dönem başındaki pozisyonun değer artışını dönem başı kapanışından hesaplar', () => {
+  it('dönem başındaki pozisyonun değer artışını dönem İÇİNDEKİ ilk kapanıştan hesaplar', () => {
     const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 80, date: '2026-05-01' })]
-    // 10 pay: 100 → 130
-    expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(300, 6)
+    // Dönem içi ilk kapanış 10.07 @120 → 10 pay: 120 → 130
+    expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(100, 6)
+  })
+
+  it('dönem içinde henüz kapanış yayınlanmadıysa getiri 0 sayılır', () => {
+    const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 80, date: '2026-05-01' })]
+    const histBefore = { AFA: [{ date: '2026-06-28', price: 95 }, { date: '2026-06-30', price: 100 }] }
+    expect(calcFundPeriodGain(txs, FP, histBefore, FROM, TO, false)).toBe(0)
   })
 
   it('dönem içi alım kendi maliyetinden sayılır, dönem başı bazından değil', () => {
@@ -40,9 +46,9 @@ describe('calcFundPeriodGain', () => {
       tx({ type: 'buy',  quantity: 10, pricePerUnit: 90,  date: '2026-05-01' }),
       tx({ type: 'sell', quantity: 5,  pricePerUnit: 120, date: '2026-07-10' }),
     ]
-    // Toplam dönem getirisi: satılan 5 pay 100→120 (+100) + kalan 5 pay 100→130 (+150) = 250
-    // Gerçekleşen kâr (120−90)×5 = 150 gelir işlemlerinde zaten var → burada 100 kalmalı
-    expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(100, 6)
+    // Baz 10.07 @120 → dönem getirisi: satılan 5 pay 120→120 (0) + kalan 5 pay 120→130 (+50) = 50
+    // Gerçekleşen kâr (120−90)×5 = 150 gelir işlemlerinde zaten var → burada 50−150 = −100 kalmalı
+    expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(-100, 6)
   })
 
   it('dönem içinde alınıp satılan pozisyonun kazancı tamamen gerçekleşmiştir → 0', () => {
