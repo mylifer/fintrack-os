@@ -75,6 +75,58 @@ const TYPE_OPTIONS = [
   { value: 'installment',       label: 'Taksitli Satın Alma' },
 ]
 
+type PlanRow = {
+  no: number
+  date: string
+  amount: number
+  status: 'paid' | 'partial' | 'overdue' | 'pending'
+}
+
+function addMonthsClamped(iso: string, months: number): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  const total = m - 1 + months
+  const ny = y + Math.floor(total / 12)
+  const nm = total % 12
+  const lastDay = new Date(ny, nm + 1, 0).getDate()
+  return `${ny}-${String(nm + 1).padStart(2, '0')}-${String(Math.min(d, lastDay)).padStart(2, '0')}`
+}
+
+// Aylık taksit tutarından ödeme takvimi türetir; ödenen tutar taksitlere
+// kümülatif dağıtılır (kısmi ödeme bir sonraki taksitte "Kısmi" görünür).
+function buildPaymentPlan(debt: DebtWithRemaining): PlanRow[] {
+  const monthly = debt.monthlyPayment
+  if (!monthly || monthly <= 0) return []
+  const count = debt.totalInstallments && debt.totalInstallments > 0
+    ? debt.totalInstallments
+    : Math.ceil(debt.totalAmount / monthly)
+  if (count <= 0 || count > 600) return []
+
+  const rows: PlanRow[] = []
+  let cumulative = 0
+  for (let i = 0; i < count; i++) {
+    const remainder = Math.round((debt.totalAmount - monthly * (count - 1)) * 100) / 100
+    const amount = i === count - 1 && remainder > 0 ? remainder : monthly
+    const prevCumulative = cumulative
+    cumulative += amount
+    const date = addMonthsClamped(debt.startDate, i + 1)
+
+    let status: PlanRow['status']
+    if (debt.paidAmount + 0.005 >= cumulative) status = 'paid'
+    else if (debt.paidAmount > prevCumulative + 0.005) status = 'partial'
+    else status = isOverdue(date) ? 'overdue' : 'pending'
+
+    rows.push({ no: i + 1, date, amount, status })
+  }
+  return rows
+}
+
+const PLAN_STATUS: Record<PlanRow['status'], { label: string; variant: 'ok' | 'warning' | 'danger' | 'outline' }> = {
+  paid:    { label: 'Ödendi',   variant: 'ok' },
+  partial: { label: 'Kısmi',    variant: 'warning' },
+  overdue: { label: 'Gecikmiş', variant: 'danger' },
+  pending: { label: 'Bekliyor', variant: 'outline' },
+}
+
 function emptyForm() {
   return {
     name: '', type: 'personal' as DebtType, direction: 'owe' as DebtDirection,
@@ -275,6 +327,10 @@ export default function DebtsPage() {
   }
 
   // Detail modal content
+  const paymentPlan = useMemo(
+    () => (selectedDebt ? buildPaymentPlan(selectedDebt) : []),
+    [selectedDebt],
+  )
   const debtTxs = selectedDebt
     ? transactions
         .filter(t => t.debtId === selectedDebt.id)
@@ -339,6 +395,50 @@ export default function DebtsPage() {
                 {formatCurrency(selectedDebt.paidAmount)} ödendi (%{Math.round(selectedDebt.progressPercent)})
               </div>
             </div>
+
+            {/* Payment plan */}
+            {paymentPlan.length > 0 && (
+              <div>
+                <div className="flex items-baseline justify-between mb-2">
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ödeme Planı</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">
+                    {paymentPlan.filter(r => r.status === 'paid').length}/{paymentPlan.length} taksit ödendi
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="max-h-64 overflow-y-auto">
+                    {paymentPlan.map((row, i) => {
+                      const status = PLAN_STATUS[row.status]
+                      const isNext = row.status !== 'paid' && paymentPlan.slice(0, i).every(r => r.status === 'paid')
+                      return (
+                        <div
+                          key={row.no}
+                          className={[
+                            'flex items-center gap-3 px-4 py-2.5 text-sm',
+                            i > 0 ? 'border-t border-border' : '',
+                            row.status === 'paid' ? 'opacity-60' : '',
+                            isNext ? 'bg-accent/50' : '',
+                          ].join(' ')}
+                        >
+                          <span className="w-8 flex-shrink-0 text-xs text-muted-foreground tabular-nums">
+                            {row.no}.
+                          </span>
+                          <span className="flex-1 min-w-0 tabular-nums">
+                            {formatDate(row.date, 'd MMM yyyy')}
+                          </span>
+                          <span className="flex-shrink-0 font-medium tabular-nums">
+                            {formatCurrency(row.amount)}
+                          </span>
+                          <span className="w-20 flex-shrink-0 flex justify-end">
+                            <Badge variant={status.variant}>{status.label}</Badge>
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Transactions */}
             <div>
@@ -441,8 +541,10 @@ export default function DebtsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <CurrencyInput label="Aylık Taksit" value={form.monthlyStr} onChange={v => setForm(f => ({...f, monthlyStr: v}))} />
-            <Input label="Alacaklı / Kişi" value={form.counterparty} onChange={e => setForm(f => ({...f, counterparty: e.target.value}))} placeholder="Garanti BBVA" />
+            <Input label="Taksit Sayısı" type="number" min={1} value={form.totalInst} onChange={e => setForm(f => ({...f, totalInst: e.target.value}))} placeholder="36" />
           </div>
+
+          <Input label="Alacaklı / Kişi" value={form.counterparty} onChange={e => setForm(f => ({...f, counterparty: e.target.value}))} placeholder="Garanti BBVA" />
 
           <div className="flex flex-col gap-2 pt-1">
             <Button onClick={handleSave} loading={loading} fullWidth>{editingDebt ? 'Güncelle' : 'Kaydet'}</Button>
