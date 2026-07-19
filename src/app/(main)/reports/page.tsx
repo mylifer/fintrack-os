@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { useShallow } from 'zustand/react/shallow'
@@ -22,6 +22,8 @@ import { isReconciliation } from '@/lib/utils/reconciliation'
 import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey } from '@/lib/utils/calculations'
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
 import { sumBy, toMinor, toMajor } from '@/lib/utils/money'
+import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
+import { tefasCodesIn } from '@/lib/tefas'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
 import { CashFlowDetailOverlay } from '@/components/reports/CashFlowDetailOverlay'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
@@ -388,6 +390,7 @@ export default function ReportsPage() {
   const prices        = useInvestmentStore(s => s.prices)
   const fundPrices    = useInvestmentStore(s => s.fundPrices)
   const investTxs     = useInvestmentStore(s => s.transactions)
+  const fetchPrices   = useInvestmentStore(s => s.fetchPrices)
 
   const [preset,       setPreset]       = useState<Preset>('this-month')
   const [customFrom,   setCustomFrom]   = useState('')
@@ -425,6 +428,56 @@ export default function ReportsPage() {
     [preset, customFrom, customTo],
   )
 
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+
+  /* ── Fon getirisi (gerçekleşmemiş) ──────────────────────────────────
+     Dashboard'daki gelir kartıyla aynı hesap: seçili dönemin TEFAS fon
+     değer kazancı. calcFundPeriodGain dönem sonunu HER ZAMAN bugünkü fiyatla
+     alır → yalnızca bugüne kadar süren dönemlerde (to >= bugün) ve portföy
+     geneli (Tüm Hesaplar) anlamlıdır; geçmişte biten dönemlerde/hesap
+     seçiliyken 0 tutulur. Dönem başı kapanışı için fon başına günlük seri bir
+     kez çekilir (kod+dönem anahtarı; tarihi veri değişmez). */
+  const fundEligible = accountId === 'all' && dateRange.to >= todayStr
+  const fundCodes    = useMemo(() => tefasCodesIn(investTxs.map(t => t.asset)), [investTxs])
+  const [fundHistory, setFundHistory] = useState<Record<string, FundPricePoint[]>>({})
+  const histRequested = useRef(new Set<string>())
+
+  // Fon/FX fiyatlarını doldur (doğrudan /reports açılışında store boş olabilir).
+  useEffect(() => { fetchPrices() }, [fetchPrices])
+
+  // Dönem başı kapanış serisi ('Bugün' son iki kapanış farkını kullandığından
+  // seri gerektirmez; uygun olmayan dönemlerde hiç istenmez).
+  useEffect(() => {
+    if (!fundEligible || preset === 'today' || fundCodes.length === 0) return
+    const histFrom = format(subDays(parseISO(dateRange.from), 10), 'yyyy-MM-dd')
+    for (const code of fundCodes) {
+      const key = `${code}:${dateRange.from}`
+      if (histRequested.current.has(key)) continue
+      histRequested.current.add(key)
+      fetch(`/api/prices/history?asset=TEFAS&code=${code}&from=${histFrom}`, { cache: 'no-store' })
+        .then(r => (r.ok ? r.json() : null))
+        .then((pts: FundPricePoint[] | null) => {
+          if (Array.isArray(pts) && pts.length) setFundHistory(h => ({ ...h, [key]: pts }))
+          else histRequested.current.delete(key)
+        })
+        .catch(() => histRequested.current.delete(key))
+    }
+  }, [fundEligible, preset, fundCodes, dateRange.from])
+
+  const fundPeriodNet = useMemo(() => {
+    if (!fundEligible) return 0
+    const hist: Record<string, FundPricePoint[]> = {}
+    for (const code of fundCodes) {
+      const pts = fundHistory[`${code}:${dateRange.from}`]
+      if (pts) hist[code] = pts
+    }
+    return calcFundPeriodGain(investTxs, fundPrices, hist, dateRange.from, dateRange.to, preset === 'today')
+  }, [fundEligible, fundCodes, fundHistory, investTxs, fundPrices, dateRange, preset])
+
+  // Checkbox işaretliyse ve net pozitifse gelire eklenir (negatif değer gelire
+  // yansıtılmaz — dashboard ile aynı kural).
+  const fundGain = includeInvestmentIncome && fundPeriodNet > 0 ? fundPeriodNet : 0
+
   // Analitik akış yüzeylerinin ortak temeli: yalnız İŞLENMİŞ satırlar (isPosted —
   // pending/gelecek tarihli satırlar hiçbir gelir/gider toplamına girmez; bakiye
   // ile aynı kural). Bakiye/net varlık trendleri ham `transactions` okumaya devam
@@ -455,13 +508,26 @@ export default function ReportsPage() {
   const kpi = useMemo(() => {
     // filteredTxs zaten dönem+hesap filtreli ve mutabakat ayıklanmış; calcPeriodFlow
     // TRY-normalize (baseAmount) + kuruş-exact toplar → dashboard'daki gelir/gider
-    // kartlarıyla (calcPeriodFlow/calcMonthlyFlow) birebir aynı sayı.
-    const { income, expense, net } = calcPeriodFlow(filteredTxs, dateRange.from, dateRange.to)
-    const rate = income > 0 ? (net / income) * 100 : 0
+    // kartlarıyla (calcPeriodFlow/calcMonthlyFlow) birebir aynı sayı. fundGain
+    // (gerçekleşmemiş fon getirisi) gelire eklenir — dashboard incomeTotal ile aynı.
+    const flow    = calcPeriodFlow(filteredTxs, dateRange.from, dateRange.to)
+    const income  = flow.income + fundGain
+    const expense = flow.expense
+    const net     = income - expense
+    const rate    = income > 0 ? (net / income) * 100 : 0
     return { income, expense, net, rate }
-  }, [filteredTxs, dateRange])
+  }, [filteredTxs, dateRange, fundGain])
 
-  const cashFlowData    = useMemo(() => buildCashFlowData(filteredTxs, dateRange),                    [filteredTxs, dateRange])
+  const cashFlowData    = useMemo(() => {
+    const data = buildCashFlowData(filteredTxs, dateRange)
+    // Fon getirisi tek bir dönem-toplamıdır (bugüne kadar, gerçekleşmemiş) ve
+    // tarihli kovalara bölünemez; en güncel (son) kovanın gelirine yansıtılır.
+    if (fundGain > 0 && data.length > 0) {
+      const i = data.length - 1
+      data[i] = { ...data[i], income: data[i].income + fundGain }
+    }
+    return data
+  }, [filteredTxs, dateRange, fundGain])
   const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
   const tagData         = useMemo(() => buildTagExpenseData(filteredTxs),                             [filteredTxs])
   const topTags         = useMemo(() => tagData.slice(0, 8),                                          [tagData])
@@ -584,7 +650,9 @@ export default function ReportsPage() {
               <KPICard
                 label="Toplam Gelir"
                 value={formatCurrency(animIncome)}
-                sub={`${filteredTxs.filter(t => t.type === 'income').length} işlem`}
+                sub={fundGain > 0.005
+                  ? `${filteredTxs.filter(t => t.type === 'income').length} işlem · +${formatCompact(fundGain)} fon getirisi`
+                  : `${filteredTxs.filter(t => t.type === 'income').length} işlem`}
                 color="ok"
               />
               <KPICard
