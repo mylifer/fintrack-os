@@ -85,10 +85,30 @@ export function calcTotalAssets(accounts: Account[], prices?: PriceData | null):
   return toMajor(minor)
 }
 
-export function calcAvailableCredit(account: Account): number {
+export function calcAvailableCredit(account: Account, transactions: Transaction[] = []): number {
   if (account.type !== 'credit_card' || !account.creditLimit) return 0
-  // Balance is negative for credit card debt
-  return account.creditLimit + account.balance
+  // Balance is negative for credit card debt; posted transactions (past/current
+  // installments included) are already folded into it.
+  //
+  // Taksitli işlemler, taksit sayısından bağımsız olarak satın alma tarihinde
+  // TÜM tutarıyla limitten düşer (gerçek kredi kartı davranışı). Bakiye yalnızca
+  // tarihi gelmiş taksit satırlarını içerdiğinden, henüz bakiyeye işlenmemiş
+  // (gelecek tarihli VEYA onay bekleyen) taksit satırlarının tutarını available
+  // limitten ayrıca düşeriz. Böylece satın almanın toplam taahhüdü ilk günden
+  // itibaren bloke olur; taksitler geldikçe bakiyeye kayar ama toplam bloke tutar
+  // değişmez (net etki sıfır). Borç ödendikçe limit normal şekilde geri açılır.
+  let blockedMinor = 0
+  for (const t of transactions) {
+    if (
+      t.isInstallment &&
+      t.type === 'expense' &&
+      t.accountId === account.id &&
+      !isPosted(t)
+    ) {
+      blockedMinor += toMinor(t.amount)
+    }
+  }
+  return account.creditLimit + account.balance - toMajor(blockedMinor)
 }
 
 // categoryId can hold a plain UUID or a JSON-encoded string[] for multi-category budgets

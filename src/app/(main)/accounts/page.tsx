@@ -71,7 +71,7 @@ export default function AccountsPage() {
         ) : (
           <div className="grid grid-cols-2 gap-5">
             {accounts.map((account) => {
-                    const available = account.type === 'credit_card' ? calcAvailableCredit(account) : null
+                    const available = account.type === 'credit_card' ? calcAvailableCredit(account, transactions) : null
                     const usedPct   = account.creditLimit && available !== null
                       ? ((account.creditLimit - available) / account.creditLimit) * 100
                       : 0

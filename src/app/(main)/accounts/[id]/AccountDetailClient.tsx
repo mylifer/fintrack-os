@@ -139,7 +139,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
   // These must be called unconditionally before any early return (Rules of Hooks)
   const { income: periodIncome, expense: periodExpense } =
     account ? calcPeriodFlow(accountTxs, from, to) : { income: 0, expense: 0 }
-  const available   = account?.type === 'credit_card' ? calcAvailableCredit(account) : null
+  const available   = account?.type === 'credit_card' ? calcAvailableCredit(account, accountTxs) : null
   const animBalance = useCountUp(account ? Math.abs(account.balance) : 0)
   const animAvail   = useCountUp(available ?? 0)
   const animLimit   = useCountUp(account?.creditLimit ?? 0)
