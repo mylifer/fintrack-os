@@ -278,43 +278,39 @@ export default function DashboardPage() {
           <NetWorthChart />
         </div>
 
-        {/* ── Budget + Recent Transactions ────────────────────── */}
+        {/* ── Accounts + Recent Transactions ──────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* Budget */}
-          <Card>
-            <CardHeader>
+          {/* Accounts */}
+          <Card className="gap-0">
+            <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
-                <CardTitle>Bütçe Durumu</CardTitle>
-                <Link href="/budgets" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Tümü →
+                <CardTitle>Hesaplar</CardTitle>
+                <Link href="/accounts" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Yönet →
                 </Link>
               </div>
-              <CardDescription>Bu ay harcama limitleri</CardDescription>
             </CardHeader>
-            <CardContent>
-              {budgets.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Bu ay için bütçe tanımlı değil.</p>
+            <CardContent className="p-0">
+              {accounts.length === 0 ? (
+                <p className="px-6 py-4 text-sm text-muted-foreground">Henüz hesap yok.</p>
               ) : (
-                <div className="space-y-4">
-                  {budgets.map(b => {
-                    const cat = categories.find(c => c.id === b.categoryId)
-                    return (
-                      <div key={b.id} className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-1.5 text-sm font-medium">
-                            {cat && <CategoryIcon icon={cat.icon} color={cat.color} size={14} />}
-                            {cat?.name}
-                          </span>
-                          <span className="text-sm tabular-nums text-muted-foreground">
-                            {formatCurrency(b.spent, 'TRY')} / {formatCurrency(b.amount, 'TRY')}
-                          </span>
+                <ul className="divide-y divide-border">
+                  {accounts.map(a => (
+                    <li key={a.id}>
+                      <Link href={`/accounts/${a.id}`} className="flex items-center gap-3 px-6 py-3 hover:bg-muted/50 transition-colors">
+                        <AccountAvatar account={a} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{a.name}</p>
+                          <p className="text-xs text-muted-foreground">{ACCOUNT_TYPE[a.type] ?? a.type}</p>
                         </div>
-                        <ProgressBar percent={b.percentUsed} status={b.status} showLabel />
-                      </div>
-                    )
-                  })}
-                </div>
+                        <span className={`text-sm tabular-nums shrink-0 ${a.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                          {formatCurrency(a.balance, a.currency)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               )}
             </CardContent>
           </Card>
@@ -436,39 +432,43 @@ export default function DashboardPage() {
           </Card>
         )}
 
-        {/* ── Accounts + Debt ─────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* ── Budget + Debt ───────────────────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
-          {/* Accounts */}
-          <Card className="gap-0">
-            <CardHeader className="pb-4">
+          {/* Budget */}
+          <Card>
+            <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Hesaplar</CardTitle>
-                <Link href="/accounts" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Yönet →
+                <CardTitle>Bütçe Durumu</CardTitle>
+                <Link href="/budgets" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Tümü →
                 </Link>
               </div>
+              <CardDescription>Bu ay harcama limitleri</CardDescription>
             </CardHeader>
-            <CardContent className="p-0">
-              {accounts.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-muted-foreground">Henüz hesap yok.</p>
+            <CardContent>
+              {budgets.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Bu ay için bütçe tanımlı değil.</p>
               ) : (
-                <ul className="divide-y divide-border">
-                  {accounts.map(a => (
-                    <li key={a.id}>
-                      <Link href={`/accounts/${a.id}`} className="flex items-center gap-3 px-6 py-3 hover:bg-muted/50 transition-colors">
-                        <AccountAvatar account={a} size="sm" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{a.name}</p>
-                          <p className="text-xs text-muted-foreground">{ACCOUNT_TYPE[a.type] ?? a.type}</p>
+                <div className="space-y-4">
+                  {budgets.map(b => {
+                    const cat = categories.find(c => c.id === b.categoryId)
+                    return (
+                      <div key={b.id} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-sm font-medium">
+                            {cat && <CategoryIcon icon={cat.icon} color={cat.color} size={14} />}
+                            {cat?.name}
+                          </span>
+                          <span className="text-sm tabular-nums text-muted-foreground">
+                            {formatCurrency(b.spent, 'TRY')} / {formatCurrency(b.amount, 'TRY')}
+                          </span>
                         </div>
-                        <span className={`text-sm tabular-nums shrink-0 ${a.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
-                          {formatCurrency(a.balance, a.currency)}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                        <ProgressBar percent={b.percentUsed} status={b.status} showLabel />
+                      </div>
+                    )
+                  })}
+                </div>
               )}
             </CardContent>
           </Card>
