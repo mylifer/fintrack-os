@@ -83,7 +83,6 @@ export default function DashboardPage() {
   )
   const investValue  = useMemo(() => holdings.reduce((s, h) => s + h.currentValue, 0), [holdings])
   const getBudgets   = useBudgetStore(s => s.getMonthBudgets)
-  const getDueSoon   = useDebtStore(s => s.getDueSoon)
   const getActive    = useDebtStore(s => s.getActive)
   const getDue       = useRecurringStore(s => s.getDue)
   const people       = usePeopleStore(s => s.people)
@@ -175,7 +174,9 @@ export default function DashboardPage() {
     [transactions],
   )
   const budgets = useMemo(() => getBudgets(selectedPeriod, transactions).slice(0, 5), [selectedPeriod, transactions, getBudgets])
-  const dueSoon = getDueSoon(30)
+  // Vadesi yakın olan üstte; vadesiz borçlar listenin sonunda
+  const activeDebts = getActive()
+    .sort((a, b) => (a.dueDate ?? '9999-12-31').localeCompare(b.dueDate ?? '9999-12-31'))
   const pending = getDue(today())
 
   const [generatingId, setGeneratingId] = useState<string | null>(null)
@@ -481,7 +482,7 @@ export default function DashboardPage() {
                   Tümü →
                 </Link>
               </div>
-              <CardDescription>Yaklaşan ödemeler ve toplam borç</CardDescription>
+              <CardDescription>Aktif borçlar ve toplam borç</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-baseline gap-2">
@@ -489,11 +490,11 @@ export default function DashboardPage() {
                 <span className="text-sm text-muted-foreground">toplam borç</span>
               </div>
               <Separator />
-              {dueSoon.length === 0 ? (
-                <p className="text-sm text-muted-foreground">30 gün içinde vadesi gelen ödeme yok.</p>
+              {activeDebts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aktif borç yok.</p>
               ) : (
                 <div className="space-y-3">
-                  {dueSoon.map(debt => {
+                  {activeDebts.map(debt => {
                     const overdue = debt.dueDate && isOverdue(debt.dueDate)
                     const days    = debt.dueDate ? daysUntil(debt.dueDate) : null
                     return (
@@ -513,9 +514,9 @@ export default function DashboardPage() {
                             <Badge variant="danger">Gecikmiş</Badge>
                           ) : days !== null && days <= 7 ? (
                             <Badge variant="warning">{days}g</Badge>
-                          ) : (
+                          ) : days !== null ? (
                             <Badge variant="default">{days}g</Badge>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                     )
