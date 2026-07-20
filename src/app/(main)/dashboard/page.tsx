@@ -433,7 +433,7 @@ export default function DashboardPage() {
         )}
 
         {/* ── Budget + Debt ───────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* Budget */}
           <Card>
