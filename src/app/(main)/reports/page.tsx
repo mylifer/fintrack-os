@@ -108,9 +108,17 @@ function buildCashFlowData(
     let wStart = startOfWeek(from, { locale: tr })
     while (wStart <= to) {
       const wEnd  = endOfWeek(wStart, { locale: tr })
-      const pFrom = format(wStart < from ? from : wStart, 'yyyy-MM-dd')
-      const pTo   = format(wEnd   > to   ? to   : wEnd,   'yyyy-MM-dd')
-      pts.push({ label: format(wStart < from ? from : wStart, 'd MMM', { locale: tr }), income: income(pFrom, pTo), expense: expense(pFrom, pTo), from: pFrom, to: pTo })
+      const s     = wStart < from ? from : wStart
+      const e     = wEnd   > to   ? to   : wEnd
+      const pFrom = format(s, 'yyyy-MM-dd')
+      const pTo   = format(e, 'yyyy-MM-dd')
+      // Etiket tek bir GÜN değil, bir HAFTA aralığını gösterir (ör. "13–19 Tem").
+      // Yalnız başlangıç gününü ("13 Tem") yazmak "tüm gider tek güne yığılmış"
+      // yanılgısına yol açıyordu; ay sınırını aşan haftalarda iki ay da yazılır.
+      const label = s.getMonth() === e.getMonth()
+        ? `${format(s, 'd', { locale: tr })}–${format(e, 'd MMM', { locale: tr })}`
+        : `${format(s, 'd MMM', { locale: tr })}–${format(e, 'd MMM', { locale: tr })}`
+      pts.push({ label, income: income(pFrom, pTo), expense: expense(pFrom, pTo), from: pFrom, to: pTo })
       wStart = addWeeks(wStart, 1)
     }
   } else {
@@ -566,6 +574,11 @@ export default function ReportsPage() {
   const animIncome  = useCountUp(kpi.income)
   const animExpense = useCountUp(kpi.expense)
   const animNet     = useCountUp(Math.abs(kpi.net))
+  // Nakit akışı kartı başlığı kendi barlarıyla tutarlı olmalı: barlar fon
+  // getirisini dışladığından başlık Net'i de dışlar. (kpi.net fon getirisini
+  // İÇERİR — o yalnız üstteki KPI "Net" kartı içindir.)
+  const cashFlowNet     = kpi.net - fundGain
+  const animCashFlowNet = useCountUp(Math.abs(cashFlowNet))
   const animTrend   = useCountUp(trendData.at(-1)?.balance ?? 0)
 
   // Seçili aralıktaki net değişim (ilk → son nokta), trend başlığında gösterilir
@@ -691,8 +704,8 @@ export default function ReportsPage() {
               <span className="text-sm font-semibold text-foreground/90">Nakit Akışı</span>
               <div className="flex items-center gap-3">
                 {!isLoading && (
-                  <span className={`text-xs font-medium tabular-nums ${kpi.net >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                    Net: {kpi.net >= 0 ? '+' : '−'}{formatCurrency(animNet)}
+                  <span className={`text-xs font-medium tabular-nums ${cashFlowNet >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                    Net: {cashFlowNet >= 0 ? '+' : '−'}{formatCurrency(animCashFlowNet)}
                   </span>
                 )}
                 {!isLoading && (
