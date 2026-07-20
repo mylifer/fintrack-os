@@ -144,7 +144,6 @@ function emptyForm() {
 export default function DebtsPage() {
   const add          = useDebtStore(s => s.add)
   const update       = useDebtStore(s => s.update)
-  const settle       = useDebtStore(s => s.settle)
   const remove       = useDebtStore(s => s.remove)
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   // Subscribe to the raw array and enrich in a memo — getActive() builds new
@@ -213,12 +212,16 @@ export default function DebtsPage() {
     if (!form.name || !parseCurrencyInput(form.totalStr)) return
     setLoading(true)
     try {
+    const totalAmount = parseCurrencyInput(form.totalStr)
+    const paidAmount  = parseCurrencyInput(form.paidStr)
     const patch = {
       name:              form.name,
       type:              form.type,
       direction:         form.direction,
-      totalAmount:       parseCurrencyInput(form.totalStr),
-      paidAmount:        parseCurrencyInput(form.paidStr),
+      totalAmount,
+      paidAmount,
+      // Borç yalnızca tamamı ödendiğinde kapanır (manuel kapatma yok)
+      isSettled:         paidAmount >= totalAmount,
       interestRate:      parseCurrencyInput(form.interestStr) || undefined,
       startDate:         form.startDate,
       dueDate:           form.dueDate || undefined,
@@ -236,7 +239,6 @@ export default function DebtsPage() {
         ...patch,
         id:               crypto.randomUUID(),
         paidInstallments: 0,
-        isSettled:        false,
         createdAt:        new Date().toISOString(),
       }
       await add(d)
@@ -320,11 +322,6 @@ export default function DebtsPage() {
           <Button size="sm" className="flex-1 shrink" onClick={() => setSelectedDebt(debt)}>
             Detay
           </Button>
-          {!debt.isSettled && (
-            <Button size="sm" variant="ok" className="flex-1 shrink" onClick={() => settle(debt.id)}>
-              Kapatıldı
-            </Button>
-          )}
         </div>
       </div>
     )

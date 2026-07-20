@@ -25,7 +25,6 @@ interface DebtState {
   /** Adjust paidAmount by delta only, WITHOUT touching installment count
    *  (used when the amount of an existing payment is edited). */
   adjustPaidAmount: (id: string, delta: number) => Promise<void>
-  settle: (id: string) => Promise<void>
   getActive: () => DebtWithRemaining[]
   getDueSoon: (days?: number) => DebtWithRemaining[]
 }
@@ -103,14 +102,6 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     const patch = { paidAmount, isSettled }
     await localPatch('debts', id, patch)
     set(s => ({ debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d) }))
-  },
-
-  settle: async (id) => {
-    const patch = { isSettled: true }
-    await localPatch('debts', id, patch)
-    set(s => ({
-      debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d),
-    }))
   },
 
   getActive: () => get().debts.filter(d => !d.isSettled).map(enrichDebt),
