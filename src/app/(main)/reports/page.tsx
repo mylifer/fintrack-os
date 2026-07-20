@@ -483,9 +483,12 @@ export default function ReportsPage() {
     return calcFundPeriodGain(investTxs, fundPrices, hist, dateRange.from, dateRange.to, preset === 'today')
   }, [fundEligible, fundCodes, fundHistory, investTxs, fundPrices, dateRange, preset])
 
-  // Checkbox işaretliyse ve net pozitifse gelire eklenir (negatif değer gelire
-  // yansıtılmaz — dashboard ile aynı kural).
-  const fundGain = includeInvestmentIncome && fundPeriodNet > 0 ? fundPeriodNet : 0
+  // Gerçekleşmemiş dönemsel fon getirisi nakit akışı DEĞİLDİR → income/net'e
+  // EKLENMEZ (dashboard ile aynı kural; haftalık ≥ günlük invariant'ı korunur).
+  // Yalnız "Toplam Gelir" kartında bilgi amaçlı ayrı satırda gösterilir. Not:
+  // includeInvestmentIncome ayrıca GERÇEKLEŞEN fon satış kârı gelir satırlarını
+  // (aşağıda filteredTxs) toplam gelire katıp katmamayı da seçtirir.
+  const fundInfo = includeInvestmentIncome ? fundPeriodNet : 0
 
   // Analitik akış yüzeylerinin ortak temeli: yalnız İŞLENMİŞ satırlar (isPosted —
   // pending/gelecek tarihli satırlar hiçbir gelir/gider toplamına girmez; bakiye
@@ -518,20 +521,19 @@ export default function ReportsPage() {
   const kpi = useMemo(() => {
     // filteredTxs zaten dönem+hesap filtreli ve mutabakat ayıklanmış; calcPeriodFlow
     // TRY-normalize (baseAmount) + kuruş-exact toplar → dashboard'daki gelir/gider
-    // kartlarıyla (calcPeriodFlow/calcMonthlyFlow) birebir aynı sayı. fundGain
-    // (gerçekleşmemiş fon getirisi) gelire eklenir — dashboard incomeTotal ile aynı.
+    // kartlarıyla (calcPeriodFlow/calcMonthlyFlow) birebir aynı sayı. Gerçekleşmemiş
+    // fon getirisi burada YER ALMAZ (nakit akışı değil) — dashboard incomeTotal ile aynı.
     const flow    = calcPeriodFlow(filteredTxs, dateRange.from, dateRange.to)
-    const income  = flow.income + fundGain
+    const income  = flow.income
     const expense = flow.expense
     const net     = income - expense
     const rate    = income > 0 ? (net / income) * 100 : 0
     return { income, expense, net, rate }
-  }, [filteredTxs, dateRange, fundGain])
+  }, [filteredTxs, dateRange])
 
   // Nakit akışı = yalnızca gerçek nakit gelir/gider. Gerçekleşmemiş fon getirisi
-  // (fundGain) barlara EKLENMEZ — para hareketi olmadığı için son kovaya yığılıp
-  // "hayali gelir" gibi görünüyordu. Fon getirisi yalnızca "Gelir" KPI kartında
-  // kalır (kpi.income = flow.income + fundGain).
+  // hiçbir toplama (KPI kartları dahil) girmez; yalnız "Toplam Gelir" kartında
+  // bilgi satırı olarak (fundInfo) gösterilir.
   const cashFlowData    = useMemo(() => buildCashFlowData(filteredTxs, dateRange), [filteredTxs, dateRange])
   const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
   const tagData         = useMemo(() => buildTagExpenseData(filteredTxs),                             [filteredTxs])
@@ -573,10 +575,9 @@ export default function ReportsPage() {
   const animIncome  = useCountUp(kpi.income)
   const animExpense = useCountUp(kpi.expense)
   const animNet     = useCountUp(Math.abs(kpi.net))
-  // Nakit akışı kartı başlığı kendi barlarıyla tutarlı olmalı: barlar fon
-  // getirisini dışladığından başlık Net'i de dışlar. (kpi.net fon getirisini
-  // İÇERİR — o yalnız üstteki KPI "Net" kartı içindir.)
-  const cashFlowNet     = kpi.net - fundGain
+  // kpi.net artık yalnız nakit akışıdır (fon getirisi içermez) → nakit akışı kartı
+  // başlığı doğrudan kpi.net'i kullanır.
+  const cashFlowNet     = kpi.net
   const animCashFlowNet = useCountUp(Math.abs(cashFlowNet))
   const animTrend   = useCountUp(trendData.at(-1)?.balance ?? 0)
 
@@ -666,9 +667,11 @@ export default function ReportsPage() {
               <KPICard
                 label="Toplam Gelir"
                 value={formatCurrency(animIncome)}
-                sub={fundGain > 0.005
-                  ? `${filteredTxs.filter(t => t.type === 'income').length} işlem · +${formatCompact(fundGain)} fon getirisi`
-                  : `${filteredTxs.filter(t => t.type === 'income').length} işlem`}
+                sub={fundInfo > 0.005
+                  ? `${filteredTxs.filter(t => t.type === 'income').length} işlem · +${formatCompact(fundInfo)} fon getirisi (varlıkta)`
+                  : fundInfo < -0.005
+                    ? `${filteredTxs.filter(t => t.type === 'income').length} işlem · −${formatCompact(Math.abs(fundInfo))} fon değişimi (varlıkta)`
+                    : `${filteredTxs.filter(t => t.type === 'income').length} işlem`}
                 color="ok"
               />
               <KPICard
