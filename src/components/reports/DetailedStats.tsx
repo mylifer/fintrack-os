@@ -19,10 +19,12 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { isInvestmentPrincipalTx } from '@/lib/utils/calculations'
-import { baseAmount, toBaseTry } from '@/lib/utils/fx'
+import { isInvestmentPrincipalTx, calcNetWorth, excludeFuture } from '@/lib/utils/calculations'
+import { computeHoldings, getAssetPrice } from '@/store/investment.store'
+import { today } from '@/lib/utils/date'
+import { baseAmount } from '@/lib/utils/fx'
 import { toMinor, toMajor, sumBy } from '@/lib/utils/money'
-import type { Account, Category, Transaction } from '@/types'
+import type { Account, Category, Transaction, InvestmentTransaction, PriceData, TefasFundPrice } from '@/types'
 
 /* Percentages: TR formatting with a decimal comma, e.g. 41.58 → "41,58%". */
 const PCT_FMT = new Intl.NumberFormat('tr-TR', {
@@ -86,6 +88,9 @@ interface DetailedStatsProps {
   accounts:     Account[]                  // non-archived
   dateRange:    { from: string; to: string }
   accountId:    string                     // 'all' | account id
+  investTxs:    InvestmentTransaction[]    // net-worth: portfolio market value
+  prices:       PriceData | null
+  fundPrices:   Record<string, TefasFundPrice>
 }
 
 /* ── Component ────────────────────────────────────────────────────────── */
@@ -97,6 +102,9 @@ export function DetailedStats({
   accounts,
   dateRange,
   accountId,
+  investTxs,
+  prices,
+  fundPrices,
 }: DetailedStatsProps) {
   const [open, setOpen] = useState(true)
 
@@ -220,38 +228,68 @@ export function DetailedStats({
   }, [analyticTxs, period])
 
   /* Net worth: current (at period end), max & min with exact dates.
-     Baseline = opening net worth entering the period; then we replay the
-     period's day-by-day changes and track the running high/low. */
+
+     Bu, dashboard/Raporlar'daki "Net Varlık" ile AYNI değer olmalı. Bu yüzden
+     BUGÜNKÜ net değeri çıpa alıp geriye yürüyoruz (Raporlar "Net Varlık Trendi"
+     ile birebir yöntem):
+       • çıpa = calcNetWorth(inScope, prices) + yatırım portföyünün piyasa değeri
+         (yalnız "Tüm Hesaplar" görünümünde — holding'ler hesap değil, alışın nakit
+          bacağı zaten hesaba işlenmiş; tek hesap seçiliyken portföy eklenmez).
+       • yalnızca POSTED işlemler sayılır (excludeFuture) — hesap bakiyesiyle aynı
+         kural; gelecek tarihli / onay bekleyen satırlar net değeri oynatmaz.
+       • yürüyüş bugünden ileri gitmez: gelecekteki net değer tanımsızdır
+         (walkEnd = min(dönem sonu, bugün)).
+     Dönem-içi ham nakit deltaları TRY-snapshot (baseAmount) ile alınır; çıpa canlı
+     kurla hesaplanır — Raporlar trendindeki yaklaşımla aynı (dönem sonu = bugün
+     ise deltalar sıfırlanır ve current çıpaya birebir eşittir). */
   const netWorth = useMemo(() => {
+    const todayStr    = today()
     const selectedIds = new Set(
       accountId === 'all' ? accounts.map(a => a.id) : [accountId],
     )
-    const inScope = accounts.filter(a => selectedIds.has(a.id))
+    const inScope       = accounts.filter(a => selectedIds.has(a.id))
+    const includeInvest = accountId === 'all' && !!prices
+    const from          = dateRange.from
+    const walkEnd       = dateRange.to < todayStr ? dateRange.to : todayStr
 
-    // Opening net worth (TRY): initial balances converted to base currency,
-    // plus every effect strictly before the period. Accumulated in minor units.
-    let baselineMinor = inScope.reduce((s, a) => s + toMinor(toBaseTry(a.initialBalance, a.currency)), 0)
-    const byDateMinor = new Map<string, number>()
-    for (const t of transactions) {
-      if (t.date < dateRange.from) {
-        baselineMinor += toMinor(netDelta(t, selectedIds))
-      } else if (t.date <= dateRange.to) {
-        byDateMinor.set(t.date, (byDateMinor.get(t.date) ?? 0) + toMinor(netDelta(t, selectedIds)))
+    // Çıpa: bugünkü net değer — dashboard/Raporlar başlığıyla birebir aynı.
+    const investNow = includeInvest
+      ? computeHoldings(investTxs, prices!, fundPrices).reduce((s, h) => s + h.currentValue, 0)
+      : 0
+    const anchorMinor = toMinor(calcNetWorth(inScope, prices)) + toMinor(investNow)
+
+    // Nakit + yatırım hareketlerinin günlük net deltaları (minor birim). Nakit:
+    // yalnız posted, seçili hesap kümesine netDelta. Yatırım: işaretli miktar ×
+    // GÜNCEL fiyat (Raporlar trendiyle aynı — geçmiş fiyat tutmuyoruz).
+    const deltaByDate = new Map<string, number>()
+    const add = (d: string, minor: number) => deltaByDate.set(d, (deltaByDate.get(d) ?? 0) + minor)
+    for (const t of excludeFuture(transactions)) add(t.date, toMinor(netDelta(t, selectedIds)))
+    if (includeInvest) {
+      for (const t of investTxs) {
+        const v = (t.type === 'buy' ? 1 : -1) * t.quantity * getAssetPrice(t.asset, prices!, fundPrices)
+        add(t.date.slice(0, 10), toMinor(v))
       }
     }
 
-    let runningMinor = baselineMinor
-    let max = { value: toMajor(runningMinor), date: dateRange.from }
-    let min = { value: toMajor(runningMinor), date: dateRange.from }
-    for (const date of [...byDateMinor.keys()].sort()) {
-      runningMinor += byDateMinor.get(date)!
+    // Döneme giriş değeri = çıpa − [from, bugün] arasındaki tüm deltalar.
+    let openingMinor = anchorMinor
+    for (const [d, m] of deltaByDate) {
+      if (d >= from && d <= todayStr) openingMinor -= m
+    }
+
+    // Dönem içinde ileri yürüyüş (bugünle sınırlı), en yüksek/en düşüğü izle.
+    let runningMinor = openingMinor
+    let max = { value: toMajor(runningMinor), date: from }
+    let min = { value: toMajor(runningMinor), date: from }
+    for (const d of [...deltaByDate.keys()].filter(d => d >= from && d <= walkEnd).sort()) {
+      runningMinor += deltaByDate.get(d)!
       const value = toMajor(runningMinor)
-      if (value > max.value) max = { value, date }
-      if (value < min.value) min = { value, date }
+      if (value > max.value) max = { value, date: d }
+      if (value < min.value) min = { value, date: d }
     }
 
     return { current: toMajor(runningMinor), max, min }
-  }, [transactions, accounts, accountId, dateRange])
+  }, [transactions, accounts, accountId, dateRange, investTxs, prices, fundPrices])
 
   const hasExpense = period.expense.total > 0
   const hasIncome  = period.income.total > 0

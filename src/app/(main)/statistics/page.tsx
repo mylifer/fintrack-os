@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear } from 'date-fns'
 import { Header } from '@/components/layout/Header'
 import { SelectField } from '@/components/ui/Select'
-import { useTransactionStore, useAccountStore, useCategoryStore } from '@/store'
+import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { DetailedStats } from '@/components/reports/DetailedStats'
 
@@ -52,6 +52,9 @@ export default function StatisticsPage() {
   const accountsReady = useAccountStore(s => s.ready)
   const accounts      = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories    = useCategoryStore(s => s.categories)
+  const investTxs     = useInvestmentStore(s => s.transactions)
+  const prices        = useInvestmentStore(s => s.prices)
+  const fundPrices    = useInvestmentStore(s => s.fundPrices)
 
   const [preset,     setPreset]     = useState<Preset>('this-month')
   const [customFrom, setCustomFrom] = useState('')
@@ -156,6 +159,9 @@ export default function StatisticsPage() {
             accounts={accounts}
             dateRange={effectiveRange}
             accountId={accountId}
+            investTxs={investTxs}
+            prices={prices}
+            fundPrices={fundPrices}
           />
         )}
       </div>
