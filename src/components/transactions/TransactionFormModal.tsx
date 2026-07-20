@@ -64,12 +64,16 @@ function newRecurringForm() {
   }
 }
 
+// Son eklenen işlemin tarihi — art arda işlem girerken yeni form bu tarihle
+// açılır. Modül seviyesinde tutulur: sayfa yenilenince today()'e döner.
+let lastAddedDate: string | null = null
+
 function newForm() {
   return {
     type: 'expense' as Tab,
     amount: 0,
     currency: 'TRY' as CurrencyCode,
-    date: today(),
+    date: lastAddedDate ?? today(),
     accountId: '',
     toAccountId: undefined as string | undefined,
     categoryId: '' as string | undefined,
@@ -705,6 +709,7 @@ export function TransactionFormModal() {
       } else {
         await addTx({ ...base, id: crypto.randomUUID(), isInstallment: false, createdAt: now, updatedAt: now })
       }
+      lastAddedDate = formData.date
       if (tab === 'transfer' && form.isDebtPayment && formData.debtId) {
         await useDebtStore.getState().recordPayment(formData.debtId, amountTry)
       }
