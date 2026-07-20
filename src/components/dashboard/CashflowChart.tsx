@@ -22,9 +22,10 @@ const Chart = dynamic(() => import('./_CashflowChart'), {
   loading: () => <div className="h-[220px] flex items-center justify-center text-sm text-muted-foreground">Yükleniyor…</div>,
 })
 
-export function CashflowChart() {
+export function CashflowChart({ fundGain = 0 }: { fundGain?: number }) {
   const transactions   = useTransactionStore(s => s.transactions)
   const selectedPeriod = useUIStore(s => s.selectedPeriod)
+  const periodType     = useUIStore(s => s.periodType)
 
   const data = useMemo<DataPoint[]>(() => {
     const months = lastNMonths(6)
@@ -36,6 +37,21 @@ export function CashflowChart() {
       }
     })
   }, [transactions])
+
+  // Dashboard "Gelir" kartı, işlem geliriyle birlikte dönemin (gerçekleşmemiş)
+  // fon getirisini de gösterir (incomeTotal = income + fundGain). Bar aynı
+  // rakamı yansıtsın diye seçili ayın gelir çubuğuna aynı fundGain eklenir.
+  // Yalnız 'monthly' görünümde: fundGain o zaman aylık dönemin getirisi olur;
+  // haftalık/yıllık görünümde tek aya yazmak yanlış olurdu. Footer net'i ham
+  // kalır (Net kartı da fon getirisini dışlar) — bilerek `data`'yı kullanır.
+  const chartData = useMemo<DataPoint[]>(() => {
+    if (periodType !== 'monthly' || Math.abs(fundGain) < 0.005) return data
+    return data.map(d =>
+      d.my.month === selectedPeriod.month && d.my.year === selectedPeriod.year
+        ? { ...d, income: d.income + fundGain }
+        : d,
+    )
+  }, [data, fundGain, periodType, selectedPeriod])
 
   // Seçili dönem 6 aylık pencerenin dışındaysa uydurma bir "+₺0 net" göstermek
   // yerine footer satırı gizlenir (null ≠ sıfır).
@@ -52,7 +68,7 @@ export function CashflowChart() {
         <CardDescription>Son 6 aylık gelir ve gider karşılaştırması</CardDescription>
       </CardHeader>
       <CardContent>
-        <Chart data={data} selectedPeriod={selectedPeriod} />
+        <Chart data={chartData} selectedPeriod={selectedPeriod} />
       </CardContent>
       <CardFooter className="flex-col items-start gap-2 text-sm">
         {net !== null && (
