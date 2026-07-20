@@ -169,7 +169,11 @@ export default function DashboardPage() {
     }
   }, [accounts, transactions, investTxs, prices, fundPrices, prevRange])
 
-  const recent  = useMemo(() => transactions.slice(0, 8), [transactions])
+  // Son eklenenler: işlem tarihinden bağımsız, ekleme zamanına (createdAt) göre
+  const recent  = useMemo(
+    () => [...transactions].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 8),
+    [transactions],
+  )
   const budgets = useMemo(() => getBudgets(selectedPeriod, transactions).slice(0, 5), [selectedPeriod, transactions, getBudgets])
   const dueSoon = getDueSoon(30)
   const pending = getDue(today())
@@ -365,6 +369,7 @@ export default function DashboardPage() {
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {formatDateShort(tx.date)} · {account?.name ?? '—'}
+                            {tx.createdAt && <> · eklendi {formatDate(tx.createdAt, 'd MMM HH:mm')}</>}
                           </p>
                           <TagBadges tags={tx.tags} className="mt-1" />
                         </div>
