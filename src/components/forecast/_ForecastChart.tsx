@@ -63,6 +63,40 @@ function CustomTooltip({ active, payload }: TooltipProps) {
   )
 }
 
+// Dot rendered only on days that carry a movement, so işlem tarihleri stand out
+// on the projection line. Quiet days return an empty group (no marker).
+interface DotProps {
+  cx?: number
+  cy?: number
+  payload?: ChartRow
+  index?: number
+}
+
+function EventDot({ cx, cy, payload, index }: DotProps) {
+  if (cx == null || cy == null || !payload?.events.length) {
+    return <g key={index} />
+  }
+  const hasIncome = payload.events.some(e => e.type === 'income')
+  const hasExpense = payload.events.some(e => e.type === 'expense')
+  // Mixed days lean on the primary line colour; pure days take income/expense hue.
+  const fill = hasIncome && hasExpense
+    ? 'var(--primary)'
+    : hasIncome
+      ? 'var(--color-green-600, #16a34a)'
+      : 'var(--destructive)'
+  return (
+    <circle
+      key={index}
+      cx={cx}
+      cy={cy}
+      r={3.5}
+      fill={fill}
+      stroke="var(--background)"
+      strokeWidth={1.5}
+    />
+  )
+}
+
 // Tick values covering [min, max] and always including 0, capped at ~6 ticks.
 function niceYTicks(minVal: number, maxVal: number): number[] {
   const lo0 = Math.min(0, minVal)
@@ -206,7 +240,7 @@ export default function ForecastAreaChart({ points, shortfallDate, events = [], 
             stroke="var(--primary)"
             strokeWidth={2}
             fill="url(#forecastFill)"
-            dot={false}
+            dot={<EventDot />}
             activeDot={{ r: 4, fill: 'var(--primary)', stroke: 'var(--background)', strokeWidth: 2.5 }}
             isAnimationActive={false}
           />
