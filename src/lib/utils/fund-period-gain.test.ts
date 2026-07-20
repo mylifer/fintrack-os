@@ -29,10 +29,12 @@ describe('calcFundPeriodGain', () => {
     expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(300, 6)
   })
 
-  it('dönem içinde henüz kapanış yayınlanmadıysa getiri 0 sayılır', () => {
+  it('seri dönem içi kapanışta geride kalsa bile (T+1) canlı fiyatla dönem öncesi bazdan hesaplar', () => {
+    // Geçmiş seri yalnız dönem ÖNCESİ kapanışları içeriyor (canlı fp seriden önde).
+    // Eskiden within boş → 0'a çöküyordu; artık baz 30.06 @100, dönem sonu canlı 130.
     const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 80, date: '2026-05-01' })]
     const histBefore = { AFA: [{ date: '2026-06-28', price: 95 }, { date: '2026-06-30', price: 100 }] }
-    expect(calcFundPeriodGain(txs, FP, histBefore, FROM, TO, false)).toBe(0)
+    expect(calcFundPeriodGain(txs, FP, histBefore, FROM, TO, false)).toBeCloseTo(300, 6)
   })
 
   it('dönem içi alım kendi maliyetinden sayılır, dönem başı bazından değil', () => {
@@ -76,24 +78,25 @@ describe('calcFundPeriodGain', () => {
     expect(calcFundPeriodGain(txs, FP, HIST_PAST, '2026-07-01', '2026-07-10', false)).toBeCloseTo(250, 6)
   })
 
-  it('hafta Pazartesi başlarken bile getiri sıfıra çökmez: baz Cuma kapanışıdır (haftalık ≥ günlük)', () => {
-    // Regresyon: dönem içi ilk kapanışı baz almak, haftanın ilk günü (from === ilk
-    // kapanış günü) getiriyi ~0 gösteriyordu; artık dönem öncesi (Cuma) baz alınır.
+  it('hafta Pazartesi: geçmiş seri Pzt kapanışında geri kalsa bile haftalık ≥ günlük (sıfıra çökmez)', () => {
+    // Gerçek bug: canlı fp Pzt (07-20) fiyatını içerir ama /history serisi T+1
+    // gecikmesiyle yalnız Cuma'ya (07-17) kadar gelir → within boş. Eskiden haftalık
+    // 0'a çöküp günlükten (3000) düşük görünüyordu. Artık baz Cuma + canlı fiyat.
     const txs = [tx({ type: 'buy', quantity: 100, pricePerUnit: 80, date: '2026-05-01' })]
     const FP_MON: Record<string, TefasFundPrice> = {
-      AFA: { code: 'AFA', name: 'AFA', price: 130, prevPrice: 100, date: '2026-07-20' }, // Pzt taze kapanış
+      AFA: { code: 'AFA', name: 'AFA', price: 130, prevPrice: 100, date: '2026-07-20' }, // canlı: Pzt taze
     }
-    const HIST_MON: Record<string, FundPricePoint[]> = {
+    const HIST_LAG: Record<string, FundPricePoint[]> = {
       AFA: [
-        { date: '2026-07-17', price: 100 }, // Cuma (dönem öncesi baz)
-        { date: '2026-07-20', price: 130 }, // Pzt = haftanın ilk (ve tek) kapanışı
+        { date: '2026-07-16', price: 98 },
+        { date: '2026-07-17', price: 100 }, // Cuma — serideki SON nokta (Pzt henüz yok)
       ],
     }
-    const daily  = calcFundPeriodGain(txs, FP_MON, {},       '2026-07-20', '2026-07-20', true)  // 100×(130−100)
-    const weekly = calcFundPeriodGain(txs, FP_MON, HIST_MON, '2026-07-20', '2026-07-26', false) // baz Cuma 100
+    const daily  = calcFundPeriodGain(txs, FP_MON, {},        '2026-07-20', '2026-07-20', true)  // 100×(130−100)
+    const weekly = calcFundPeriodGain(txs, FP_MON, HIST_LAG,  '2026-07-20', '2026-07-26', false) // baz Cuma 100, sonu canlı 130
     expect(daily).toBeCloseTo(3000, 6)
-    expect(weekly).toBeCloseTo(3000, 6)   // eskiden 0'a çöküyordu
-    expect(weekly).toBeGreaterThanOrEqual(daily)
+    expect(weekly).toBeCloseTo(3000, 6)          // within boş olsa da 0'a çökmez
+    expect(weekly).toBeGreaterThanOrEqual(daily) // günlük haftalığı ASLA aşmaz
   })
 
   it("'Tüm Zamanlar': geçmiş seri olmadan gerçekleşmemiş K/Z döner", () => {

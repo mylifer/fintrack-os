@@ -74,12 +74,16 @@ export function calcFundPeriodGain(
       // TEFAS T+1 gecikmesiyle dönemin ilk günü (ör. Pazartesi) yayınlanan hareket
       // aslında önceki dönemin getirisidir; bunu döneme DAHİL ederek hafta artıda
       // başlar ve günlüğün prevPrice mantığıyla tutarlı olur (haftalık ≥ günlük).
-      // Dönem öncesi kapanış yoksa dönem içi ilk kapanışa düşülür. Seri hiç
-      // yüklenemediyse yalnız GÜNCEL pencerede günlük değişime düş (geçmiş pencerede
-      // hesaplanamaz → 0); dönem içinde henüz kapanış yayınlanmadıysa getiri 0.
+      // Dönem sonu (pEnd) canlı fiyattan gelir; canlı fiyat (fp) geçmiş seriden bir
+      // gün ÖNDE olabildiğinden (T+1) dönem içi kapanış (within) henüz boş olsa da
+      // hesaplarız — aksi halde haftalık 0'a çöküp günlükten düşük görünüyordu.
+      // Baz yoksa dönem içi ilk kapanışa düşülür; hiçbiri yoksa hesaplanamaz.
+      // Seri hiç yüklenemediyse yalnız GÜNCEL pencerede günlük değişime düş.
       if (!pts?.length) { if (!endsInPast) net += dailyChange; continue }
-      if (!within.length) continue
-      const pStart = before.length ? before[before.length - 1].price : within[0].price
+      const pStart = before.length  ? before[before.length - 1].price
+                   : within.length  ? within[0].price
+                   : undefined
+      if (pStart === undefined) continue
       net += qty * pEnd - qtyStart * pStart - buys + sells - realized
     } else {
       // Dönem başında pozisyon yok → baz fiyat gerekmez ('Tüm Zamanlar' dahil)
