@@ -7,7 +7,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { Header } from '@/components/layout/Header'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { useAccountStore, useRecurringStore, useInvestmentStore, useTransactionStore } from '@/store'
+import { useAccountStore, useRecurringStore, useInvestmentStore, useTransactionStore, useDebtStore } from '@/store'
 import { assetLabel, computeHoldings, getAssetPrice } from '@/store/investment.store'
 import { isTefasAsset } from '@/lib/tefas'
 import { buildForecast, type ForecastMode } from '@/lib/utils/forecast'
@@ -50,6 +50,7 @@ export default function ForecastPage() {
   const recurringReady = useRecurringStore(s => s.ready)
   const transactions   = useTransactionStore(s => s.transactions)
   const txReady        = useTransactionStore(s => s.ready)
+  const debts          = useDebtStore(s => s.debts)
   const prices         = useInvestmentStore(s => s.prices)
   const pricesError    = useInvestmentStore(s => s.pricesError)
   const fundPricesLoading = useInvestmentStore(s => s.fundPricesLoading)
@@ -73,8 +74,8 @@ export default function ForecastPage() {
   const horizonMonths = allTime ? ALL_TIME_FORWARD_MONTHS : horizon
 
   const forecast = useMemo(
-    () => buildForecast({ accounts, recurring, transactions, prices, investmentsTry, fundsTry, horizonMonths, todayStr, mode }),
-    [accounts, recurring, transactions, prices, investmentsTry, fundsTry, horizonMonths, todayStr, mode],
+    () => buildForecast({ accounts, recurring, transactions, debts, prices, investmentsTry, fundsTry, horizonMonths, todayStr, mode }),
+    [accounts, recurring, transactions, debts, prices, investmentsTry, fundsTry, horizonMonths, todayStr, mode],
   )
 
   // Fiyatlar gelmeden (DataProvider açılışta çeker) tahmin portföysüz hesaplanır
@@ -316,7 +317,7 @@ export default function ForecastPage() {
             <Card className="overflow-hidden gap-0 py-0">
               <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
                 <span className="text-sm font-semibold text-foreground/90">Aylık Etki</span>
-                <span className="text-xs text-muted-foreground">{drivers.length} tekrarlayan işlem</span>
+                <span className="text-xs text-muted-foreground">{drivers.length} kalem</span>
               </div>
               <CardContent className="p-5 flex flex-col gap-0.5">
                 {drivers.map(d => {

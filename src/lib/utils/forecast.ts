@@ -1,10 +1,10 @@
 import { addMonths, format, parseISO } from 'date-fns'
-import type { Account, AccountType, PriceData, RecurringFrequency, RecurringTransaction, Transaction, TransactionType } from '@/types'
+import type { Account, AccountType, Debt, PriceData, RecurringFrequency, RecurringTransaction, Transaction, TransactionType } from '@/types'
 import { calcNetWorth } from './calculations'
 import { isReconciliation } from './reconciliation'
 import { recurringOccurrences } from './recurrence'
 import { baseAmount, toBaseTry } from './fx'
-import { addMoney, mulMoney, subMoney, sumBy } from './money'
+import { addMoney, mulMoney, roundMoney, subMoney, sumBy } from './money'
 
 /* ────────────────────────────────────────────────────────────────────────
    Cash-flow forecast — a PURE projection of total balance forward.
@@ -74,6 +74,7 @@ export interface BuildForecastInput {
   accounts: Account[]
   recurring: RecurringTransaction[]
   transactions?: Transaction[]  // ledger txs; future-dated one-offs enter the projection on their date
+  debts?: Debt[]           // tracked debts; future scheduled installments project forward
   prices?: PriceData | null
   investmentsTry?: number  // current portfolio value in TRY, held flat over the horizon ('total' only)
   fundsTry?: number        // TEFAS fund slice of the portfolio in TRY; joins the start in 'cash' mode
@@ -83,6 +84,58 @@ export interface BuildForecastInput {
 }
 
 export const LIQUID_TYPES = new Set<AccountType>(['cash', 'checking', 'savings'])
+
+// Add `months` calendar months to an ISO date, clamping the day to the target
+// month's length (31 Ocak + 1 ay → 28/29 Şubat). Mirrors the debts page plan.
+function addMonthsIso(iso: string, months: number): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  const total = m - 1 + months
+  const ny = y + Math.floor(total / 12)
+  const nm = ((total % 12) + 12) % 12
+  const lastDay = new Date(ny, nm + 1, 0).getDate()
+  return `${ny}-${String(nm + 1).padStart(2, '0')}-${String(Math.min(d, lastDay)).padStart(2, '0')}`
+}
+
+export interface DebtPayment {
+  date: string    // yyyy-MM-dd
+  amount: number  // TRY, positive magnitude of the still-unpaid portion
+}
+
+/* Future, still-unpaid installments of a tracked debt, derived from its
+   monthlyPayment schedule. Mirrors buildPaymentPlan on the debts page but
+   yields only forward-dated slices in (after, horizonEnd] and nets out any
+   portion already covered by paidAmount (so a partially-paid installment
+   contributes only its remaining balance, and fully-paid ones drop out).
+   Debt amounts are TRY (Debt carries no currency), so no FX conversion. */
+export function futureDebtPayments(debt: Debt, after: string, horizonEnd: string): DebtPayment[] {
+  const monthly = debt.monthlyPayment
+  if (debt.isSettled || !monthly || monthly <= 0) return []
+  const count = debt.totalInstallments && debt.totalInstallments > 0
+    ? debt.totalInstallments
+    : Math.ceil(debt.totalAmount / monthly)
+  if (count <= 0 || count > 600) return []
+
+  // Last installment carries the rounding remainder so the plan sums to total.
+  const remainder = roundMoney(subMoney(debt.totalAmount, mulMoney(monthly, count - 1)))
+  const out: DebtPayment[] = []
+  let cumulative = 0
+  for (let i = 0; i < count; i++) {
+    const amount = i === count - 1 && remainder > 0 ? remainder : monthly
+    const prevCumulative = cumulative
+    cumulative = addMoney(cumulative, amount)
+    // Vade girilmişse son taksit vadeye denk gelir; girilmemişse başlangıçtan
+    // bir ay sonra başlar (debts sayfasındaki takvimle birebir).
+    const date = debt.dueDate
+      ? addMonthsIso(debt.dueDate, -(count - 1 - i))
+      : addMonthsIso(debt.startDate, i + 1)
+    if (date <= after || date > horizonEnd) continue
+    // Bu taksitin ödenmemiş kısmı (kısmi ödemeyi de ele alır).
+    const covered = Math.max(prevCumulative, debt.paidAmount)
+    const unpaid = Math.min(amount, Math.max(0, subMoney(cumulative, covered)))
+    if (unpaid > 0.005) out.push({ date, amount: unpaid })
+  }
+  return out
+}
 
 /* Signed TRY impact of one ledger movement on the given mode's balance, or
    null if it doesn't move that balance at all. Shared by the forward forecast
@@ -125,6 +178,7 @@ export function buildForecast({
   accounts,
   recurring,
   transactions = [],
+  debts = [],
   prices,
   investmentsTry = 0,
   fundsTry = 0,
@@ -170,6 +224,23 @@ export function buildForecast({
     })
   }
 
+  // 1c. Tracked debts: future scheduled installments derived from monthlyPayment.
+  //     Past payments are already real ledger transactions (counted above/in the
+  //     start balance), so only forward-dated, still-unpaid slices are projected.
+  //     'owe' drains the balance (expense-like); 'owed' is money coming back to
+  //     us (income-like). accountId (payments are drawn from) drives cash-mode
+  //     liquidity; unknown/undefined falls back to liquid, like makeEventDelta.
+  const debtPaid = new Set<string>()  // debts that produced at least one future event (for drivers)
+  for (const debt of debts) {
+    const type: TransactionType = debt.direction === 'owed' ? 'income' : 'expense'
+    for (const p of futureDebtPayments(debt, todayStr, horizonEnd)) {
+      const delta = eventDelta(type, p.amount, debt.accountId ?? '', undefined)
+      if (delta === null) continue
+      debtPaid.add(debt.id)
+      events.push({ date: p.date, delta, name: debt.name, type: delta >= 0 ? 'income' : 'expense' })
+    }
+  }
+
   // 2. Horizon totals (kuruş-exact).
   const totalIncome  = sumBy(events.filter(e => e.delta > 0), e => e.delta)
   const totalExpense = sumBy(events.filter(e => e.delta < 0), e => -e.delta)
@@ -211,7 +282,7 @@ export function buildForecast({
   // 4. Drivers: monthly-equivalent impact of each active template that moves
   //    this mode's balance (in cash mode that includes boundary-crossing
   //    transfers, e.g. the card payment, classified by the sign of its delta).
-  const drivers: ForecastDriver[] = recurring
+  const recurringDrivers: ForecastDriver[] = recurring
     .filter(r => r.isActive)
     .flatMap(r => {
       const delta = eventDelta(r.type, toBaseTry(r.amount, r.currency), r.accountId, r.toAccountId)
@@ -223,6 +294,24 @@ export function buildForecast({
         monthlyEquivTry: mulMoney(Math.abs(delta), MONTHLY_FACTOR[r.frequency]),
       }]
     })
+
+  // Debt drivers: only debts that actually contribute a future payment in this
+  // mode/horizon, shown at their monthlyPayment (already a monthly figure).
+  const debtDrivers: ForecastDriver[] = debts
+    .filter(d => debtPaid.has(d.id) && d.monthlyPayment && d.monthlyPayment > 0)
+    .flatMap(debt => {
+      const type: TransactionType = debt.direction === 'owed' ? 'income' : 'expense'
+      const delta = eventDelta(type, debt.monthlyPayment!, debt.accountId ?? '', undefined)
+      if (delta === null) return []
+      return [{
+        id:   `debt-${debt.id}`,
+        name: debt.name,
+        type: delta >= 0 ? 'income' as const : 'expense' as const,
+        monthlyEquivTry: Math.abs(delta),
+      }]
+    })
+
+  const drivers: ForecastDriver[] = [...recurringDrivers, ...debtDrivers]
     .sort((a, b) => b.monthlyEquivTry - a.monthlyEquivTry)
 
   return { points, horizonEnd, shortfallDate, totalIncome, totalExpense, net, drivers, events: eventRows }

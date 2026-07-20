@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { buildForecast } from './forecast'
+import { buildForecast, futureDebtPayments } from './forecast'
 import { setBaseRates } from './fx'
-import type { Account, RecurringTransaction, Transaction } from '@/types'
+import type { Account, Debt, RecurringTransaction, Transaction } from '@/types'
 
 /* ── Factories ──────────────────────────────────────────────────────── */
 
@@ -35,6 +35,26 @@ function recurring(over: Partial<RecurringTransaction> = {}): RecurringTransacti
     startDate: '2026-01-01',
     nextDueDate: '2026-02-01',
     isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...over,
+  }
+}
+
+let debtSeq = 0
+function debt(over: Partial<Debt> = {}): Debt {
+  debtSeq += 1
+  return {
+    id: `d-${debtSeq}`,
+    name: `Borç ${debtSeq}`,
+    type: 'bank_loan',
+    direction: 'owe',
+    totalAmount: 12000,
+    paidAmount: 0,
+    startDate: '2026-01-01',
+    monthlyPayment: 1000,
+    totalInstallments: 12,
+    accountId: 'acc-1',
+    isSettled: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...over,
   }
@@ -261,5 +281,103 @@ describe('buildForecast — pure cash-flow projection', () => {
     expect(f.drivers[0].monthlyEquivTry).toBe(40000)      // monthly × 1
     expect(f.drivers[1].monthlyEquivTry).toBe(1521.88)    // 50 × 30.4375
     expect(f.drivers[2].monthlyEquivTry).toBe(1000)       // 12000 ÷ 12
+  })
+})
+
+describe('buildForecast — tracked debt installments', () => {
+  beforeEach(() => {
+    setBaseRates({ usdTry: 30, eurTry: 35, gbpTry: 40, goldGramTry: 0, updatedAt: 0 })
+  })
+
+  it('projects future unpaid installments as expenses (owe)', () => {
+    const f = buildForecast({
+      accounts: [account({ balance: 5000 })],
+      recurring: [],
+      debts: [debt({ id: 'kredi', name: 'Araba Kredisi' })],  // 1000/ay, startDate=today, vade yok
+      horizonMonths: 3,
+      todayStr: TODAY,
+    })
+    // horizonEnd = 2026-04-01 → üç taksit projekte edilir.
+    expect(f.points).toEqual([
+      { date: TODAY,        balance: 5000 },
+      { date: '2026-02-01', balance: 4000 },
+      { date: '2026-03-01', balance: 3000 },
+      { date: '2026-04-01', balance: 2000 },
+    ])
+    expect(f.totalExpense).toBe(3000)
+    expect(f.net).toBe(-3000)
+    expect(f.drivers).toEqual([
+      { id: 'debt-kredi', name: 'Araba Kredisi', type: 'expense', monthlyEquivTry: 1000 },
+    ])
+  })
+
+  it('only the unpaid portion of a partially-paid installment carries forward', () => {
+    const f = buildForecast({
+      accounts: [account({ balance: 5000 })],
+      recurring: [],
+      debts: [debt({ name: 'Kredi', paidAmount: 1500 })],  // ilk taksit tam, ikincinin 500'ü ödenmiş
+      horizonMonths: 3,
+      todayStr: TODAY,
+    })
+    expect(f.events).toEqual([
+      { date: '2026-03-01', name: 'Kredi', type: 'expense', amountTry: 500,  balanceAfter: 4500 },
+      { date: '2026-04-01', name: 'Kredi', type: 'expense', amountTry: 1000, balanceAfter: 3500 },
+    ])
+    expect(f.totalExpense).toBe(1500)
+  })
+
+  it('owed debts are projected as incoming money', () => {
+    const f = buildForecast({
+      accounts: [account({ balance: 0 })],
+      recurring: [],
+      debts: [debt({ direction: 'owed' })],
+      horizonMonths: 2,
+      todayStr: TODAY,
+    })
+    expect(f.totalIncome).toBe(2000)   // 02-01, 03-01
+    expect(f.totalExpense).toBe(0)
+    expect(f.points.at(-1)!.balance).toBe(2000)
+    expect(f.drivers[0].type).toBe('income')
+  })
+
+  it('settled debts and those without a monthly payment produce nothing', () => {
+    const f = buildForecast({
+      accounts: [account({ balance: 5000 })],
+      recurring: [],
+      debts: [
+        debt({ id: 'd-settled', isSettled: true }),
+        debt({ id: 'd-nomonthly', monthlyPayment: undefined }),
+      ],
+      horizonMonths: 6,
+      todayStr: TODAY,
+    })
+    expect(f.points).toEqual([{ date: TODAY, balance: 5000 }])
+    expect(f.drivers).toEqual([])
+  })
+
+  it('dueDate anchors the final installment (schedule counts backward)', () => {
+    const payments = futureDebtPayments(
+      debt({ totalAmount: 3000, monthlyPayment: 1000, totalInstallments: 3, dueDate: '2026-03-01' }),
+      TODAY, '2026-06-01',
+    )
+    // Taksitler 01-01, 02-01, 03-01; sadece today'den sonrakiler.
+    expect(payments).toEqual([
+      { date: '2026-02-01', amount: 1000 },
+      { date: '2026-03-01', amount: 1000 },
+    ])
+  })
+
+  it('cash mode: a payment from a non-liquid account does not drain cash', () => {
+    const invest = account({ id: 'inv-1', type: 'investment', balance: 0 })
+    const f = buildForecast({
+      accounts: [account({ id: 'acc-1', type: 'checking', balance: 5000 }), invest],
+      recurring: [],
+      debts: [debt({ accountId: 'inv-1' })],  // yatırım hesabından ödeniyor → nakiti etkilemez
+      horizonMonths: 3,
+      todayStr: TODAY,
+      mode: 'cash',
+    })
+    expect(f.points).toEqual([{ date: TODAY, balance: 5000 }])
+    expect(f.totalExpense).toBe(0)
   })
 })
