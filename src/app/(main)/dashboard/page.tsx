@@ -6,7 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   useTransactionStore, useAccountStore, useUIStore,
   useInvestmentStore, useBudgetStore, useCategoryStore,
-  useDebtStore, useRecurringStore, usePeopleStore,
+  useDebtStore, useRecurringStore, usePeopleStore, useSettingsStore,
 } from '@/store'
 import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
@@ -24,6 +24,7 @@ import { Separator } from '@/components/ui/separator'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Header } from '@/components/layout/Header'
 import { PeriodTabs } from '@/components/ui/PeriodTabs'
+import { FundGainToggle } from '@/components/dashboard/FundGainToggle'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
@@ -127,7 +128,11 @@ export default function DashboardPage() {
     }
     return calcFundPeriodGain(investTxs, fundPrices, hist, from, to, periodType === 'daily')
   }, [fundCodes, fundHistory, investTxs, fundPrices, from, to, periodType])
-  const fundGain = fundPeriodNet > 0 ? fundPeriodNet : 0
+  // "Fon getirileri dahil" kapalıysa dönemsel fon getirisi hiçbir karta/grafiğe
+  // girmez — fundGain=0 tüm tüketicileri (incomeTotal, netTotal, CashflowChart)
+  // otomatik sıfırlar.
+  const includeFundGain = useSettingsStore(s => s.includeFundGain)
+  const fundGain = includeFundGain && fundPeriodNet > 0 ? fundPeriodNet : 0
   const { income, expense, net } = useMemo(
     () => calcPeriodFlow(transactions, from, to),
     [transactions, from, to],
@@ -202,7 +207,7 @@ export default function DashboardPage() {
   return (
     <>
       <Header title="Dashboard" action={{ label: 'İşlem Ekle', onClick: () => openModal('add-transaction') }} />
-      <PeriodTabs />
+      <PeriodTabs rightSlot={<FundGainToggle />} />
 
       <div className="p-6 space-y-6">
 
@@ -220,11 +225,15 @@ export default function DashboardPage() {
             {
               label: `${prefix} · Gelir`,
               value: formatCompact(animIncome),
-              sub: fundPeriodNet > 0.005 // yarım kuruş eşiği: float tozu "±₺0" satırı üretmesin
-                ? `${formatCompact(fundPeriodNet)} ${FUND_GAIN_LABEL[periodType]} fon getirisi dahil`
-                : fundPeriodNet < -0.005
-                  ? `−${formatCompact(Math.abs(fundPeriodNet))} ${FUND_GAIN_LABEL[periodType]} fon değişimi (gelire eklenmedi)`
-                  : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
+              // Fon getirisi satırı yalnız toggle açıkken; kapalıyken fon
+              // hesaba katılmadığından ham gelir/gider bilgisi gösterilir.
+              sub: !includeFundGain
+                ? (income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`)
+                : fundPeriodNet > 0.005 // yarım kuruş eşiği: float tozu "±₺0" satırı üretmesin
+                  ? `${formatCompact(fundPeriodNet)} ${FUND_GAIN_LABEL[periodType]} fon getirisi dahil`
+                  : fundPeriodNet < -0.005
+                    ? `−${formatCompact(Math.abs(fundPeriodNet))} ${FUND_GAIN_LABEL[periodType]} fon değişimi (gelire eklenmedi)`
+                    : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
               ok: true,
               trendDiff: prevFlow ? incomeTotal - prevFlow.income : null,
               betterWhenHigher: true,
