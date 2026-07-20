@@ -12,7 +12,7 @@ export interface FundPricePoint { date: string; price: number }
 export function calcFundPeriodGain(
   investTxs: InvestmentTransaction[],
   fundPrices: Record<string, TefasFundPrice>,
-  history: Record<string, FundPricePoint[]>, // fon kodu → günlük seri (baz = dönem içindeki ilk kapanış)
+  history: Record<string, FundPricePoint[]>, // fon kodu → günlük seri (baz = dönem öncesi son kapanış)
   from: string,
   to: string,
   daily: boolean, // 'Bugün': yalnızca TEFAS `to` günü (bugün) taze kapanış yayınladıysa son iki kapanış farkı; aksi halde 0
@@ -56,6 +56,7 @@ export function calcFundPeriodGain(
 
     const pts    = history[code]
     const within = pts?.length ? pts.filter(p => p.date >= from && p.date <= to) : []
+    const before = pts?.length ? pts.filter(p => p.date < from) : [] // dönem öncesi kapanışlar
 
     // Dönem SONU değeri: pencere güncel kapanışı (fp.date) kapsıyorsa canlı fiyat
     // (fp.price) kullanılır. GEÇMİŞTE biten özel aralıklarda ise dönem sonu, `to`
@@ -69,17 +70,17 @@ export function calcFundPeriodGain(
     if (pEnd === undefined) continue
 
     if (qtyStart > 1e-6) {
-      // Baz fiyat: dönem İÇİNDEKİ ilk kapanış. TEFAS'ta T gününün fiyatı T-1
-      // portföy değerini yansıttığından (T+1 gecikme) dönemin ilk kapanışı
-      // ekonomik olarak önceki dönemin son değeridir — aracı kurumların tarih
-      // aralığı görünümüyle de birebir uyumlu. (Eski davranış dönem öncesi son
-      // kapanışı baz alıyordu ve haftalık getiriyi Pazartesi hareketi kadar
-      // şişiriyordu.) Seri hiç yüklenemediyse yalnız GÜNCEL pencerede günlük
-      // değişime düş (geçmiş pencerede baz/dönem-sonu kapanış olmadan hesaplanamaz
-      // → 0); dönem içinde henüz kapanış yayınlanmadıysa getiri 0 sayılır.
+      // Baz fiyat: dönem BAŞLAMADAN önceki son kapanış (= dönem başı portföy değeri).
+      // TEFAS T+1 gecikmesiyle dönemin ilk günü (ör. Pazartesi) yayınlanan hareket
+      // aslında önceki dönemin getirisidir; bunu döneme DAHİL ederek hafta artıda
+      // başlar ve günlüğün prevPrice mantığıyla tutarlı olur (haftalık ≥ günlük).
+      // Dönem öncesi kapanış yoksa dönem içi ilk kapanışa düşülür. Seri hiç
+      // yüklenemediyse yalnız GÜNCEL pencerede günlük değişime düş (geçmiş pencerede
+      // hesaplanamaz → 0); dönem içinde henüz kapanış yayınlanmadıysa getiri 0.
       if (!pts?.length) { if (!endsInPast) net += dailyChange; continue }
       if (!within.length) continue
-      net += qty * pEnd - qtyStart * within[0].price - buys + sells - realized
+      const pStart = before.length ? before[before.length - 1].price : within[0].price
+      net += qty * pEnd - qtyStart * pStart - buys + sells - realized
     } else {
       // Dönem başında pozisyon yok → baz fiyat gerekmez ('Tüm Zamanlar' dahil)
       net += qty * pEnd - buys + sells - realized

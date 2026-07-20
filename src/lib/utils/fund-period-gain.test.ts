@@ -23,10 +23,10 @@ const FROM = '2026-07-01'
 const TO   = '2026-07-31'
 
 describe('calcFundPeriodGain', () => {
-  it('dönem başındaki pozisyonun değer artışını dönem İÇİNDEKİ ilk kapanıştan hesaplar', () => {
+  it('dönem başındaki pozisyonun değer artışını dönem ÖNCESİ son kapanıştan hesaplar', () => {
     const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 80, date: '2026-05-01' })]
-    // Dönem içi ilk kapanış 10.07 @120 → 10 pay: 120 → 130
-    expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(100, 6)
+    // Baz = dönem öncesi son kapanış 30.06 @100 → 10 pay: 100 → 130 = 300
+    expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(300, 6)
   })
 
   it('dönem içinde henüz kapanış yayınlanmadıysa getiri 0 sayılır', () => {
@@ -46,9 +46,10 @@ describe('calcFundPeriodGain', () => {
       tx({ type: 'buy',  quantity: 10, pricePerUnit: 90,  date: '2026-05-01' }),
       tx({ type: 'sell', quantity: 5,  pricePerUnit: 120, date: '2026-07-10' }),
     ]
-    // Baz 10.07 @120 → dönem getirisi: satılan 5 pay 120→120 (0) + kalan 5 pay 120→130 (+50) = 50
-    // Gerçekleşen kâr (120−90)×5 = 150 gelir işlemlerinde zaten var → burada 50−150 = −100 kalmalı
-    expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(-100, 6)
+    // Baz = dönem öncesi son kapanış 30.06 @100. Dönem toplam değer değişimi:
+    // son 5 pay×130 + satış 5×120 − başı 10×100 = 650 + 600 − 1000 = 250.
+    // Gerçekleşen kâr (120−90)×5 = 150 gelir işlemlerinde zaten var → 250 − 150 = 100.
+    expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(100, 6)
   })
 
   it('dönem içinde alınıp satılan pozisyonun kazancı tamamen gerçekleşmiştir → 0', () => {
@@ -70,8 +71,29 @@ describe('calcFundPeriodGain', () => {
       ],
     }
     const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 80, date: '2026-05-01' })]
-    // Doğru: 10 pay 110 → 125 = 150. (Bugünkü 130 alınsaydı yanlışlıkla 200 olurdu.)
-    expect(calcFundPeriodGain(txs, FP, HIST_PAST, '2026-07-01', '2026-07-10', false)).toBeCloseTo(150, 6)
+    // Baz = dönem öncesi son kapanış 30.06 @100, dönem sonu 09.07 @125 → 10 pay: 100 → 125 = 250.
+    // (Dönem sonu için bugünkü 130 alınsaydı yanlışlıkla 300 olurdu.)
+    expect(calcFundPeriodGain(txs, FP, HIST_PAST, '2026-07-01', '2026-07-10', false)).toBeCloseTo(250, 6)
+  })
+
+  it('hafta Pazartesi başlarken bile getiri sıfıra çökmez: baz Cuma kapanışıdır (haftalık ≥ günlük)', () => {
+    // Regresyon: dönem içi ilk kapanışı baz almak, haftanın ilk günü (from === ilk
+    // kapanış günü) getiriyi ~0 gösteriyordu; artık dönem öncesi (Cuma) baz alınır.
+    const txs = [tx({ type: 'buy', quantity: 100, pricePerUnit: 80, date: '2026-05-01' })]
+    const FP_MON: Record<string, TefasFundPrice> = {
+      AFA: { code: 'AFA', name: 'AFA', price: 130, prevPrice: 100, date: '2026-07-20' }, // Pzt taze kapanış
+    }
+    const HIST_MON: Record<string, FundPricePoint[]> = {
+      AFA: [
+        { date: '2026-07-17', price: 100 }, // Cuma (dönem öncesi baz)
+        { date: '2026-07-20', price: 130 }, // Pzt = haftanın ilk (ve tek) kapanışı
+      ],
+    }
+    const daily  = calcFundPeriodGain(txs, FP_MON, {},       '2026-07-20', '2026-07-20', true)  // 100×(130−100)
+    const weekly = calcFundPeriodGain(txs, FP_MON, HIST_MON, '2026-07-20', '2026-07-26', false) // baz Cuma 100
+    expect(daily).toBeCloseTo(3000, 6)
+    expect(weekly).toBeCloseTo(3000, 6)   // eskiden 0'a çöküyordu
+    expect(weekly).toBeGreaterThanOrEqual(daily)
   })
 
   it("'Tüm Zamanlar': geçmiş seri olmadan gerçekleşmemiş K/Z döner", () => {
