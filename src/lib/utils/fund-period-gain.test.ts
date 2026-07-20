@@ -114,6 +114,18 @@ describe('calcFundPeriodGain', () => {
     expect(calcFundPeriodGain(txs, FP, {}, '2026-07-17', '2026-07-17', true)).toBeCloseTo(50, 6)
   })
 
+  it("'Bugün': aynı gün alınan paylar günlük getiriye SAYILMAZ (hayali getiri üretmez)", () => {
+    // Gerçek prod vakası (TP2): gün başı 100 pay + bugün 40 pay bugünün fiyatından (130)
+    // alındı. Günlük getiri yalnız gün başı 100 pay × (130−125) = 500 olmalı; bugün
+    // alınan 40 pay bugünün fiyatından alındığı için 0 katkı. Eski `qty×(p−prev)`
+    // 140×5 = 700 verip günlüğü şişiriyordu (→ günlük>haftalık).
+    const txs = [
+      tx({ type: 'buy', quantity: 100, pricePerUnit: 80,  date: '2026-05-01' }),
+      tx({ type: 'buy', quantity: 40,  pricePerUnit: 130, date: '2026-07-17' }), // bugün, bugünün fiyatından
+    ]
+    expect(calcFundPeriodGain(txs, FP, {}, '2026-07-17', '2026-07-17', true)).toBeCloseTo(500, 6)
+  })
+
   it("'Bugün': fiyat bayatsa (hafta sonu/tatil, son kapanış ≠ bugün) günlük getiri 0", () => {
     const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 80, date: '2026-05-01' })]
     // to = Pazar (2026-07-19); son kapanış Cuma (FP.date 2026-07-17) → 0

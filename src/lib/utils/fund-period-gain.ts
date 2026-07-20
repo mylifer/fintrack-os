@@ -44,12 +44,18 @@ export function calcFundPeriodGain(
     }
 
     const fp = fundPrices[code]
-    const dailyChange = fp?.prevPrice ? qty * (fp.price - fp.prevPrice) : 0
+    // Günlük getiri de haftalıkla AYNI formül: baz = prevPrice (dünkü kapanış =
+    // gün başı değeri), buys/sells/realized düşülür. Böylece BUGÜN alınan paylar
+    // (bugünün fiyatından alındığı için) günlük fiyat değişimine SAYILMAZ — eskiden
+    // `qty × (price − prevPrice)` tüm adede uygulanıp aynı-gün alıma hayali günlük
+    // getiri yazıyor ve günlüğü haftalıktan yüksek gösteriyordu.
+    const dailyChange = fp?.prevPrice != null
+      ? qty * fp.price - qtyStart * fp.prevPrice - buys + sells - realized
+      : 0
     if (daily) {
-      // Günlük değişimi yalnızca TEFAS bugün (`to`) taze bir kapanış yayınladıysa
-      // say. Hafta sonu/tatilde son kapanış Cuma'nındır ve zaten Cuma
-      // gösterilmiştir; Pazartesi TEFAS yeni fiyatı yayınlayınca hafta sonu
-      // birikimi o gün yansır. Aksi halde aynı değişim Cts/Paz tekrar sayılırdı.
+      // Yalnızca TEFAS bugün (`to`) taze kapanış yayınladıysa say. Hafta sonu/tatilde
+      // son kapanış Cuma'nındır (zaten Cuma gösterildi); Pazartesi yeni fiyat gelince
+      // hafta sonu birikimi o gün yansır. Aksi halde aynı değişim Cts/Paz tekrarlanırdı.
       if (fp?.date === to) net += dailyChange
       continue
     }
