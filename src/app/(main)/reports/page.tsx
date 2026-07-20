@@ -19,7 +19,7 @@ import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey } from '@/lib/utils/calculations'
+import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, isInvestmentPrincipalTx } from '@/lib/utils/calculations'
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
 import { sumBy, toMinor, toMajor } from '@/lib/utils/money'
 import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
@@ -97,10 +97,12 @@ function buildCashFlowData(
 
   // TRY-normalize (baseAmount, S2/S3) + kuruş-exact (S8) — dashboard'daki
   // calcMonthlyFlow ile aynı para birimi kuralı; ham `amount` karışık PB toplamaz.
+  // Yatırım anapara satırları (… Alımı/… Satışı) akış grafiğine girmez; yalnızca
+  // gerçekleşen K/Z ile normal gelir/gider — KPI kartlarıyla aynı kapsam.
   const income  = (pFrom: string, pTo: string) =>
-    sumBy(transactions.filter(t => t.type === 'income'  && t.date >= pFrom && t.date <= pTo), baseAmount)
+    sumBy(transactions.filter(t => t.type === 'income'  && t.date >= pFrom && t.date <= pTo && !isInvestmentPrincipalTx(t)), baseAmount)
   const expense = (pFrom: string, pTo: string) =>
-    sumBy(transactions.filter(t => t.type === 'expense' && t.date >= pFrom && t.date <= pTo), baseAmount)
+    sumBy(transactions.filter(t => t.type === 'expense' && t.date >= pFrom && t.date <= pTo && !isInvestmentPrincipalTx(t)), baseAmount)
 
   if (days <= 45) {
     let wStart = startOfWeek(from, { locale: tr })
@@ -493,9 +495,10 @@ export default function ReportsPage() {
       const d = tx.date.slice(0, 10)
       if (d < dateRange.from || d > dateRange.to) return false
       if (isReconciliation(tx)) return false
-      // Yatırım geliri = income + icon (yatırım store'u Transaction.icon yazan tek
-      // yer; satış geliri ve "Satış Kârı" satırları). İşaret kaldırılınca bu
-      // satırlar gelir toplamlarından, nakit akışından ve detay overlay'inden düşer.
+      // Satış anaparası ("… Satışı") artık her durumda akış toplamlarından hariç
+      // (isInvestmentPrincipalTx) — özsermaye geri dönüşü gelir değildir. Bu anahtar
+      // ise GERÇEKLEŞEN satış kârı gelirini ("… Satış Kârı", income + icon) toplam
+      // gelire dahil edip etmemeyi seçtirir; kapalıyken realize kâr da düşer.
       if (!includeInvestmentIncome && tx.type === 'income' && tx.icon) return false
       if (accountId !== 'all') {
         if (tx.accountId !== accountId && tx.toAccountId !== accountId) return false

@@ -209,6 +209,23 @@ export function enrichBudget(
   return { ...budget, spent, remaining, percentUsed, status }
 }
 
+// Yatırım anapara (özsermaye) hareketi — fon/varlık ALIMI ("… Alımı") ve
+// satıştaki anapara dönüşü ("… Satışı"). Bunlar gerçek gelir/gider DEĞİL: kendi
+// paranın nakit↔varlık arasında yer değiştirmesidir. Akış (gelir/gider/net)
+// toplamlarından dışlanır; yalnızca gerçekleşen kâr/zarar ("… Satış Kârı" /
+// "… Satış Zararı") gelir/gider sayılır — kullanıcının satıştan gerçek kazancı/
+// kaybı budur.
+//
+// DİKKAT: net-varlık HAM yürüyüşü (calcNetRaw / buildTrendData / NetWorthChart)
+// bu satırları YİNE toplamak ZORUNDA — hesap bakiyelerini gerçekten oynatırlar
+// (alış nakiti düşürür, satış nakiti artırır) ve portföy değeriyle çift-taraflı
+// olarak netleşip net değeri sabit tutarlar. Bu yüzden dışlama yalnızca akış
+// fonksiyonlarında (calcPeriodFlow/calcMonthlyFlow) yapılır, sumFlow'un kendisinde
+// değil — calcNetRaw da sumFlow'u paylaşır.
+export function isInvestmentPrincipalTx(t: Pick<Transaction, 'icon' | 'description'>): boolean {
+  return !!t.icon && (t.description.endsWith('Alımı') || t.description.endsWith('Satışı'))
+}
+
 // Income/expense/net over an already date-scoped slice, summed in TRY-normalized
 // amountTry (S2/S3) via integer minor units (S8). No ghosting — callers decide
 // whether to pre-filter reconciliation.
@@ -231,7 +248,7 @@ export function calcPeriodFlow(
   // slice(0,10): legacy tam-ISO datetime tarih de gün sınırında doğru kıyaslanır.
   const inRange = transactions.filter(tx => {
     const d = tx.date.slice(0, 10)
-    return d >= from && d <= to && isPosted(tx) && !isReconciliation(tx)
+    return d >= from && d <= to && isPosted(tx) && !isReconciliation(tx) && !isInvestmentPrincipalTx(tx)
   })
   return sumFlow(inRange)
 }
@@ -242,7 +259,7 @@ export function calcMonthlyFlow(
 ): { income: number; expense: number; net: number } {
   const { from, to } = monthRange(my)
   // isPosted: calcPeriodFlow ile aynı kural — pending/gelecek satırlar akışa girmez
-  const inRange = transactions.filter(tx => isInRange(tx.date, from, to) && isPosted(tx) && !isReconciliation(tx))
+  const inRange = transactions.filter(tx => isInRange(tx.date, from, to) && isPosted(tx) && !isReconciliation(tx) && !isInvestmentPrincipalTx(tx))
   return sumFlow(inRange)
 }
 

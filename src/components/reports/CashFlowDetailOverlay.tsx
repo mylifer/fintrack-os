@@ -7,6 +7,7 @@ import { X, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { formatCurrency } from '@/lib/utils/currency'
 import { isInRange } from '@/lib/utils/date'
+import { isInvestmentPrincipalTx } from '@/lib/utils/calculations'
 import { baseAmount } from '@/lib/utils/fx'
 import { sumBy } from '@/lib/utils/money'
 import type { Transaction } from '@/types'
@@ -67,10 +68,12 @@ export function CashFlowDetailOverlay({ open, from, to, label, transactions, onC
     return () => document.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  // Aralık içindeki gelir+gider satırları (transfer hariç — nakit akışıyla aynı kapsam).
+  // Aralık içindeki gelir+gider satırları (transfer hariç — nakit akışıyla aynı
+  // kapsam). Yatırım anapara satırları (… Alımı/… Satışı) de hariç: nakit akışı
+  // barı bunları saymadığından drill-down listesi ve toplamı da saymamalı.
   const inRange = useMemo(
     () => transactions.filter(t =>
-      (t.type === 'income' || t.type === 'expense') && isInRange(t.date, from, to),
+      (t.type === 'income' || t.type === 'expense') && isInRange(t.date, from, to) && !isInvestmentPrincipalTx(t),
     ),
     [transactions, from, to],
   )

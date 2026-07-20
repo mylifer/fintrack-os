@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isPosted, sumByType, sumExpenseByKey } from './calculations'
+import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isInvestmentPrincipalTx, isPosted, sumByType, sumExpenseByKey } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -25,6 +25,32 @@ describe('calcPeriodFlow (S2/S3)', () => {
     expect(r.income).toBe(2725)
     expect(r.expense).toBe(200)
     expect(r.net).toBe(2525)
+  })
+})
+
+describe('yatırım anaparası akıştan hariç, gerçekleşen K/Z dahil', () => {
+  it('isInvestmentPrincipalTx: yalnız icon\'lu "… Alımı"/"… Satışı" satırları', () => {
+    expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: '10 AKB Alımı' }))).toBe(true)
+    expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: '10 AKB Satışı' }))).toBe(true)
+    // gerçekleşen kâr/zarar anapara DEĞİL — akışta kalmalı
+    expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: 'AKB Satış Kârı' }))).toBe(false)
+    expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: 'AKB Satış Zararı' }))).toBe(false)
+    // icon yoksa (normal işlem) hiç eşleşmez, açıklaması ne olursa olsun
+    expect(isInvestmentPrincipalTx(tx({ description: 'Manuel Alımı' }))).toBe(false)
+  })
+
+  it('calcPeriodFlow: satış anaparasını atar, satış kârını gelir sayar', () => {
+    const txs = [
+      tx({ type: 'income',  amount: 5000, amountTry: 5000, icon: 'F', description: '10 AKB Satışı' }),   // anapara → hariç
+      tx({ type: 'income',  amount: 800,  amountTry: 800,  icon: 'F', description: 'AKB Satış Kârı' }),  // realize kâr → dahil
+      tx({ type: 'expense', amount: 3000, amountTry: 3000, icon: 'F', description: '5 THY Alımı' }),      // alış maliyeti → hariç
+      tx({ type: 'expense', amount: 200,  amountTry: 200,  icon: 'F', description: 'THY Satış Zararı' }), // realize zarar → dahil
+      tx({ type: 'income',  amount: 1000, amountTry: 1000, description: 'Maaş' }),                        // normal gelir
+    ]
+    const r = calcPeriodFlow(txs, '2026-01-01', '2026-01-31')
+    expect(r.income).toBe(1800)  // 1000 maaş + 800 satış kârı (5000 anapara hariç)
+    expect(r.expense).toBe(200)  // sadece satış zararı (3000 alış maliyeti hariç)
+    expect(r.net).toBe(1600)
   })
 })
 
