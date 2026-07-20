@@ -117,12 +117,7 @@ export default function DashboardPage() {
     }
   }, [fundCodes, from, periodType])
 
-  // Dönemsel fon getirisi GERÇEKLEŞMEMİŞ bir varlık değeri değişimidir; nakit akışı
-  // (gelir/gider/net) DEĞİLDİR ve income/net rakamına EKLENMEZ. Gelire karışınca aynı
-  // fonda "bugün +, bu hafta −" olduğunda günlük Gelir haftalıktan yüksek çıkıp dönem
-  // kıyasını bozuyordu — oysa nakit gelir monotondur (haftalık aralık günü kapsar →
-  // haftalık ≥ günlük). Bu değer yalnız Gelir kartında bilgi amaçlı ayrı satırda
-  // gösterilir; gerçekleşen fon satış K/Z'si zaten ayrı gelir işlemi olarak akıştadır.
+  // Seçili dönemin işaretli fon getirisi (checkbox açıkken Gelir/Net'e eklenir).
   const fundPeriodNet = useMemo(() => {
     const hist: Record<string, FundPricePoint[]> = {}
     for (const code of fundCodes) {
@@ -131,9 +126,12 @@ export default function DashboardPage() {
     }
     return calcFundPeriodGain(investTxs, fundPrices, hist, from, to, periodType === 'daily')
   }, [fundCodes, fundHistory, investTxs, fundPrices, from, to, periodType])
-  // "Fon getirileri dahil" yalnızca Gelir kartındaki bilgi satırını gösterir/gizler;
-  // hiçbir toplamı (income/expense/net) değiştirmez.
+  // "Fon getirileri dahil" (sağ üst checkbox): açıkken dönemin POZİTİF fon getirisi
+  // Gelir/Net kartına eklenir, kapalıyken hariç tutulur — kullanıcı isteğine göre
+  // fonlu/fonsuz geliri görebilsin. Negatif dönem getirisi gelire yansıtılmaz (gelir
+  // nakdin altına inmesin); yalnız bilgi satırında gösterilir.
   const includeFundGain = useSettingsStore(s => s.includeFundGain)
+  const fundGain = includeFundGain && fundPeriodNet > 0 ? fundPeriodNet : 0
   const { income, expense, net } = useMemo(
     () => calcPeriodFlow(transactions, from, to),
     [transactions, from, to],
@@ -144,10 +142,10 @@ export default function DashboardPage() {
 
   const totalOwed = getActive().filter(d => d.direction === 'owe').reduce((s, d) => s + d.remainingAmount, 0)
 
-  // Gelir/Net = yalnız nakit akışı (fon getirisi karışmaz). Diğer tüm sayfalarla
-  // (reports, statistics, accounts, tags…) aynı taban.
-  const incomeTotal = income
-  const netTotal = net
+  const incomeTotal = income + fundGain
+  // Net kartı Gelir kartıyla aynı tabanı kullanır: Gelir fon getirisini içerdiğinde
+  // Net de içermeli, aksi halde ekranda Gelir − Gider ≠ Net görünür.
+  const netTotal = net + fundGain
 
   const animExpense     = useCountUp(expense)
   const animIncome      = useCountUp(incomeTotal)
@@ -231,11 +229,11 @@ export default function DashboardPage() {
               sub: !includeFundGain
                 ? (income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`)
                 : fundPeriodNet > 0.005 // yarım kuruş eşiği: float tozu "±₺0" satırı üretmesin
-                  ? `${formatCompact(fundPeriodNet)} ${FUND_GAIN_LABEL[periodType]} fon getirisi (varlıkta)`
+                  ? `${formatCompact(fundPeriodNet)} ${FUND_GAIN_LABEL[periodType]} fon getirisi dahil`
                   : fundPeriodNet < -0.005
-                    ? `−${formatCompact(Math.abs(fundPeriodNet))} ${FUND_GAIN_LABEL[periodType]} fon değişimi (varlıkta)`
+                    ? `−${formatCompact(Math.abs(fundPeriodNet))} ${FUND_GAIN_LABEL[periodType]} fon değişimi (gelire eklenmedi)`
                     : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
-              ok: true,
+              ok: incomeTotal >= 0,
               trendDiff: prevFlow ? incomeTotal - prevFlow.income : null,
               betterWhenHigher: true,
             },
