@@ -139,12 +139,15 @@ export default function DashboardPage() {
   const totalOwed = getActive().filter(d => d.direction === 'owe').reduce((s, d) => s + d.remainingAmount, 0)
 
   const incomeTotal = income + fundGain
+  // Net kartı Gelir kartıyla aynı tabanı kullanmalı: Gelir fon getirisini içerdiği
+  // için Net de içermeli, aksi halde ekranda Gelir − Gider ≠ Net görünür.
+  const netTotal = net + fundGain
 
   const animExpense     = useCountUp(expense)
   const animIncome      = useCountUp(incomeTotal)
   const animNetWorth    = useCountUp(Math.abs(netWorth))
   const animTotalAssets = useCountUp(totalAssets)
-  const animNet         = useCountUp(Math.abs(net))
+  const animNet         = useCountUp(Math.abs(netTotal))
   const animTotalOwed   = useCountUp(totalOwed)
 
   // Previous period comparison
@@ -244,10 +247,10 @@ export default function DashboardPage() {
             },
             {
               label: `${prefix} · Net`,
-              value: (net >= 0 ? '+' : '−') + formatCompact(animNet),
-              sub: net > 0 ? 'fazla tasarruf' : net < 0 ? 'bütçe açığı' : 'başabaş',
-              ok: net >= 0,
-              trendDiff: prevFlow ? net - prevFlow.net : null,
+              value: (netTotal >= 0 ? '+' : '−') + formatCompact(animNet),
+              sub: netTotal > 0 ? 'fazla tasarruf' : netTotal < 0 ? 'bütçe açığı' : 'başabaş',
+              ok: netTotal >= 0,
+              trendDiff: prevFlow ? netTotal - prevFlow.net : null,
               betterWhenHigher: true,
             },
           ])().map(({ label, value, sub, ok, trendDiff, betterWhenHigher }) => {
