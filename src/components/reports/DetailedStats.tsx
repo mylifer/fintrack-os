@@ -175,7 +175,11 @@ export function DetailedStats({
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
       const groups = new Map<string, number>()   // accumulate in minor units (S8)
       for (const t of analyticTxs) {
-        if (t.type !== scope) continue
+        // Aynı kapsam: yatırım anapara satırları (… Alımı/… Satışı) "Dönem
+        // Toplamı"na girmediği için burada da dışlanır — aksi halde satış anaparası
+        // "Kategorisiz" gelir kalemini şişirir ve yüzdeler %100'ü aşar. Gerçekleşen
+        // K/Z (… Satış Kârı/Zararı) gerçek gelir/gider olarak sayılmaya devam eder.
+        if (t.type !== scope || isInvestmentPrincipalTx(t)) continue
         const key = t.categoryId ?? '__none__'
         groups.set(key, (groups.get(key) ?? 0) + toMinor(baseAmount(t)))
       }
@@ -205,7 +209,8 @@ export function DetailedStats({
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
       const groups = new Map<string, number>()   // accumulate in minor units (S8)
       for (const t of analyticTxs) {
-        if (t.type !== scope) continue
+        // Dönem Toplamı ile aynı kapsam (bkz. topCategories): anapara satırları hariç.
+        if (t.type !== scope || isInvestmentPrincipalTx(t)) continue
         const name = t.merchant?.trim()
         if (!name) continue
         groups.set(name, (groups.get(name) ?? 0) + toMinor(baseAmount(t)))
