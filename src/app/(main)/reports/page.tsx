@@ -521,16 +521,11 @@ export default function ReportsPage() {
     return { income, expense, net, rate }
   }, [filteredTxs, dateRange, fundGain])
 
-  const cashFlowData    = useMemo(() => {
-    const data = buildCashFlowData(filteredTxs, dateRange)
-    // Fon getirisi tek bir dönem-toplamıdır (bugüne kadar, gerçekleşmemiş) ve
-    // tarihli kovalara bölünemez; en güncel (son) kovanın gelirine yansıtılır.
-    if (fundGain > 0 && data.length > 0) {
-      const i = data.length - 1
-      data[i] = { ...data[i], income: data[i].income + fundGain }
-    }
-    return data
-  }, [filteredTxs, dateRange, fundGain])
+  // Nakit akışı = yalnızca gerçek nakit gelir/gider. Gerçekleşmemiş fon getirisi
+  // (fundGain) barlara EKLENMEZ — para hareketi olmadığı için son kovaya yığılıp
+  // "hayali gelir" gibi görünüyordu. Fon getirisi yalnızca "Gelir" KPI kartında
+  // kalır (kpi.income = flow.income + fundGain).
+  const cashFlowData    = useMemo(() => buildCashFlowData(filteredTxs, dateRange), [filteredTxs, dateRange])
   const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
   const tagData         = useMemo(() => buildTagExpenseData(filteredTxs),                             [filteredTxs])
   const topTags         = useMemo(() => tagData.slice(0, 8),                                          [tagData])

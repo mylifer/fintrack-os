@@ -128,9 +128,9 @@ export default function DashboardPage() {
     }
     return calcFundPeriodGain(investTxs, fundPrices, hist, from, to, periodType === 'daily')
   }, [fundCodes, fundHistory, investTxs, fundPrices, from, to, periodType])
-  // "Fon getirileri dahil" kapalıysa dönemsel fon getirisi hiçbir karta/grafiğe
-  // girmez — fundGain=0 tüm tüketicileri (incomeTotal, netTotal, CashflowChart)
-  // otomatik sıfırlar.
+  // "Fon getirileri dahil" kapalıysa dönemsel fon getirisi hiçbir karta girmez —
+  // fundGain=0 tüketicileri (incomeTotal, netTotal) otomatik sıfırlar. Nakit akışı
+  // grafiği fon getirisini artık hiç göstermez (yalnızca gerçek nakit gelir/gider).
   const includeFundGain = useSettingsStore(s => s.includeFundGain)
   const fundGain = includeFundGain && fundPeriodNet > 0 ? fundPeriodNet : 0
   const { income, expense, net } = useMemo(
@@ -286,7 +286,7 @@ export default function DashboardPage() {
 
         {/* ── Charts ─────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <CashflowChart fundGain={fundGain} />
+          <CashflowChart />
           <NetWorthChart />
         </div>
 
