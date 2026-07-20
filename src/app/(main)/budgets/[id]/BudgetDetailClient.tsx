@@ -58,6 +58,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   // ── Edit modal state ──────────────────────────────────────────────────────
   const [showEdit,       setShowEdit]       = useState(false)
   const [editCatIds,     setEditCatIds]     = useState<string[]>([])
+  const [editCatSearch,  setEditCatSearch]  = useState('')
   const [editAmtStr,     setEditAmtStr]     = useState('')
   const [editThreshold,  setEditThreshold]  = useState('80')
   const [editLoading,    setEditLoading]    = useState(false)
@@ -65,6 +66,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   function openEdit() {
     if (!budget) return
     setEditCatIds(getBudgetCategoryIds(budget))
+    setEditCatSearch('')
     setEditAmtStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(budget.amount))
     setEditThreshold(String(budget.alertThreshold))
     setShowEdit(true)
@@ -362,22 +364,40 @@ export default function BudgetDetailClient({ id }: { id: string }) {
                 <span className="ml-1.5 text-primary">({editCatIds.length} seçili)</span>
               )}
             </div>
+            <input
+              type="text"
+              value={editCatSearch}
+              onChange={e => setEditCatSearch(e.target.value)}
+              placeholder="Kategori ara..."
+              className="w-full mb-2 rounded-xl border border-border bg-background px-4 py-2 text-sm outline-none focus:border-ring placeholder:text-muted-foreground/60 text-foreground"
+            />
             <div className="max-h-48 overflow-y-auto rounded-xl border border-border divide-y divide-border/50">
-              {expenseCategories.map(cat => (
-                <label
-                  key={cat.id}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent cursor-pointer transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={editCatIds.includes(cat.id)}
-                    onChange={() => toggleEditCat(cat.id)}
-                    className="rounded accent-primary"
-                  />
-                  <CategoryIcon icon={cat.icon} color={cat.color} size={16} />
-                  <span className="text-sm">{cat.name}</span>
-                </label>
-              ))}
+              {(() => {
+                const q = editCatSearch.trim().toLocaleLowerCase('tr')
+                const list = expenseCategories.filter(cat => !q || cat.name.toLocaleLowerCase('tr').includes(q))
+                if (list.length === 0) {
+                  return (
+                    <div className="px-4 py-3 text-sm text-muted-foreground">
+                      &ldquo;{editCatSearch.trim()}&rdquo; ile eşleşen kategori yok.
+                    </div>
+                  )
+                }
+                return list.map(cat => (
+                  <label
+                    key={cat.id}
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={editCatIds.includes(cat.id)}
+                      onChange={() => toggleEditCat(cat.id)}
+                      className="rounded accent-primary"
+                    />
+                    <CategoryIcon icon={cat.icon} color={cat.color} size={16} />
+                    <span className="text-sm">{cat.name}</span>
+                  </label>
+                ))
+              })()}
             </div>
           </div>
 

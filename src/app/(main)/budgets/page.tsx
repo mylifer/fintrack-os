@@ -151,6 +151,7 @@ export default function BudgetsPage() {
   const [showForm, setShowForm]             = useState(false)
   const [editingBudget, setEditingBudget]   = useState<Budget | undefined>()
   const [selectedCatIds, setSelectedCatIds] = useState<string[]>([])
+  const [catSearch, setCatSearch]           = useState('')
   const [amtStr, setAmtStr]                 = useState('')
   const [threshold, setThreshold]           = useState('80')
   const [loading, setLoading]               = useState(false)
@@ -158,6 +159,7 @@ export default function BudgetsPage() {
   function startAdd() {
     setEditingBudget(undefined)
     setSelectedCatIds([])
+    setCatSearch('')
     setAmtStr('')
     setThreshold('80')
     setShowForm(true)
@@ -166,6 +168,7 @@ export default function BudgetsPage() {
   function startEdit(b: Budget) {
     setEditingBudget(b)
     setSelectedCatIds(getBudgetCategoryIds(b))
+    setCatSearch('')
     setAmtStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(b.amount))
     setThreshold(String(b.alertThreshold))
     setShowForm(true)
@@ -175,6 +178,7 @@ export default function BudgetsPage() {
     setShowForm(false)
     setEditingBudget(undefined)
     setSelectedCatIds([])
+    setCatSearch('')
     setAmtStr('')
     setThreshold('80')
   }
@@ -295,18 +299,34 @@ export default function BudgetsPage() {
                 <span className="ml-1.5 text-primary">({selectedCatIds.length} seçili)</span>
               )}
             </div>
+            <input
+              type="text"
+              value={catSearch}
+              onChange={e => setCatSearch(e.target.value)}
+              placeholder="Kategori ara..."
+              className="w-full mb-2 rounded-xl border border-border bg-background px-4 py-2 text-sm outline-none focus:border-ring placeholder:text-muted-foreground/60 text-foreground"
+            />
             <div className="max-h-48 overflow-y-auto rounded-xl border border-border divide-y divide-border/50">
               {availableCategories.length === 0 && selectedCatIds.length === 0 ? (
                 <div className="px-4 py-3 text-sm text-muted-foreground">
                   Tüm kategoriler başka bütçelere atanmış.
                 </div>
-              ) : (
-                [
+              ) : (() => {
+                const q = catSearch.trim().toLocaleLowerCase('tr')
+                const list = [
                   ...availableCategories,
                   ...categories.filter(
                     c => selectedCatIds.includes(c.id) && !availableCategories.some(a => a.id === c.id)
                   ),
-                ].map(cat => (
+                ].filter(cat => !q || cat.name.toLocaleLowerCase('tr').includes(q))
+                if (list.length === 0) {
+                  return (
+                    <div className="px-4 py-3 text-sm text-muted-foreground">
+                      &ldquo;{catSearch.trim()}&rdquo; ile eşleşen kategori yok.
+                    </div>
+                  )
+                }
+                return list.map(cat => (
                   <label
                     key={cat.id}
                     className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent cursor-pointer transition-colors"
@@ -321,7 +341,7 @@ export default function BudgetsPage() {
                     <span className="text-sm">{cat.name}</span>
                   </label>
                 ))
-              )}
+              })()}
             </div>
           </div>
 
