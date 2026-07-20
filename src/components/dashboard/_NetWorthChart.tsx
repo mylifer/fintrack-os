@@ -164,7 +164,12 @@ export default function NetWorthLineChart({ data }: Props) {
               stroke: 'var(--background)',
               strokeWidth: 2.5,
             }}
-            isAnimationActive={false}
+            // Açılışta çizgi soldan sağa büyüyerek çizilir; veri güncellenince
+            // (geç gelen fiyat serisi, aralık değişimi) eski şekilden yenisine
+            // yumuşak geçiş yapar — ani zıplama görünmez
+            isAnimationActive
+            animationDuration={800}
+            animationEasing="ease-out"
           />
         </AreaChart>
       </ResponsiveContainer>
