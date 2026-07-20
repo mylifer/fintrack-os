@@ -16,6 +16,7 @@ import {
 } from '@/lib/utils/date'
 import {
   getBudgetCategoryIds, enrichBudget, calcBudgetSpent, resolveBudgetCategories,
+  expandCategoryIds,
 } from '@/lib/utils/calculations'
 import { baseAmount } from '@/lib/utils/fx'
 import { sumBy } from '@/lib/utils/money'
@@ -97,19 +98,23 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     [budget],
   )
 
-  const activeCatIds = catFilter ? [catFilter] : budgetCatIds
+  // Alt kategorilere kaydedilen harcamalar da bütçeye dahil (calcBudgetSpent ile aynı kural)
+  const activeCatIds = useMemo(
+    () => expandCategoryIds(catFilter ? [catFilter] : budgetCatIds, categories),
+    [catFilter, budgetCatIds, categories],
+  )
 
   const { from, to } = monthRange(selectedMonth)
 
   const enriched = useMemo(
-    () => budget ? enrichBudget(budget, transactions, selectedMonth) : null,
-    [budget, transactions, selectedMonth],
+    () => budget ? enrichBudget(budget, transactions, selectedMonth, categories) : null,
+    [budget, transactions, selectedMonth, categories],
   )
 
   const history = useMemo(() => {
     if (!budget) return []
     return lastNMonths(6).map(my => {
-      const spent = calcBudgetSpent(budget, transactions, my)
+      const spent = calcBudgetSpent(budget, transactions, my, categories)
       const pct   = budget.amount > 0 ? Math.min(100, (spent / budget.amount) * 100) : 0
       const status =
         pct >= 100                    ? 'exceeded' as const
@@ -121,13 +126,13 @@ export default function BudgetDetailClient({ id }: { id: string }) {
         my.year  === selectedMonth.year
       return { my, label: shortLabel(my), spent, pct, status, isSelected }
     })
-  }, [budget, transactions, selectedMonth, allTime])
+  }, [budget, transactions, selectedMonth, allTime, categories])
 
   const filtered = useMemo(() => {
     if (!budget) return []
     return transactions.filter(tx => {
       if (tx.type !== 'expense') return false
-      if (!tx.categoryId || !activeCatIds.includes(tx.categoryId)) return false
+      if (!tx.categoryId || !activeCatIds.has(tx.categoryId)) return false
       if (!allTime && (tx.date < from || tx.date > to)) return false
       if (search && !tx.description.toLowerCase().includes(search.toLowerCase())) return false
       return true

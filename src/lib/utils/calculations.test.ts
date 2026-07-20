@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import type { Account, Budget, Debt, PriceData, Transaction } from '@/types'
-import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, isPosted, sumByType, sumExpenseByKey } from './calculations'
+import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
+import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isPosted, sumByType, sumExpenseByKey } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -153,6 +153,33 @@ describe('enrich helpers', () => {
     expect(b.spent).toBe(600)
     expect(b.remaining).toBe(400)
     expect(b.status).toBe('ok')
+  })
+
+  it('budget on a parent category includes subcategory spending (transitively)', () => {
+    const cat = (o: Partial<Category>): Category => ({
+      id: '', name: '', icon: '', color: '', scope: 'expense', isSystem: false, sortOrder: 0, ...o,
+    })
+    const categories = [
+      cat({ id: 'shopping' }),
+      cat({ id: 'clothing', parentId: 'shopping' }),
+      cat({ id: 'shoes', parentId: 'clothing' }), // level 2
+      cat({ id: 'unrelated' }),
+    ]
+    expect([...expandCategoryIds(['shopping'], categories)].sort())
+      .toEqual(['clothing', 'shoes', 'shopping'])
+
+    const b = enrichBudget(
+      { id: 'b', categoryId: 'shopping', amount: 1000, period: 'monthly', rollover: false, alertThreshold: 80 } as Budget,
+      [
+        tx({ type: 'expense', amount: 100, amountTry: 100, categoryId: 'shopping' }),
+        tx({ type: 'expense', amount: 200, amountTry: 200, categoryId: 'clothing' }),
+        tx({ type: 'expense', amount: 50,  amountTry: 50,  categoryId: 'shoes' }),
+        tx({ type: 'expense', amount: 999, amountTry: 999, categoryId: 'unrelated' }),
+      ],
+      { month: 1, year: 2026 },
+      categories,
+    )
+    expect(b.spent).toBe(350)
   })
 
   it('debt remaining floors at 0 and progress caps at 100', () => {

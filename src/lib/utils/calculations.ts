@@ -146,10 +146,34 @@ export function resolveBudgetCategories(
   return { cats: [], label: 'Bütçe (kategorisi silinmiş)', archived: true }
 }
 
+// Kategoriler 3 seviyeye kadar hiyerarşik: bütçe üst kategoriye açılmış olsa da
+// harcamalar alt kategorilere kaydedilir. Verilen id'leri tüm alt kategorileriyle
+// (transitif) genişletir — kategori detay sayfasındaki descendantIds kuralıyla aynı.
+export function expandCategoryIds(ids: string[], categories: Category[]): Set<string> {
+  const byParent = new Map<string, string[]>()
+  for (const c of categories) {
+    if (!c.parentId) continue
+    const siblings = byParent.get(c.parentId)
+    if (siblings) siblings.push(c.id)
+    else byParent.set(c.parentId, [c.id])
+  }
+  const result = new Set<string>()
+  const stack = [...ids]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (result.has(id)) continue
+    result.add(id)
+    const children = byParent.get(id)
+    if (children) stack.push(...children)
+  }
+  return result
+}
+
 export function calcBudgetSpent(
   budget: Budget,
   transactions: Transaction[],
   my?: MonthYear,
+  categories: Category[] = [],
 ): number {
   const range = my
     ? monthRange(my)
@@ -157,12 +181,12 @@ export function calcBudgetSpent(
       ? monthRange({ month: budget.month, year: budget.year })
       : yearRange(budget.year ?? new Date().getFullYear())
 
-  const categoryIds = getBudgetCategoryIds(budget)
+  const categoryIds = expandCategoryIds(getBudgetCategoryIds(budget), categories)
   // Budgets are TRY-denominated → sum the normalized amountTry (S3), not raw.
   const matching = transactions.filter(tx =>
     tx.type === 'expense' &&
     tx.categoryId !== undefined &&
-    categoryIds.includes(tx.categoryId) &&
+    categoryIds.has(tx.categoryId) &&
     isInRange(tx.date, range.from, range.to),
   )
   return sumBy(matching, baseAmount)
@@ -172,8 +196,9 @@ export function enrichBudget(
   budget: Budget,
   transactions: Transaction[],
   my?: MonthYear,
+  categories: Category[] = [],
 ): BudgetWithSpent {
-  const spent = calcBudgetSpent(budget, transactions, my)
+  const spent = calcBudgetSpent(budget, transactions, my, categories)
   const remaining = Math.max(0, subMoney(budget.amount, spent))
   const percentUsed = budget.amount > 0 ? (spent / budget.amount) * 100 : 0
   const status =

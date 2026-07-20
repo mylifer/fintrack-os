@@ -131,6 +131,7 @@ function BudgetCard({
 export default function BudgetsPage() {
   const transactions  = useTransactionStore(s => s.transactions)
   const categories    = useCategoryStore(useShallow(s => s.getByScope('expense')))
+  const allCategories = useCategoryStore(s => s.categories)
   const selectedPeriod = useUIStore(s => s.selectedPeriod)
   const setPeriod      = useUIStore(s => s.setPeriod)
   const { budgets: rawBudgets, add, update, remove } = useBudgetStore(
@@ -141,9 +142,9 @@ export default function BudgetsPage() {
     () =>
       rawBudgets
         .filter(b => b.period === 'monthly')
-        .map(b => enrichBudget(b, transactions, selectedPeriod))
+        .map(b => enrichBudget(b, transactions, selectedPeriod, allCategories))
         .sort((a, b) => b.percentUsed - a.percentUsed),
-    [rawBudgets, transactions, selectedPeriod],
+    [rawBudgets, transactions, selectedPeriod, allCategories],
   )
 
   // ── Form modal ────────────────────────────────────────────────────────────

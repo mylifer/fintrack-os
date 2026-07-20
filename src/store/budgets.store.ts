@@ -103,9 +103,11 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
   },
 
   getMonthBudgets: (my, transactions) => {
+    // Üst kategoriye açılan bütçe alt kategori harcamalarını da kapsasın
+    const categories = useCategoryStore.getState().categories
     return get().budgets
       .filter(b => b.period === 'monthly')
-      .map(b => enrichBudget(b, transactions, my))
+      .map(b => enrichBudget(b, transactions, my, categories))
       .sort((a, b) => b.percentUsed - a.percentUsed)
   },
 }))
