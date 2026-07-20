@@ -117,9 +117,10 @@ export default function DashboardPage() {
     }
   }, [fundCodes, from, periodType])
 
-  // Net artış gelire eklenir; net düşüş gelire yansıtılmaz ama kartta bilgi
-  // satırı olarak gösterilir (satır tamamen kaybolunca "fonlar görünmüyor"
-  // sanılıyordu).
+  // Dönemsel fon getirisi (işaretli): artış gelire eklenir, düşüş de düşülür.
+  // Eskiden yalnız pozitif değer eklenip negatif 0'a kısılıyordu; bu, aynı fonda
+  // "bugün +, bu hafta −" durumunda günlük Gelir'i haftalıktan yüksek gösterip
+  // dönemler arası kıyası bozuyordu. İşaretli değer bu invariant'ı korur.
   const fundPeriodNet = useMemo(() => {
     const hist: Record<string, FundPricePoint[]> = {}
     for (const code of fundCodes) {
@@ -132,7 +133,7 @@ export default function DashboardPage() {
   // fundGain=0 tüketicileri (incomeTotal, netTotal) otomatik sıfırlar. Nakit akışı
   // grafiği fon getirisini artık hiç göstermez (yalnızca gerçek nakit gelir/gider).
   const includeFundGain = useSettingsStore(s => s.includeFundGain)
-  const fundGain = includeFundGain && fundPeriodNet > 0 ? fundPeriodNet : 0
+  const fundGain = includeFundGain ? fundPeriodNet : 0
   const { income, expense, net } = useMemo(
     () => calcPeriodFlow(transactions, from, to),
     [transactions, from, to],
@@ -232,9 +233,9 @@ export default function DashboardPage() {
                 : fundPeriodNet > 0.005 // yarım kuruş eşiği: float tozu "±₺0" satırı üretmesin
                   ? `${formatCompact(fundPeriodNet)} ${FUND_GAIN_LABEL[periodType]} fon getirisi dahil`
                   : fundPeriodNet < -0.005
-                    ? `−${formatCompact(Math.abs(fundPeriodNet))} ${FUND_GAIN_LABEL[periodType]} fon değişimi (gelire eklenmedi)`
+                    ? `−${formatCompact(Math.abs(fundPeriodNet))} ${FUND_GAIN_LABEL[periodType]} fon değişimi dahil`
                     : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
-              ok: true,
+              ok: incomeTotal >= 0,
               trendDiff: prevFlow ? incomeTotal - prevFlow.income : null,
               betterWhenHigher: true,
             },
