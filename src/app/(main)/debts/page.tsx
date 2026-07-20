@@ -86,7 +86,7 @@ function addMonthsClamped(iso: string, months: number): string {
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
   const total = m - 1 + months
   const ny = y + Math.floor(total / 12)
-  const nm = total % 12
+  const nm = ((total % 12) + 12) % 12
   const lastDay = new Date(ny, nm + 1, 0).getDate()
   return `${ny}-${String(nm + 1).padStart(2, '0')}-${String(Math.min(d, lastDay)).padStart(2, '0')}`
 }
@@ -108,7 +108,11 @@ function buildPaymentPlan(debt: DebtWithRemaining): PlanRow[] {
     const amount = i === count - 1 && remainder > 0 ? remainder : monthly
     const prevCumulative = cumulative
     cumulative += amount
-    const date = addMonthsClamped(debt.startDate, i + 1)
+    // Vade girilmişse son taksit vadeye denk gelecek şekilde geriye doğru,
+    // girilmemişse başlangıçtan bir ay sonra başlayacak şekilde ileri doğru.
+    const date = debt.dueDate
+      ? addMonthsClamped(debt.dueDate, -(count - 1 - i))
+      : addMonthsClamped(debt.startDate, i + 1)
 
     let status: PlanRow['status']
     if (debt.paidAmount + 0.005 >= cumulative) status = 'paid'
