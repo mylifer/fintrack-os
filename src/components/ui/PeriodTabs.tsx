@@ -18,21 +18,34 @@ interface Nav {
   onChange: (offset: number) => void
 }
 
-export function PeriodTabs({ rightSlot, nav }: { rightSlot?: ReactNode; nav?: Nav }) {
+// Özel (custom) tarih aralığı — yalnız bu prop verildiğinde ("Özel" sekmesi +
+// tarih girdileri) çizilir. Global periodType'a dokunmadan sayfa-yerel bir aralık
+// (dashboard'daki gibi) sunar; verilmeyen sayfalarda hiç görünmez.
+interface CustomRange {
+  active: boolean
+  from: string
+  to: string
+  onActivate: () => void
+  onExit: () => void
+  onChange: (patch: { from?: string; to?: string }) => void
+}
+
+export function PeriodTabs({ rightSlot, nav, custom }: { rightSlot?: ReactNode; nav?: Nav; custom?: CustomRange }) {
   const periodType    = useUIStore(s => s.periodType)
   const setPeriodType = useUIStore(s => s.setPeriodType)
 
   const navBtnCls = 'w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-sm leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors'
+  const dateInputCls = 'flex-shrink-0 border border-border rounded-lg px-2 py-1 text-xs text-foreground bg-card focus:outline-none focus:border-primary'
 
   return (
     <div className="flex items-center gap-1 px-6 py-3 border-b border-border/50 bg-transparent overflow-x-auto flex-shrink-0">
       {PERIODS.map(({ type, label }) => (
         <button
           key={type}
-          onClick={() => setPeriodType(type)}
+          onClick={() => { setPeriodType(type); custom?.onExit() }}
           className={[
             'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors',
-            periodType === type
+            periodType === type && !custom?.active
               ? 'bg-secondary text-foreground font-medium'
               : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
           ].join(' ')}
@@ -40,6 +53,39 @@ export function PeriodTabs({ rightSlot, nav }: { rightSlot?: ReactNode; nav?: Na
           {label}
         </button>
       ))}
+
+      {custom && (
+        <>
+          <button
+            onClick={custom.onActivate}
+            className={[
+              'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors',
+              custom.active
+                ? 'bg-secondary text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
+            ].join(' ')}
+          >
+            Özel
+          </button>
+          {custom.active && (
+            <div className="flex items-center gap-1.5 ml-1 flex-shrink-0">
+              <input
+                type="date"
+                value={custom.from}
+                onChange={e => custom.onChange({ from: e.target.value })}
+                className={dateInputCls}
+              />
+              <span className="text-muted-foreground text-xs">—</span>
+              <input
+                type="date"
+                value={custom.to}
+                onChange={e => custom.onChange({ to: e.target.value })}
+                className={dateInputCls}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       {/* Dönem gezintisi — 'Tüm Zamanlar'da anlamsız, gizlenir */}
       {nav && periodType !== 'all' && (

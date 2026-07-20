@@ -8,6 +8,7 @@ import {
   useInvestmentStore, useBudgetStore, useCategoryStore,
   useDebtStore, useRecurringStore, usePeopleStore, useSettingsStore,
 } from '@/store'
+import { format, parseISO, startOfMonth, subDays, differenceInDays } from 'date-fns'
 import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { tefasCodesIn } from '@/lib/tefas'
@@ -88,7 +89,22 @@ export default function DashboardPage() {
   const getDue       = useRecurringStore(s => s.getDue)
   const people       = usePeopleStore(s => s.people)
 
-  const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
+  // Özel (custom) tarih aralığı — sayfa-yerel; global periodType'a dokunmaz.
+  // Raporlar sayfasındaki 'custom' preset ile aynı mantık: girilmemiş uçlar için
+  // varsayılan ay başı → bugün. Aktifken PeriodTabs sekmeleri highlight'ı kaybeder.
+  const [customActive, setCustomActive] = useState(false)
+  const [customFrom,   setCustomFrom]   = useState('')
+  const [customTo,     setCustomTo]     = useState('')
+
+  const { from, to } = useMemo(() => {
+    if (customActive) {
+      return {
+        from: customFrom || format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+        to:   customTo   || today(),
+      }
+    }
+    return getPeriodRange(periodType)
+  }, [customActive, customFrom, customTo, periodType])
 
   // Seçili dönemin TEFAS fon getirisi. Dönem başı kapanışı için fon başına
   // günlük seri bir kez çekilir (kod+dönem anahtarıyla; tarihi veri değişmez).
@@ -98,7 +114,8 @@ export default function DashboardPage() {
   const [fundHistory, setFundHistory] = useState<Record<string, FundPricePoint[]>>({})
   const histRequested = useRef(new Set<string>())
   useEffect(() => {
-    if (periodType === 'daily' || periodType === 'all') return
+    // Özel aralık her zaman sınırlı bir dönemdir → 'daily'/'all' atlamasına takılmaz.
+    if (!customActive && (periodType === 'daily' || periodType === 'all')) return
     // Baz fiyat dönem içindeki ilk kapanış; seri yine de 10 gün geriden istenir
     // (fazla noktalar yok sayılır — anahtar `kod:from` olduğundan cache bozulmaz)
     const histFrom = new Date(new Date(from + 'T00:00:00Z').getTime() - 10 * 86_400_000)
@@ -115,7 +132,7 @@ export default function DashboardPage() {
         })
         .catch(() => histRequested.current.delete(key))
     }
-  }, [fundCodes, from, periodType])
+  }, [fundCodes, from, periodType, customActive])
 
   // Seçili dönemin işaretli fon getirisi (checkbox açıkken Gelir/Net'e eklenir).
   const fundPeriodNet = useMemo(() => {
@@ -124,8 +141,8 @@ export default function DashboardPage() {
       const pts = fundHistory[`${code}:${from}`]
       if (pts) hist[code] = pts
     }
-    return calcFundPeriodGain(investTxs, fundPrices, hist, from, to, periodType === 'daily')
-  }, [fundCodes, fundHistory, investTxs, fundPrices, from, to, periodType])
+    return calcFundPeriodGain(investTxs, fundPrices, hist, from, to, !customActive && periodType === 'daily')
+  }, [fundCodes, fundHistory, investTxs, fundPrices, from, to, periodType, customActive])
   // "Fon getirileri dahil" (sağ üst checkbox): açıkken dönemin POZİTİF fon getirisi
   // Gelir/Net kartına eklenir, kapalıyken hariç tutulur — kullanıcı isteğine göre
   // fonlu/fonsuz geliri görebilsin. Negatif dönem getirisi gelire yansıtılmaz (gelir
@@ -138,7 +155,8 @@ export default function DashboardPage() {
   )
   const netWorth    = calcNetWorth(accounts, prices) + investValue
   const totalAssets = calcTotalAssets(accounts, prices) + investValue
-  const prefix      = PERIOD_LABEL[periodType]
+  const prefix      = customActive ? 'Seçili Dönem' : PERIOD_LABEL[periodType]
+  const fundGainLabel = customActive ? 'seçili dönem' : FUND_GAIN_LABEL[periodType]
 
   const totalOwed = getActive().filter(d => d.direction === 'owe').reduce((s, d) => s + d.remainingAmount, 0)
 
@@ -155,7 +173,16 @@ export default function DashboardPage() {
   const animTotalOwed   = useCountUp(totalOwed)
 
   // Previous period comparison
-  const prevRange = useMemo(() => getPrevPeriodRange(periodType), [periodType])
+  // Özel aralıkta önceki dönem = hemen öncesindeki eşit uzunlukta pencere
+  // (Raporlar'daki buildPeriodComparison ile aynı kural).
+  const prevRange = useMemo(() => {
+    if (customActive) {
+      const f    = parseISO(from)
+      const days = differenceInDays(parseISO(to), f) + 1
+      return { from: format(subDays(f, days), 'yyyy-MM-dd'), to: format(subDays(f, 1), 'yyyy-MM-dd') }
+    }
+    return getPrevPeriodRange(periodType)
+  }, [customActive, from, to, periodType])
   const prevFlow = useMemo(() => {
     if (!prevRange) return null
     return calcPeriodFlow(transactions, prevRange.from, prevRange.to)
@@ -206,7 +233,20 @@ export default function DashboardPage() {
   return (
     <>
       <Header title="Dashboard" action={{ label: 'İşlem Ekle', onClick: () => openModal('add-transaction') }} />
-      <PeriodTabs rightSlot={<FundGainToggle />} />
+      <PeriodTabs
+        rightSlot={<FundGainToggle />}
+        custom={{
+          active: customActive,
+          from: customFrom,
+          to: customTo,
+          onActivate: () => setCustomActive(true),
+          onExit: () => setCustomActive(false),
+          onChange: ({ from: f, to: t }) => {
+            if (f !== undefined) setCustomFrom(f)
+            if (t !== undefined) setCustomTo(t)
+          },
+        }}
+      />
 
       <div className="p-6 space-y-6">
 
@@ -229,9 +269,9 @@ export default function DashboardPage() {
               sub: !includeFundGain
                 ? (income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`)
                 : fundPeriodNet > 0.005 // yarım kuruş eşiği: float tozu "±₺0" satırı üretmesin
-                  ? `${formatCompact(fundPeriodNet)} ${FUND_GAIN_LABEL[periodType]} fon getirisi dahil`
+                  ? `${formatCompact(fundPeriodNet)} ${fundGainLabel} fon getirisi dahil`
                   : fundPeriodNet < -0.005
-                    ? `−${formatCompact(Math.abs(fundPeriodNet))} ${FUND_GAIN_LABEL[periodType]} fon değişimi (gelire eklenmedi)`
+                    ? `−${formatCompact(Math.abs(fundPeriodNet))} ${fundGainLabel} fon değişimi (gelire eklenmedi)`
                     : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
               ok: incomeTotal >= 0,
               trendDiff: prevFlow ? incomeTotal - prevFlow.income : null,
