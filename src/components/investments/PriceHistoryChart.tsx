@@ -98,13 +98,14 @@ export interface QtyPoint {
 }
 
 interface Props {
-  asset:         AssetGroup
-  fundCode?:     string   // asset === 'TEFAS' iken zorunlu — fon kodu (örn. AFA)
-  label:         string
-  currentValue?: number
-  currentPrice?: number
-  buyPoints?:    BuyPoint[]
-  qtyTimeline?:  QtyPoint[]
+  asset:            AssetGroup
+  fundCode?:        string   // asset === 'TEFAS' iken zorunlu — fon kodu (örn. AFA)
+  label:            string
+  currentValue?:    number
+  currentPrice?:    number
+  currentPrevPrice?: number  // canlı feed'deki bir önceki kapanış (fp.prevPrice) — bugünkü barın günlük değişimini kartla hizalar
+  buyPoints?:       BuyPoint[]
+  qtyTimeline?:     QtyPoint[]
 }
 
 // ── Chart data row ─────────────────────────────────────────────────
@@ -115,12 +116,18 @@ interface ChartRow {
   rawPrice:     number
   realValue:    number
   realRawPrice: number
+  // Bugünkü (canlı ankraj) nokta için günlük değişim, resmi son iki kapanıştan
+  // (fp.price − fp.prevPrice) hesaplanır — dashboard "günlük getiri" kartıyla ve
+  // aracı kurum ekranıyla birebir aynı olsun diye. Geçmiş noktalarda undefined
+  // kalır; onlar ardışık seri farkını kullanmaya devam eder.
+  dayValOverride?: number
+  dayPctOverride?: number
 }
 
 // ── Component ─────────────────────────────────────────────────────
 
 export function PriceHistoryChart({
-  asset, fundCode, label, currentValue, currentPrice, buyPoints = [], qtyTimeline = [],
+  asset, fundCode, label, currentValue, currentPrice, currentPrevPrice, buyPoints = [], qtyTimeline = [],
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [chartW, setChartW] = useState(400)
@@ -237,8 +244,20 @@ export function PriceHistoryChart({
       realRawPrice: price,
     })
 
-    return rows.map(r => makeRow(r.date, r.price, r.value))
-  }, [priceHistory, currentValue, currentPrice, qtyTimeline])
+    return rows.map(r => {
+      const base = makeRow(r.date, r.price, r.value)
+      // Bugünkü nokta: günlük değişimi resmi son iki kapanıştan türet (kart ile
+      // aynı). Grafiğin geçmiş serisi canlı feed'e göre bir gün bayat olduğunda
+      // ankrajın bir önceki noktaya farkı birden fazla günü kapsayıp barı
+      // şişiriyordu — override bunu tek-günlük close-to-close'a sabitler.
+      if (r.date === todayStr && currentPrevPrice && currentPrevPrice > 0 && currentPrice) {
+        const qtyToday = qtyAt(todayStr)
+        base.dayValOverride = qtyToday * (currentPrice - currentPrevPrice)
+        base.dayPctOverride = ((currentPrice - currentPrevPrice) / currentPrevPrice) * 100
+      }
+      return base
+    })
+  }, [priceHistory, currentValue, currentPrice, currentPrevPrice, qtyTimeline])
 
   // Her alımı grafikteki ilk >= tarihli satıra tuttur; satır yoksa son satıra.
   // Böylece tarihi seride birebir olmayan alımlar da işaretçi alır.
@@ -422,16 +441,25 @@ export function PriceHistoryChart({
                 const buys = buyMarkers.get(date)
                 const rowIdx = chartData.findIndex(r => r.date === date)
                 const row = rowIdx >= 0 ? chartData[rowIdx] : undefined
-                // Günlük değişim: bir önceki seri noktasına göre birim fiyat farkı
+                // Günlük değişim: bir önceki seri noktasına göre birim fiyat farkı.
+                // Bugünkü nokta override taşıyorsa (resmi son iki kapanış) onu kullan —
+                // kart/aracı kurum ile birebir; aksi halde ardışık seri farkı.
                 const prevRow = rowIdx > 0 ? chartData[rowIdx - 1] : undefined
-                const dayPct = row && prevRow?.realRawPrice
-                  ? ((row.realRawPrice - prevRow.realRawPrice) / prevRow.realRawPrice) * 100
-                  : null
+                const override = row?.dayValOverride !== undefined
+                const dayPct = override
+                  ? row!.dayPctOverride!
+                  : row && prevRow?.realRawPrice
+                    ? ((row.realRawPrice - prevRow.realRawPrice) / prevRow.realRawPrice) * 100
+                    : null
                 // Portföy değerinin güne göre değişimi (alım günlerinde alımı da içerir)
-                const dayVal = row && prevRow ? row.realValue - prevRow.realValue : null
-                const dayValPct = dayVal !== null && prevRow!.realValue > 0
-                  ? (dayVal / prevRow!.realValue) * 100
-                  : null
+                const dayVal = override
+                  ? row!.dayValOverride!
+                  : row && prevRow ? row.realValue - prevRow.realValue : null
+                const dayValPct = override
+                  ? row!.dayPctOverride!
+                  : dayVal !== null && prevRow!.realValue > 0
+                    ? (dayVal / prevRow!.realValue) * 100
+                    : null
 
                 return (
                   <div style={{

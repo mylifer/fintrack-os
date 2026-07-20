@@ -104,13 +104,13 @@ export default function InvestmentsPage() {
   // line correctly reflects stepwise increases from multiple purchases.
   const chartGroups = useMemo<{
     key: string; asset: AssetGroup; fundCode?: string; label: string
-    currentValue?: number; currentPrice?: number
+    currentValue?: number; currentPrice?: number; currentPrevPrice?: number
     buyPoints: BuyPoint[]; qtyTimeline: QtyPoint[]
   }[]>(() => {
     if (!transactions.length) return []
     const groups: {
       key: string; asset: AssetGroup; fundCode?: string; label: string
-      currentValue?: number; currentPrice?: number
+      currentValue?: number; currentPrice?: number; currentPrevPrice?: number
       buyPoints: BuyPoint[]; qtyTimeline: QtyPoint[]
     }[] = []
 
@@ -202,6 +202,7 @@ export default function InvestmentsPage() {
         label: `${code} Portföyü`,
         currentValue: fp ? (holding?.currentValue ?? 0) : undefined,
         currentPrice: fp?.price,
+        currentPrevPrice: fp?.prevPrice,
         buyPoints,
         qtyTimeline,
       })
@@ -311,6 +312,7 @@ export default function InvestmentsPage() {
                 label={g.label}
                 currentValue={g.currentValue}
                 currentPrice={g.currentPrice}
+                currentPrevPrice={g.currentPrevPrice}
                 buyPoints={g.buyPoints}
                 qtyTimeline={g.qtyTimeline}
               />
