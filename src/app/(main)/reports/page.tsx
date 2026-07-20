@@ -483,10 +483,11 @@ export default function ReportsPage() {
     return calcFundPeriodGain(investTxs, fundPrices, hist, dateRange.from, dateRange.to, preset === 'today')
   }, [fundEligible, fundCodes, fundHistory, investTxs, fundPrices, dateRange, preset])
 
-  // Checkbox açıkken dönemin POZİTİF fon getirisi gelire eklenir (negatif değer
-  // gelire yansıtılmaz — dashboard "Fon getirileri dahil" ile aynı kural).
-  // includeInvestmentIncome ayrıca GERÇEKLEŞEN fon satış kârı gelir satırlarını
-  // (aşağıda filteredTxs) toplam gelire katıp katmamayı da seçtirir.
+  // Checkbox açıkken dönemin POZİTİF (gerçekleşmemiş) fon getirisi gelire eklenir;
+  // negatif değer gelire yansıtılmaz — dashboard "Fon getirileri dahil" ile birebir
+  // aynı kural. Checkbox YALNIZ bu mark-to-market getiriyi etkiler; ledger'daki
+  // gerçekleşen "Satış Kârı" gelir satırları her durumda gelirde kalır (bkz.
+  // filteredTxs) → anasayfa ile aynı sayı.
   const fundGain = includeInvestmentIncome && fundPeriodNet > 0 ? fundPeriodNet : 0
 
   // Analitik akış yüzeylerinin ortak temeli: yalnız İŞLENMİŞ satırlar (isPosted —
@@ -504,17 +505,18 @@ export default function ReportsPage() {
       const d = tx.date.slice(0, 10)
       if (d < dateRange.from || d > dateRange.to) return false
       if (isReconciliation(tx)) return false
-      // Satış anaparası ("… Satışı") artık her durumda akış toplamlarından hariç
-      // (isInvestmentPrincipalTx) — özsermaye geri dönüşü gelir değildir. Bu anahtar
-      // ise GERÇEKLEŞEN satış kârı gelirini ("… Satış Kârı", income + icon) toplam
-      // gelire dahil edip etmemeyi seçtirir; kapalıyken realize kâr da düşer.
-      if (!includeInvestmentIncome && tx.type === 'income' && tx.icon) return false
+      // Satış anaparası ("… Satışı") her durumda akış toplamlarından hariç
+      // (isInvestmentPrincipalTx, calcPeriodFlow içinde) — özsermaye geri dönüşü
+      // gelir değildir. GERÇEKLEŞEN satış kârı ("… Satış Kârı", income + icon) ise
+      // gerçek nakit olduğu için "Yatırım gelirleri" kapalıyken DE gelirde kalır —
+      // dashboard ile birebir aynı: checkbox yalnız gerçekleşmemiş fon getirisini
+      // (fundGain) etkiler, ledger'daki realize kâr satırlarını değil.
       if (accountId !== 'all') {
         if (tx.accountId !== accountId && tx.toAccountId !== accountId) return false
       }
       return true
     }),
-    [postedTxs, dateRange, accountId, includeInvestmentIncome],
+    [postedTxs, dateRange, accountId],
   )
 
   const kpi = useMemo(() => {
@@ -634,7 +636,7 @@ export default function ReportsPage() {
             onChange={e => setIncludeInvestmentIncome(e.target.checked)}
             className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
           />
-          <span className="text-xs font-medium text-muted-foreground">Yatırım gelirleri</span>
+          <span className="text-xs font-medium text-muted-foreground">Fon getirileri dahil</span>
         </label>
 
         <SelectField
