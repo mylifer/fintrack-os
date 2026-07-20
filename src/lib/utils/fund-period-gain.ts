@@ -54,9 +54,19 @@ export function calcFundPeriodGain(
       continue
     }
 
-    const pts  = history[code]
-    const pNow = fp?.price ?? (pts?.length ? pts[pts.length - 1].price : undefined)
-    if (pNow === undefined) continue
+    const pts    = history[code]
+    const within = pts?.length ? pts.filter(p => p.date >= from && p.date <= to) : []
+
+    // Dönem SONU değeri: pencere güncel kapanışı (fp.date) kapsıyorsa canlı fiyat
+    // (fp.price) kullanılır. GEÇMİŞTE biten özel aralıklarda ise dönem sonu, `to`
+    // gününe kadarki SON kapanıştır — bugünkü fiyatla ölçmek `to`'dan bugüne olan
+    // hareketi de getiriye katıp aralığı şişirirdi (aracı kurumların tarih aralığı
+    // görünümüyle uyumsuz olurdu). Canlı fiyat hiç yoksa serinin son noktasına düşülür.
+    const endsInPast = fp?.date ? to < fp.date : within.length > 0
+    const pEnd = endsInPast
+      ? (within.length ? within[within.length - 1].price : undefined)
+      : (fp?.price ?? (pts?.length ? pts[pts.length - 1].price : undefined))
+    if (pEnd === undefined) continue
 
     if (qtyStart > 1e-6) {
       // Baz fiyat: dönem İÇİNDEKİ ilk kapanış. TEFAS'ta T gününün fiyatı T-1
@@ -64,15 +74,15 @@ export function calcFundPeriodGain(
       // ekonomik olarak önceki dönemin son değeridir — aracı kurumların tarih
       // aralığı görünümüyle de birebir uyumlu. (Eski davranış dönem öncesi son
       // kapanışı baz alıyordu ve haftalık getiriyi Pazartesi hareketi kadar
-      // şişiriyordu.) Seri hiç yüklenemediyse günlük değişime düş; dönem içinde
-      // henüz kapanış yayınlanmadıysa getiri 0 sayılır.
-      if (!pts?.length) { net += dailyChange; continue }
-      const within = pts.filter(p => p.date >= from && p.date <= to)
+      // şişiriyordu.) Seri hiç yüklenemediyse yalnız GÜNCEL pencerede günlük
+      // değişime düş (geçmiş pencerede baz/dönem-sonu kapanış olmadan hesaplanamaz
+      // → 0); dönem içinde henüz kapanış yayınlanmadıysa getiri 0 sayılır.
+      if (!pts?.length) { if (!endsInPast) net += dailyChange; continue }
       if (!within.length) continue
-      net += qty * pNow - qtyStart * within[0].price - buys + sells - realized
+      net += qty * pEnd - qtyStart * within[0].price - buys + sells - realized
     } else {
       // Dönem başında pozisyon yok → baz fiyat gerekmez ('Tüm Zamanlar' dahil)
-      net += qty * pNow - buys + sells - realized
+      net += qty * pEnd - buys + sells - realized
     }
   }
   return net

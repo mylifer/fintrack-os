@@ -438,16 +438,15 @@ export default function ReportsPage() {
     [preset, customFrom, customTo],
   )
 
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
-
   /* ── Fon getirisi (gerçekleşmemiş) ──────────────────────────────────
      Dashboard'daki gelir kartıyla aynı hesap: seçili dönemin TEFAS fon
-     değer kazancı. calcFundPeriodGain dönem sonunu HER ZAMAN bugünkü fiyatla
-     alır → yalnızca bugüne kadar süren dönemlerde (to >= bugün) ve portföy
-     geneli (Tüm Hesaplar) anlamlıdır; geçmişte biten dönemlerde/hesap
-     seçiliyken 0 tutulur. Dönem başı kapanışı için fon başına günlük seri bir
-     kez çekilir (kod+dönem anahtarı; tarihi veri değişmez). */
-  const fundEligible = accountId === 'all' && dateRange.to >= todayStr
+     değer kazancı. calcFundPeriodGain dönem sonunu tarihe göre alır — güncel
+     dönemlerde canlı fiyat, geçmişte biten (özel) aralıklarda `to` gününe kadarki
+     son kapanış — böylece her tarih aralığında doğru akar. Yalnız portföy geneli
+     (Tüm Hesaplar) için anlamlıdır; tek hesap seçiliyken 0 tutulur (fon getirisi
+     portföy geneli bir büyüklük). Dönem başı/sonu kapanışı için fon başına günlük
+     seri bir kez çekilir (kod+dönem anahtarı; tarihi veri değişmez). */
+  const fundEligible = accountId === 'all'
   const fundCodes    = useMemo(() => tefasCodesIn(investTxs.map(t => t.asset)), [investTxs])
   const [fundHistory, setFundHistory] = useState<Record<string, FundPricePoint[]>>({})
   const histRequested = useRef(new Set<string>())

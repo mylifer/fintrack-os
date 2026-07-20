@@ -59,6 +59,21 @@ describe('calcFundPeriodGain', () => {
     expect(calcFundPeriodGain(txs, FP, HIST, FROM, TO, false)).toBeCloseTo(0, 6)
   })
 
+  it('geçmişte biten (özel) aralıkta dönem sonu, `to` gününe kadarki son kapanıştır — bugünkü fiyat değil', () => {
+    // Pencere 01.07 → 10.07; canlı fiyat (FP.date 17.07) pencereden SONRA.
+    const HIST_PAST: Record<string, FundPricePoint[]> = {
+      AFA: [
+        { date: '2026-06-30', price: 100 }, // dönem öncesi
+        { date: '2026-07-02', price: 110 }, // dönem içi ilk kapanış (baz)
+        { date: '2026-07-09', price: 125 }, // `to`'ya kadarki son kapanış (dönem sonu)
+        { date: '2026-07-17', price: 130 }, // `to`'dan sonra — dahil edilmemeli
+      ],
+    }
+    const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 80, date: '2026-05-01' })]
+    // Doğru: 10 pay 110 → 125 = 150. (Bugünkü 130 alınsaydı yanlışlıkla 200 olurdu.)
+    expect(calcFundPeriodGain(txs, FP, HIST_PAST, '2026-07-01', '2026-07-10', false)).toBeCloseTo(150, 6)
+  })
+
   it("'Tüm Zamanlar': geçmiş seri olmadan gerçekleşmemiş K/Z döner", () => {
     const txs = [
       tx({ type: 'buy',  quantity: 10, pricePerUnit: 80,  date: '2026-05-01' }),
