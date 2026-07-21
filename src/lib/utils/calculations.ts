@@ -235,6 +235,17 @@ function sumFlow(inRange: Transaction[]): { income: number; expense: number; net
   return { income, expense, net: subMoney(income, expense) }
 }
 
+// A transaction that counts toward income/expense/net FLOW totals: posted
+// (approved + arrived, isPosted), not a balance-reconciliation ghost, and not
+// an investment principal move (… Alımı/… Satışı). This is the SINGLE flow
+// predicate — calcPeriodFlow/calcMonthlyFlow AND every surface that sums flow
+// over an already-scoped slice (işlem özet çubuğu, kişi/etiket/kategori detay
+// toplamları) share it, so no two widgets can drift apart on which rows count.
+// GERÇEKLEŞEN K/Z (… Satış Kârı/Zararı) burada DAHİLDİR — gerçek gelir/giderdir.
+export function isFlowTx(t: Transaction, asOf: string = today()): boolean {
+  return isPosted(t, asOf) && !isReconciliation(t) && !isInvestmentPrincipalTx(t)
+}
+
 // Flow metrics (income/expense/net) exclude balance-reconciliation ("ghost")
 // entries everywhere — they correct raw balances only and must never inflate
 // any income/expense total or average. Net-worth math uses calcMonthlyNetRaw.
@@ -243,12 +254,12 @@ export function calcPeriodFlow(
   from: string,
   to: string,
 ): { income: number; expense: number; net: number } {
-  // isPosted: onay bekleyen (pending) ve tarihi gelmemiş satırlar hiçbir akış
-  // toplamına girmez — bakiyelerle aynı kural (tek doğruluk kaynağı).
+  // isFlowTx: onay bekleyen (pending) / tarihi gelmemiş / mutabakat / yatırım
+  // anaparası satırları hiçbir akış toplamına girmez (tek doğruluk kaynağı).
   // slice(0,10): legacy tam-ISO datetime tarih de gün sınırında doğru kıyaslanır.
   const inRange = transactions.filter(tx => {
     const d = tx.date.slice(0, 10)
-    return d >= from && d <= to && isPosted(tx) && !isReconciliation(tx) && !isInvestmentPrincipalTx(tx)
+    return d >= from && d <= to && isFlowTx(tx)
   })
   return sumFlow(inRange)
 }
@@ -258,8 +269,8 @@ export function calcMonthlyFlow(
   my: MonthYear,
 ): { income: number; expense: number; net: number } {
   const { from, to } = monthRange(my)
-  // isPosted: calcPeriodFlow ile aynı kural — pending/gelecek satırlar akışa girmez
-  const inRange = transactions.filter(tx => isInRange(tx.date, from, to) && isPosted(tx) && !isReconciliation(tx) && !isInvestmentPrincipalTx(tx))
+  // isFlowTx: calcPeriodFlow ile aynı kural — pending/gelecek/mutabakat/anapara hariç
+  const inRange = transactions.filter(tx => isInRange(tx.date, from, to) && isFlowTx(tx))
   return sumFlow(inRange)
 }
 

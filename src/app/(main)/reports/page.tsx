@@ -12,7 +12,7 @@ import {
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { Header }           from '@/components/layout/Header'
-import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore } from '@/store'
+import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useSettingsStore } from '@/store'
 import { getAssetPrice, computeHoldings } from '@/store/investment.store'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { SelectField } from '@/components/ui/Select'
@@ -99,10 +99,13 @@ function buildCashFlowData(
   // calcMonthlyFlow ile aynı para birimi kuralı; ham `amount` karışık PB toplamaz.
   // Yatırım anapara satırları (… Alımı/… Satışı) akış grafiğine girmez; yalnızca
   // gerçekleşen K/Z ile normal gelir/gider — KPI kartlarıyla aynı kapsam.
+  // slice(0,10): calcPeriodFlow/isInRange ile aynı gün-sınırı toleransı — legacy
+  // tam-ISO datetime (ör. '2026-07-31T15:00') aralığın son gününden düşmesin,
+  // yoksa çubuklar KPI'dan az toplar (bar↔KPI tutarsızlığı).
   const income  = (pFrom: string, pTo: string) =>
-    sumBy(transactions.filter(t => t.type === 'income'  && t.date >= pFrom && t.date <= pTo && !isInvestmentPrincipalTx(t)), baseAmount)
+    sumBy(transactions.filter(t => t.type === 'income'  && t.date.slice(0, 10) >= pFrom && t.date.slice(0, 10) <= pTo && !isInvestmentPrincipalTx(t)), baseAmount)
   const expense = (pFrom: string, pTo: string) =>
-    sumBy(transactions.filter(t => t.type === 'expense' && t.date >= pFrom && t.date <= pTo && !isInvestmentPrincipalTx(t)), baseAmount)
+    sumBy(transactions.filter(t => t.type === 'expense' && t.date.slice(0, 10) >= pFrom && t.date.slice(0, 10) <= pTo && !isInvestmentPrincipalTx(t)), baseAmount)
 
   if (days <= 45) {
     let wStart = startOfWeek(from, { locale: tr })
@@ -381,7 +384,8 @@ function buildCategoryTrendData(
       .filter(tx => {
         if (tx.type !== 'expense' || tx.icon) return false
         if (isReconciliation(tx)) return false  // ghost reconciliation — exclude from trend
-        if (tx.date < mFrom || tx.date > mTo) return false
+        const d = tx.date.slice(0, 10)          // gün-sınırı toleransı (bkz. buildCashFlowData)
+        if (d < mFrom || d > mTo) return false
         return categoryId === null ? !tx.categoryId : tx.categoryId === categoryId
       })
       .reduce((s, tx) => s + baseAmount(tx), 0)
@@ -406,7 +410,11 @@ export default function ReportsPage() {
   const [customFrom,   setCustomFrom]   = useState('')
   const [customTo,     setCustomTo]     = useState('')
   const [accountId,    setAccountId]    = useState('all')
-  const [includeInvestmentIncome, setIncludeInvestmentIncome] = useState(true)
+  // Fon getirisi anahtarı, Dashboard'daki "Fon getirileri dahil" ile AYNI kalıcı
+  // ayardır (settings.includeFundGain) → iki sayfa aynı dönem için aynı Net'i
+  // gösterir; oturumlar arası korunur. Ayrı bir yerel state kullanılmıyor.
+  const includeInvestmentIncome = useSettingsStore(s => s.includeFundGain)
+  const setIncludeInvestmentIncome = useSettingsStore(s => s.setIncludeFundGain)
   const [selectedCat,   setSelectedCat]   = useState<CategorySlice | null>(null)
   const [activeSliceIdx, setActiveSliceIdx] = useState<number | null>(null)
   const [tagSliceIdx,   setTagSliceIdx]   = useState<number | null>(null)

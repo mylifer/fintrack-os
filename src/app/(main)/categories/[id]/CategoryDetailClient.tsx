@@ -9,7 +9,7 @@ import { TransactionList } from '@/components/transactions/TransactionList'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { compareCategoriesByName } from '@/lib/utils/categories'
-import { sumByType } from '@/lib/utils/calculations'
+import { sumByType, isFlowTx } from '@/lib/utils/calculations'
 import { subMoney } from '@/lib/utils/money'
 
 interface Props { id: string }
@@ -73,12 +73,20 @@ export default function CategoryDetailClient({ id }: Props) {
     [transactions, descendantIds, typeFilter, search],
   )
 
+  // Başlıktaki Toplam + İşlem sayısı AYNI akış kuralıyla (isFlowTx) ve tüm-zaman
+  // kapsamıyla hesaplanır: onay bekleyen/gelecek, mutabakat ghost'u ve yatırım
+  // anaparası hariç, arama/tür kutusundan bağımsız (o yalnız listeyi süzer) →
+  // Dashboard/Raporlar akış kapsamıyla tutarlı, toplam↔sayaç aynı kümeden.
+  const flowCatTxs = useMemo(
+    () => transactions.filter(t => t.categoryId && descendantIds.has(t.categoryId) && isFlowTx(t)),
+    [transactions, descendantIds],
+  )
   // Net (gelir − gider), TRY-normalize (baseAmount) + kuruş-exact — ham `amount`
   // karışık para birimini ₺ gibi sayıyordu; calcCategorySpend ile aynı kural.
   const totalAmount = useMemo(() => {
-    const { income, expense } = sumByType(catTxs)
+    const { income, expense } = sumByType(flowCatTxs)
     return subMoney(income, expense)
-  }, [catTxs])
+  }, [flowCatTxs])
 
   /* ── Parent options for the two-dropdown edit form ── */
   const l0Options = useMemo(() => {
@@ -246,7 +254,7 @@ export default function CategoryDetailClient({ id }: Props) {
       <div className="flex items-center gap-6 px-6 py-3 border-b border-border bg-muted/20 flex-shrink-0">
         <div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">İşlem</div>
-          <div className="text-sm font-semibold text-foreground tabular-nums">{catTxs.length}</div>
+          <div className="text-sm font-semibold text-foreground tabular-nums">{flowCatTxs.length}</div>
         </div>
         <div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Toplam</div>

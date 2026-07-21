@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header'
 import { SelectField } from '@/components/ui/Select'
 import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
+import { excludeFuture } from '@/lib/utils/calculations'
 import { DetailedStats } from '@/components/reports/DetailedStats'
 
 /* ── Types & period helpers (same semantics as the Reports page) ──────── */
@@ -66,9 +67,14 @@ export default function StatisticsPage() {
     [preset, customFrom, customTo],
   )
 
+  // excludeFuture (isPosted): onay bekleyen/gelecek satırlar dönem gelir/gider
+  // analizine girmez — Dashboard/Raporlar akış kapsamıyla aynı (net-varlık geri
+  // yürüyüşü tam geçmişi kendi excludeFuture'ıyla ayrıca kullanır, alttaki prop).
   const filteredTxs = useMemo(() =>
-    transactions.filter(tx => {
-      if (tx.date < dateRange.from || tx.date > dateRange.to) return false
+    excludeFuture(transactions).filter(tx => {
+      // slice(0,10): son-gün datetime satırı aralıktan düşmesin (isInRange kuralı)
+      const d = tx.date.slice(0, 10)
+      if (d < dateRange.from || d > dateRange.to) return false
       if (accountId !== 'all') {
         if (tx.accountId !== accountId && tx.toAccountId !== accountId) return false
       }

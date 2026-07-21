@@ -12,7 +12,7 @@ import { CurrencyInput }   from '@/components/ui/CurrencyInput'
 import { Input }           from '@/components/ui/Input'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import {
-  formatMonthYear, prevMonth, nextMonth, currentMonthYear, lastNMonths, monthRange,
+  formatMonthYear, prevMonth, nextMonth, currentMonthYear, lastNMonths, monthRange, isInRange,
 } from '@/lib/utils/date'
 import {
   getBudgetCategoryIds, enrichBudget, calcBudgetSpent, resolveBudgetCategories,
@@ -135,7 +135,10 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     return transactions.filter(tx => {
       if (tx.type !== 'expense') return false
       if (!tx.categoryId || !activeCatIds.has(tx.categoryId)) return false
-      if (!allTime && (tx.date < from || tx.date > to)) return false
+      // isInRange (slice(0,10)): aylık başlık (enriched.spent = calcBudgetSpent)
+      // ile AYNI gün-sınırı kuralı — ham string kıyası son-gün datetime satırını
+      // düşürüp liste/stats-bar toplamını başlıktan düşük gösteriyordu.
+      if (!allTime && !isInRange(tx.date, from, to)) return false
       if (search && !tx.description.toLowerCase().includes(search.toLowerCase())) return false
       return true
     })

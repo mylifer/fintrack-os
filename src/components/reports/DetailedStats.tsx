@@ -170,16 +170,26 @@ export function DetailedStats({
     return { days, expense: avg(expenseTotal), income: avg(incomeTotal) }
   }, [analyticTxs, dateRange])
 
+  /* Dağılım (top-kategori/satıcı) tabanı: Raporlar kategori donut'uyla (sumExpenseByKey)
+     BİREBİR aynı kapsam — TÜM yatırım-ikonlu satırlar (anapara + gerçekleşen K/Z)
+     hariç. Böylece donut toplamı = İstatistikler top-kategori toplamı. NOT: yukarıdaki
+     "Dönem Toplamı" (period) yalnız anaparayı dışlar → KPI akışıyla aynı; realize K/Z'yi
+     sayar. Bu bilinçli fark (dağılım='gerçek harcama', KPI='akış') donut ile aynıdır. */
+  const distTotal = useMemo(() => ({
+    expense: sumBy(analyticTxs.filter(t => t.type === 'expense' && !t.icon), baseAmount),
+    income:  sumBy(analyticTxs.filter(t => t.type === 'income'  && !t.icon), baseAmount),
+  }), [analyticTxs])
+
   /* Top 5 categories (expense + income), full paths, % of scope total. */
   const topCategories = useMemo(() => {
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
       const groups = new Map<string, number>()   // accumulate in minor units (S8)
       for (const t of analyticTxs) {
-        // Aynı kapsam: yatırım anapara satırları (… Alımı/… Satışı) "Dönem
-        // Toplamı"na girmediği için burada da dışlanır — aksi halde satış anaparası
-        // "Kategorisiz" gelir kalemini şişirir ve yüzdeler %100'ü aşar. Gerçekleşen
-        // K/Z (… Satış Kârı/Zararı) gerçek gelir/gider olarak sayılmaya devam eder.
-        if (t.type !== scope || isInvestmentPrincipalTx(t)) continue
+        // Raporlar donut'uyla (sumExpenseByKey) aynı kapsam: TÜM yatırım-ikonlu
+        // satırlar hariç (anapara + gerçekleşen K/Z). Realize zarar categoryId
+        // taşımadığından "Kategorisiz"e düşüp donut ile top-kategori arasında
+        // fark yaratıyordu; artık ikisi de dışlar. Taban = distTotal (bkz. yukarı).
+        if (t.type !== scope || t.icon) continue
         const key = t.categoryId ?? '__none__'
         groups.set(key, (groups.get(key) ?? 0) + toMinor(baseAmount(t)))
       }
@@ -199,18 +209,18 @@ export function DetailedStats({
         .slice(0, 5)
     }
     return {
-      expense: build('expense', period.expense.total),
-      income:  build('income',  period.income.total),
+      expense: build('expense', distTotal.expense),
+      income:  build('income',  distTotal.income),
     }
-  }, [analyticTxs, catMap, period])
+  }, [analyticTxs, catMap, distTotal])
 
   /* Top 5 merchants (expense + income), % of scope total. */
   const topMerchants = useMemo(() => {
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
       const groups = new Map<string, number>()   // accumulate in minor units (S8)
       for (const t of analyticTxs) {
-        // Dönem Toplamı ile aynı kapsam (bkz. topCategories): anapara satırları hariç.
-        if (t.type !== scope || isInvestmentPrincipalTx(t)) continue
+        // Dağılım kapsamı (bkz. topCategories): tüm yatırım-ikonlu satırlar hariç.
+        if (t.type !== scope || t.icon) continue
         const name = t.merchant?.trim()
         if (!name) continue
         groups.set(name, (groups.get(name) ?? 0) + toMinor(baseAmount(t)))
@@ -227,10 +237,10 @@ export function DetailedStats({
         .slice(0, 5)
     }
     return {
-      expense: build('expense', period.expense.total),
-      income:  build('income',  period.income.total),
+      expense: build('expense', distTotal.expense),
+      income:  build('income',  distTotal.income),
     }
-  }, [analyticTxs, period])
+  }, [analyticTxs, distTotal])
 
   /* Net worth: current (at period end), max & min with exact dates.
 

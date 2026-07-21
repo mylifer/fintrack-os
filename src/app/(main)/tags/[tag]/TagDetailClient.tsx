@@ -7,7 +7,7 @@ import { TransactionList } from '@/components/transactions/TransactionList'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { tagKey, tagColor } from '@/lib/utils/tags'
-import { sumByType } from '@/lib/utils/calculations'
+import { sumByType, isFlowTx } from '@/lib/utils/calculations'
 
 interface Props { tag: string }
 
@@ -50,8 +50,12 @@ export default function TagDetailClient({ tag }: Props) {
     [tagTxs, typeFilter, search],
   )
 
-  // ₺ (baz PB) gösterilir → TRY-normalize (baseAmount) + kuruş-exact topla.
-  const { income: totalIncome, expense: totalExpense } = sumByType(tagTxs)
+  // Başlıktaki Gelir/Gider + İşlem sayısı AYNI akış kuralıyla (isFlowTx) hesaplanır:
+  // onay bekleyen/gelecek, mutabakat ghost'u ve yatırım anaparası hariç — böylece
+  // etiket LİSTESİ (aggregateTags, mutabakatı zaten dışlar) ile detay sayfası aynı
+  // gelir/gideri verir, ve sayaç toplamla aynı kümeden gelir. ₺ (baz PB) TRY-normalize.
+  const flowTagTxs = useMemo(() => tagTxs.filter(t => isFlowTx(t)), [tagTxs])
+  const { income: totalIncome, expense: totalExpense } = sumByType(flowTagTxs)
 
   const color = tagColor(key)
 
@@ -99,7 +103,7 @@ export default function TagDetailClient({ tag }: Props) {
           </div>
           <div>
             <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">İşlem</div>
-            <div className="text-sm font-medium tabular-nums text-foreground">{tagTxs.length}</div>
+            <div className="text-sm font-medium tabular-nums text-foreground">{flowTagTxs.length}</div>
           </div>
         </div>
       </div>

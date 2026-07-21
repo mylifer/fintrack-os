@@ -7,7 +7,7 @@ import { SelectField }     from '@/components/ui/Select'
 import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore } from '@/store'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
-import { sumByType } from '@/lib/utils/calculations'
+import { sumByType, isFlowTx } from '@/lib/utils/calculations'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { formatCurrency }  from '@/lib/utils/currency'
 import { transactionsToCsvString, downloadCsv } from '@/lib/utils/csv'
@@ -95,10 +95,13 @@ export default function TransactionsPage() {
   const displayTxs   = useMemo(() => [...filtered, ...projectedTxs], [filtered, projectedTxs])
 
   // Özet çubuğu ₺ (baz PB) gösterir → TRY-normalize (baseAmount, S2/S3) + kuruş-exact
-  // (S8) topla; ham `amount` USD'yi ₺ gibi sayardı. Görünen listeyle birebir kalması
-  // için mutabakat kayıtları burada ayıklanmaz (liste onları zaten gösteriyor).
+  // (S8) topla; ham `amount` USD'yi ₺ gibi sayardı. Kapsam Dashboard/Raporlar KPI
+  // ile BİREBİR aynı olsun diye tek akış kuralı (isFlowTx) uygulanır: onay bekleyen/
+  // gelecek tarihli (isPosted), mutabakat ghost'u ve yatırım anaparası (… Alımı/
+  // Satışı) toplama girmez. Bu satırlar listede hâlâ görünür — özet "gerçek akışı"
+  // yansıtır, ham liste toplamını değil (aynı ay her sayfada aynı gelir/gideri verir).
   const { expense: totalExpense, income: totalIncome, transfer: totalTransfer } = useMemo(
-    () => sumByType(filtered),
+    () => sumByType(filtered.filter(t => isFlowTx(t))),
     [filtered],
   )
 

@@ -7,7 +7,7 @@ import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
-import { sumByType } from '@/lib/utils/calculations'
+import { sumByType, isFlowTx } from '@/lib/utils/calculations'
 import type { PersonRole } from '@/types'
 
 interface Props {
@@ -45,8 +45,13 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
     [allTxs, typeFilter, search],
   )
 
-  // ₺ (baz PB) gösterilir → TRY-normalize (baseAmount) + kuruş-exact topla.
-  const { income: totalIncome, expense: totalExpense } = sumByType(allTxs)
+  // Başlık Gelir/Gider + İşlem sayısı AYNI akış kuralıyla (isFlowTx) hesaplanır:
+  // onay bekleyen/gelecek, mutabakat ghost'u ve yatırım anaparası hariç — Dashboard/
+  // Raporlar kapsamıyla tutarlı ve toplam↔sayaç aynı kümeden. Kapsam tüm-zaman
+  // (arama/tür kutusu yalnız alttaki listeyi süzer, başlık toplamlarını değil).
+  // ₺ (baz PB) TRY-normalize (baseAmount) + kuruş-exact.
+  const flowTxs = useMemo(() => allTxs.filter(t => isFlowTx(t)), [allTxs])
+  const { income: totalIncome, expense: totalExpense } = sumByType(flowTxs)
 
   if (!peopleReady || !txsReady) return null
   if (!person) return notFound()
@@ -89,7 +94,7 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
           </div>
           <div>
             <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">İşlem</div>
-            <div className="text-sm font-medium tabular-nums text-foreground">{filteredTxs.length}</div>
+            <div className="text-sm font-medium tabular-nums text-foreground">{flowTxs.length}</div>
           </div>
         </div>
       </div>
