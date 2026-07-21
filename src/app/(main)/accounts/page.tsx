@@ -13,18 +13,18 @@ import { EmptyState }    from '@/components/ui/EmptyState'
 import { Button }        from '@/components/ui/button'
 import { useCountUp }    from '@/lib/hooks/useCountUp'
 import { enrichAccounts } from '@/components/accounts/views/shared'
-import { TableView }   from '@/components/accounts/views/TableView'
-import { BentoView }   from '@/components/accounts/views/BentoView'
-import { ColumnsView } from '@/components/accounts/views/ColumnsView'
-import { TrendView }   from '@/components/accounts/views/TrendView'
+import { OrbitView }    from '@/components/accounts/views/OrbitView'
+import { SkylineView }  from '@/components/accounts/views/SkylineView'
+import { BubblesView }  from '@/components/accounts/views/BubblesView'
+import { PassbookView } from '@/components/accounts/views/PassbookView'
 import type { Account }  from '@/types'
 
 // ─── Alternatif görünümler (kullanıcı seçecek) ──────────────────────────────
 const VIEWS = [
-  { id: 'table',   label: 'Tablo' },
-  { id: 'bento',   label: 'Bento' },
-  { id: 'columns', label: 'Sütunlu' },
-  { id: 'trend',   label: 'Trend' },
+  { id: 'orbit',    label: 'Yörünge' },
+  { id: 'skyline',  label: 'Silüet' },
+  { id: 'bubbles',  label: 'Kabarcık' },
+  { id: 'passbook', label: 'Defter' },
 ] as const
 
 type ViewId = typeof VIEWS[number]['id']
@@ -43,7 +43,7 @@ export default function AccountsPage() {
   const animTotal = useCountUp(netWorth + investValue)
   const animInvest = useCountUp(investValue)
 
-  const [view, setView] = useState<ViewId>('table')
+  const [view, setView] = useState<ViewId>('orbit')
   const [showForm, setShowForm]             = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | undefined>()
 
@@ -100,10 +100,10 @@ export default function AccountsPage() {
               ))}
             </div>
 
-            {view === 'table'   && <TableView   rows={rows} onEdit={openEdit} />}
-            {view === 'bento'   && <BentoView   rows={rows} onEdit={openEdit} />}
-            {view === 'columns' && <ColumnsView rows={rows} onEdit={openEdit} />}
-            {view === 'trend'   && <TrendView   rows={rows} transactions={transactions} from={from} to={to} onEdit={openEdit} />}
+            {view === 'orbit'    && <OrbitView    rows={rows} onEdit={openEdit} />}
+            {view === 'skyline'  && <SkylineView  rows={rows} onEdit={openEdit} />}
+            {view === 'bubbles'  && <BubblesView  rows={rows} onEdit={openEdit} />}
+            {view === 'passbook' && <PassbookView rows={rows} onEdit={openEdit} />}
           </>
         )}
       </div>
