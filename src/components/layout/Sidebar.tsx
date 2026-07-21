@@ -11,7 +11,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, computeTransactionEffect, isPosted, resolveBudgetCategories } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
-import { formatCompact, formatCurrency } from '@/lib/utils/currency'
+import { formatCompact, formatCurrency, formatWhole } from '@/lib/utils/currency'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
@@ -248,7 +248,19 @@ export function Sidebar() {
                 className={subItemCls(pathname === `/accounts/${account.id}`, true)}
               >
                 <AccountAvatar account={account} size="xs" />
-                <span className="truncate">{account.name}</span>
+                <span className="flex-1 min-w-0 truncate">{account.name}</span>
+                <span
+                  className={[
+                    'flex-shrink-0 tabular-nums text-[11px] font-semibold',
+                    account.balance < 0
+                      ? 'text-destructive'
+                      : account.balance > 0
+                        ? 'text-green-500'
+                        : 'text-muted-foreground',
+                  ].join(' ')}
+                >
+                  {formatWhole(account.balance, account.currency)}
+                </span>
               </Link>
             ))}
           </div>

@@ -70,6 +70,19 @@ export function parseCurrencyInput(raw: string): number {
   return negative ? -rounded : rounded
 }
 
+// Kuruşsuz (tam sayı) para birimi — dar alanlar (kenar çubuğu bakiyesi) için.
+// Değer yuvarlanır; hassas kuruş gösterimi için formatCurrency kullanın.
+const WHOLE_FORMATTERS: Record<CurrencyCode, Intl.NumberFormat> = {
+  TRY: new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }),
+  USD: new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }),
+  EUR: new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }),
+  GBP: new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }),
+}
+
+export function formatWhole(amount: number, currency: CurrencyCode = 'TRY'): string {
+  return WHOLE_FORMATTERS[currency].format(Number.isFinite(amount) ? amount : 0)
+}
+
 export function formatCompact(amount: number, currency: CurrencyCode = 'TRY'): string {
   if (Math.abs(amount) >= 1_000_000) {
     const numStr = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(amount / 1_000_000)
