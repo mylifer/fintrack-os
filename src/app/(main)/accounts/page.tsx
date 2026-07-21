@@ -13,18 +13,18 @@ import { EmptyState }    from '@/components/ui/EmptyState'
 import { Button }        from '@/components/ui/button'
 import { useCountUp }    from '@/lib/hooks/useCountUp'
 import { enrichAccounts } from '@/components/accounts/views/shared'
-import { CompactListView } from '@/components/accounts/views/CompactListView'
-import { GroupedView }     from '@/components/accounts/views/GroupedView'
-import { CardWalletView }  from '@/components/accounts/views/CardWalletView'
-import { AllocationView }  from '@/components/accounts/views/AllocationView'
+import { TableView }   from '@/components/accounts/views/TableView'
+import { BentoView }   from '@/components/accounts/views/BentoView'
+import { ColumnsView } from '@/components/accounts/views/ColumnsView'
+import { TrendView }   from '@/components/accounts/views/TrendView'
 import type { Account }  from '@/types'
 
 // ─── Alternatif görünümler (kullanıcı seçecek) ──────────────────────────────
 const VIEWS = [
-  { id: 'list',       label: 'Liste',    Component: CompactListView },
-  { id: 'grouped',    label: 'Gruplu',   Component: GroupedView },
-  { id: 'wallet',     label: 'Cüzdan',   Component: CardWalletView },
-  { id: 'allocation', label: 'Dağılım',  Component: AllocationView },
+  { id: 'table',   label: 'Tablo' },
+  { id: 'bento',   label: 'Bento' },
+  { id: 'columns', label: 'Sütunlu' },
+  { id: 'trend',   label: 'Trend' },
 ] as const
 
 type ViewId = typeof VIEWS[number]['id']
@@ -43,7 +43,7 @@ export default function AccountsPage() {
   const animTotal = useCountUp(netWorth + investValue)
   const animInvest = useCountUp(investValue)
 
-  const [view, setView] = useState<ViewId>('list')
+  const [view, setView] = useState<ViewId>('table')
   const [showForm, setShowForm]             = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | undefined>()
 
@@ -53,8 +53,6 @@ export default function AccountsPage() {
   )
 
   const openEdit = (account: Account) => { setEditingAccount(account); setShowForm(true) }
-
-  const ActiveView = VIEWS.find(v => v.id === view)!.Component
 
   return (
     <>
@@ -102,7 +100,10 @@ export default function AccountsPage() {
               ))}
             </div>
 
-            <ActiveView rows={rows} onEdit={openEdit} />
+            {view === 'table'   && <TableView   rows={rows} onEdit={openEdit} />}
+            {view === 'bento'   && <BentoView   rows={rows} onEdit={openEdit} />}
+            {view === 'columns' && <ColumnsView rows={rows} onEdit={openEdit} />}
+            {view === 'trend'   && <TrendView   rows={rows} transactions={transactions} from={from} to={to} onEdit={openEdit} />}
           </>
         )}
       </div>
