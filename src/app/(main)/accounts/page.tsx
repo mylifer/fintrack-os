@@ -13,17 +13,13 @@ import { EmptyState }    from '@/components/ui/EmptyState'
 import { Button }        from '@/components/ui/button'
 import { useCountUp }    from '@/lib/hooks/useCountUp'
 import { enrichAccounts } from '@/components/accounts/views/shared'
-import { ListView }     from '@/components/accounts/views/ListView'
 import { GridView }     from '@/components/accounts/views/GridView'
-import { SectionsView } from '@/components/accounts/views/SectionsView'
 import { OverviewView } from '@/components/accounts/views/OverviewView'
 import type { Account }  from '@/types'
 
 // ─── Alternatif görünümler (kullanıcı seçecek) ──────────────────────────────
 const VIEWS = [
-  { id: 'list',     label: 'Liste' },
   { id: 'grid',     label: 'Izgara' },
-  { id: 'sections', label: 'Bölümler' },
   { id: 'overview', label: 'Genel Bakış' },
 ] as const
 
@@ -43,7 +39,7 @@ export default function AccountsPage() {
   const animTotal = useCountUp(netWorth + investValue)
   const animInvest = useCountUp(investValue)
 
-  const [view, setView] = useState<ViewId>('list')
+  const [view, setView] = useState<ViewId>('grid')
   const [showForm, setShowForm]             = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | undefined>()
 
@@ -100,9 +96,7 @@ export default function AccountsPage() {
               ))}
             </div>
 
-            {view === 'list'     && <ListView     rows={rows} onEdit={openEdit} />}
             {view === 'grid'     && <GridView     rows={rows} onEdit={openEdit} />}
-            {view === 'sections' && <SectionsView rows={rows} onEdit={openEdit} />}
             {view === 'overview' && <OverviewView rows={rows} onEdit={openEdit} />}
           </>
         )}
