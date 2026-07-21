@@ -85,6 +85,23 @@ function navCls(active: boolean) {
   return `${itemBase} ${active ? itemActive : itemInactive}`
 }
 
+/* ── Açılan alt menü (Hesaplar / Bütçeler) — bağlantı çizgili "tree" görünümü ──
+   Öğeler sağa girintili DEĞİL; ana nav ile aynı hizada. Sol kenardaki ince dikey
+   çizgi (before) hiyerarşiyi gösterir; metin, ana etiket sütununa (pl-[42px])
+   hizalanır. Aktif öğe çizgi üzerinde primary bir segmentle vurgulanır. */
+const subWrap =
+  "relative flex flex-col gap-0.5 py-1 before:content-[''] before:absolute before:left-5 before:top-1 before:bottom-1 before:w-px before:bg-border"
+
+function subItemCls(active: boolean, withAvatar = false) {
+  return [
+    'relative rounded-lg text-xs font-medium transition-colors py-1.5 pr-3 pl-[42px]',
+    withAvatar ? 'flex items-center gap-2' : '',
+    active
+      ? "text-foreground font-semibold before:content-[''] before:absolute before:left-[19px] before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-primary"
+      : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+  ].join(' ')
+}
+
 export function Sidebar() {
   const pathname       = usePathname()
 
@@ -192,14 +209,15 @@ export function Sidebar() {
       {/* ── Main nav ── */}
       <nav className="flex-1 px-3 flex flex-col gap-1 overflow-y-auto min-h-0">
 
-        {MAIN_NAV.map(({ href, label, icon }) => (
+        {/* Ana Sayfa — Hesaplar hemen altında 2. sırada */}
+        {MAIN_NAV.slice(0, 1).map(({ href, label, icon }) => (
           <Link key={href} href={href} className={navCls(pathname === href)}>
             <Icon d={icon} />
             <span>{label}</span>
           </Link>
         ))}
 
-        {/* Accounts — expandable */}
+        {/* Accounts — expandable (2. sıra) */}
         <button
           type="button"
           onClick={() => setAccountsOpen(o => !o)}
@@ -219,28 +237,15 @@ export function Sidebar() {
         </button>
 
         {accountsOpen && (
-          <div className="ml-[42px] flex flex-col gap-0.5 py-0.5">
-            <Link
-              href="/accounts"
-              className={[
-                'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                pathname === '/accounts'
-                  ? 'text-foreground font-semibold'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-              ].join(' ')}
-            >
+          <div className={subWrap}>
+            <Link href="/accounts" className={subItemCls(pathname === '/accounts')}>
               Tüm Hesaplar
             </Link>
             {activeAccounts.map(account => (
               <Link
                 key={account.id}
                 href={`/accounts/${account.id}`}
-                className={[
-                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                  pathname === `/accounts/${account.id}`
-                    ? 'text-foreground font-semibold'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-                ].join(' ')}
+                className={subItemCls(pathname === `/accounts/${account.id}`, true)}
               >
                 <AccountAvatar account={account} size="xs" />
                 <span className="truncate">{account.name}</span>
@@ -248,6 +253,14 @@ export function Sidebar() {
             ))}
           </div>
         )}
+
+        {/* İşlemler, Kategoriler, Etiketler — Hesaplar'dan sonra */}
+        {MAIN_NAV.slice(1).map(({ href, label, icon }) => (
+          <Link key={href} href={href} className={navCls(pathname === href)}>
+            <Icon d={icon} />
+            <span>{label}</span>
+          </Link>
+        ))}
 
         {LOWER_NAV_TOP.map(({ href, label, icon }) => (
           <Link key={href} href={href} className={navCls(pathname === href)}>
@@ -276,16 +289,8 @@ export function Sidebar() {
         </button>
 
         {budgetsOpen && (
-          <div className="ml-[42px] flex flex-col gap-0.5 py-0.5">
-            <Link
-              href="/budgets"
-              className={[
-                'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                pathname === '/budgets'
-                  ? 'text-foreground font-semibold'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-              ].join(' ')}
-            >
+          <div className={subWrap}>
+            <Link href="/budgets" className={subItemCls(pathname === '/budgets')}>
               Tüm Bütçeler
             </Link>
             {budgets.map(budget => {
@@ -297,12 +302,7 @@ export function Sidebar() {
                 <Link
                   key={budget.id}
                   href={`/budgets/${budget.id}`}
-                  className={[
-                    'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                    pathname === `/budgets/${budget.id}`
-                      ? 'text-foreground font-semibold'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-                  ].join(' ')}
+                  className={subItemCls(pathname === `/budgets/${budget.id}`, true)}
                 >
                   {cats.length > 0 && (
                     <span className="flex items-center gap-0.5 flex-shrink-0">
