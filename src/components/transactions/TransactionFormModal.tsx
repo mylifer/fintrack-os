@@ -20,6 +20,7 @@ import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, Mo
 import { useShallow } from 'zustand/react/shallow'
 import { Check, X, Plus } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
+import { PersonAvatar } from '@/components/people/PersonAvatar'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/Select'
@@ -385,7 +386,12 @@ function PersonField({
             </SelectTrigger>
             <SelectContent>
               {people.map(p => (
-                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                <SelectItem key={p.id} value={p.id}>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <PersonAvatar person={p} size="xs" />
+                    <span className="truncate">{p.name}</span>
+                  </span>
+                </SelectItem>
               ))}
               <SelectItem value="__NEW__">+ Yeni ekle…</SelectItem>
             </SelectContent>
