@@ -1,28 +1,33 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import Link from 'next/link'
 import { Header }        from '@/components/layout/Header'
 import { PeriodTabs }    from '@/components/ui/PeriodTabs'
 import { useAccountStore, useUIStore, useTransactionStore, useInvestmentStore } from '@/store'
 import { useShallow }    from 'zustand/react/shallow'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
-import { calcNetWorth, calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
+import { calcNetWorth } from '@/lib/utils/calculations'
 import { getPeriodRange } from '@/lib/utils/date'
 import { AccountFormModal } from '@/components/accounts/AccountFormModal'
-import { AccountAvatar }  from '@/components/accounts/AccountAvatar'
 import { EmptyState }    from '@/components/ui/EmptyState'
 import { Button }        from '@/components/ui/button'
-import { Badge }         from '@/components/ui/Badge'
-import { Card, CardContent } from '@/components/ui/card'
 import { useCountUp }    from '@/lib/hooks/useCountUp'
-import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { enrichAccounts } from '@/components/accounts/views/shared'
+import { CompactListView } from '@/components/accounts/views/CompactListView'
+import { GroupedView }     from '@/components/accounts/views/GroupedView'
+import { CardWalletView }  from '@/components/accounts/views/CardWalletView'
+import { AllocationView }  from '@/components/accounts/views/AllocationView'
 import type { Account }  from '@/types'
 
-const TYPE_LABELS: Record<string, string> = {
-  cash: 'Nakit', checking: 'Vadesiz', savings: 'Vadeli',
-  credit_card: 'Kredi Kartı', investment: 'Yatırım', loan: 'Kredi',
-}
+// ─── Alternatif görünümler (kullanıcı seçecek) ──────────────────────────────
+const VIEWS = [
+  { id: 'list',       label: 'Liste',    Component: CompactListView },
+  { id: 'grouped',    label: 'Gruplu',   Component: GroupedView },
+  { id: 'wallet',     label: 'Cüzdan',   Component: CardWalletView },
+  { id: 'allocation', label: 'Dağılım',  Component: AllocationView },
+] as const
+
+type ViewId = typeof VIEWS[number]['id']
 
 export default function AccountsPage() {
   const accounts      = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
@@ -38,8 +43,18 @@ export default function AccountsPage() {
   const animTotal = useCountUp(netWorth + investValue)
   const animInvest = useCountUp(investValue)
 
+  const [view, setView] = useState<ViewId>('list')
   const [showForm, setShowForm]             = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | undefined>()
+
+  const rows = useMemo(
+    () => enrichAccounts(accounts, transactions, from, to),
+    [accounts, transactions, from, to],
+  )
+
+  const openEdit = (account: Account) => { setEditingAccount(account); setShowForm(true) }
+
+  const ActiveView = VIEWS.find(v => v.id === view)!.Component
 
   return (
     <>
@@ -69,81 +84,26 @@ export default function AccountsPage() {
             action={<Button size="sm" onClick={() => setShowForm(true)}>Hesap Ekle</Button>}
           />
         ) : (
-          <div className="grid grid-cols-2 gap-5">
-            {accounts.map((account) => {
-                    const available = account.type === 'credit_card' ? calcAvailableCredit(account, transactions) : null
-                    const usedPct   = account.creditLimit && available !== null
-                      ? ((account.creditLimit - available) / account.creditLimit) * 100
-                      : 0
+          <>
+            {/* Görünüm seçici (segmented control) */}
+            <div className="flex items-center gap-1 mb-5 p-1 rounded-xl bg-secondary/60 w-fit">
+              {VIEWS.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => setView(v.id)}
+                  className={`px-3 h-8 rounded-lg text-xs font-semibold transition-colors ${
+                    view === v.id
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
 
-                    // Period flow for this account
-                    const acctTxs = transactions.filter(t => t.accountId === account.id || t.toAccountId === account.id)
-                    const { income, expense } = calcPeriodFlow(acctTxs, from, to)
-                    const hasActivity = income > 0 || expense > 0
-
-                    return (
-                      <Card
-                        key={account.id}
-                        className="p-0"
-                      >
-                        <CardContent className="p-5">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-2.5">
-                            <AccountAvatar account={account} size="sm" />
-                            <Link
-                              href={`/accounts/${account.id}`}
-                              className="text-xs font-semibold hover:text-primary transition-colors"
-                            >
-                              {account.name}
-                            </Link>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="default">{TYPE_LABELS[account.type]}</Badge>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => { setEditingAccount(account); setShowForm(true) }}
-                            >
-                              Düzenle
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className={`text-sm font-medium tabular-nums ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
-                          <AnimatedNumber value={account.balance} format={v => formatCurrency(v, account.currency)} />
-                        </div>
-
-                        {/* Period stats */}
-                        {hasActivity && (
-                          <div className="flex items-center gap-3 mt-2 text-xs font-medium">
-                            {income > 0 && <span className="text-green-600">+<AnimatedNumber value={income} format={formatCompact} /></span>}
-                            {expense > 0 && <span className="text-destructive">−<AnimatedNumber value={expense} format={formatCompact} /></span>}
-                          </div>
-                        )}
-
-                        {account.type === 'credit_card' && account.creditLimit && (
-                          <div className="mt-3 pt-3 border-t border-border">
-                            <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                              <span>Kullanılabilir</span>
-                              <span className="tabular-nums"><AnimatedNumber value={available ?? 0} format={v => formatCurrency(v, account.currency)} /></span>
-                            </div>
-                            <div className="h-[2px] bg-muted">
-                              <div
-                                className={`h-full ${usedPct > 80 ? 'bg-destructive' : usedPct > 60 ? 'bg-orange-500' : 'bg-green-600'}`}
-                                style={{ width: `${Math.min(usedPct, 100)}%` }}
-                              />
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              Limit: <AnimatedNumber value={account.creditLimit} format={v => formatCurrency(v, account.currency)} />
-                              {account.statementDay && ` · Ekstre: ${account.statementDay}. gün`}
-                            </div>
-                          </div>
-                        )}
-                        </CardContent>
-                      </Card>
-                    )
-            })}
-          </div>
+            <ActiveView rows={rows} onEdit={openEdit} />
+          </>
         )}
       </div>
 
