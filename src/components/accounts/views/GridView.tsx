@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
-import { TYPE_LABELS, type AccountRow } from './shared'
+import { TYPE_LABELS, barColor, type AccountRow } from './shared'
 import type { Account } from '@/types'
 
 /**
@@ -16,15 +16,15 @@ import type { Account } from '@/types'
 export function GridView({ rows, onEdit }: { rows: AccountRow[]; onEdit: (a: Account) => void }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-      {rows.map(({ account, available, usedPct, income, expense, hasActivity }) => {
+      {rows.map(({ account, available, usedPct, income, expense, hasActivity }, i) => {
         const isCredit = account.type === 'credit_card' && !!account.creditLimit
         return (
           <div
             key={account.id}
             className="group relative rounded-xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
           >
-            {/* Renk vurgu şeridi */}
-            <div className="h-1 w-full" style={{ background: account.color }} />
+            {/* Renk vurgu şeridi — her hesaba paletten farklı renk */}
+            <div className="h-1 w-full" style={{ background: barColor(i) }} />
 
             <div className="p-5">
               <div className="flex items-start justify-between gap-2">

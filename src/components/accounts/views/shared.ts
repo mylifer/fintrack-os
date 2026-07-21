@@ -17,6 +17,28 @@ export function isLiability(type: AccountType): boolean {
   return type === 'credit_card' || type === 'loan'
 }
 
+// Kart vurgu şeridi için kategorik palet — renk çemberine yayılmış 12 belirgin
+// ton (Tailwind 500). Her karta sırasıyla atanır; komşu kartlar hep farklı renk.
+export const BAR_PALETTE = [
+  '#6366f1', // indigo
+  '#3b82f6', // blue
+  '#06b6d4', // cyan
+  '#14b8a6', // teal
+  '#22c55e', // green
+  '#84cc16', // lime
+  '#f59e0b', // amber
+  '#f97316', // orange
+  '#ef4444', // red
+  '#f43f5e', // rose
+  '#ec4899', // pink
+  '#8b5cf6', // violet
+]
+
+/** Karttaki (index) hesaba paletten belirgin bir vurgu rengi verir. */
+export function barColor(index: number): string {
+  return BAR_PALETTE[index % BAR_PALETTE.length]
+}
+
 export interface AccountRow {
   account: Account
   /** TRY-normalize bakiye — pay/oran hesapları için (calcNetWorth ile aynı mantık) */
