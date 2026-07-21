@@ -18,9 +18,9 @@ import { tr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency, Category } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
-import { Check, X, Plus } from 'lucide-react'
+import { X } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
-import { PersonAvatar } from '@/components/people/PersonAvatar'
+import { PersonSelect } from '@/components/people/PersonSelect'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/Select'
@@ -304,12 +304,11 @@ function DescriptionAutocomplete({
 // ── Person field ──────────────────────────────────────────────────────────────
 
 function PersonField({
-  role, value, onChange, onSelectOpen,
+  role, value, onChange,
 }: {
   role: PersonRole
   value: string | null | undefined
   onChange: (id: string | undefined) => void
-  onSelectOpen?: (open: boolean) => void
 }) {
   const allPeople = usePeopleStore(s => s.people)
   const addPerson = usePeopleStore(s => s.add)
@@ -317,96 +316,24 @@ function PersonField({
   // unless the transaction being edited already points at one (keep it visible).
   const people    = allPeople.filter(p => p.role === role && (!p.isArchived || p.id === value))
 
-  const [adding, setAdding]   = useState(false)
-  const [newName, setNewName] = useState('')
-  const [saving, setSaving]   = useState(false)
-
   const label = role === 'family_member' ? 'Aile Üyesi' : 'Alıcı'
-
-  async function handleAdd() {
-    const name = newName.trim()
-    if (!name) return
-    setSaving(true)
-    try {
-      const person = await addPerson(name, role)
-      onChange(person.id)
-      setAdding(false)
-      setNewName('')
-    } catch (err) {
-      console.error('[person:add]', err)
-    } finally {
-      setSaving(false)
-    }
-  }
 
   return (
     <Field label={label} optional>
-      {adding ? (
-        <div className="flex gap-1">
-          <input
-            autoFocus
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter')  handleAdd()
-              if (e.key === 'Escape') { setAdding(false); setNewName('') }
-            }}
-            placeholder={`${label} adı...`}
-            disabled={saving}
-            className="h-9 flex-1 min-w-0 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
-          />
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={saving || !newName.trim()}
-            className="h-9 w-9 flex items-center justify-center rounded-md border border-input text-green-600 hover:bg-accent disabled:opacity-40 transition-colors"
-          >
-            <Check className="size-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => { setAdding(false); setNewName('') }}
-            className="h-9 w-9 flex items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-accent transition-colors"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-      ) : (
-        <div className="flex gap-1">
-          <Select
-            value={value ?? ''}
-            onValueChange={v => {
-              if (v === '__NEW__') { setAdding(true); return }
-              onChange(v || undefined)
-            }}
-            onOpenChange={onSelectOpen}
-          >
-            <SelectTrigger className="h-9 data-[size=default]:h-9 flex-1 rounded-md">
-              <SelectValue placeholder="— Seçin —" />
-            </SelectTrigger>
-            <SelectContent>
-              {people.map(p => (
-                <SelectItem key={p.id} value={p.id}>
-                  <span className="flex items-center gap-2 min-w-0">
-                    <PersonAvatar person={p} size="xs" />
-                    <span className="truncate">{p.name}</span>
-                  </span>
-                </SelectItem>
-              ))}
-              <SelectItem value="__NEW__">+ Yeni ekle…</SelectItem>
-            </SelectContent>
-          </Select>
-          {value && (
-            <button
-              type="button"
-              onClick={() => onChange(undefined)}
-              className="h-9 w-9 flex items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-accent transition-colors"
-            >
-              <X className="size-3.5" />
-            </button>
-          )}
-        </div>
-      )}
+      <PersonSelect
+        people={people}
+        value={value}
+        onChange={onChange}
+        onCreate={async name => {
+          try {
+            const person = await addPerson(name, role)
+            return person.id
+          } catch (err) {
+            console.error('[person:add]', err)
+            return null
+          }
+        }}
+      />
     </Field>
   )
 }
@@ -1104,14 +1031,12 @@ export function TransactionFormModal() {
                 role="family_member"
                 value={form.familyMemberId}
                 onChange={id => patch({ familyMemberId: id })}
-                onSelectOpen={onSelectOpen}
               />
               <PersonField
                 key={`rec-${modal}-${modalPayload?.id ?? 'new'}`}
                 role="recipient"
                 value={form.recipientId}
                 onChange={id => patch({ recipientId: id })}
-                onSelectOpen={onSelectOpen}
               />
             </div>
           )}
