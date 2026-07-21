@@ -129,8 +129,9 @@ export async function GET(request: Request) {
   }
 
   // Üst sınır: "from=1900-01-01" gibi bir istek binlerce CDN fetch'i
-  // tetiklemesin — MAX dönemi 1095 gün, 1100 tavanı onu kırpmadan korur
-  const dates = sampleDates(from).slice(-1100)
+  // tetiklemesin. MAX dönemi artık ilk alım tarihinden başlıyor; ~11 yıllık
+  // (4000 gün) tavan gerçekçi bir geçmişi kırpmadan kötüye kullanımı sınırlar.
+  const dates = sampleDates(from).slice(-4000)
 
   // CDN'e nazik: aynı anda en çok 50 tarih; önbellek dolu olduğunda anlık
   // (25 idi — soğuk başlangıçta ~170 günlük tarama dalga sayısını yarıya indirir)

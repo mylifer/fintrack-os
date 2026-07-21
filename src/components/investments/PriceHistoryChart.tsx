@@ -146,14 +146,24 @@ export function PriceHistoryChart({
   // ── Period ──────────────────────────────────────────────────────
   const [period, setPeriod] = useState<Period>('3A')
 
-  // Period start is always relative to today — independent of purchase date.
-  // Dates before first purchase show portfolio value = 0 (sold or not yet bought).
+  // İlk hareket (ilk alım) tarihi — qtyTimeline artan sıralı, ilk elemanı ilk
+  // işlemdir; boşsa buyPoints tarihlerinin en küçüğüne düşülür.
+  const firstActivityDate = useMemo(() => {
+    if (qtyTimeline.length) return qtyTimeline[0].date
+    if (buyPoints.length) return buyPoints.reduce((m, b) => (b.date < m ? b.date : m), buyPoints[0].date)
+    return null
+  }, [qtyTimeline, buyPoints])
+
+  // Kısa dönemler bugüne göre geriye sayar. MAX ise ilk alım tarihinden başlar —
+  // böylece alım öncesi boş (portföy = 0) bölge çizilmez. İlk alım bilinmiyorsa
+  // 1095 günlük geri-bakışa düşülür.
   const fetchFrom = useMemo(() => {
+    if (period === 'MAX' && firstActivityDate) return firstActivityDate
     const days = PERIODS.find(p => p.key === period)!.days
     const d = new Date()
     d.setUTCDate(d.getUTCDate() - days)
     return d.toISOString().split('T')[0]
-  }, [period])
+  }, [period, firstActivityDate])
 
   // NOT: Alım işaretçileri buradan değil, chartData hesaplandıktan sonra
   // en yakın satıra tutturularak (buyMarkers) türetilir — alım tarihi seride
