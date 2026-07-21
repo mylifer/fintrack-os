@@ -2,61 +2,91 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-export function useCountUp(target: number, duration = 900, startDelay = 300): number {
-  const [value, setValue] = useState(0)
-  const [ready, setReady] = useState(false)
-  const fromRef  = useRef(0)
-  const startRef = useRef<number | null>(null)
-  const rafRef   = useRef<number | undefined>(undefined)
+// First reveal starts here (× target) so the roll is short and near-target,
+// never a long crawl up from 0.
+const REVEAL_FRACTION = 0.9
+// Widget targets recompute several times while async data streams in (fund
+// gains, balances, recalcs). Coalesce those rapid changes so the number holds
+// steady and then moves ONCE to the settled value — instead of chasing every
+// intermediate target and visibly reversing.
+const INITIAL_SETTLE = 260 // let the first batch of derived data settle
+const RETARGET_SETTLE = 120 // later genuine changes (filter, new tx)
 
-  // Isolated effect so it only fires once per mount.
-  // StrictMode cancels+replaces the timer on the second invocation — safe.
-  useEffect(() => {
-    const timer = setTimeout(() => setReady(true), startDelay)
-    return () => clearTimeout(timer)
-  }, [startDelay])
+export function useCountUp(target: number, duration = 900): number {
+  const [value, setValue] = useState(() => target * REVEAL_FRACTION)
+
+  const displayedRef = useRef(target * REVEAL_FRACTION) // latest painted value
+  const revealedRef  = useRef(false)
+  const rafRef       = useRef<number | undefined>(undefined)
+  const startRef     = useRef<number | null>(null)
+  const settleRef    = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     const reduced =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-    // Reduced-motion: jump to target immediately, bypass the delay
     if (reduced) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      fromRef.current = target
+      displayedRef.current = target
+      revealedRef.current = true
       setValue(target)
       return
     }
 
-    // Not armed yet — collect latest target but don't animate
-    if (!ready) return
+    const run = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
 
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      // First reveal begins near the target so the roll is short; every later
+      // change continues smoothly from whatever is currently on screen.
+      const from = revealedRef.current
+        ? displayedRef.current
+        : target * REVEAL_FRACTION
 
-    const from = fromRef.current
-    if (from === target) return
-
-    startRef.current = null
-
-    const animate = (ts: number) => {
-      if (startRef.current === null) startRef.current = ts
-      const progress = Math.min((ts - startRef.current) / duration, 1)
-      const eased    = 1 - (1 - progress) ** 3
-      const v        = from + (target - from) * eased
-      fromRef.current = v
-      setValue(v)
-      if (progress < 1) {
-        rafRef.current = requestAnimationFrame(animate)
-      } else {
-        fromRef.current = target
+      if (from === target) {
+        // Nothing to animate (e.g. target still 0). Stay un-revealed so the
+        // first real value still gets its near-target reveal.
+        displayedRef.current = target
         setValue(target)
+        return
       }
+
+      revealedRef.current = true
+      startRef.current = null
+
+      const animate = (ts: number) => {
+        if (startRef.current === null) startRef.current = ts
+        const progress = Math.min((ts - startRef.current) / duration, 1)
+        const eased    = 1 - (1 - progress) ** 3
+        const v        = from + (target - from) * eased
+        displayedRef.current = v
+        setValue(v)
+        if (progress < 1) {
+          rafRef.current = requestAnimationFrame(animate)
+        } else {
+          displayedRef.current = target
+          setValue(target)
+        }
+      }
+      rafRef.current = requestAnimationFrame(animate)
     }
 
-    rafRef.current = requestAnimationFrame(animate)
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
-  }, [ready, target, duration])
+    // Freeze immediately on any target change (no chasing an old target), then
+    // wait for the value to stop moving before animating to it once.
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = undefined
+    }
+    if (settleRef.current) clearTimeout(settleRef.current)
+    settleRef.current = setTimeout(run, revealedRef.current ? RETARGET_SETTLE : INITIAL_SETTLE)
+
+    return () => {
+      if (settleRef.current) clearTimeout(settleRef.current)
+    }
+  }, [target, duration])
+
+  // Cancel any in-flight frame on unmount.
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }, [])
 
   return value
 }
