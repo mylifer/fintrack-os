@@ -16,6 +16,7 @@ import type { Transaction, PersonRole, Category, Account, Person, ModalType, Mod
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { TagBadges } from '@/components/transactions/TagBadges'
+import { Checkbox } from '@/components/ui/Checkbox'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { detectBrand } from '@/lib/subscriptions/brands'
 import { getBrandDomain } from '@/lib/people/brands'
@@ -269,7 +270,7 @@ const TableTxRow = memo(function TableTxRow({
       className={[
         'group grid transition-colors border-x border-t',
         future ? 'border-sky-500/15' : 'border-border/60',
-        selected ? 'bg-primary/10 hover:bg-primary/15' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'bg-card hover:bg-accent/40',
+        selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'bg-card hover:bg-accent/40',
         isFirst ? 'rounded-t-lg overflow-hidden' : '',
         isLast ? 'rounded-b-lg border-b overflow-hidden' : '',
         projected ? 'opacity-60' : '',
@@ -280,12 +281,10 @@ const TableTxRow = memo(function TableTxRow({
       {selectable && (
         <div className="flex items-center justify-center">
           {!projected && (
-            <input
-              type="checkbox"
+            <Checkbox
               checked={!!selected}
               onChange={() => onToggleSelect?.(tx.id)}
               aria-label="İşlemi seç"
-              className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
             />
           )}
         </div>
@@ -723,10 +722,6 @@ export function TransactionList({
   )
   const allSelected = eligibleIds.length > 0 && eligibleIds.every(id => selectedIds?.has(id))
   const someSelected = !allSelected && eligibleIds.some(id => selectedIds?.has(id))
-  const selectAllRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected
-  }, [someSelected])
 
   const parentRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -763,14 +758,12 @@ export function TransactionList({
             <div className="mx-3 grid" style={{ gridTemplateColumns: colsFor(selectable) }}>
               {selectable && (
                 <div className="flex items-center justify-center py-1.5">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
+                  <Checkbox
                     checked={allSelected}
+                    indeterminate={someSelected}
                     onChange={() => onSelectMany?.(eligibleIds, !allSelected)}
                     disabled={eligibleIds.length === 0}
                     aria-label="Tümünü seç"
-                    className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer disabled:opacity-40"
                   />
                 </div>
               )}

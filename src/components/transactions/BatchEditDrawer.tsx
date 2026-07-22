@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { SelectField } from '@/components/ui/Select'
+import { Checkbox } from '@/components/ui/Checkbox'
 import { useTransactionStore, useCategoryStore, usePeopleStore } from '@/store'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import type { Transaction } from '@/types'
@@ -15,6 +16,17 @@ const XIcon = () => (
     <path d="M6 6l12 12M18 6 6 18" />
   </svg>
 )
+
+// Alan açma satırı: özel checkbox + tıklanabilir etiket. Modül seviyesinde
+// (render içinde tanımlanmaz — aksi halde her render'da yeniden oluşturulur).
+function FieldToggle({ checked, onToggle, label }: { checked: boolean; onToggle: () => void; label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs font-medium text-foreground select-none">
+      <Checkbox checked={checked} onChange={onToggle} aria-label={`${label} alanını değiştir`} />
+      <button type="button" onClick={onToggle} className="cursor-pointer">{label}</button>
+    </div>
+  )
+}
 
 export function BatchEditDrawer({
   selectedIds,
@@ -99,7 +111,7 @@ export function BatchEditDrawer({
   }
 
   const fieldCls = (on: boolean) =>
-    `rounded-xl border p-3 transition-colors ${on ? 'border-primary/40 bg-primary/[0.03]' : 'border-border'}`
+    `rounded-xl border p-3 transition-colors ${on ? 'border-[var(--batch-accent)] bg-[var(--batch-accent-soft)]' : 'border-border'}`
 
   return (
     <aside
@@ -115,7 +127,7 @@ export function BatchEditDrawer({
       <div className="flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border flex-shrink-0">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground">Toplu Düzenle</div>
-          <div className="text-xs text-muted-foreground">{count} işlem seçili</div>
+          <div className="text-xs font-medium text-[var(--batch-accent)]">{count} işlem seçili</div>
         </div>
         <button
           onClick={onClose}
@@ -134,10 +146,7 @@ export function BatchEditDrawer({
 
         {/* Kategori */}
         <div className={fieldCls(enabled.category)}>
-          <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
-            <input type="checkbox" checked={enabled.category} onChange={() => toggle('category')} className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
-            Kategori
-          </label>
+          <FieldToggle checked={enabled.category} onToggle={() => toggle('category')} label="Kategori" />
           {enabled.category && (
             <div className="mt-2.5">
               <SelectField value={category} onChange={e => setCategory(e.target.value)} options={categoryOptions} placeholder="Kategori seç…" className="text-xs" />
@@ -147,10 +156,7 @@ export function BatchEditDrawer({
 
         {/* Aile üyesi */}
         <div className={fieldCls(enabled.family)}>
-          <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
-            <input type="checkbox" checked={enabled.family} onChange={() => toggle('family')} className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
-            Aile üyesi
-          </label>
+          <FieldToggle checked={enabled.family} onToggle={() => toggle('family')} label="Aile üyesi" />
           {enabled.family && (
             <div className="mt-2.5">
               <SelectField value={family} onChange={e => setFamily(e.target.value)} options={familyOptions} className="text-xs" />
@@ -160,10 +166,7 @@ export function BatchEditDrawer({
 
         {/* Alıcı */}
         <div className={fieldCls(enabled.recipient)}>
-          <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
-            <input type="checkbox" checked={enabled.recipient} onChange={() => toggle('recipient')} className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
-            Alıcı
-          </label>
+          <FieldToggle checked={enabled.recipient} onToggle={() => toggle('recipient')} label="Alıcı" />
           {enabled.recipient && (
             <div className="mt-2.5">
               <SelectField value={recipient} onChange={e => setRecipient(e.target.value)} options={recipientOptions} className="text-xs" />
@@ -173,10 +176,7 @@ export function BatchEditDrawer({
 
         {/* Etiket ekle */}
         <div className={fieldCls(enabled.tags)}>
-          <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
-            <input type="checkbox" checked={enabled.tags} onChange={() => toggle('tags')} className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
-            Etiket ekle
-          </label>
+          <FieldToggle checked={enabled.tags} onToggle={() => toggle('tags')} label="Etiket ekle" />
           {enabled.tags && (
             <div className="mt-2.5">
               <input
@@ -193,10 +193,7 @@ export function BatchEditDrawer({
 
         {/* Tarih */}
         <div className={fieldCls(enabled.date)}>
-          <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
-            <input type="checkbox" checked={enabled.date} onChange={() => toggle('date')} className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
-            Tarih
-          </label>
+          <FieldToggle checked={enabled.date} onToggle={() => toggle('date')} label="Tarih" />
           {enabled.date && (
             <div className="mt-2.5">
               <input
@@ -232,7 +229,7 @@ export function BatchEditDrawer({
         <button
           onClick={handleApply}
           disabled={!canApply || saving}
-          className="flex-1 h-9 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="flex-1 h-9 rounded-xl bg-[var(--batch-accent)] text-white text-xs font-semibold hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
         >
           {saving ? 'Uygulanıyor…' : `Uygula (${count})`}
         </button>

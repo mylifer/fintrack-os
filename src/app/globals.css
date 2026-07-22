@@ -85,6 +85,11 @@
   --cf-income:  #16a34a;
   --cf-expense: #dc2626;
 
+  /* Toplu düzenleme (batch edit) seçim aksanı — mavi (nötr temadan ayrışır) */
+  --batch-accent:        #2563eb;
+  --batch-accent-soft:   #eff4ff;
+  --batch-accent-border: #bfd3ff;
+
   --sidebar-background:           oklch(0.985 0.002 247.839);
   --sidebar-foreground:           oklch(0.373 0.016 285.806);
   --sidebar-primary:              oklch(0.21 0.034 264.665);
@@ -127,6 +132,11 @@
   /* Nakit akışı gelir/gider — koyu temada parlak tonlar (koyu zemin kontrastı) */
   --cf-income:  #34d399;
   --cf-expense: #fb7185;
+
+  /* Toplu düzenleme (batch edit) seçim aksanı — koyu temada parlak mavi + koyu soft */
+  --batch-accent:        #4f8cff;
+  --batch-accent-soft:   #14203a;
+  --batch-accent-border: #2b4a86;
 
   --sidebar-background:           oklch(0.21 0.034 264.665);
   --sidebar-foreground:           oklch(0.985 0.001 106.424);
