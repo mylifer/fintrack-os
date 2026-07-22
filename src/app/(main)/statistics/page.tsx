@@ -11,13 +11,14 @@ import { DetailedStats } from '@/components/reports/DetailedStats'
 
 /* ── Types & period helpers (same semantics as the Reports page) ──────── */
 
-type Preset = 'this-month' | 'last-month' | '3-months' | 'this-year' | 'custom'
+type Preset = 'this-month' | 'last-month' | '3-months' | 'this-year' | 'all-time' | 'custom'
 
 const PRESETS: { key: Preset; label: string }[] = [
   { key: 'this-month', label: 'Bu Ay' },
   { key: 'last-month', label: 'Geçen Ay' },
   { key: '3-months',   label: 'Son 3 Ay' },
   { key: 'this-year',  label: 'Bu Yıl' },
+  { key: 'all-time',   label: 'Tüm Zamanlar' },
   { key: 'custom',     label: 'Özel' },
 ]
 
@@ -36,6 +37,10 @@ function getPresetRange(preset: Preset, customFrom: string, customTo: string) {
         to:   format(endOfMonth(now), 'yyyy-MM-dd'),
       }
     case 'this-year':
+      return { from: format(startOfYear(now), 'yyyy-MM-dd'), to: format(endOfYear(now), 'yyyy-MM-dd') }
+    case 'all-time':
+      // Gerçek aralık işlemlerden hesaplanır (bkz. dateRange useMemo); burada
+      // yalnızca işlem yokken kullanılan güvenli varsayılan.
       return { from: format(startOfYear(now), 'yyyy-MM-dd'), to: format(endOfYear(now), 'yyyy-MM-dd') }
     case 'custom':
       return {
@@ -63,8 +68,22 @@ export default function StatisticsPage() {
   const [accountId,  setAccountId]  = useState('all')
 
   const dateRange = useMemo(
-    () => getPresetRange(preset, customFrom, customTo),
-    [preset, customFrom, customTo],
+    () => {
+      // "Tüm Zamanlar" → aralığı en erken/en geç işlem tarihinden türet
+      // (Raporlar sayfasıyla aynı davranış). İşlem yoksa güvenli varsayılana düşer.
+      if (preset === 'all-time') {
+        let min = '', max = ''
+        for (const t of transactions) {
+          const d = t.date.slice(0, 10)
+          if (!d) continue
+          if (!min || d < min) min = d
+          if (!max || d > max) max = d
+        }
+        if (min && max) return { from: min, to: max }
+      }
+      return getPresetRange(preset, customFrom, customTo)
+    },
+    [preset, customFrom, customTo, transactions],
   )
 
   // excludeFuture (isPosted): onay bekleyen/gelecek satırlar dönem gelir/gider

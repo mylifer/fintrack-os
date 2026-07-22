@@ -39,7 +39,7 @@ import type { Account, Transaction, PriceData, InvestmentTransaction, TefasFundP
 
 /* ── Types ────────────────────────────────────────────────────────── */
 
-type Preset = 'today' | 'this-week' | 'this-month' | 'last-month' | '3-months' | 'this-year' | 'custom'
+type Preset = 'today' | 'this-week' | 'this-month' | 'last-month' | '3-months' | 'this-year' | 'all-time' | 'custom'
 
 const PRESETS: { key: Preset; label: string }[] = [
   { key: 'today',      label: 'Bugün' },
@@ -48,6 +48,7 @@ const PRESETS: { key: Preset; label: string }[] = [
   { key: 'last-month', label: 'Geçen Ay' },
   { key: '3-months',   label: 'Son 3 Ay' },
   { key: 'this-year',  label: 'Bu Yıl' },
+  { key: 'all-time',   label: 'Tüm Zamanlar' },
   { key: 'custom',     label: 'Özel' },
 ]
 
@@ -77,6 +78,10 @@ function getPresetRange(preset: Preset, customFrom: string, customTo: string) {
         to:   format(endOfMonth(now), 'yyyy-MM-dd'),
       }
     case 'this-year':
+      return { from: format(startOfYear(now), 'yyyy-MM-dd'), to: format(endOfYear(now), 'yyyy-MM-dd') }
+    case 'all-time':
+      // Gerçek aralık işlemlerden hesaplanır (bkz. dateRange useMemo); burada
+      // yalnızca işlem yokken kullanılan güvenli varsayılan.
       return { from: format(startOfYear(now), 'yyyy-MM-dd'), to: format(endOfYear(now), 'yyyy-MM-dd') }
     case 'custom':
       return {
@@ -443,8 +448,23 @@ export default function ReportsPage() {
   }, [])
 
   const dateRange = useMemo(
-    () => getPresetRange(preset, customFrom, customTo),
-    [preset, customFrom, customTo],
+    () => {
+      // "Tüm Zamanlar" → aralığı en erken/en geç işlem tarihinden türet; sabit
+      // geniş bir aralık (ör. 1970→bugün) cash-flow grafiğinde onlarca boş ay
+      // üretirdi. İşlem yoksa getPresetRange'in güvenli varsayılanına düşer.
+      if (preset === 'all-time') {
+        let min = '', max = ''
+        for (const t of transactions) {
+          const d = t.date.slice(0, 10)
+          if (!d) continue
+          if (!min || d < min) min = d
+          if (!max || d > max) max = d
+        }
+        if (min && max) return { from: min, to: max }
+      }
+      return getPresetRange(preset, customFrom, customTo)
+    },
+    [preset, customFrom, customTo, transactions],
   )
 
   /* ── Fon getirisi (gerçekleşmemiş) ──────────────────────────────────
