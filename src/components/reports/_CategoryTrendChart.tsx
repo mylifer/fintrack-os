@@ -41,10 +41,10 @@ export function CategoryTrendChartInner({ data, color }: { data: CategoryTrendPo
               <stop offset="100%" stopColor={color} stopOpacity={0}    />
             </linearGradient>
           </defs>
-          <CartesianGrid vertical={false} stroke="#e4e4e7" />
+          <CartesianGrid vertical={false} stroke="var(--border)" />
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 11, fill: '#71717a' }}
+            tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
             axisLine={false}
             tickLine={false}
           />
@@ -54,7 +54,7 @@ export function CategoryTrendChartInner({ data, color }: { data: CategoryTrendPo
                taban korunur, negatifte alt sınır genişler. */
             domain={[(dataMin: number) => Math.min(0, dataMin), 'auto']}
             tickFormatter={v => formatAxisCompact(v as number)}
-            tick={{ fontSize: 11, fill: '#71717a' }}
+            tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
             axisLine={false}
             tickLine={false}
             width={60}

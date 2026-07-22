@@ -7,7 +7,7 @@ const Inner = dynamic(
     ssr: false,
     loading: () => (
       <div className="px-4 pt-4 pb-2" style={{ height: 252 }}>
-        <div className="w-full h-[200px] bg-gradient-to-t from-transparent to-[#E8E8E8]/60 animate-pulse rounded-lg" />
+        <div className="w-full h-[200px] bg-gradient-to-t from-transparent to-muted animate-pulse rounded-lg" />
       </div>
     ),
   }

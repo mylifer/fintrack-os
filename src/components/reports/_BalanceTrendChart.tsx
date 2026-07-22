@@ -78,13 +78,13 @@ export function BalanceTrendChartInner({ data }: { data: TrendPoint[] }) {
               <stop offset="100%" stopColor="#2563eb" stopOpacity={0}    />
             </linearGradient>
           </defs>
-          <CartesianGrid vertical={false} stroke="#e4e4e7" />
+          <CartesianGrid vertical={false} stroke="var(--border)" />
           {yMin < 0 && yMax > 0 && (
-            <ReferenceLine y={0} stroke="#d4d4d8" strokeWidth={1} strokeDasharray="4 2" />
+            <ReferenceLine y={0} stroke="var(--border)" strokeWidth={1} strokeDasharray="4 2" />
           )}
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 11, fill: '#71717a' }}
+            tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
             axisLine={false}
             tickLine={false}
           />
@@ -92,7 +92,7 @@ export function BalanceTrendChartInner({ data }: { data: TrendPoint[] }) {
             domain={[yMin, yMax]}
             ticks={ticks}
             tickFormatter={v => tickLabel(v as number)}
-            tick={{ fontSize: 11, fill: '#71717a' }}
+            tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
             axisLine={false}
             tickLine={false}
             width={60}
