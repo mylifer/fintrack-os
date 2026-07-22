@@ -82,7 +82,7 @@ function InlineForm({ form, onChange, onSave, onCancel, label, l0Options, l1Opti
       )}
 
       <button onClick={onSave} disabled={!form.name.trim()}
-        className="px-3 h-9 bg-primary text-white rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-primary/85 transition-colors flex-shrink-0">
+        className="px-3 h-9 bg-primary text-primary-foreground rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-primary/85 transition-colors flex-shrink-0">
         {label}
       </button>
       <button onClick={onCancel}
@@ -455,7 +455,7 @@ export function CategoryManager() {
         ))}
         <div className="flex-1" />
         <button onClick={startAdd}
-          className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/85 transition-colors">
+          className="flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/85 transition-colors">
           <span className="text-sm leading-none">+</span> Yeni Kategori
         </button>
       </div>
