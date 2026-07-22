@@ -748,6 +748,9 @@ export function TransactionList({
 
   // ── TABLE layout ─────────────────────────────────────────────────────────
   if (layout === 'table') {
+    // Tarih/bölüm ayraçlarını açıklama kolonunun içeriğiyle hizala: seçim kutusu
+    // kolonu (varsa) + açıklama hücresinin sol padding'i (px-3 = 12px).
+    const contentInsetLeft = (selectable ? SELECT_COL_W : 0) + 12
     return (
       <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto mx-6 my-3 rounded-xl border border-border/70 bg-card">
         <div style={{ minWidth: TABLE_MIN_W + (selectable ? SELECT_COL_W : 0) }}>
@@ -793,9 +796,9 @@ export function TransactionList({
                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
                   >
                     {row.kind === 'section' ? (
-                      <div className="px-3"><SectionBanner id={row.id} count={row.count} topClass={row.first ? 'pt-1' : 'pt-4'} /></div>
+                      <div style={{ paddingLeft: contentInsetLeft, paddingRight: 12 }}><SectionBanner id={row.id} count={row.count} topClass={row.first ? 'pt-1' : 'pt-4'} /></div>
                     ) : row.kind === 'header' ? (
-                      <div className="px-3"><DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-3' : 'pt-1'} future={row.future} /></div>
+                      <div style={{ paddingLeft: contentInsetLeft, paddingRight: 12 }}><DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-3' : 'pt-1'} future={row.future} /></div>
                     ) : (
                       <TableTxRow
                         tx={row.tx}
