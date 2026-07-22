@@ -372,7 +372,7 @@ const TableTxRow = memo(function TableTxRow({
         {cat ? (
           <Link
             href={`/categories/${tx.categoryId}`}
-            className="inline-flex items-center gap-1.5 max-w-full rounded-full border border-border bg-accent px-2 py-0.5 hover:border-border/80 hover:brightness-[0.97] transition-all group/link"
+            className="inline-flex items-center gap-1.5 max-w-full rounded-full border border-border bg-foreground/[0.07] px-2 py-0.5 hover:bg-foreground/[0.11] hover:border-border/80 transition-all group/link"
           >
             <span className="h-[7px] w-[7px] rounded-full flex-shrink-0" style={{ background: cat.color }} />
             <span className="text-[11px] font-medium text-foreground/80 truncate min-w-0 group-hover/link:text-foreground transition-colors">{cat.name}</span>
