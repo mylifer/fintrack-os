@@ -1,5 +1,5 @@
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { formatCompact, formatAxisCompact } from '@/lib/utils/currency'
@@ -12,6 +12,8 @@ export type CashFlowPoint = {
   from: string
   to: string
 }
+
+export type CashFlowChartType = 'bar' | 'line'
 
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
@@ -37,12 +39,24 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
+// Seri renkleri (--cf-income / --cf-expense) ve grid/eksen (--border,
+// --muted-foreground) tema token'larıdır; açık/koyu temada otomatik uyum
+// sağlar (bkz. globals.css).
+
+// Ortak eksen bileşenleri — bar ve line grafik aynı ölçeği kullanır.
+const AXIS_TICK = { fontSize: 11, fill: 'var(--muted-foreground)' } as const
+// İade ağırlıklı bir dönemde gelir/gider toplamı negatife düşebilir;
+// varsayılan [0, auto] domain negatif değerleri kırpar.
+const Y_DOMAIN = [(dataMin: number) => Math.min(0, dataMin), 'auto'] as const
+
 export function CashFlowBarChartInner({
   data,
   onBarClick,
+  chartType = 'bar',
 }: {
   data: CashFlowPoint[]
   onBarClick?: (point: CashFlowPoint) => void
+  chartType?: CashFlowChartType
 }) {
   // Recharts Bar onClick, tıklanan noktanın payload'ını (label/from/to dahil)
   // döndürür. Payload doğrudan da spread edilmiş gelebilir; ikisini de karşıla.
@@ -54,39 +68,81 @@ export function CashFlowBarChartInner({
       }
     : undefined
 
+  // Line modunda tıklama grafik seviyesinde yakalanır: aktif nokta indeksi
+  // data dizisine eşlenir.
+  const handleChartClick = onBarClick
+    ? (state: any) => {
+        const idx = state?.activeTooltipIndex
+        const p = typeof idx === 'number' ? data[idx] : undefined
+        if (p?.from && p?.to) onBarClick(p)
+      }
+    : undefined
+
+  const commonAxes = (
+    <>
+      <CartesianGrid vertical={false} stroke="var(--border)" />
+      <XAxis
+        dataKey="label"
+        tick={AXIS_TICK}
+        axisLine={false}
+        tickLine={false}
+      />
+      <YAxis
+        domain={Y_DOMAIN as unknown as [number, number]}
+        tickFormatter={v => formatAxisCompact(v as number)}
+        tick={AXIS_TICK}
+        axisLine={false}
+        tickLine={false}
+        width={56}
+      />
+      <Tooltip
+        content={<CustomTooltip />}
+        cursor={chartType === 'line'
+          ? { stroke: 'var(--border)', strokeWidth: 1 }
+          : { fill: 'var(--foreground)', fillOpacity: 0.05, radius: 4 }}
+      />
+    </>
+  )
+
   return (
     <div className="px-4 pt-4 pb-2">
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={data} barGap={3} barCategoryGap="28%">
-          <CartesianGrid vertical={false} stroke="#e4e4e7" />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: '#71717a' }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            /* İade ağırlıklı bir dönemde gelir/gider toplamı negatife düşebilir;
-               varsayılan [0, auto] domain negatif barı kırpar. */
-            domain={[(dataMin: number) => Math.min(0, dataMin), 'auto']}
-            tickFormatter={v => formatAxisCompact(v as number)}
-            tick={{ fontSize: 11, fill: '#71717a' }}
-            axisLine={false}
-            tickLine={false}
-            width={56}
-          />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.04)', radius: 4 }} />
-          <Bar
-            dataKey="income"  name="Gelir" fill="#16a34a" radius={[3, 3, 0, 0]} maxBarSize={28}
-            onClick={handleClick}
+        {chartType === 'line' ? (
+          <LineChart
+            data={data}
+            margin={{ top: 6, right: 6, bottom: 0, left: 0 }}
+            onClick={handleChartClick}
             className={onBarClick ? 'cursor-pointer' : undefined}
-          />
-          <Bar
-            dataKey="expense" name="Gider" fill="#dc2626" radius={[3, 3, 0, 0]} maxBarSize={28}
-            onClick={handleClick}
-            className={onBarClick ? 'cursor-pointer' : undefined}
-          />
-        </BarChart>
+          >
+            {commonAxes}
+            <Line
+              dataKey="income" name="Gelir" stroke="var(--cf-income)" strokeWidth={2.5}
+              dot={{ r: 3, strokeWidth: 0, fill: 'var(--cf-income)' }}
+              activeDot={{ r: 5 }}
+              isAnimationActive={false}
+            />
+            <Line
+              dataKey="expense" name="Gider" stroke="var(--cf-expense)" strokeWidth={2.5}
+              dot={{ r: 3, strokeWidth: 0, fill: 'var(--cf-expense)' }}
+              activeDot={{ r: 5 }}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        ) : (
+          <BarChart data={data} barGap={3} barCategoryGap="28%">
+            {commonAxes}
+            <Bar
+              dataKey="income"  name="Gelir" fill="var(--cf-income)" radius={[3, 3, 0, 0]} maxBarSize={28}
+              onClick={handleClick}
+              className={onBarClick ? 'cursor-pointer' : undefined}
+            />
+            <Bar
+              dataKey="expense" name="Gider" fill="var(--cf-expense)" radius={[3, 3, 0, 0]} maxBarSize={28}
+              onClick={handleClick}
+              className={onBarClick ? 'cursor-pointer' : undefined}
+            />
+          </BarChart>
+        )}
       </ResponsiveContainer>
     </div>
   )

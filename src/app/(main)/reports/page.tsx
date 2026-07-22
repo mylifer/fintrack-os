@@ -30,7 +30,7 @@ import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
 import { CategoryTrendChart }  from '@/components/reports/CategoryTrendChart'
 import { TransactionList }     from '@/components/transactions/TransactionList'
-import { ListFilter }          from 'lucide-react'
+import { ListFilter, BarChart3, LineChart as LineChartIcon } from 'lucide-react'
 import type { CashFlowPoint }       from '@/components/reports/_CashFlowBarChart'
 import type { CategorySlice }       from '@/components/reports/_CategoryDonutChart'
 import type { TrendPoint }          from '@/components/reports/_BalanceTrendChart'
@@ -425,6 +425,7 @@ export default function ReportsPage() {
   // animasyonu boyunca korunur), `detailOpen` görünürlük.
   const [detail, setDetail] = useState<{ from: string; to: string; label: string } | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [cashFlowChartType, setCashFlowChartType] = useState<'bar' | 'line'>('bar')
   const openDetail = useCallback((d: { from: string; to: string; label: string }) => {
     setDetail(d)
     setDetailOpen(true)
@@ -721,6 +722,26 @@ export default function ReportsPage() {
                   </span>
                 )}
                 {!isLoading && (
+                  <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-muted/60">
+                    <button
+                      onClick={() => setCashFlowChartType('bar')}
+                      className={`flex items-center justify-center h-6 w-6 rounded-md transition-colors ${cashFlowChartType === 'bar' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                      title="Sütun grafik"
+                      aria-pressed={cashFlowChartType === 'bar'}
+                    >
+                      <BarChart3 size={13} />
+                    </button>
+                    <button
+                      onClick={() => setCashFlowChartType('line')}
+                      className={`flex items-center justify-center h-6 w-6 rounded-md transition-colors ${cashFlowChartType === 'line' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                      title="Çizgi grafik"
+                      aria-pressed={cashFlowChartType === 'line'}
+                    >
+                      <LineChartIcon size={13} />
+                    </button>
+                  </div>
+                )}
+                {!isLoading && (
                   <button
                     onClick={() => openDetail({
                       from:  dateRange.from,
@@ -742,14 +763,15 @@ export default function ReportsPage() {
                   {isLoading ? <BarSkeleton /> : (
                     <CashFlowBarChart
                       data={cashFlowData}
+                      chartType={cashFlowChartType}
                       onBarClick={p => openDetail({ from: p.from, to: p.to, label: p.label })}
                     />
                   )}
                 </div>
               </div>
               <div className="px-5 pb-4 flex gap-4">
-                <LegendDot color="#00E676" label="Gelir" />
-                <LegendDot color="#FF1744" label="Gider" />
+                <LegendDot color="var(--cf-income)" label="Gelir" />
+                <LegendDot color="var(--cf-expense)" label="Gider" />
               </div>
             </CardContent>
           </Card>

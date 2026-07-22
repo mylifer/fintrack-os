@@ -81,6 +81,10 @@
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.067);
 
+  /* Nakit akışı gelir/gider — açık temada koyu-doygun tonlar */
+  --cf-income:  #16a34a;
+  --cf-expense: #dc2626;
+
   --sidebar-background:           oklch(0.985 0.002 247.839);
   --sidebar-foreground:           oklch(0.373 0.016 285.806);
   --sidebar-primary:              oklch(0.21 0.034 264.665);
@@ -119,6 +123,10 @@
   --chart-3: oklch(0.769 0.188 70.067);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+
+  /* Nakit akışı gelir/gider — koyu temada parlak tonlar (koyu zemin kontrastı) */
+  --cf-income:  #34d399;
+  --cf-expense: #fb7185;
 
   --sidebar-background:           oklch(0.21 0.034 264.665);
   --sidebar-foreground:           oklch(0.985 0.001 106.424);

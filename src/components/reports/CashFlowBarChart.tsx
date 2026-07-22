@@ -1,5 +1,5 @@
 import dynamic from 'next/dynamic'
-import type { CashFlowPoint } from './_CashFlowBarChart'
+import type { CashFlowPoint, CashFlowChartType } from './_CashFlowBarChart'
 
 const SKELETON_H = [65, 40, 80, 55, 70, 45, 75, 50]
 
@@ -23,9 +23,11 @@ const Inner = dynamic(
 export function CashFlowBarChart({
   data,
   onBarClick,
+  chartType,
 }: {
   data: CashFlowPoint[]
   onBarClick?: (point: CashFlowPoint) => void
+  chartType?: CashFlowChartType
 }) {
-  return <Inner data={data} onBarClick={onBarClick} />
+  return <Inner data={data} onBarClick={onBarClick} chartType={chartType} />
 }
