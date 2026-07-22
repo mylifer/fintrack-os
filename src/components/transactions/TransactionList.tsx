@@ -132,6 +132,10 @@ function DeleteConfirmDialog({
 // CSS grid template columns for table layout.
 const TABLE_COLS = 'minmax(130px,1.4fr) minmax(96px,1fr) minmax(96px,1fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(76px,0.85fr) minmax(72px,0.85fr) minmax(84px,0.9fr) 76px'
 const TABLE_MIN_W = 130 + 96 + 96 + 76 + 76 + 76 + 72 + 84 + 76 + 24
+// Toplu seçim etkinken satırların/başlığın soluna eklenen onay kutusu sütunu.
+const SELECT_COL = '34px '
+const SELECT_COL_W = 34
+const colsFor = (selectable: boolean) => (selectable ? SELECT_COL + TABLE_COLS : TABLE_COLS)
 
 type MetaItem = { text: string; href?: string }
 
@@ -238,6 +242,7 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
   tx, cat, account, toAccount, recipient, family, balanceAfter, isFirst, isLast, projected, future, openModal, removeTx,
+  selectable, selected, onToggleSelect,
 }: {
   tx: Transaction
   cat?: Category
@@ -252,6 +257,9 @@ const TableTxRow = memo(function TableTxRow({
   future?: boolean
   openModal: OpenModal
   removeTx: (id: string) => void
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
 }) {
   const isIncome    = tx.type === 'income'
   const isXfer      = tx.type === 'transfer'
@@ -259,14 +267,30 @@ const TableTxRow = memo(function TableTxRow({
   return (
     <div
       className={[
-        'group grid transition-colors hover:bg-accent/40 border-x border-t',
-        future ? 'bg-sky-500/[0.04] border-sky-500/15' : 'bg-card border-border/60',
+        'group grid transition-colors border-x border-t',
+        future ? 'border-sky-500/15' : 'border-border/60',
+        selected ? 'bg-primary/10 hover:bg-primary/15' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'bg-card hover:bg-accent/40',
         isFirst ? 'rounded-t-lg overflow-hidden' : '',
         isLast ? 'rounded-b-lg border-b overflow-hidden' : '',
         projected ? 'opacity-60' : '',
       ].join(' ')}
-      style={{ gridTemplateColumns: TABLE_COLS }}
+      style={{ gridTemplateColumns: colsFor(!!selectable) }}
     >
+      {/* Seçim kutusu — planlanan (henüz gerçekleşmemiş) satırlar toplu düzenlenemez */}
+      {selectable && (
+        <div className="flex items-center justify-center">
+          {!projected && (
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={() => onToggleSelect?.(tx.id)}
+              aria-label="İşlemi seç"
+              className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
+            />
+          )}
+        </div>
+      )}
+
       {/* Açıklama */}
       <div className="px-3 py-2 flex items-center gap-2 min-w-0 overflow-hidden">
         <TxIcon description={tx.description} />
@@ -543,6 +567,14 @@ interface Props {
   projectedIds?: Set<string>
   /** Sıralama seçeneği (filtre çubuğundaki alandan gelir). Varsayılan: yeni → eski. */
   sort?: TxSortOption
+  /** Toplu düzenleme: satırlara seçim kutusu ekler (yalnızca table layout). */
+  selectable?: boolean
+  /** Seçili işlem id'leri (kontrollü). */
+  selectedIds?: Set<string>
+  /** Tek satır seçimini değiştirir. */
+  onToggleSelect?: (id: string) => void
+  /** Bir id kümesini toplu seçer/kaldırır ("tümünü seç" için). */
+  onSelectMany?: (ids: string[], selected: boolean) => void
 }
 
 export function TransactionList({
@@ -554,6 +586,10 @@ export function TransactionList({
   primaryAccountId,
   projectedIds,
   sort = 'date-desc',
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
+  onSelectMany,
 }: Props) {
   const categories = useCategoryStore(s => s.categories)
   const accounts   = useAccountStore(s => s.accounts)
@@ -677,6 +713,21 @@ export function TransactionList({
     return map
   }, [layout, primaryAccountId, transactions, allTxs, accById])
 
+  // Toplu seçim için uygun satırlar: planlanan (projected) işlemler düzenlenemez,
+  // bu yüzden "tümünü seç" kapsamı dışında tutulur.
+  const eligibleIds = useMemo(
+    () => (selectable
+      ? transactions.filter(t => !projectedIds?.has(t.id)).map(t => t.id)
+      : []),
+    [selectable, transactions, projectedIds],
+  )
+  const allSelected = eligibleIds.length > 0 && eligibleIds.every(id => selectedIds?.has(id))
+  const someSelected = !allSelected && eligibleIds.some(id => selectedIds?.has(id))
+  const selectAllRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected
+  }, [someSelected])
+
   const parentRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -705,17 +756,30 @@ export function TransactionList({
   if (layout === 'table') {
     return (
       <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto">
-        <div style={{ minWidth: TABLE_MIN_W }}>
+        <div style={{ minWidth: TABLE_MIN_W + (selectable ? SELECT_COL_W : 0) }}>
 
           {/* Sticky column headers */}
           <div className="sticky top-0 z-10 bg-background border-b border-border">
-            <div className="mx-3 grid" style={{ gridTemplateColumns: TABLE_COLS }}>
+            <div className="mx-3 grid" style={{ gridTemplateColumns: colsFor(selectable) }}>
+              {selectable && (
+                <div className="flex items-center justify-center py-1.5">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() => onSelectMany?.(eligibleIds, !allSelected)}
+                    disabled={eligibleIds.length === 0}
+                    aria-label="Tümünü seç"
+                    className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer disabled:opacity-40"
+                  />
+                </div>
+              )}
               {['Açıklama', 'Hesap', 'Alıcı Hesap', 'Alıcı', 'Aile Üyesi', 'Kategori', 'Miktar', 'Güncel Bakiye', ''].map((h, i) => (
                 <div
                   key={i}
                   className={[
                     'py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60 select-none',
-                    i === 0 ? 'px-3' : i === 6 || i === 7 ? 'px-3 text-right' : 'px-2',
+                    h === 'Açıklama' ? 'px-3' : h === 'Miktar' || h === 'Güncel Bakiye' ? 'px-3 text-right' : 'px-2',
                   ].join(' ')}
                 >
                   {h}
@@ -755,6 +819,9 @@ export function TransactionList({
                         projected={projectedIds?.has(row.tx.id)}
                         openModal={openModal}
                         removeTx={removeTx}
+                        selectable={selectable}
+                        selected={selectedIds?.has(row.tx.id)}
+                        onToggleSelect={onToggleSelect}
                       />
                     )}
                   </div>

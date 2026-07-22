@@ -12,7 +12,7 @@ import { useCategoryStore } from './categories.store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localBulkUpsert, localPatch, softDelete, reconcilingPull } from '@/lib/sync/engine'
+import { localUpsert, localBulkUpsert, localPatch, softDelete, reconcilingPull, localBatch, type BatchOp } from '@/lib/sync/engine'
 import { toBaseTry, baseAmount, rateFor } from '@/lib/utils/fx'
 import { splitMoney } from '@/lib/utils/money'
 
@@ -64,6 +64,11 @@ interface TransactionState {
     amounts?: number[],
   ) => Promise<void>
   update: (id: string, patch: Partial<Transaction>) => Promise<void>
+  updateMany: (
+    ids: string[],
+    patch: Partial<Transaction>,
+    opts?: { addTags?: string[] },
+  ) => Promise<void>
   remove: (id: string, opts?: RemoveOptions) => Promise<void>
   getFiltered: (filters: TransactionFilters) => Transaction[]
 }
@@ -138,6 +143,57 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const next = get().transactions.map(t => t.id === id ? { ...t, ...updated } : t)
     set({ transactions: next })
     useAccountStore.getState().recomputeBalances(next)
+  },
+
+  // Toplu düzenleme (batch edit). Yalnızca mutabakat GEREKTİRMEYEN alanlar için
+  // kullanılır — kategori, tarih, aile üyesi, alıcı, etiket. `amount`/`type`/
+  // `debtId` GİBİ borç-taksit mutabakatını tetikleyen alanlar burada DÜZENLENMEZ;
+  // o akışın tek sahibi TransactionFormModal'dır (bkz. update yorumu). addTags
+  // verilirse etiketler satır-satır BİRLEŞTİRİLİR (mevcut etiketler korunur).
+  // Tüm satırlar tek bir atomik localBatch içinde yazılır ve değişiklik geri
+  // alınabilir (her satırın eski değerleri snapshot'lanır).
+  updateMany: async (ids, patch, opts) => {
+    const now = new Date().toISOString()
+    const before = get().transactions
+    const txById = new Map(before.map(t => [t.id, t]))
+    const affected = ids.filter(id => txById.has(id))
+    if (affected.length === 0) return
+
+    const addTags = (opts?.addTags ?? []).map(t => t.trim()).filter(Boolean)
+    const keys = Object.keys(patch) as (keyof Transaction)[]
+
+    type PatchOp = Extract<BatchOp, { kind: 'patch' }>
+    const forward: PatchOp[] = []
+    const undoOps: PatchOp[] = []
+    for (const id of affected) {
+      const t = txById.get(id)!
+      const fwd: Record<string, unknown> = { ...patch, updatedAt: now }
+      const rev: Record<string, unknown> = { updatedAt: t.updatedAt }
+      for (const k of keys) rev[k] = (t as unknown as Record<string, unknown>)[k] ?? null
+      if (addTags.length) {
+        fwd.tags = [...new Set([...(t.tags ?? []), ...addTags])]
+        rev.tags = t.tags ? [...t.tags] : null
+      }
+      forward.push({ kind: 'patch', table: 'transactions', id, patch: fwd })
+      undoOps.push({ kind: 'patch', table: 'transactions', id, patch: rev })
+    }
+
+    await localBatch(forward)
+
+    // Pure updater: compute next array, set it, THEN fire the cross-store effect.
+    const fwdById = new Map(forward.map(o => [o.id, o.patch]))
+    const next = get().transactions.map(t => fwdById.has(t.id) ? { ...t, ...fwdById.get(t.id) } : t)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
+
+    const label = affected.length > 1 ? `${affected.length} işlem düzenlendi` : 'İşlem düzenlendi'
+    useUndoStore.getState().pushUndo(label, async () => {
+      await localBatch(undoOps)
+      const revById = new Map(undoOps.map(o => [o.id, o.patch]))
+      const reverted = get().transactions.map(t => revById.has(t.id) ? { ...t, ...revById.get(t.id) } : t)
+      set({ transactions: reverted })
+      useAccountStore.getState().recomputeBalances(reverted)
+    })
   },
 
   remove: async (id, opts) => {

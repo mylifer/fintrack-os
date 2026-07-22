@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Header }          from '@/components/layout/Header'
 import { PeriodTabs }      from '@/components/ui/PeriodTabs'
 import { SelectField }     from '@/components/ui/Select'
 import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
+import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore } from '@/store'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
@@ -38,6 +39,28 @@ export default function TransactionsPage() {
   const [sortOption, setSortOption] = useState<TxSortOption>('date-desc')
   const [periodOffset, setPeriodOffset] = useState(0)
 
+  // Toplu düzenleme seçim state'i (yalnızca bu sayfa; liste kontrollü seçim alır)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }, [])
+
+  const selectMany = useCallback((ids: string[], selected: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      for (const id of ids) { if (selected) next.add(id); else next.delete(id) }
+      return next
+    })
+  }, [])
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
+  const selectedIdList = useMemo(() => [...selectedIds], [selectedIds])
+
   // Dönem türü değişince gezinti sıfırlanır
   useEffect(() => { setPeriodOffset(0) }, [periodType])
 
@@ -56,6 +79,11 @@ export default function TransactionsPage() {
     familyMemberIds: familyFilter    ? [familyFilter.id]    : undefined,
     recipientIds:    recipientFilter ? [recipientFilter.id] : undefined,
   }
+
+  // Filtre/dönem değişince seçim sıfırlanır — gizlenen satırları yanlışlıkla
+  // toplu düzenlememek için (seçim yalnızca ekranda görünen işlemleri kapsar).
+  useEffect(() => { setSelectedIds(new Set()) },
+    [search, typeFilter, categoryFilter, accountFilter, familyFilter?.id, recipientFilter?.id, from, to])
 
   const filtered = useMemo(
     () => getFiltered(filters),
@@ -266,8 +294,21 @@ export default function TransactionsPage() {
 
       {/* Transaction list */}
       <div className="flex-1 overflow-auto">
-        <TransactionList transactions={displayTxs} projectedIds={projectedIds} layout="table" sort={sortOption} onPersonClick={handlePersonClick} />
+        <TransactionList
+          transactions={displayTxs}
+          projectedIds={projectedIds}
+          layout="table"
+          sort={sortOption}
+          onPersonClick={handlePersonClick}
+          selectable
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onSelectMany={selectMany}
+        />
       </div>
+
+      {/* Toplu düzenleme paneli (Model B — yan panel); satır seçilince açılır */}
+      <BatchEditDrawer selectedIds={selectedIdList} onClose={clearSelection} />
     </>
   )
 }
