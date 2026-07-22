@@ -470,6 +470,10 @@ export function PriceHistoryChart({
                   : dayVal !== null && prevRow!.realValue > 0
                     ? (dayVal / prevRow!.realValue) * 100
                     : null
+                // Önceki günün portföy kapanışı: bugünkü kapanış − günlük değişim.
+                // Override'lı bugünkü noktada resmi son iki kapanışla (qty × prevPrice),
+                // geçmiş noktalarda ardışık seri farkıyla hizalanır.
+                const prevClose = dayVal !== null ? row!.realValue - dayVal : null
 
                 return (
                   <div style={{
@@ -495,6 +499,11 @@ export function PriceHistoryChart({
                                 </span>
                               )}
                             </div>
+                            {prevClose !== null && (
+                              <div style={{ fontSize: 9, color: '#71717a', fontVariantNumeric: 'tabular-nums', marginTop: 1 }}>
+                                Önceki gün kapanış: <span style={{ fontWeight: 600, color: '#52525b' }}>{formatCompact(prevClose)}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
 
