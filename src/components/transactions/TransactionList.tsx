@@ -213,7 +213,7 @@ type Row =
 // ── Date separator (both layouts share the same look, only top spacing differs) ─
 function DateSeparator({ date, topClass, future }: { date: string; topClass: string; future?: boolean }) {
   return (
-    <div className={`flex items-center gap-3 py-1 ${topClass}`}>
+    <div className={`flex items-center gap-3 ${topClass}`}>
       <span className={`text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap select-none ${future ? 'text-sky-500/80' : 'text-muted-foreground'}`}>
         {formatDate(date, 'd MMM')} · {formatDate(date, 'EEEE')}
       </span>
@@ -728,8 +728,8 @@ export function TransactionList({
     getScrollElement: () => parentRef.current,
     estimateSize: i => {
       const r = rows[i]
-      if (r.kind === 'section') return 40
-      if (r.kind === 'header')  return 36
+      if (r.kind === 'section') return 44
+      if (r.kind === 'header')  return 52
       return layout === 'table' ? 64 : 60
     },
     overscan: 12,
@@ -798,7 +798,7 @@ export function TransactionList({
                     {row.kind === 'section' ? (
                       <div style={{ paddingLeft: contentInsetLeft, paddingRight: 12 }}><SectionBanner id={row.id} count={row.count} topClass={row.first ? 'pt-1' : 'pt-4'} /></div>
                     ) : row.kind === 'header' ? (
-                      <div style={{ paddingLeft: contentInsetLeft, paddingRight: 12 }}><DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-3' : 'pt-1'} future={row.future} /></div>
+                      <div style={{ paddingLeft: contentInsetLeft, paddingRight: 12 }}><DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-6 pb-3' : 'pt-3 pb-3'} future={row.future} /></div>
                     ) : (
                       <TableTxRow
                         tx={row.tx}
@@ -844,7 +844,7 @@ export function TransactionList({
                 {row.kind === 'section' ? (
                   <SectionBanner id={row.id} count={row.count} topClass={row.first ? 'pt-1' : 'pt-5'} />
                 ) : row.kind === 'header' ? (
-                  <DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-4' : 'pt-1'} future={row.future} />
+                  <DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-5 pb-2.5' : 'pt-2 pb-2.5'} future={row.future} />
                 ) : (
                   <CardTxRow
                     tx={row.tx}
