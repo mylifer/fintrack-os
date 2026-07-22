@@ -11,7 +11,6 @@ import { formatDate, today } from '@/lib/utils/date'
 import { groupByDate } from '@/lib/utils/calculations'
 import { toMinor, toMajor } from '@/lib/utils/money'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import type { Transaction, PersonRole, Category, Account, Person, ModalType, ModalPayload, InvestmentTransaction } from '@/types'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
@@ -242,7 +241,7 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
-  tx, cat, account, toAccount, recipient, family, balanceAfter, isFirst, isLast, projected, future, openModal, removeTx,
+  tx, cat, account, toAccount, recipient, family, balanceAfter, projected, future, openModal, removeTx,
   selectable, selected, onToggleSelect,
 }: {
   tx: Transaction
@@ -252,8 +251,6 @@ const TableTxRow = memo(function TableTxRow({
   recipient?: Person
   family?: Person
   balanceAfter?: number
-  isFirst: boolean
-  isLast: boolean
   projected?: boolean
   future?: boolean
   openModal: OpenModal
@@ -266,13 +263,12 @@ const TableTxRow = memo(function TableTxRow({
   const isXfer      = tx.type === 'transfer'
   const isRefund    = tx.type === 'expense' && tx.amount < 0
   return (
+    // Düz, sürekli satır yüzeyi (örnek/mockup görünümü): kenarlıklı grup kartları
+    // yerine yalnızca ince alt ayraç + hover. Kart yüzeyini saran konteyner sağlar.
     <div
       className={[
-        'group grid transition-colors border-x border-t',
-        future ? 'border-sky-500/15' : 'border-border/60',
-        selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'bg-card hover:bg-accent/40',
-        isFirst ? 'rounded-t-lg overflow-hidden' : '',
-        isLast ? 'rounded-b-lg border-b overflow-hidden' : '',
+        'group grid transition-colors border-b border-border/50',
+        selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'hover:bg-accent/40',
         projected ? 'opacity-60' : '',
       ].join(' ')}
       style={{ gridTemplateColumns: colsFor(!!selectable) }}
@@ -371,12 +367,15 @@ const TableTxRow = memo(function TableTxRow({
         )}
       </div>
 
-      {/* Kategori */}
-      <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
+      {/* Kategori — renkli noktalı "pill" (örnek/mockup görünümü) */}
+      <div className="px-2 py-2 flex items-center min-w-0 overflow-hidden">
         {cat ? (
-          <Link href={`/categories/${tx.categoryId}`} className="flex items-center gap-1.5 min-w-0 group/link">
-            <CategoryIcon icon={cat.icon} color={cat.color} size={10} className="flex-shrink-0" />
-            <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{cat.name}</span>
+          <Link
+            href={`/categories/${tx.categoryId}`}
+            className="inline-flex items-center gap-1.5 max-w-full rounded-full border border-border bg-accent/50 px-2 py-0.5 hover:bg-accent transition-colors group/link"
+          >
+            <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ background: cat.color }} />
+            <span className="text-[11px] text-muted-foreground truncate min-w-0 group-hover/link:text-foreground transition-colors">{cat.name}</span>
           </Link>
         ) : (
           <span className="text-xs text-muted-foreground/25">—</span>
@@ -750,12 +749,12 @@ export function TransactionList({
   // ── TABLE layout ─────────────────────────────────────────────────────────
   if (layout === 'table') {
     return (
-      <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto">
+      <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto mx-6 my-3 rounded-xl border border-border/70 bg-card">
         <div style={{ minWidth: TABLE_MIN_W + (selectable ? SELECT_COL_W : 0) }}>
 
-          {/* Sticky column headers */}
-          <div className="sticky top-0 z-10 bg-background border-b border-border">
-            <div className="mx-3 grid" style={{ gridTemplateColumns: colsFor(selectable) }}>
+          {/* Sticky column headers — kart yüzeyiyle aynı renk */}
+          <div className="sticky top-0 z-10 bg-card border-b border-border">
+            <div className="grid" style={{ gridTemplateColumns: colsFor(selectable) }}>
               {selectable && (
                 <div className="flex items-center justify-center py-1.5">
                   <Checkbox
@@ -781,8 +780,8 @@ export function TransactionList({
             </div>
           </div>
 
-          {/* Virtualized rows */}
-          <div className="px-4 py-2">
+          {/* Virtualized rows — kart içinde tam genişlik, hücre padding'i inset verir */}
+          <div>
             <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
               {virtualItems.map(vi => {
                 const row = rows[vi.index]
@@ -794,9 +793,9 @@ export function TransactionList({
                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
                   >
                     {row.kind === 'section' ? (
-                      <SectionBanner id={row.id} count={row.count} topClass={row.first ? 'pt-1' : 'pt-4'} />
+                      <div className="px-3"><SectionBanner id={row.id} count={row.count} topClass={row.first ? 'pt-1' : 'pt-4'} /></div>
                     ) : row.kind === 'header' ? (
-                      <DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-3' : 'pt-1'} future={row.future} />
+                      <div className="px-3"><DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-3' : 'pt-1'} future={row.future} /></div>
                     ) : (
                       <TableTxRow
                         tx={row.tx}
@@ -807,8 +806,6 @@ export function TransactionList({
                         recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                         family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                         balanceAfter={runningBalances.get(row.tx.id)}
-                        isFirst={row.isFirst}
-                        isLast={row.isLast}
                         projected={projectedIds?.has(row.tx.id)}
                         openModal={openModal}
                         removeTx={removeTx}
