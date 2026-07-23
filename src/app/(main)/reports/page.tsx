@@ -606,12 +606,19 @@ export default function ReportsPage() {
 
   const isLoading = !txsReady || !accountsReady
 
-  const animIncome  = useCountUp(kpi.income)
+  // Anahtar AÇIKKEN gerçekleşmemiş dönem fon getirisi (pozitif-kapı) Toplam Gelir/
+  // Net Tasarruf KPI'larına eklenir — dashboard ile BİREBİR aynı formül, iki sayfa
+  // aynı aylık geliri göstersin. Negatif dönem getirisi eklenmez (fundGain=0);
+  // alt-etikette bilgi olarak görünür.
+  const fundGain     = includeInvestmentIncome && fundPeriodNet > 0 ? fundPeriodNet : 0
+  const incomeTotal  = kpi.income + fundGain
+  const netTotal     = kpi.net + fundGain
+  const rateTotal    = incomeTotal > 0 ? (netTotal / incomeTotal) * 100 : 0
+  const animIncome  = useCountUp(incomeTotal)
   const animExpense = useCountUp(kpi.expense)
-  const animNet     = useCountUp(Math.abs(kpi.net))
-  // Nakit akışı kartı başlığındaki Net, barlarla (gerçek nakit gelir/gider) tutarlı.
-  // Artık kpi.net de fon getirisini İÇERMEDİĞİNDEN (yalnız gerçekleşen akış) ikisi
-  // aynı: ayrıca fundGain düşmeye gerek yok.
+  const animNet     = useCountUp(Math.abs(netTotal))
+  // Nakit akışı kartı başlığındaki Net, barlarla (gerçek nakit gelir/gider) tutarlı:
+  // gerçekleşmemiş fon getirisi (fundGain) burada YOK — barlar da onu içermez.
   const cashFlowNet     = kpi.net
   const animCashFlowNet = useCountUp(Math.abs(cashFlowNet))
   const animTrend   = useCountUp(trendData.at(-1)?.balance ?? 0)
@@ -669,7 +676,7 @@ export default function ReportsPage() {
             onChange={e => setIncludeInvestmentIncome(e.target.checked)}
             className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
           />
-          <span className="text-xs font-medium text-muted-foreground">Fon getirisini göster</span>
+          <span className="text-xs font-medium text-muted-foreground">Fon getirileri dahil</span>
         </label>
 
         <SelectField
@@ -704,11 +711,12 @@ export default function ReportsPage() {
                 value={formatCurrency(animIncome)}
                 sub={(() => {
                   const n = filteredTxs.filter(t => t.type === 'income').length
-                  // Fon getirisi artık gelire DAHİL DEĞİL; yalnız bilgi olarak ayrı gösterilir.
+                  // Anahtar açık + pozitif getiri → gelire DAHİL (dashboard ile aynı).
+                  // Negatif dönem getirisi eklenmez; yalnız bilgi olarak gösterilir.
                   if (includeInvestmentIncome && fundPeriodNet > 0.005)
-                    return `${n} işlem · +${formatCompact(fundPeriodNet)} fon getirisi (ayrı)`
+                    return `${n} işlem · +${formatCompact(fundPeriodNet)} fon getirisi dahil`
                   if (includeInvestmentIncome && fundPeriodNet < -0.005)
-                    return `${n} işlem · −${formatCompact(Math.abs(fundPeriodNet))} fon değişimi (ayrı)`
+                    return `${n} işlem · −${formatCompact(Math.abs(fundPeriodNet))} fon değişimi (eklenmedi)`
                   return `${n} işlem`
                 })()}
                 color="ok"
@@ -722,16 +730,16 @@ export default function ReportsPage() {
               <KPICard
                 label="Net Tasarruf"
                 value={formatCurrency(animNet)}
-                sub={kpi.net >= 0 ? 'Pozitif birikim' : 'Açık var'}
-                prefix={kpi.net >= 0 ? '+' : '−'}
-                color={kpi.net >= 0 ? 'ok' : 'danger'}
+                sub={netTotal >= 0 ? 'Pozitif birikim' : 'Açık var'}
+                prefix={netTotal >= 0 ? '+' : '−'}
+                color={netTotal >= 0 ? 'ok' : 'danger'}
               />
               <KPICard
                 label="Tasarruf Oranı"
-                value={`${Math.abs(kpi.rate).toFixed(1)}%`}
-                sub={kpi.rate >= 20 ? 'Hedefin üstünde' : kpi.rate > 0 ? 'Geliştirilebilir' : 'Gelir eksik'}
-                prefix={kpi.rate < 0 ? '−' : ''}
-                color={kpi.rate >= 20 ? 'ok' : kpi.rate >= 0 ? 'neutral' : 'danger'}
+                value={`${Math.abs(rateTotal).toFixed(1)}%`}
+                sub={rateTotal >= 20 ? 'Hedefin üstünde' : rateTotal > 0 ? 'Geliştirilebilir' : 'Gelir eksik'}
+                prefix={rateTotal < 0 ? '−' : ''}
+                color={rateTotal >= 20 ? 'ok' : rateTotal >= 0 ? 'neutral' : 'danger'}
               />
             </>
           )}
