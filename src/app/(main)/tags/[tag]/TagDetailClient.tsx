@@ -8,7 +8,7 @@ import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
-import { tagKey, tagColor } from '@/lib/utils/tags'
+import { tagKey, tagColor, normalizeTag } from '@/lib/utils/tags'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
 
 interface Props { tag: string }
@@ -17,9 +17,12 @@ export default function TagDetailClient({ tag }: Props) {
   const router       = useRouter()
   const transactions = useTransactionStore(s => s.transactions)
   const txsReady     = useTransactionStore(s => s.ready)
+  const renameTag    = useTransactionStore(s => s.renameTag)
 
   const [search,     setSearch]     = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  const [editing,    setEditing]    = useState(false)
+  const [draft,      setDraft]      = useState('')
   // Toplu düzenleme seçimi — filtre değişince temizlenir
   const sel = useTxSelection(`${search}|${typeFilter}`)
 
@@ -63,6 +66,19 @@ export default function TagDetailClient({ tag }: Props) {
 
   const color = tagColor(key)
 
+  function startEdit() {
+    setDraft(displayTag)
+    setEditing(true)
+  }
+  async function commitEdit() {
+    const next = normalizeTag(draft)
+    setEditing(false)
+    if (!next || next === displayTag) return
+    await renameTag(displayTag, next)
+    // Etiket taşındı — key değişmişse bu URL boş kalır; yeni etikete yönlendir.
+    if (tagKey(next) !== key) router.replace(`/tags/${encodeURIComponent(next)}`)
+  }
+
   // Wait for the store before deciding a tag has no transactions.
   if (!txsReady) return null
 
@@ -90,10 +106,53 @@ export default function TagDetailClient({ tag }: Props) {
           >
             #
           </span>
-          <div className="min-w-0">
-            <div className="text-base font-semibold text-foreground truncate">{displayTag}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Etiket</div>
-          </div>
+          {editing ? (
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <input
+                type="text"
+                autoFocus
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') commitEdit()
+                  else if (e.key === 'Escape') setEditing(false)
+                }}
+                className="flex-1 min-w-0 text-base font-semibold bg-background px-3 py-1.5 rounded-lg border border-border outline-none focus:border-primary text-foreground"
+              />
+              <button
+                type="button"
+                onClick={commitEdit}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity flex-shrink-0"
+              >
+                Kaydet
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
+              >
+                İptal
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="min-w-0">
+                <div className="text-base font-semibold text-foreground truncate">{displayTag}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Etiket</div>
+              </div>
+              <button
+                type="button"
+                onClick={startEdit}
+                aria-label="Etiketi düzenle"
+                title="Etiketi düzenle"
+                className="ml-auto flex-shrink-0 size-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" width={17} height={17}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
 
         <div className="flex gap-6 pt-4 border-t border-border">

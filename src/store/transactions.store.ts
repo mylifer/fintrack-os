@@ -15,6 +15,7 @@ import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, softDeleteMany, reconcilingPull, localBatch, type BatchOp } from '@/lib/sync/engine'
 import { toBaseTry, baseAmount, rateFor } from '@/lib/utils/fx'
 import { splitMoney } from '@/lib/utils/money'
+import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 
 // Snapshot the base-currency (TRY) value at write time (S2/S3). Every creation
 // path funnels through the store, so stamping here covers the form, refunds,
@@ -74,6 +75,7 @@ interface TransactionState {
     patch: Partial<Transaction>,
     opts?: { addTags?: string[] },
   ) => Promise<void>
+  renameTag: (oldTag: string, newTag: string) => Promise<void>
   remove: (id: string, opts?: RemoveOptions) => Promise<void>
   removeMany: (ids: string[]) => Promise<void>
   getFiltered: (filters: TransactionFilters) => Transaction[]
@@ -285,6 +287,44 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       const reverted = get().transactions.map(t => revById.has(t.id) ? { ...t, ...revById.get(t.id) } : t)
       set({ transactions: reverted })
       useAccountStore.getState().recomputeBalances(reverted)
+    })
+  },
+
+  // Etiket yeniden adlandırma. Etiketler ayrı bir varlık değil — her işlemin
+  // `tags` dizisinde serbest metin olarak yaşar. "Düzenleme" bu yüzden tek satır
+  // değil, eski etiketi (case-insensitive tagKey ile) TAŞIYAN TÜM işlemleri tek
+  // atomik localBatch içinde günceller ve geri alınabilir. Yeni ad mevcut başka
+  // bir etiketle çakışırsa dedupeTags aynı işlemdeki kopyaları birleştirir; bu
+  // durumda iki etiket tek etikette birleşir (kasıtlı — birleştirme davranışı).
+  renameTag: async (oldTag, newTag) => {
+    const from = tagKey(oldTag)
+    const to   = normalizeTag(newTag)
+    if (!from || !to) return
+    const now = new Date().toISOString()
+
+    type PatchOp = Extract<BatchOp, { kind: 'patch' }>
+    const forward: PatchOp[] = []
+    const undoOps: PatchOp[] = []
+    for (const t of get().transactions) {
+      if (!t.tags?.some(x => tagKey(x) === from)) continue
+      // Eşleşen etiketi yeni etiketle değiştir (sırayı koru), sonra dedupe et.
+      const nextTags = dedupeTags(t.tags.map(x => (tagKey(x) === from ? to : x)))
+      forward.push({ kind: 'patch', table: 'transactions', id: t.id, patch: { tags: nextTags, updatedAt: now } })
+      undoOps.push({ kind: 'patch', table: 'transactions', id: t.id, patch: { tags: [...t.tags], updatedAt: t.updatedAt } })
+    }
+    if (forward.length === 0) return
+
+    await localBatch(forward)
+
+    const fwdById = new Map(forward.map(o => [o.id, o.patch]))
+    const next = get().transactions.map(t => fwdById.has(t.id) ? { ...t, ...fwdById.get(t.id) } : t)
+    set({ transactions: next })
+
+    useUndoStore.getState().pushUndo(`Etiket yeniden adlandırıldı (${forward.length} işlem)`, async () => {
+      await localBatch(undoOps)
+      const revById = new Map(undoOps.map(o => [o.id, o.patch]))
+      const reverted = get().transactions.map(t => revById.has(t.id) ? { ...t, ...revById.get(t.id) } : t)
+      set({ transactions: reverted })
     })
   },
 
