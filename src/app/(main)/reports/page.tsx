@@ -449,18 +449,21 @@ export default function ReportsPage() {
 
   const dateRange = useMemo(
     () => {
-      // "Tüm Zamanlar" → aralığı en erken/en geç işlem tarihinden türet; sabit
-      // geniş bir aralık (ör. 1970→bugün) cash-flow grafiğinde onlarca boş ay
-      // üretirdi. İşlem yoksa getPresetRange'in güvenli varsayılanına düşer.
+      // "Tüm Zamanlar" → başlangıç en erken işlem tarihi, bitiş BUGÜN. Bitişi son
+      // işlem tarihine (max) sabitlemek yanlıştı: aralık kullanıcının son kaydından
+      // öteye geçmiyor, dolayısıyla bugüne kadarki fon değeri/dönem güncel fiyatla
+      // ölçülmüyordu. Başlangıç için 1970 gibi sabit erken tarih ise cash-flow
+      // grafiğinde onlarca boş ay üretirdi → en erken işlemden başlarız. İşlem
+      // yoksa (veya hepsi gelecek tarihliyse) getPresetRange varsayılanına düşer.
       if (preset === 'all-time') {
-        let min = '', max = ''
+        let min = ''
         for (const t of transactions) {
           const d = t.date.slice(0, 10)
           if (!d) continue
           if (!min || d < min) min = d
-          if (!max || d > max) max = d
         }
-        if (min && max) return { from: min, to: max }
+        const to = format(new Date(), 'yyyy-MM-dd') // bugüne kadar
+        if (min && min <= to) return { from: min, to }
       }
       return getPresetRange(preset, customFrom, customTo)
     },
