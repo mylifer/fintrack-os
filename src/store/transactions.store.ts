@@ -70,6 +70,7 @@ interface TransactionState {
     opts?: { addTags?: string[] },
   ) => Promise<void>
   remove: (id: string, opts?: RemoveOptions) => Promise<void>
+  removeMany: (ids: string[]) => Promise<void>
   getFiltered: (filters: TransactionFilters) => Transaction[]
 }
 
@@ -239,6 +240,50 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         useAccountStore.getState().recomputeBalances(next)
       })
     }
+  },
+
+  // Toplu silme (batch delete). Tek-satır remove ile AYNI semantik: taksitli bir
+  // işlem seçilince satın almanın TÜM taksitleri (installGroupId) silinir, borç
+  // katkıları geri alınır. Fark: tüm seçim TEK bir "geri al" ile geri gelir ve
+  // bakiye bir kez yeniden hesaplanır. Yatırım satışına bağlı satırların özel
+  // temizliği burada YAPILMAZ (drawer onları hariç tutar) — tıpkı update gibi
+  // mutabakat-karmaşık kayıtlar batch dışında bırakılır.
+  removeMany: async (ids) => {
+    const all = get().transactions
+    const byId = new Map(all.map(t => [t.id, t]))
+    const targetIds = new Set<string>()
+    for (const id of ids) {
+      const tx = byId.get(id)
+      if (!tx) continue
+      if (tx.installGroupId) {
+        for (const t of all) if (t.installGroupId === tx.installGroupId) targetIds.add(t.id)
+      } else {
+        targetIds.add(id)
+      }
+    }
+    const group = [...targetIds].map(id => byId.get(id)!).filter(Boolean)
+    if (group.length === 0) return
+
+    for (const t of group) {
+      await softDelete('transactions', t.id)
+      if (t.debtId) await useDebtStore.getState().revertPayment(t.debtId, baseAmount(t))
+    }
+    const removedIds = new Set(group.map(t => t.id))
+    const remaining = get().transactions.filter(t => !removedIds.has(t.id))
+    set({ transactions: remaining })
+    useAccountStore.getState().recomputeBalances(remaining)
+
+    const label = group.length > 1 ? `${group.length} işlem silindi` : 'İşlem silindi'
+    useUndoStore.getState().pushUndo(label, async () => {
+      for (const t of group) {
+        await localPatch('transactions', t.id, { deleted_at: null })
+        if (t.debtId) await useDebtStore.getState().recordPayment(t.debtId, baseAmount(t))
+      }
+      const next = [...group, ...get().transactions]
+      next.sort(txSortComparator)
+      set({ transactions: next })
+      useAccountStore.getState().recomputeBalances(next)
+    })
   },
 
   getFiltered: (filters) => {

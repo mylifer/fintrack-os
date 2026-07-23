@@ -42,7 +42,7 @@ const RefundIcon = ({ size = 13 }: { size?: number }) => (
 // Silinmek istenen defter işlemi bir yatırım satışının bacağı mı? İki bacak var:
 // satış geliri (invest tx'in linkedTransactionId'si) ve kâr/zarar satırı
 // (cleanSellLinkedTxs ile aynı sezgisel: hesap + tarih + "X Satış Kârı/Zararı").
-function findLinkedInvestSell(
+export function findLinkedInvestSell(
   tx: Transaction,
   investTxs: InvestmentTransaction[],
 ): InvestmentTransaction | undefined {
