@@ -695,20 +695,6 @@ export default function ReportsPage() {
 
       <div className="p-6 flex flex-col gap-6 overflow-auto flex-1">
 
-        {/* ⚠️ GEÇİCİ TEŞHİS — fon getirisi tutarsızlığı için; sonra kaldırılacak */}
-        {!isLoading && (
-          <pre className="text-[11px] leading-relaxed font-mono bg-yellow-500/10 border border-yellow-500/40 rounded-lg p-3 whitespace-pre-wrap">
-{`[TEŞHİS] preset=${preset}  hesap=${accountId}  anahtar=${includeInvestmentIncome ? 'AÇIK' : 'kapalı'}
-aralık: ${dateRange.from} → ${dateRange.to}
-flow.income (gerçekleşen nakit gelir) = ${kpi.income.toFixed(2)}
-flow.expense                          = ${kpi.expense.toFixed(2)}
-fundPeriodNet (ham dönem fon getirisi) = ${fundPeriodNet.toFixed(2)}
-fundGain (gelire eklenen, poz-kapı)    = ${fundGain.toFixed(2)}
-=> incomeTotal (Toplam Gelir kartı)    = ${incomeTotal.toFixed(2)}
-fon kodları: ${fundCodes.join(', ') || '(yok)'}  |  history yüklendi: ${fundCodes.filter(c => fundHistory[`${c}:${dateRange.from}`]).length}/${fundCodes.length}`}
-          </pre>
-        )}
-
         {/* ── KPI Cards ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
           {isLoading ? (

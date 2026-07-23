@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { calcFundPeriodGain, type FundPricePoint } from './fund-period-gain'
 import type { InvestmentTransaction, TefasFundPrice } from '@/types'
+
+// "Bugün"ü sabitle: calcFundPeriodGain'in asOf varsayılanı today() → endsInPast
+// kararı deterministik olsun. FP.date (07-17) bugünden önce; geçmiş-aralık
+// testleri (to < bugün) ile canlı-fiyat testleri (to ≥ bugün) net ayrışsın.
+beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 23, 12, 0, 0)) })
+afterAll(() => { vi.useRealTimers() })
 
 function tx(p: Partial<InvestmentTransaction> & Pick<InvestmentTransaction, 'type' | 'quantity' | 'pricePerUnit' | 'date'>): InvestmentTransaction {
   return { id: p.date + p.type, asset: 'TEFAS:AFA', createdAt: p.date + 'T10:00:00Z', ...p }
@@ -106,6 +112,23 @@ describe('calcFundPeriodGain', () => {
     ]
     // Kalan 6 pay, maliyet 80 → 130: gerçekleşmemiş 300; satış kârı (110−80)×4=120 hariç
     expect(calcFundPeriodGain(txs, FP, {}, '1900-01-01', '2099-12-31', false)).toBeCloseTo(300, 6)
+  })
+
+  it('bugüne uzanan aralık (to = bugün) fiyat tarihi T+1 ile İLERİDE olsa da canlı fiyat kullanır (regresyon: TP2 negatif getiri)', () => {
+    // Gerçek prod bug'ı: bugün 2026-07-23; TEFAS fiyat tarihi (fp.date) T+1 ile 07-24
+    // (bugünden İLERİDE). "Tüm Zamanlar" aralığı 07-15 → 07-23 (=bugün). Eski
+    // `to < fp.date` (07-23 < 07-24) TRUE → dönem yanlışlıkla 'geçmiş' sayılıp
+    // eski/düşük kapanışla ölçülüp getiri NEGATİFE düşüyordu. Doğrusu: to bugünden
+    // önce DEĞİL → canlı fiyat (130), tam getiri.
+    const FP_AHEAD: Record<string, TefasFundPrice> = {
+      AFA: { code: 'AFA', name: 'AFA', price: 130, prevPrice: 128, date: '2026-07-24' }, // T+1: bugünden ileri
+    }
+    const HIST_LOW: Record<string, FundPricePoint[]> = {
+      AFA: [{ date: '2026-07-16', price: 108 }, { date: '2026-07-22', price: 120 }], // dönem içi eski kapanışlar (düşük)
+    }
+    const txs = [tx({ type: 'buy', quantity: 10, pricePerUnit: 100, date: '2026-07-15' })]
+    // qtyStart=0 (alım dönem içi), canlı 130, maliyet 100 → 10×(130−100)=300
+    expect(calcFundPeriodGain(txs, FP_AHEAD, HIST_LOW, '2026-07-15', '2026-07-23', false)).toBeCloseTo(300, 6)
   })
 
   it("'Bugün': TEFAS bugün taze kapanış yayınladıysa son iki kapanış farkı × eldeki miktar", () => {

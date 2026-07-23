@@ -6,6 +6,7 @@
 // burada düşülür; yoksa gelir kartı aynı kazancı iki kez sayar.
 import type { InvestmentTransaction, TefasFundPrice } from '@/types'
 import { tefasAsset, tefasCodesIn } from '@/lib/tefas'
+import { today } from './date'
 
 export interface FundPricePoint { date: string; price: number }
 
@@ -16,6 +17,7 @@ export function calcFundPeriodGain(
   from: string,
   to: string,
   daily: boolean, // 'Bugün': yalnızca TEFAS `to` günü (bugün) taze kapanış yayınladıysa son iki kapanış farkı; aksi halde 0
+  asOf: string = today(), // "şimdi" referansı — dönemin geçmişte bitip bitmediğini belirler (test'te sabitlenebilir)
 ): number {
   let net = 0
   for (const code of tefasCodesIn(investTxs.map(t => t.asset))) {
@@ -64,12 +66,15 @@ export function calcFundPeriodGain(
     const within = pts?.length ? pts.filter(p => p.date >= from && p.date <= to) : []
     const before = pts?.length ? pts.filter(p => p.date < from) : [] // dönem öncesi kapanışlar
 
-    // Dönem SONU değeri: pencere güncel kapanışı (fp.date) kapsıyorsa canlı fiyat
-    // (fp.price) kullanılır. GEÇMİŞTE biten özel aralıklarda ise dönem sonu, `to`
+    // Dönem SONU değeri: dönem BUGÜNE (asOf) kadar uzanıyorsa canlı fiyat (fp.price)
+    // kullanılır. GEÇMİŞTE biten özel aralıklarda (to < bugün) ise dönem sonu, `to`
     // gününe kadarki SON kapanıştır — bugünkü fiyatla ölçmek `to`'dan bugüne olan
-    // hareketi de getiriye katıp aralığı şişirirdi (aracı kurumların tarih aralığı
-    // görünümüyle uyumsuz olurdu). Canlı fiyat hiç yoksa serinin son noktasına düşülür.
-    const endsInPast = fp?.date ? to < fp.date : within.length > 0
+    // hareketi de getiriye katıp aralığı şişirirdi. Bir dönem yalnız `to` bugünden
+    // ÖNCEYSE geçmişte bitmiştir. (Eskiden `to < fp.date` kullanılıyordu; TEFAS
+    // fiyat tarihi T+1 ile bugünden İLERİ olabildiğinden, bugüne kadar uzanan "Tüm
+    // Zamanlar" aralığı yanlışlıkla 'geçmiş' sayılıp eski/düşük kapanışla ölçülüyor
+    // ve getiri negatife düşüyordu.) Canlı fiyat yoksa serinin son noktasına düşülür.
+    const endsInPast = to < asOf
     const pEnd = endsInPast
       ? (within.length ? within[within.length - 1].price : undefined)
       : (fp?.price ?? (pts?.length ? pts[pts.length - 1].price : undefined))
