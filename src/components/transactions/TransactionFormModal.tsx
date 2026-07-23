@@ -82,6 +82,8 @@ function newForm() {
     notes: undefined as string | undefined,
     tags: [] as string[],
     isInstallment: false,
+    installTotal: undefined as number | undefined,
+    installIndex: undefined as number | undefined,
     familyMemberId: undefined as string | null | undefined,
     recipientId:    undefined as string | null | undefined,
     isDebtPayment: false,
@@ -126,6 +128,8 @@ function buildInitialForm(
       notes:          editingTx.notes,
       tags:           editingTx.tags ?? [],
       isInstallment:  editingTx.isInstallment,
+      installTotal:   editingTx.installTotal,
+      installIndex:   editingTx.installIndex,
       familyMemberId: editingTx.familyMemberId ?? undefined,
       recipientId:    editingTx.recipientId    ?? undefined,
       isDebtPayment:  editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId,
@@ -1175,6 +1179,44 @@ export function TransactionFormModal() {
                   </div>
                 )
               })()}
+            </div>
+          )}
+
+          {/* Installment — edit mode: yalnızca bu satırın taksit bilgisini düzenler,
+              grubun geri kalanına dokunmaz. */}
+          {!isRecurring && isEdit && editingTx?.isInstallment && (
+            <div className="rounded-lg border border-dashed p-4 flex flex-col gap-3">
+              <span className="text-sm font-medium">Taksit bilgisi</span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground">Bu taksit</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={form.installTotal ?? 60}
+                  value={form.installIndex ?? ''}
+                  onChange={e => {
+                    const n = Math.max(1, Number(e.target.value) || 1)
+                    patch({ installIndex: n })
+                  }}
+                  className="w-20 h-9 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm text-center outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
+                />
+                <span className="text-sm text-muted-foreground">/</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={form.installTotal ?? ''}
+                  onChange={e => {
+                    const n = Math.max(1, Number(e.target.value) || 1)
+                    patch({ installTotal: n, installIndex: Math.min(form.installIndex ?? 1, n) })
+                  }}
+                  className="w-20 h-9 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm text-center outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
+                />
+                <span className="text-sm text-muted-foreground">taksit</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Değişiklik yalnızca bu işleme uygulanır; taksit grubunun diğer işlemleri etkilenmez.
+              </p>
             </div>
           )}
         </div>
