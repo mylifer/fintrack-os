@@ -19,7 +19,7 @@ import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, isInvestmentPrincipalTx } from '@/lib/utils/calculations'
+import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, isInvestmentPrincipalTx, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
 import { sumBy, toMinor, toMajor } from '@/lib/utils/money'
 import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
@@ -534,16 +534,16 @@ export default function ReportsPage() {
       if (isReconciliation(tx)) return false
       // Satış anaparası ("… Satışı") her durumda akış toplamlarından hariç
       // (isInvestmentPrincipalTx, calcPeriodFlow içinde) — özsermaye geri dönüşü
-      // gelir değildir. GERÇEKLEŞEN satış kârı ("… Satış Kârı", income + icon) ise
-      // gerçek nakit olduğu için "Yatırım gelirleri" kapalıyken DE gelirde kalır —
-      // dashboard ile birebir aynı: checkbox yalnız gerçekleşmemiş fon getirisini
-      // (fundGain) etkiler, ledger'daki realize kâr satırlarını değil.
+      // gelir değildir. GERÇEKLEŞEN satış kârı/zararı ("… Satış Kârı/Zararı") ise
+      // "Fon getirisi" anahtarı (includeFundGain) KAPALIYKEN gelir/giderden çıkarılır
+      // — dashboard ile birebir aynı (isRealizedInvestmentPnlTx); açıkken dahildir.
+      if (!includeInvestmentIncome && isRealizedInvestmentPnlTx(tx)) return false
       if (accountId !== 'all') {
         if (tx.accountId !== accountId && tx.toAccountId !== accountId) return false
       }
       return true
     }),
-    [postedTxs, dateRange, accountId],
+    [postedTxs, dateRange, accountId, includeInvestmentIncome],
   )
 
   const kpi = useMemo(() => {
@@ -551,12 +551,12 @@ export default function ReportsPage() {
     // TRY-normalize (baseAmount) + kuruş-exact toplar → dashboard'daki gelir/gider
     // kartlarıyla (calcPeriodFlow/calcMonthlyFlow) birebir aynı sayı.
     //
-    // "Toplam Gelir" YALNIZCA gerçekleşen nakit geliri (maaş + realize satış kârı)
-    // gösterir; gerçekleşmemiş fon getirisi (fundGain, mark-to-market) buraya
-    // EKLENMEZ — çünkü o dönem-göreceli bir kağıt kazançtır ve "Tüm Zamanlar"da
-    // güncel toplam K/Z olduğundan tek bir ayınkinin altında kalabiliyordu
-    // (gelir dönem büyüdükçe monoton artmalı). Fon getirisi alt-etikette ayrı
-    // gösterilir; dashboard kendi kuralını korur.
+    // "Toplam Gelir" gerçekleşen nakit geliri gösterir; gerçekleşmemiş fon getirisi
+    // (fundGain, mark-to-market) buraya EKLENMEZ — çünkü o dönem-göreceli bir kağıt
+    // kazançtır ve "Tüm Zamanlar"da güncel toplam K/Z olduğundan tek bir ayınkinin
+    // altında kalabiliyordu (gelir dönem büyüdükçe monoton artmalı). Realize satış
+    // kârı/zararı ise anahtar AÇIKKEN dahildir, KAPALIYKEN filteredTxs'te çıkarıldı
+    // (dashboard ile aynı aylık gelir). Fon getirisi alt-etikette ayrı gösterilir.
     const flow    = calcPeriodFlow(filteredTxs, dateRange.from, dateRange.to)
     const income  = flow.income
     const expense = flow.expense
