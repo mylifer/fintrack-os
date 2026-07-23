@@ -82,8 +82,6 @@ function newForm() {
     notes: undefined as string | undefined,
     tags: [] as string[],
     isInstallment: false,
-    installTotal: undefined as number | undefined,
-    installIndex: undefined as number | undefined,
     familyMemberId: undefined as string | null | undefined,
     recipientId:    undefined as string | null | undefined,
     isDebtPayment: false,
@@ -128,8 +126,6 @@ function buildInitialForm(
       notes:          editingTx.notes,
       tags:           editingTx.tags ?? [],
       isInstallment:  editingTx.isInstallment,
-      installTotal:   editingTx.installTotal,
-      installIndex:   editingTx.installIndex,
       familyMemberId: editingTx.familyMemberId ?? undefined,
       recipientId:    editingTx.recipientId    ?? undefined,
       isDebtPayment:  editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId,
@@ -373,6 +369,7 @@ export function TransactionFormModal() {
   const transactions = useTransactionStore(s => s.transactions)
   const addTx        = useTransactionStore(s => s.add)
   const addGroup     = useTransactionStore(s => s.addInstallmentGroup)
+  const updateGroup  = useTransactionStore(s => s.updateInstallmentGroup)
   const updateTx     = useTransactionStore(s => s.update)
   const allPeople    = usePeopleStore(s => s.people)
   const activeDebts  = useDebtStore(useShallow(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe')))
@@ -394,11 +391,27 @@ export function TransactionFormModal() {
     ? recurring.find(r => r.id === modalPayload.id)
     : undefined
 
+  // Taksitli bir işlem düzenleniyorsa grubun TÜM satırları (installIndex sırasıyla).
+  // 'İlk giriş' görünümü bundan beslenir: toplam tutar, taksit sayısı ve her
+  // taksitin tutarı. Grup yoksa boş — tekil işlem normal akıştan gider.
+  const installGroup = useMemo(() =>
+    editingTx?.isInstallment && editingTx.installGroupId
+      ? transactions
+          .filter(t => t.installGroupId === editingTx.installGroupId)
+          .sort((a, b) => (a.installIndex ?? 0) - (b.installIndex ?? 0))
+      : [],
+    [editingTx, transactions])
+
   // Lazy initializers run exactly once — the component is remounted (keyed) per
   // open, so first-render values (editingTx / modalPayload) are the correct seed.
   const [tab, setTab]             = useState<Tab>(() =>
     editingRec ? editingRec.type as Tab : isEdit && editingTx ? editingTx.type as Tab : 'expense')
-  const [form, setForm]           = useState(() => buildInitialForm(isEdit, editingTx, editingRec, modalPayload))
+  const [form, setForm]           = useState(() => {
+    const f = buildInitialForm(isEdit, editingTx, editingRec, modalPayload)
+    // Taksitli grup düzenleniyorsa tarih ilk taksitinki olsun (ilk-giriş görünümü).
+    if (installGroup.length) f.date = installGroup[0].date
+    return f
+  })
   const [rec, setRec]             = useState(() => editingRec
     ? {
         name:       editingRec.name,
@@ -409,7 +422,10 @@ export function TransactionFormModal() {
       }
     : newRecurringForm())
   const [amountStr, setAmountStr] = useState(() => {
-    const seed = editingRec?.amount ?? (isEdit && editingTx ? editingTx.amount : undefined)
+    // Taksitli grup düzenleniyorsa 'Tutar' toplamı gösterir (ilk-giriş gibi).
+    const seed = installGroup.length
+      ? sumMoney(installGroup.map(t => t.amount))
+      : editingRec?.amount ?? (isEdit && editingTx ? editingTx.amount : undefined)
     return seed !== undefined
       ? new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2, useGrouping: false }).format(Math.abs(seed))
       : ''
@@ -417,12 +433,15 @@ export function TransactionFormModal() {
   // Sign of the amount. Always +1 except when editing a refund (negative
   // expense), where we preserve the negative so a save doesn't flip it positive.
   const [amountSign, setAmountSign] = useState(() => isEdit && editingTx && editingTx.amount < 0 ? -1 : 1)
-  const [installments, setInstallments] = useState(() => isEdit && editingTx ? (editingTx.installTotal ?? 1) : 1)
+  const [installments, setInstallments] = useState(() =>
+    installGroup.length || (isEdit && editingTx ? (editingTx.installTotal ?? 1) : 1))
   // Elle düzenlenen taksit tutarları (amountStr formatında raw string'ler).
   // null → otomatik bölüşüm (splitMoney). Toplam tutar veya taksit sayısı
   // değişince elle girilenler geçersizleşir, otomatiğe dönülür (onChange'lerde
-  // sıfırlanır — effect içinde setState lint'e takılıyor).
-  const [manualAmounts, setManualAmounts] = useState<string[] | null>(null)
+  // sıfırlanır — effect içinde setState lint'e takılıyor). Taksitli grup
+  // düzenleniyorsa mevcut taksit tutarlarıyla tohumlanır (gerçek tutarlar görünür).
+  const [manualAmounts, setManualAmounts] = useState<string[] | null>(() =>
+    installGroup.length ? installGroup.map(t => toAmountStr(t.amount)) : null)
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
 
@@ -595,7 +614,25 @@ export function TransactionFormModal() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { isDebtPayment: _idp, ...formData } = form
 
-    if (editingTx) {
+    if (editingTx && editingTx.isInstallment && editingTx.installGroupId && installments > 1) {
+      // Taksitli grup düzenleme: 'ilk giriş' gibi toplam/sayı/taksitler tüm gruba
+      // uygulanır. Taksit tutarları pozitif harcamadır → büyüklük kullanılır.
+      const total   = parseCurrencyInput(amountStr)
+      const rows    = manualAmounts ?? splitMoney(total, installments).map(toAmountStr)
+      const amounts = rows.map(s => parseCurrencyInput(s))
+      await updateGroup(editingTx.installGroupId, {
+        type:           tab as TransactionType,
+        currency,
+        accountId:      form.accountId,
+        categoryId:     formData.categoryId || undefined,
+        description:    form.description.trim(),
+        notes:          formData.notes || undefined,
+        tags:           cleanTags.length ? cleanTags : undefined,
+        familyMemberId: formData.familyMemberId ?? null,
+        recipientId:    formData.recipientId ?? null,
+        date:           form.date,
+      }, amounts)
+    } else if (editingTx) {
       await updateTx(editingTx.id, {
         ...formData, type: tab as TransactionType, amount, currency, updatedAt: now,
         categoryId:     formData.categoryId     || undefined,
@@ -1091,21 +1128,29 @@ export function TransactionFormModal() {
             </div>
           )}
 
-          {/* Installment */}
-          {!isRecurring && tab === 'expense' && !isEdit && (
+          {/* Installment — oluşturmada checkbox'la açılır; taksitli bir grup
+              düzenlenirken 'ilk giriş' gibi tutar/sayı/taksitler değiştirilebilir. */}
+          {!isRecurring && tab === 'expense' && (!isEdit || installGroup.length > 0) && (
             <div className="rounded-lg border border-dashed p-4 flex flex-col gap-3">
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={form.isInstallment}
-                  onChange={e => {
-                    patch({ isInstallment: e.target.checked })
-                    if (!e.target.checked) setManualAmounts(null)
-                  }}
-                  className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
-                />
-                <span className="text-sm font-medium">Taksitli ödeme</span>
-              </label>
+              {isEdit ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Taksitli ödeme</span>
+                  <span className="text-xs text-muted-foreground">Değişiklik tüm taksitlere uygulanır</span>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.isInstallment}
+                    onChange={e => {
+                      patch({ isInstallment: e.target.checked })
+                      if (!e.target.checked) setManualAmounts(null)
+                    }}
+                    className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                  />
+                  <span className="text-sm font-medium">Taksitli ödeme</span>
+                </label>
+              )}
               {form.isInstallment && (
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-muted-foreground">Taksit sayısı</span>
@@ -1179,44 +1224,6 @@ export function TransactionFormModal() {
                   </div>
                 )
               })()}
-            </div>
-          )}
-
-          {/* Installment — edit mode: yalnızca bu satırın taksit bilgisini düzenler,
-              grubun geri kalanına dokunmaz. */}
-          {!isRecurring && isEdit && editingTx?.isInstallment && (
-            <div className="rounded-lg border border-dashed p-4 flex flex-col gap-3">
-              <span className="text-sm font-medium">Taksit bilgisi</span>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground">Bu taksit</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={form.installTotal ?? 60}
-                  value={form.installIndex ?? ''}
-                  onChange={e => {
-                    const n = Math.max(1, Number(e.target.value) || 1)
-                    patch({ installIndex: n })
-                  }}
-                  className="w-20 h-9 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm text-center outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
-                />
-                <span className="text-sm text-muted-foreground">/</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={120}
-                  value={form.installTotal ?? ''}
-                  onChange={e => {
-                    const n = Math.max(1, Number(e.target.value) || 1)
-                    patch({ installTotal: n, installIndex: Math.min(form.installIndex ?? 1, n) })
-                  }}
-                  className="w-20 h-9 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm text-center outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
-                />
-                <span className="text-sm text-muted-foreground">taksit</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Değişiklik yalnızca bu işleme uygulanır; taksit grubunun diğer işlemleri etkilenmez.
-              </p>
             </div>
           )}
         </div>
