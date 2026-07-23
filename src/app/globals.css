@@ -163,6 +163,23 @@
   animation: chart-reveal 0.5s cubic-bezier(0, 0, 0.2, 1) both;
 }
 
+/* Soldan sağa çizim: recharts'ın kendi ilk-boyama animasyonu arka planda gelen
+   fiyat güncellemesiyle yarıda kesilip şekil-morph'una dönüşüyordu; bunun yerine
+   sarmalayıcıyı clip-path ile açığa çıkarıp veriden bağımsız, tek seferlik ve
+   kesintisiz bir çizim sağlıyoruz. */
+@keyframes chart-draw {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+.chart-draw {
+  /* backwards: başlangıçta 'from' karesini uygular (ilk-kare parlaması olmaz),
+     bitince clip-path'ı normale döndürür (tooltip kenarlarda kırpılmaz). */
+  animation: chart-draw 1.6s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chart-draw { animation: none; }
+}
+
 /* ─────────────────────────────────────────────────────────────────
    BASE LAYER
    ───────────────────────────────────────────────────────────────── */

@@ -99,7 +99,7 @@ export default function NetWorthLineChart({ data }: Props) {
   const xTicks  = data.filter(p => p.label !== '').map(p => p.date)
 
   return (
-    <div className="w-full px-4">
+    <div className="w-full px-4 chart-draw">
       <ResponsiveContainer width="100%" height={240}>
         <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
           <defs>
@@ -164,12 +164,11 @@ export default function NetWorthLineChart({ data }: Props) {
               stroke: 'var(--background)',
               strokeWidth: 2.5,
             }}
-            // Açılışta çizgi soldan sağa büyüyerek çizilir; veri güncellenince
-            // (geç gelen fiyat serisi, aralık değişimi) eski şekilden yenisine
-            // yumuşak geçiş yapar — ani zıplama görünmez
-            isAnimationActive
-            animationDuration={1600}
-            animationEasing="ease-out"
+            // Soldan sağa çizim artık sarmalayıcının .chart-draw clip-path
+            // animasyonuyla yapılıyor (veriden bağımsız, kesintisiz). Recharts'ın
+            // kendi animasyonu kapalı: arka planda gelen fiyat güncellemesi ilk
+            // boyamayı yarıda kesip şekil-morph'una çeviriyordu (çizim görünmüyordu).
+            isAnimationActive={false}
           />
         </AreaChart>
       </ResponsiveContainer>
