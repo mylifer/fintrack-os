@@ -5,6 +5,8 @@ import { notFound, useRouter } from 'next/navigation'
 import { usePeopleStore, useTransactionStore } from '@/store'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { TransactionList } from '@/components/transactions/TransactionList'
+import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
+import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
@@ -26,6 +28,8 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
 
   const [search,     setSearch]     = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  // Toplu düzenleme seçimi — filtre değişince temizlenir
+  const sel = useTxSelection(`${search}|${typeFilter}`)
 
   const person = people.find(p => p.id === id && p.role === role)
 
@@ -129,8 +133,14 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
           showAccount
           emptyTitle="İşlem bulunamadı"
           emptyDescription={search || typeFilter ? 'Filtreyle eşleşen işlem yok.' : `${person.name} için henüz işlem eklenmemiş.`}
+          selectable
+          selectedIds={sel.selectedIds}
+          onToggleSelect={sel.toggle}
+          onSelectMany={sel.selectMany}
         />
       </div>
+
+      <BatchEditDrawer selectedIds={sel.list} onClose={sel.clear} />
     </>
   )
 }

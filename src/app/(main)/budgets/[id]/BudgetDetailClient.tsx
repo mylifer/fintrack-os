@@ -6,6 +6,8 @@ import { useBudgetStore, useTransactionStore, useCategoryStore } from '@/store'
 import { ProgressBar }     from '@/components/ui/ProgressBar'
 import { CategoryIcon }    from '@/components/categories/CategoryIcon'
 import { TransactionList } from '@/components/transactions/TransactionList'
+import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
+import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { Modal }           from '@/components/ui/Modal'
 import { Button }          from '@/components/ui/button'
 import { CurrencyInput }   from '@/components/ui/CurrencyInput'
@@ -54,6 +56,8 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   const [selectedMonth, setSelectedMonth] = useState<MonthYear>(currentMonthYear())
   const [allTime,       setAllTime]       = useState(false)
   const [catFilter,     setCatFilter]     = useState<string | null>(null)
+  // Toplu düzenleme seçimi — filtre/dönem değişince temizlenir
+  const sel = useTxSelection(`${search}|${allTime}|${selectedMonth.year}-${selectedMonth.month}|${catFilter ?? ''}`)
 
   // ── Edit modal state ──────────────────────────────────────────────────────
   const [showEdit,       setShowEdit]       = useState(false)
@@ -354,8 +358,14 @@ export default function BudgetDetailClient({ id }: { id: string }) {
               ? `"${search}" ile eşleşen işlem yok.`
               : 'Bu bütçeye ait gider kaydı bulunmuyor.'
           }
+          selectable
+          selectedIds={sel.selectedIds}
+          onToggleSelect={sel.toggle}
+          onSelectMany={sel.selectMany}
         />
       </div>
+
+      <BatchEditDrawer selectedIds={sel.list} onClose={sel.clear} />
 
       {/* ── Edit modal ─────────────────────────────────────────────────────── */}
       <Modal open={showEdit} onClose={() => setShowEdit(false)} title="Bütçeyi Düzenle" size="sm">

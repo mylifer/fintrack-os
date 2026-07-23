@@ -4,6 +4,8 @@ import { useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTransactionStore, useInvestmentStore } from '@/store'
 import { TransactionList } from '@/components/transactions/TransactionList'
+import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
+import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { findSubscriptionGroup } from '@/lib/utils/subscriptions'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -50,6 +52,9 @@ export default function SubscriptionDetailClient({ groupKey }: Props) {
     () => findSubscriptionGroup(transactions, groupKey),
     [transactions, groupKey],
   )
+
+  // Toplu düzenleme seçimi (koşullu return'lardan ÖNCE — hook kuralları)
+  const sel = useTxSelection(groupKey)
 
   // Wait for the store before deciding a subscription can't be found.
   if (!txsReady) return null
@@ -107,8 +112,14 @@ export default function SubscriptionDetailClient({ groupKey }: Props) {
           showAccount
           emptyTitle="İşlem yok"
           emptyDescription="Bu aboneliğe ait işlem bulunamadı."
+          selectable
+          selectedIds={sel.selectedIds}
+          onToggleSelect={sel.toggle}
+          onSelectMany={sel.selectMany}
         />
       </div>
+
+      <BatchEditDrawer selectedIds={sel.list} onClose={sel.clear} />
     </div>
   )
 }

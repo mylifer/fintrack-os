@@ -19,6 +19,8 @@ import { Button }             from '@/components/ui/button'
 import { SelectField }        from '@/components/ui/Select'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
 import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
+import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
+import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import type { Account, PersonRole, Transaction } from '@/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -100,6 +102,9 @@ export default function AccountDetailClient({ id }: { id: string }) {
     }),
     [accountTxs, projectedTxs, from, to, familyFilter, recipientFilter, typeFilter, categoryFilter, search, searchMatcher],
   )
+
+  // Toplu düzenleme seçimi — filtre/dönem değişince temizlenir
+  const sel = useTxSelection(`${from}|${to}|${search}|${typeFilter}|${categoryFilter}|${familyFilter?.id ?? ''}|${recipientFilter?.id ?? ''}`)
 
   // Filtre alanı seçenekleri
   const categoryOptions = useMemo(() => [
@@ -322,8 +327,14 @@ export default function AccountDetailClient({ id }: { id: string }) {
           emptyTitle="Bu dönemde işlem yok"
           emptyDescription="Farklı bir dönem seçin veya İşlem Ekle ile kayıt oluşturun."
           onPersonClick={handlePersonClick}
+          selectable
+          selectedIds={sel.selectedIds}
+          onToggleSelect={sel.toggle}
+          onSelectMany={sel.selectMany}
         />
       </div>
+
+      <BatchEditDrawer selectedIds={sel.list} onClose={sel.clear} />
 
       {editingAccount && (
         <AccountFormModal

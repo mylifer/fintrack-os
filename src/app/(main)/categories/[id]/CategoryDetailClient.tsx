@@ -6,6 +6,8 @@ import { useCategoryStore, useTransactionStore } from '@/store'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { CategoryIconPicker } from '@/components/categories/CategoryIconPicker'
 import { TransactionList } from '@/components/transactions/TransactionList'
+import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
+import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { compareCategoriesByName } from '@/lib/utils/categories'
@@ -26,6 +28,8 @@ export default function CategoryDetailClient({ id }: Props) {
   /* ── Filter state ── */
   const [search,     setSearch]     = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  // Toplu düzenleme seçimi — filtre değişince temizlenir
+  const sel = useTxSelection(`${search}|${typeFilter}`)
 
   /* ── Helpers ── */
   const getLevel = useCallback((catId: string): 0 | 1 | 2 => {
@@ -316,8 +320,14 @@ export default function CategoryDetailClient({ id }: Props) {
           showAccount
           emptyTitle="İşlem bulunamadı"
           emptyDescription={search || typeFilter ? 'Filtreyle eşleşen işlem yok.' : 'Bu kategoriye ait henüz işlem yok.'}
+          selectable
+          selectedIds={sel.selectedIds}
+          onToggleSelect={sel.toggle}
+          onSelectMany={sel.selectMany}
         />
       </div>
+
+      <BatchEditDrawer selectedIds={sel.list} onClose={sel.clear} />
     </div>
   )
 }

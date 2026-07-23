@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTransactionStore } from '@/store'
 import { TransactionList } from '@/components/transactions/TransactionList'
+import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
+import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { tagKey, tagColor } from '@/lib/utils/tags'
@@ -18,6 +20,8 @@ export default function TagDetailClient({ tag }: Props) {
 
   const [search,     setSearch]     = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  // Toplu düzenleme seçimi — filtre değişince temizlenir
+  const sel = useTxSelection(`${search}|${typeFilter}`)
 
   const key = tagKey(tag)
 
@@ -142,8 +146,14 @@ export default function TagDetailClient({ tag }: Props) {
               ? `"${displayTag}" etiketli işlem yok. Bu etiket artık kullanılmıyor olabilir.`
               : 'Filtreyle eşleşen işlem yok.'
           }
+          selectable
+          selectedIds={sel.selectedIds}
+          onToggleSelect={sel.toggle}
+          onSelectMany={sel.selectMany}
         />
       </div>
+
+      <BatchEditDrawer selectedIds={sel.list} onClose={sel.clear} />
     </div>
   )
 }
