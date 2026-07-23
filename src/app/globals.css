@@ -168,13 +168,15 @@
    sarmalayıcıyı clip-path ile açığa çıkarıp veriden bağımsız, tek seferlik ve
    kesintisiz bir çizim sağlıyoruz. */
 @keyframes chart-draw {
-  from { clip-path: inset(0 100% 0 0); }
-  to   { clip-path: inset(0 0 0 0); }
+  from { clip-path: inset(0 100% 0 0); opacity: 0.35; }
+  60%  { opacity: 1; }
+  to   { clip-path: inset(0 0 0 0);   opacity: 1; }
 }
 .chart-draw {
   /* backwards: başlangıçta 'from' karesini uygular (ilk-kare parlaması olmaz),
-     bitince clip-path'ı normale döndürür (tooltip kenarlarda kırpılmaz). */
-  animation: chart-draw 1.6s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+     bitince clip-path'ı normale döndürür (tooltip kenarlarda kırpılmaz).
+     Yumuşak ease-in-out eğrisi + hafif opaklık geçişi ile daha akıcı açılış. */
+  animation: chart-draw 1.9s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .chart-draw { animation: none; }
