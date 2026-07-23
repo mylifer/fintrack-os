@@ -9,7 +9,7 @@ import {
   useDebtStore, useRecurringStore, usePeopleStore, useSettingsStore,
 } from '@/store'
 import { format, parseISO, startOfMonth, subDays, differenceInDays } from 'date-fns'
-import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
+import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect, isPosted, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { tefasCodesIn } from '@/lib/tefas'
 import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
@@ -149,9 +149,16 @@ export default function DashboardPage() {
   // nakdin altına inmesin); yalnız bilgi satırında gösterilir.
   const includeFundGain = useSettingsStore(s => s.includeFundGain)
   const fundGain = includeFundGain && fundPeriodNet > 0 ? fundPeriodNet : 0
+  // Anahtar KAPALIYKEN gelir/net "fon-sız" olmalı: gerçekleşmemiş fon getirisi
+  // (fundGain=0) YANINDA gerçekleşen "… Satış Kârı/Zararı" satırları da akıştan
+  // düşülür. Açıkken mevcut davranış (hepsi dahil) korunur.
+  const flowTxs = useMemo(
+    () => includeFundGain ? transactions : transactions.filter(t => !isRealizedInvestmentPnlTx(t)),
+    [transactions, includeFundGain],
+  )
   const { income, expense, net } = useMemo(
-    () => calcPeriodFlow(transactions, from, to),
-    [transactions, from, to],
+    () => calcPeriodFlow(flowTxs, from, to),
+    [flowTxs, from, to],
   )
   const netWorth    = calcNetWorth(accounts, prices) + investValue
   const totalAssets = calcTotalAssets(accounts, prices) + investValue
@@ -185,8 +192,10 @@ export default function DashboardPage() {
   }, [customActive, from, to, periodType])
   const prevFlow = useMemo(() => {
     if (!prevRange) return null
-    return calcPeriodFlow(transactions, prevRange.from, prevRange.to)
-  }, [transactions, prevRange])
+    // flowTxs: anahtar kapalıyken önceki dönem de fon-sız tabana oturur → trend
+    // ('önceki dönemden') farkı aynı temele göre hesaplanır.
+    return calcPeriodFlow(flowTxs, prevRange.from, prevRange.to)
+  }, [flowTxs, prevRange])
   const prevWorth = useMemo(() => {
     if (!prevRange) return null
     const prevTxs = transactions.filter(t => isPosted(t, prevRange.to))

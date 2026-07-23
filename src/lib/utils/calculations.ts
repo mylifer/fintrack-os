@@ -226,6 +226,16 @@ export function isInvestmentPrincipalTx(t: Pick<Transaction, 'icon' | 'descripti
   return !!t.icon && (t.description.endsWith('Alımı') || t.description.endsWith('Satışı'))
 }
 
+// Gerçekleşen yatırım kâr/zararı — satış anında yazılan "… Satış Kârı" (gelir) ve
+// "… Satış Zararı" (gider) defter satırları. Bunlar GERÇEK nakit gelir/giderdir ve
+// normalde akışa (isFlowTx) dahildir. Ancak dashboard "Fon getirileri dahil"
+// anahtarı KAPALIYKEN, kullanıcı fon-sız bir gelir/net görmek istediğinden bu
+// satırlar da (gerçekleşmemiş fon getirisiyle birlikte) akıştan çıkarılır.
+// icon+açıklama sezgisi isInvestmentPrincipalTx ile aynı konvansiyonu paylaşır.
+export function isRealizedInvestmentPnlTx(t: Pick<Transaction, 'icon' | 'description'>): boolean {
+  return !!t.icon && (t.description.endsWith('Satış Kârı') || t.description.endsWith('Satış Zararı'))
+}
+
 // Income/expense/net over an already date-scoped slice, summed in TRY-normalized
 // amountTry (S2/S3) via integer minor units (S8). No ghosting — callers decide
 // whether to pre-filter reconciliation.

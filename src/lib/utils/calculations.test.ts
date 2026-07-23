@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isInvestmentPrincipalTx, isPosted, sumByType, sumExpenseByKey } from './calculations'
+import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isInvestmentPrincipalTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -37,6 +37,32 @@ describe('yatırım anaparası akıştan hariç, gerçekleşen K/Z dahil', () =>
     expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: 'AKB Satış Zararı' }))).toBe(false)
     // icon yoksa (normal işlem) hiç eşleşmez, açıklaması ne olursa olsun
     expect(isInvestmentPrincipalTx(tx({ description: 'Manuel Alımı' }))).toBe(false)
+  })
+
+  it('isRealizedInvestmentPnlTx: yalnız icon\'lu "… Satış Kârı/Zararı" satırları', () => {
+    expect(isRealizedInvestmentPnlTx(tx({ icon: 'F', description: 'AKB Satış Kârı' }))).toBe(true)
+    expect(isRealizedInvestmentPnlTx(tx({ icon: 'F', description: 'AKB Satış Zararı' }))).toBe(true)
+    // anapara hareketi P&L değil
+    expect(isRealizedInvestmentPnlTx(tx({ icon: 'F', description: '10 AKB Satışı' }))).toBe(false)
+    expect(isRealizedInvestmentPnlTx(tx({ icon: 'F', description: '10 AKB Alımı' }))).toBe(false)
+    // icon yoksa eşleşmez (kullanıcının elle yazdığı benzer açıklama)
+    expect(isRealizedInvestmentPnlTx(tx({ description: 'Dükkan Satış Kârı' }))).toBe(false)
+  })
+
+  it('dashboard fon-sız akış: P&L satırları çıkarılınca gelir/net fon-sız olur', () => {
+    // Dashboard "Fon getirileri dahil" KAPALIYKEN uygulanan ön-filtre ile aynı:
+    // gerçekleşen "… Satış Kârı/Zararı" satırları akış dışı bırakılır.
+    const txs = [
+      tx({ type: 'income',  amount: 800,  amountTry: 800,  icon: 'F', description: 'AKB Satış Kârı' }),
+      tx({ type: 'expense', amount: 200,  amountTry: 200,  icon: 'F', description: 'THY Satış Zararı' }),
+      tx({ type: 'income',  amount: 1000, amountTry: 1000, description: 'Maaş' }),
+      tx({ type: 'expense', amount: 300,  amountTry: 300,  description: 'Market' }),
+    ]
+    const fundFree = txs.filter(t => !isRealizedInvestmentPnlTx(t))
+    const r = calcPeriodFlow(fundFree, '2026-01-01', '2026-01-31')
+    expect(r.income).toBe(1000)   // yalnız maaş — satış kârı düştü
+    expect(r.expense).toBe(300)   // yalnız market — satış zararı düştü
+    expect(r.net).toBe(700)
   })
 
   it('calcPeriodFlow: satış anaparasını atar, satış kârını gelir sayar', () => {

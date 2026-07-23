@@ -8,10 +8,11 @@ import { persist } from 'zustand/middleware'
    UI durumundan (ui.store) ayrı tutulur; buradaki her alan localStorage'a
    yazılır.
 
-   includeFundGain: dönemsel TEFAS fon getirisi gelir/net hesaplarına ve
-   anasayfa widget'larına dahil edilsin mi? Varsayılan açık (mevcut davranış).
-   Kapalıyken dashboard fon getirisini tüm kartlardan ve nakit akışı
-   grafiğinden çıkarır. */
+   includeFundGain: fon getirisi gelir/net hesaplarına dahil edilsin mi?
+   Varsayılan açık (mevcut davranış). Kapalıyken dashboard geliri/net'i
+   TAMAMEN fon-sız gösterir: (1) gerçekleşmemiş dönemsel TEFAS fon getirisi
+   (fundGain) eklenmez ve (2) gerçekleşen "… Satış Kârı/Zararı" defter
+   satırları da akıştan (gelir/gider/net) düşülür — isRealizedInvestmentPnlTx. */
 
 interface SettingsState {
   includeFundGain: boolean
