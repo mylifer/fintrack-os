@@ -168,7 +168,7 @@ export default function NetWorthLineChart({ data }: Props) {
             // (geç gelen fiyat serisi, aralık değişimi) eski şekilden yenisine
             // yumuşak geçiş yapar — ani zıplama görünmez
             isAnimationActive
-            animationDuration={800}
+            animationDuration={1600}
             animationEasing="ease-out"
           />
         </AreaChart>
