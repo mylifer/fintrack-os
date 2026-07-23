@@ -284,9 +284,11 @@ const TableTxRow = memo(function TableTxRow({
       className={
         grouped
           ? [
-              'group grid transition-colors mx-2 overflow-hidden border-l border-r border-b border-border',
+              // Dark'ta mockup B değerleri: kenarlık #232323 (nötr koyu gri,
+              // beyaz-şeffaf yerine), iç ayraç ise daha soluk (beyaz %6).
+              'group grid transition-colors mx-2 overflow-hidden border-l border-r border-b border-border dark:border-[#232323]',
               isFirst ? 'border-t rounded-t-[10px]' : '',
-              isLast  ? 'rounded-b-[10px]' : 'border-b-border/40',
+              isLast  ? 'rounded-b-[10px]' : 'border-b-border/40 dark:border-b-white/[0.06]',
               selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]'
                 : future ? 'bg-sky-500/[0.06] hover:bg-sky-500/[0.09]'
                 : 'bg-card hover:bg-accent/40',
@@ -785,9 +787,10 @@ export function TransactionList({
     // mx-2 (8px) + sol kenarlık (1px) + açıklama hücresi px-3 (12px).
     const dayLabelInset = (selectable ? SELECT_COL_W : 0) + 8 + 1 + 12
     return (
-      // Katmanlı nötr: çerçeve zemini bloklardan bir kademe koyu (bg-background),
-      // gün blokları kart yüzeyinde (bg-card) ada gibi durur.
-      <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto mx-6 my-3 rounded-xl border border-border/70 bg-background">
+      // Katmanlı nötr: çerçeve zemini bloklardan bir kademe koyu, gün blokları
+      // kart yüzeyinde ada gibi durur. Dark'ta mockup B değeri (#101010) —
+      // #0a0a0a'dan bir tık açık, blok kontrastı daha yumuşak.
+      <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto mx-6 my-3 rounded-xl border border-border/70 bg-background dark:bg-[#101010]">
         <div style={{ minWidth: TABLE_MIN_W + (selectable ? SELECT_COL_W : 0) }}>
 
           {/* Sticky column headers — bloklarla aynı yüzey (bg-card), gün bloğu
