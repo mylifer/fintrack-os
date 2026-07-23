@@ -222,6 +222,15 @@ function DateSeparator({ date, topClass, future }: { date: string; topClass: str
   )
 }
 
+// ── Day label (table gün-bloğu düzeni): tarih, bloğun üstünde duran etiket ──
+function DayLabel({ date, future }: { date: string; future?: boolean }) {
+  return (
+    <div className={`text-[10px] font-bold uppercase tracking-[0.1em] whitespace-nowrap select-none ${future ? 'text-sky-500/90' : 'text-muted-foreground'}`}>
+      {formatDate(date, 'd MMM')} · {formatDate(date, 'EEEE')}
+    </div>
+  )
+}
+
 // ── Section banner: gelecek işlemleri gerçekleşenlerden görsel olarak ayırır ──
 function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: number; topClass: string }) {
   const future = id === 'future'
@@ -242,7 +251,7 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
   tx, cat, account, toAccount, recipient, family, balanceAfter, projected, future, openModal, removeTx,
-  selectable, selected, onToggleSelect,
+  selectable, selected, onToggleSelect, grouped, isFirst, isLast,
 }: {
   tx: Transaction
   cat?: Category
@@ -258,19 +267,37 @@ const TableTxRow = memo(function TableTxRow({
   selectable?: boolean
   selected?: boolean
   onToggleSelect?: (id: string) => void
+  /** Tarih bazlı gruplamada satır bir "gün bloğu"nun parçasıdır (kenarlıklı,
+   *  köşeleri yuvarlatılmış ada). Miktar sıralamasında blok yoktur. */
+  grouped?: boolean
+  isFirst?: boolean
+  isLast?: boolean
 }) {
   const isIncome    = tx.type === 'income'
   const isXfer      = tx.type === 'transfer'
   const isRefund    = tx.type === 'expense' && tx.amount < 0
   return (
-    // Düz, sürekli satır yüzeyi (örnek/mockup görünümü): kenarlıklı grup kartları
-    // yerine yalnızca ince alt ayraç + hover. Kart yüzeyini saran konteyner sağlar.
+    // Tarih gruplamasında her gün, kenarlıklı ve köşeleri yuvarlatılmış bir
+    // "ada" (gün bloğu) olur → günler net ayrışır. Miktar sıralamasında blok
+    // yoktur, satırlar sürekli ince ayraçla akar.
     <div
-      className={[
-        'group grid transition-colors border-b border-border/50',
-        selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'hover:bg-accent/40',
-        projected ? 'opacity-60' : '',
-      ].join(' ')}
+      className={
+        grouped
+          ? [
+              'group grid transition-colors mx-2 overflow-hidden border-l border-r border-b border-border',
+              isFirst ? 'border-t rounded-t-[10px]' : '',
+              isLast  ? 'rounded-b-[10px]' : 'border-b-border/40',
+              selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]'
+                : future ? 'bg-sky-500/[0.06] hover:bg-sky-500/[0.09]'
+                : 'bg-card hover:bg-accent/40',
+              projected ? 'opacity-60' : '',
+            ].join(' ')
+          : [
+              'group grid transition-colors border-b border-border/50',
+              selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'hover:bg-accent/40',
+              projected ? 'opacity-60' : '',
+            ].join(' ')
+      }
       style={{ gridTemplateColumns: colsFor(!!selectable) }}
     >
       {/* Seçim kutusu — planlanan (henüz gerçekleşmemiş) satırlar toplu düzenlenemez */}
@@ -751,13 +778,22 @@ export function TransactionList({
     // Tarih/bölüm ayraçlarını açıklama kolonunun içeriğiyle hizala: seçim kutusu
     // kolonu (varsa) + açıklama hücresinin sol padding'i (px-3 = 12px).
     const contentInsetLeft = (selectable ? SELECT_COL_W : 0) + 12
+    // Tarih bazlı sıralamada satırlar "gün bloğu" adalarına gruplanır. Miktar
+    // sıralamasında blok yoktur (başlık da basılmaz), satırlar sürekli akar.
+    const dateGrouped = sort === 'date-desc' || sort === 'date-asc'
+    // Gün etiketini bloğun içindeki açıklama metniyle hizala:
+    // mx-2 (8px) + sol kenarlık (1px) + açıklama hücresi px-3 (12px).
+    const dayLabelInset = (selectable ? SELECT_COL_W : 0) + 8 + 1 + 12
     return (
-      <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto mx-6 my-3 rounded-xl border border-border/70 bg-card">
+      // Katmanlı nötr: çerçeve zemini bloklardan bir kademe koyu (bg-background),
+      // gün blokları kart yüzeyinde (bg-card) ada gibi durur.
+      <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto mx-6 my-3 rounded-xl border border-border/70 bg-background">
         <div style={{ minWidth: TABLE_MIN_W + (selectable ? SELECT_COL_W : 0) }}>
 
-          {/* Sticky column headers — kart yüzeyiyle aynı renk */}
+          {/* Sticky column headers — bloklarla aynı yüzey (bg-card), gün bloğu
+              inseti (px-2) ile kolon hizası korunur. */}
           <div className="sticky top-0 z-10 bg-card border-b border-border">
-            <div className="grid" style={{ gridTemplateColumns: colsFor(selectable) }}>
+            <div className="grid px-2" style={{ gridTemplateColumns: colsFor(selectable) }}>
               {selectable && (
                 <div className="flex items-center justify-center py-1.5">
                   <Checkbox
@@ -798,11 +834,14 @@ export function TransactionList({
                     {row.kind === 'section' ? (
                       <div style={{ paddingLeft: contentInsetLeft, paddingRight: 12 }}><SectionBanner id={row.id} count={row.count} topClass={row.first ? 'pt-1' : 'pt-4'} /></div>
                     ) : row.kind === 'header' ? (
-                      <div style={{ paddingLeft: contentInsetLeft, paddingRight: 12 }}><DateSeparator date={row.date} topClass={row.dateIdx > 0 ? 'pt-6 pb-3' : 'pt-3 pb-3'} future={row.future} /></div>
+                      <div className={row.dateIdx > 0 ? 'pt-5 pb-2' : 'pt-2 pb-2'} style={{ paddingLeft: dayLabelInset, paddingRight: 12 }}><DayLabel date={row.date} future={row.future} /></div>
                     ) : (
                       <TableTxRow
                         tx={row.tx}
                         future={row.future}
+                        grouped={dateGrouped}
+                        isFirst={row.isFirst}
+                        isLast={row.isLast}
                         cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
                         account={accById.get(row.tx.accountId)}
                         toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
