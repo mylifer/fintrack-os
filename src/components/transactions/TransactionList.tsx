@@ -803,9 +803,10 @@ export function TransactionList({
             <div className="bg-card border-b border-border">{summary}</div>
           )}
 
-          {/* Sticky column headers — bloklarla aynı yüzey (bg-card), gün bloğu
-              inseti (px-2) ile kolon hizası korunur. */}
-          <div className="sticky top-0 z-10 bg-card border-b border-border">
+          {/* Sticky column headers — çerçevenin koyu yüzeyi (özet şeridinden bir
+              kademe siyah, mockup konumu), gün bloğu inseti (px-2) ile kolon
+              hizası korunur. Sticky olduğu için opak zemin şart. */}
+          <div className="sticky top-0 z-10 bg-background dark:bg-[#101010] border-b border-border">
             <div className="grid px-2" style={{ gridTemplateColumns: colsFor(selectable) }}>
               {selectable && (
                 <div className="flex items-center justify-center py-1.5">
