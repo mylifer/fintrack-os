@@ -1,5 +1,6 @@
 'use client'
 
+import { memo, useCallback, useRef } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer,
@@ -78,7 +79,77 @@ interface Props {
   data: NWDataPoint[]
 }
 
-export default function NetWorthLineChart({ data }: Props) {
+// memo: dashboard'daki AnimatedNumber sayaç animasyonu üst bileşeni her karede
+// (~1.5sn boyunca) yeniden render ediyordu; bu da recharts'ın SVG path düğümünü
+// her karede yeniden yaratıp çizim animasyonunu koparıyordu. `data` referansı
+// üst tarafta useMemo ile sabit tutulduğundan memo bu boş render'ları eler —
+// düğüm sabit kalır, çizim tutar (ayrıca gereksiz recharts render'ı da önlenir).
+function NetWorthLineChart({ data }: Props) {
+  // Soldan sağa "çizim": recharts'ın çizdiği SVG çizgi path'ini (.recharts-area-curve)
+  // stroke-dashoffset ile uzunluğu boyunca açarız — kalem, inişleri/çıkışları
+  // izleyerek çizgiyi çiziyormuş gibi görünür. Dolgu (.recharts-area-area) çizim
+  // biterken yumuşakça belirir. Yalnızca ilk kez veri geldiğinde bir defa oynar;
+  // sonraki fiyat güncellemeleri yeniden tetiklemez (didDraw bayrağı).
+  const didDrawRef = useRef(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const pollingRef = useRef(false)
+
+  // Çizim, grafik div'i DOM'a bağlandığında callback-ref ile TAMAMEN imperatif
+  // yürütülür — React state'i (setState) kullanılmaz: setState burada store
+  // hidrasyonu + recharts render'ıyla birleşince sonsuz render döngüsüne
+  // (Maximum update depth) giriyordu. Callback birden çok kez çağrılabildiğinden
+  // (mount → unmount → remount) en güncel düğümü rootRef üzerinden okuyup tek bir
+  // yoklama döngüsü çalıştırırız.
+  const chartRef = useCallback((root: HTMLDivElement | null) => {
+    rootRef.current = root
+    if (!root || didDrawRef.current || pollingRef.current) return
+
+    const reduce = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (reduce) { didDrawRef.current = true; return }
+
+    const DUR = 1900
+    const LINE_EASE = 'cubic-bezier(0.65, 0, 0.35, 1)' // easeInOutCubic — dengeli kalem hızı
+    pollingRef.current = true
+    let tries = 0
+
+    const run = () => {
+      if (didDrawRef.current) return
+      const r = rootRef.current
+      const line = r?.querySelector<SVGPathElement>('.recharts-area-curve') ?? null
+      // Path henüz boyanmadıysa (ResponsiveContainer boyutu asenkron ölçer, store
+      // hidrasyonu sürüyor olabilir) yeniden dene — geçerli uzunluk gelene kadar.
+      let len = 0
+      try { len = line && typeof line.getTotalLength === 'function' ? line.getTotalLength() : 0 } catch { len = 0 }
+      if (!line || !len) {
+        if (tries++ < 240) requestAnimationFrame(run); else pollingRef.current = false
+        return
+      }
+      didDrawRef.current = true
+
+      // Çizgi: dashoffset len → 0 (soldan sağa, inişleri/çıkışları izleyerek çizilir).
+      // strokeDasharray'i de anahtar karelere koyuyoruz: recharts hidrasyon
+      // sırasında path'in inline style'ını sıfırlıyor; WAAPI'nin yönettiği
+      // özellikler bu sıfırlamalardan ETKİLENMEZ, böylece dash deseni korunur.
+      // fill:'backwards' → başta gizli (offset=len), bitince normale döner (tam çizgi).
+      line.animate(
+        [
+          { strokeDasharray: String(len), strokeDashoffset: len },
+          { strokeDasharray: String(len), strokeDashoffset: 0 },
+        ],
+        { duration: DUR, easing: LINE_EASE, fill: 'backwards' },
+      )
+
+      // Dolgu: çizgi çizilirken gizli, son ~%45'te yumuşakça belirir
+      const area = r?.querySelector<SVGPathElement>('.recharts-area-area')
+      area?.animate(
+        [{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1, offset: 1 }],
+        { duration: DUR, easing: 'ease-out', fill: 'backwards' },
+      )
+    }
+    requestAnimationFrame(run)
+  }, [])
+
   if (data.length < 2) {
     return (
       <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
@@ -99,7 +170,7 @@ export default function NetWorthLineChart({ data }: Props) {
   const xTicks  = data.filter(p => p.label !== '').map(p => p.date)
 
   return (
-    <div className="w-full px-4 chart-draw">
+    <div ref={chartRef} className="w-full px-4">
       <ResponsiveContainer width="100%" height={240}>
         <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
           <defs>
@@ -164,10 +235,10 @@ export default function NetWorthLineChart({ data }: Props) {
               stroke: 'var(--background)',
               strokeWidth: 2.5,
             }}
-            // Soldan sağa çizim artık sarmalayıcının .chart-draw clip-path
-            // animasyonuyla yapılıyor (veriden bağımsız, kesintisiz). Recharts'ın
-            // kendi animasyonu kapalı: arka planda gelen fiyat güncellemesi ilk
-            // boyamayı yarıda kesip şekil-morph'una çeviriyordu (çizim görünmüyordu).
+            // Soldan sağa çizim path'in stroke-dashoffset animasyonuyla
+            // (yukarıdaki chartRef callback'i) yapılıyor. Recharts'ın kendi
+            // animasyonu kapalı: fiyat güncellemesi ilk boyamayı yarıda kesip
+            // şekil-morph'una çeviriyordu ve dashoffset draw'ı bozuyordu.
             isAnimationActive={false}
           />
         </AreaChart>
@@ -175,3 +246,5 @@ export default function NetWorthLineChart({ data }: Props) {
     </div>
   )
 }
+
+export default memo(NetWorthLineChart)

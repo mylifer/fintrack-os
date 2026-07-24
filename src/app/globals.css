@@ -163,37 +163,12 @@
   animation: chart-reveal 0.5s cubic-bezier(0, 0, 0.2, 1) both;
 }
 
-/* Soldan sağa çizim: recharts'ın kendi ilk-boyama animasyonu arka planda gelen
-   fiyat güncellemesiyle yarıda kesilip şekil-morph'una dönüşüyordu; bunun yerine
-   sarmalayıcıyı clip-path ile açığa çıkarıp veriden bağımsız, tek seferlik ve
-   kesintisiz bir çizim sağlıyoruz. */
-/* Kenarı yumuşatılmış (feathered) sweep: keskin dikey kesme yerine, açığa çıkan
-   ön kenar yumuşak bir gradyan olarak soldan sağa süzülür — "buttery" bir açılış.
-   Maske görüntüsü kutudan 2x geniş; sol yarı opak, ~%45-60 arası yumuşak geçiş,
-   sağ yarı şeffaf. mask-position 100%→0% ile bu tüy kenar tüm grafiği tarar. */
-@keyframes chart-draw {
-  from { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
-  to   { -webkit-mask-position: 0% 0;   mask-position: 0% 0;   }
-}
-.chart-draw {
-  /* Maske kutudan 3x geniş; opak %0-47, DAR tüy geçiş %47-50, şeffaf %50-100.
-     Dar kenar "kalem ucu çiziyor" hissi verir; anti-alias sayesinde yine smooth.
-     Bitişte (pos 0) pencere [0,0.33] tamamen opak, başta (pos 100) pencere
-     [0.67,1] tamamen şeffaf; tüy kenar yalnızca ortada tarar. */
-  --feather: linear-gradient(90deg,
-    #000 0%, #000 47%, rgba(0,0,0,0.5) 48.5%, transparent 50%, transparent 100%);
-  -webkit-mask-image: var(--feather);
-  mask-image: var(--feather);
-  -webkit-mask-size: 300% 100%; mask-size: 300% 100%;
-  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
-  /* backwards: başlangıçta 'from' karesini uygular (ilk-kare parlaması olmaz),
-     bitince maske normale döner (tooltip kenarlarda kırpılmaz). Yumuşak,
-     yavaşlayarak biten (expo-out) eğri akıcılığı artırır. */
-  animation: chart-draw 2s cubic-bezier(0.65, 0, 0.35, 1) backwards;
-}
-@media (prefers-reduced-motion: reduce) {
-  .chart-draw { animation: none; }
-}
+/* Net varlık çizgisinin soldan sağa "çiziliyormuş" gibi belirmesi
+   _NetWorthChart.tsx içinde JS (WAAPI) ile yapılıyor: SVG path'in
+   stroke-dasharray+dashoffset'i uzunluğu boyunca animasyonlanır (kalem
+   inişleri/çıkışları izleyerek çizer), dolgu ise çizgi tamamlanırken yumuşakça
+   belirir. WAAPI kullanılıyor çünkü recharts hidrasyonda path'in inline
+   style'ını sıfırlıyor; WAAPI'nin yönettiği özellikler bundan etkilenmez. */
 
 /* ─────────────────────────────────────────────────────────────────
    BASE LAYER
