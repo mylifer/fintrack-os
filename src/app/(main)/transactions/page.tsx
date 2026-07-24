@@ -132,6 +132,10 @@ export default function TransactionsPage() {
     () => sumByType(filtered.filter(t => isFlowTx(t))),
     [filtered],
   )
+  // Özet çubuğundaki oran çubuğu yalnızca akışı (gelir vs gider) resmeder;
+  // transfer akış değil (hesaplar arası taşıma) → çubuğa girmez, sadece sayıda durur.
+  const flowTotal = totalIncome + totalExpense
+  const incomePct = flowTotal > 0 ? (totalIncome / flowTotal) * 100 : 0
 
   function handlePersonClick(role: PersonRole, id: string) {
     const person = people.find(p => p.id === id)
@@ -282,13 +286,31 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      {/* Summary bar */}
+      {/* Summary bar — defter satırı + gelir/gider oran çubuğu */}
       {filtered.length > 0 && (
-        <div className="flex items-center gap-6 px-6 py-2.5 bg-card border-b border-border flex-shrink-0">
-          <span className="text-3xl font-normal tabular-nums text-green-600">+{formatCurrency(totalIncome)}</span>
-          <span className="text-3xl font-normal tabular-nums text-destructive">−{formatCurrency(totalExpense)}</span>
-          <span className="text-3xl font-normal tabular-nums text-foreground/50">↔{formatCurrency(totalTransfer)}</span>
-          <span className="ml-auto text-muted-foreground text-xs">{filtered.length} işlem</span>
+        <div className="flex flex-col gap-2.5 px-6 py-3 bg-card border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-6 text-sm">
+            <span className="inline-flex items-baseline gap-2">
+              <span className="text-xs text-muted-foreground">Gelir</span>
+              <span className="font-semibold tabular-nums text-green-600">+{formatCurrency(totalIncome)}</span>
+            </span>
+            <span className="inline-flex items-baseline gap-2">
+              <span className="text-xs text-muted-foreground">Gider</span>
+              <span className="font-semibold tabular-nums text-destructive">−{formatCurrency(totalExpense)}</span>
+            </span>
+            <span className="inline-flex items-baseline gap-2">
+              <span className="text-xs text-muted-foreground">Transfer</span>
+              <span className="font-semibold tabular-nums text-foreground/70">{formatCurrency(totalTransfer)}</span>
+            </span>
+            <span className="ml-auto text-muted-foreground text-xs tabular-nums">{filtered.length} işlem</span>
+          </div>
+          <div
+            className="flex h-[5px] rounded-full overflow-hidden bg-foreground/[0.07]"
+            title={`Gelir %${Math.round(incomePct)} · Gider %${Math.round(100 - incomePct)}`}
+          >
+            <span className="block h-full bg-green-600" style={{ width: `${incomePct}%` }} />
+            <span className="block h-full bg-destructive" style={{ width: `${flowTotal > 0 ? 100 - incomePct : 0}%` }} />
+          </div>
         </div>
       )}
 
