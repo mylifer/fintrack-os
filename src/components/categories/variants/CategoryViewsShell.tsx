@@ -7,7 +7,7 @@ import { CategoryIconPicker } from '../CategoryIconPicker'
 import { SelectField } from '@/components/ui/Select'
 import { useCategoryData, SCOPE_LABELS } from './shared'
 import { CardsView } from './CardsView'
-import { BoardView } from './BoardView'
+import { LedgerView } from './LedgerView'
 import { SplitView } from './SplitView'
 import type { Category, CategoryScope } from '@/types'
 
@@ -16,9 +16,9 @@ import type { Category, CategoryScope } from '@/types'
  * The active view is remembered in localStorage so a refresh keeps it.
  * ------------------------------------------------------------------ */
 const VIEWS = [
-  { id: 'cards', label: 'Kartlar',   icon: GridIcon,  Comp: CardsView },
-  { id: 'board', label: 'Pano',      icon: BoardIcon, Comp: BoardView },
-  { id: 'split', label: 'Bölünmüş',  icon: SplitIcon, Comp: SplitView },
+  { id: 'cards',  label: 'Kartlar',   icon: GridIcon,  Comp: CardsView },
+  { id: 'ledger', label: 'Defter',    icon: ListIcon,  Comp: LedgerView },
+  { id: 'split',  label: 'Bölünmüş',  icon: SplitIcon, Comp: SplitView },
 ] as const
 
 type ViewId = (typeof VIEWS)[number]['id']
@@ -198,8 +198,8 @@ function QuickAdd({
 function GridIcon() {
   return <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
 }
-function BoardIcon() {
-  return <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}><rect x="3" y="3" width="5" height="18" rx="1.5"/><rect x="10" y="3" width="5" height="13" rx="1.5"/><rect x="17" y="3" width="5" height="9" rx="1.5"/></svg>
+function ListIcon() {
+  return <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
 }
 function SplitIcon() {
   return <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16" strokeLinecap="round"/></svg>
