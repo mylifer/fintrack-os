@@ -286,34 +286,6 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      {/* Summary bar — defter satırı + gelir/gider oran çubuğu */}
-      {filtered.length > 0 && (
-        <div className="flex flex-col gap-2.5 px-6 py-3 bg-card border-b border-border flex-shrink-0">
-          <div className="flex items-center gap-6 text-sm">
-            <span className="inline-flex items-baseline gap-2">
-              <span className="text-xs text-muted-foreground">Gelir</span>
-              <span className="font-semibold tabular-nums text-green-600">+{formatCurrency(totalIncome)}</span>
-            </span>
-            <span className="inline-flex items-baseline gap-2">
-              <span className="text-xs text-muted-foreground">Gider</span>
-              <span className="font-semibold tabular-nums text-destructive">−{formatCurrency(totalExpense)}</span>
-            </span>
-            <span className="inline-flex items-baseline gap-2">
-              <span className="text-xs text-muted-foreground">Transfer</span>
-              <span className="font-semibold tabular-nums text-foreground/70">{formatCurrency(totalTransfer)}</span>
-            </span>
-            <span className="ml-auto text-muted-foreground text-xs tabular-nums">{filtered.length} işlem</span>
-          </div>
-          <div
-            className="flex h-[5px] rounded-full overflow-hidden bg-foreground/[0.07]"
-            title={`Gelir %${Math.round(incomePct)} · Gider %${Math.round(100 - incomePct)}`}
-          >
-            <span className="block h-full bg-green-600" style={{ width: `${incomePct}%` }} />
-            <span className="block h-full bg-destructive" style={{ width: `${flowTotal > 0 ? 100 - incomePct : 0}%` }} />
-          </div>
-        </div>
-      )}
-
       {/* Transaction list */}
       <div className="flex-1 overflow-auto">
         <TransactionList
@@ -326,6 +298,34 @@ export default function TransactionsPage() {
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
           onSelectMany={selectMany}
+          summary={filtered.length > 0 ? (
+            // Defter satırı + gelir/gider oran çubuğu — tablo çerçevesinin en üstü,
+            // sütun başlığının hemen üstünde (mockup konumu). px-5 ≈ başlık inseti.
+            <div className="flex flex-col gap-2.5 px-5 py-3">
+              <div className="flex items-center gap-6 text-sm">
+                <span className="inline-flex items-baseline gap-2">
+                  <span className="text-xs text-muted-foreground">Gelir</span>
+                  <span className="font-semibold tabular-nums text-green-600">+{formatCurrency(totalIncome)}</span>
+                </span>
+                <span className="inline-flex items-baseline gap-2">
+                  <span className="text-xs text-muted-foreground">Gider</span>
+                  <span className="font-semibold tabular-nums text-destructive">−{formatCurrency(totalExpense)}</span>
+                </span>
+                <span className="inline-flex items-baseline gap-2">
+                  <span className="text-xs text-muted-foreground">Transfer</span>
+                  <span className="font-semibold tabular-nums text-foreground/70">{formatCurrency(totalTransfer)}</span>
+                </span>
+                <span className="ml-auto text-muted-foreground text-xs tabular-nums">{filtered.length} işlem</span>
+              </div>
+              <div
+                className="flex h-[5px] rounded-full overflow-hidden bg-foreground/[0.07]"
+                title={`Gelir %${Math.round(incomePct)} · Gider %${Math.round(100 - incomePct)}`}
+              >
+                <span className="block h-full bg-green-600" style={{ width: `${incomePct}%` }} />
+                <span className="block h-full bg-destructive" style={{ width: `${flowTotal > 0 ? 100 - incomePct : 0}%` }} />
+              </div>
+            </div>
+          ) : undefined}
         />
       </div>
 

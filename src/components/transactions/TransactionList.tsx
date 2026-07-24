@@ -602,6 +602,9 @@ interface Props {
   onToggleSelect?: (id: string) => void
   /** Bir id kümesini toplu seçer/kaldırır ("tümünü seç" için). */
   onSelectMany?: (ids: string[], selected: boolean) => void
+  /** Tablo kartının en üstünde, sticky sütun başlığının hemen üstünde render
+   *  edilen özet şeridi (yalnızca table layout). Aynı çerçevenin parçası olur. */
+  summary?: React.ReactNode
 }
 
 export function TransactionList({
@@ -617,6 +620,7 @@ export function TransactionList({
   selectedIds,
   onToggleSelect,
   onSelectMany,
+  summary,
 }: Props) {
   const categories = useCategoryStore(s => s.categories)
   const accounts   = useAccountStore(s => s.accounts)
@@ -792,6 +796,12 @@ export function TransactionList({
       // #0a0a0a'dan bir tık açık, blok kontrastı daha yumuşak.
       <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto mx-6 my-3 rounded-xl border border-border/70 bg-background dark:bg-[#101010]">
         <div style={{ minWidth: TABLE_MIN_W + (selectable ? SELECT_COL_W : 0) }}>
+
+          {/* Özet şeridi — sütun başlığının hemen üstünde, aynı çerçevenin parçası
+              (mockup konumu). Sticky değil: kaydırınca tablo başlığı gibi yukarı akar. */}
+          {summary && (
+            <div className="bg-card border-b border-border">{summary}</div>
+          )}
 
           {/* Sticky column headers — bloklarla aynı yüzey (bg-card), gün bloğu
               inseti (px-2) ile kolon hizası korunur. */}
