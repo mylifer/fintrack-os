@@ -88,50 +88,56 @@ function NetWorthLineChart({ data }: Props) {
   // Soldan sağa "çizim": recharts'ın çizdiği SVG çizgi path'ini (.recharts-area-curve)
   // stroke-dashoffset ile uzunluğu boyunca açarız — kalem, inişleri/çıkışları
   // izleyerek çizgiyi çiziyormuş gibi görünür. Dolgu (.recharts-area-area) çizim
-  // biterken yumuşakça belirir. Yalnızca ilk kez veri geldiğinde bir defa oynar;
-  // sonraki fiyat güncellemeleri yeniden tetiklemez (didDraw bayrağı).
-  const didDrawRef = useRef(false)
+  // biterken yumuşakça belirir.
   const rootRef = useRef<HTMLDivElement | null>(null)
-  const pollingRef = useRef(false)
+  const setupRef = useRef(false)
 
   // Çizim, grafik div'i DOM'a bağlandığında callback-ref ile TAMAMEN imperatif
-  // yürütülür — React state'i (setState) kullanılmaz: setState burada store
+  // yürütülür — React state'i (setState) KULLANILMAZ: setState burada store
   // hidrasyonu + recharts render'ıyla birleşince sonsuz render döngüsüne
-  // (Maximum update depth) giriyordu. Callback birden çok kez çağrılabildiğinden
-  // (mount → unmount → remount) en güncel düğümü rootRef üzerinden okuyup tek bir
-  // yoklama döngüsü çalıştırırız.
+  // (Maximum update depth) giriyordu.
+  //
+  // Neden MutationObserver + yeniden-çizim: yatırımı olan kullanıcılarda grafik
+  // mount olduktan SONRA geçmiş fiyat serileri tek tek asenkron gelir; her biri
+  // `data`yı değiştirip recharts'ın path düğümünü güncelliyor/yeniden yaratıyor.
+  // Tek seferlik çizim bu değişimde sahipsiz kalıp KAYBOLUYORDU (kullanıcıda
+  // "animasyon çalışmıyor"). Bunun yerine, ilk yükleme penceresi (~5sn) boyunca
+  // path düğümü/şekli her değiştiğinde çizimi CANLI düğüm üzerinde yeniden
+  // başlatırız; veri oturunca son tam çizim oynar. Hover (activeDot) düğümü/`d`yi
+  // değiştirmediğinden yeniden çizimi tetiklemez; pencere kapanınca observer durur
+  // (sonraki fiyat tik'leri/hover çizimi tekrar oynatmaz).
   const chartRef = useCallback((root: HTMLDivElement | null) => {
     rootRef.current = root
-    if (!root || didDrawRef.current || pollingRef.current) return
+    if (!root || setupRef.current) return
 
     const reduce = typeof window !== 'undefined'
       && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    if (reduce) { didDrawRef.current = true; return }
+    if (reduce) return
+    setupRef.current = true
 
     const DUR = 1900
     const LINE_EASE = 'cubic-bezier(0.65, 0, 0.35, 1)' // easeInOutCubic — dengeli kalem hızı
-    pollingRef.current = true
-    let tries = 0
+    const deadline = performance.now() + 5000 // ilk yükleme penceresi
+    let lastNode: SVGPathElement | null = null
+    let lastD = ''
+    let raf = 0
+    let obs: MutationObserver | null = null
 
-    const run = () => {
-      if (didDrawRef.current) return
-      const r = rootRef.current
-      const line = r?.querySelector<SVGPathElement>('.recharts-area-curve') ?? null
-      // Path henüz boyanmadıysa (ResponsiveContainer boyutu asenkron ölçer, store
-      // hidrasyonu sürüyor olabilir) yeniden dene — geçerli uzunluk gelene kadar.
+    const draw = () => {
+      const line = root.querySelector<SVGPathElement>('.recharts-area-curve')
       let len = 0
       try { len = line && typeof line.getTotalLength === 'function' ? line.getTotalLength() : 0 } catch { len = 0 }
-      if (!line || !len) {
-        if (tries++ < 240) requestAnimationFrame(run); else pollingRef.current = false
-        return
-      }
-      didDrawRef.current = true
+      if (!line || !len) return
+      const d = line.getAttribute('d') ?? ''
+      // Yalnızca düğüm değiştiyse veya çizgi şekli (`d`) değiştiyse yeniden çiz —
+      // hover/tooltip bunları değiştirmez, bu yüzden çizimi tetiklemez.
+      if (line === lastNode && d === lastD) return
+      lastNode = line; lastD = d
 
-      // Çizgi: dashoffset len → 0 (soldan sağa, inişleri/çıkışları izleyerek çizilir).
-      // strokeDasharray'i de anahtar karelere koyuyoruz: recharts hidrasyon
-      // sırasında path'in inline style'ını sıfırlıyor; WAAPI'nin yönettiği
-      // özellikler bu sıfırlamalardan ETKİLENMEZ, böylece dash deseni korunur.
-      // fill:'backwards' → başta gizli (offset=len), bitince normale döner (tam çizgi).
+      // strokeDasharray'i de anahtar karelere koyarız: recharts hidrasyonda path'in
+      // inline style'ını sıfırlıyor; WAAPI'nin yönettiği özellikler bundan
+      // ETKİLENMEZ. Önceki (bu düğümdeki) çizim animasyonunu iptal edip baştan başlat.
+      line.getAnimations?.().forEach(a => a.cancel())
       line.animate(
         [
           { strokeDasharray: String(len), strokeDashoffset: len },
@@ -141,13 +147,26 @@ function NetWorthLineChart({ data }: Props) {
       )
 
       // Dolgu: çizgi çizilirken gizli, son ~%45'te yumuşakça belirir
-      const area = r?.querySelector<SVGPathElement>('.recharts-area-area')
-      area?.animate(
-        [{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1, offset: 1 }],
-        { duration: DUR, easing: 'ease-out', fill: 'backwards' },
-      )
+      const area = root.querySelector<SVGPathElement>('.recharts-area-area')
+      if (area) {
+        area.getAnimations?.().forEach(a => a.cancel())
+        area.animate(
+          [{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1, offset: 1 }],
+          { duration: DUR, easing: 'ease-out', fill: 'backwards' },
+        )
+      }
     }
-    requestAnimationFrame(run)
+
+    const schedule = () => {
+      if (performance.now() > deadline) { obs?.disconnect(); obs = null; return }
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(draw)
+    }
+
+    // Düğüm eklenmesi/değişmesi (childList) ve çizgi şekli (`d`) değişimini izle
+    obs = new MutationObserver(schedule)
+    obs.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['d'] })
+    schedule() // ilk çizim denemesi (path zaten varsa hemen çizer)
   }, [])
 
   if (data.length < 2) {
