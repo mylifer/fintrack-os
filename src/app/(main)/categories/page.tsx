@@ -1,5 +1,5 @@
 import { Header } from '@/components/layout/Header'
-import { CategoryManager } from '@/components/categories/CategoryManager'
+import { CategoryViewsShell } from '@/components/categories/variants/CategoryViewsShell'
 
 export default function CategoriesPage() {
   return (
@@ -7,7 +7,7 @@ export default function CategoriesPage() {
       <Header title="Kategoriler" />
       <div className="flex-1 overflow-hidden p-4 lg:p-6">
         <div className="h-full rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
-          <CategoryManager />
+          <CategoryViewsShell />
         </div>
       </div>
     </div>
