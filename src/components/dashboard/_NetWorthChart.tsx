@@ -97,15 +97,16 @@ function NetWorthLineChart({ data }: Props) {
   // hidrasyonu + recharts render'ıyla birleşince sonsuz render döngüsüne
   // (Maximum update depth) giriyordu.
   //
-  // Neden MutationObserver + yeniden-çizim: yatırımı olan kullanıcılarda grafik
-  // mount olduktan SONRA geçmiş fiyat serileri tek tek asenkron gelir; her biri
-  // `data`yı değiştirip recharts'ın path düğümünü güncelliyor/yeniden yaratıyor.
-  // Tek seferlik çizim bu değişimde sahipsiz kalıp KAYBOLUYORDU (kullanıcıda
-  // "animasyon çalışmıyor"). Bunun yerine, ilk yükleme penceresi (~5sn) boyunca
-  // path düğümü/şekli her değiştiğinde çizimi CANLI düğüm üzerinde yeniden
-  // başlatırız; veri oturunca son tam çizim oynar. Hover (activeDot) düğümü/`d`yi
-  // değiştirmediğinden yeniden çizimi tetiklemez; pencere kapanınca observer durur
-  // (sonraki fiyat tik'leri/hover çizimi tekrar oynatmaz).
+  // Sorun: yatırımı olan kullanıcılarda grafik mount olduktan SONRA geçmiş fiyat
+  // serileri tek tek asenkron gelir; her biri `data`yı değiştirip recharts'ın path
+  // düğümünü güncelliyor/yeniden yaratıyor. Her değişimde çizimi yeniden başlatmak
+  // kullanıcıda "çizilmeden önce 2 kez resetleniyor" görüntüsü veriyordu.
+  //
+  // Çözüm: veri OTURANA kadar çizgiyi GİZLİ tut (WAAPI ile; recharts inline style'ı
+  // sıfırlasa da WAAPI özellikleri etkilenmez), değişimler ~%DEBOUNCE süre boyunca
+  // durunca TEK bir tam çizim oynat. Böylece görünür reset olmaz — kısa bir boş
+  // alan, sonra tek temiz çizim. Hover düğümü/`d`yi değiştirmediğinden tetiklemez;
+  // pencere kapanınca (veya çizim sonrası) observer durur.
   const chartRef = useCallback((root: HTMLDivElement | null) => {
     rootRef.current = root
     if (!root || setupRef.current) return
@@ -117,26 +118,44 @@ function NetWorthLineChart({ data }: Props) {
 
     const DUR = 1900
     const LINE_EASE = 'cubic-bezier(0.65, 0, 0.35, 1)' // easeInOutCubic — dengeli kalem hızı
-    const deadline = performance.now() + 5000 // ilk yükleme penceresi
+    const DEBOUNCE = 260     // son değişimden sonra bu kadar sessizlik = "oturdu"
+    const MAX_WAIT = 6000    // veri hiç oturmazsa yine de çiz
+    const t0 = performance.now()
+    let lastChange = t0
     let lastNode: SVGPathElement | null = null
     let lastD = ''
-    let raf = 0
+    let drawn = false
+    let loopRaf = 0
     let obs: MutationObserver | null = null
 
-    const draw = () => {
+    const getLine = () => {
       const line = root.querySelector<SVGPathElement>('.recharts-area-curve')
       let len = 0
       try { len = line && typeof line.getTotalLength === 'function' ? line.getTotalLength() : 0 } catch { len = 0 }
-      if (!line || !len) return
-      const d = line.getAttribute('d') ?? ''
-      // Yalnızca düğüm değiştiyse veya çizgi şekli (`d`) değiştiyse yeniden çiz —
-      // hover/tooltip bunları değiştirmez, bu yüzden çizimi tetiklemez.
-      if (line === lastNode && d === lastD) return
-      lastNode = line; lastD = d
+      return { line, len }
+    }
 
-      // strokeDasharray'i de anahtar karelere koyarız: recharts hidrasyonda path'in
-      // inline style'ını sıfırlıyor; WAAPI'nin yönettiği özellikler bundan
-      // ETKİLENMEZ. Önceki (bu düğümdeki) çizim animasyonunu iptal edip baştan başlat.
+    // Çizgi + dolguyu GİZLİ tut (dash deseni tam, offset=len). fill:'both' + WAAPI
+    // → recharts style sıfırlamalarına dayanıklı. Yalnızca düğüm/şekil değişince
+    // yeniden uygulanır (her karede değil).
+    const hold = (line: SVGPathElement, len: number) => {
+      line.getAnimations?.().forEach(a => a.cancel())
+      line.animate(
+        [{ strokeDasharray: String(len), strokeDashoffset: len }, { strokeDasharray: String(len), strokeDashoffset: len }],
+        { duration: 1, fill: 'both' },
+      )
+      const area = root.querySelector<SVGPathElement>('.recharts-area-area')
+      if (area) {
+        area.getAnimations?.().forEach(a => a.cancel())
+        area.animate([{ opacity: 0 }, { opacity: 0 }], { duration: 1, fill: 'both' })
+      }
+    }
+
+    // Tek seferlik gerçek çizim (soldan sağa) + dolgu belirmesi
+    const draw = (line: SVGPathElement, len: number) => {
+      drawn = true
+      obs?.disconnect(); obs = null
+      cancelAnimationFrame(loopRaf)
       line.getAnimations?.().forEach(a => a.cancel())
       line.animate(
         [
@@ -145,8 +164,6 @@ function NetWorthLineChart({ data }: Props) {
         ],
         { duration: DUR, easing: LINE_EASE, fill: 'backwards' },
       )
-
-      // Dolgu: çizgi çizilirken gizli, son ~%45'te yumuşakça belirir
       const area = root.querySelector<SVGPathElement>('.recharts-area-area')
       if (area) {
         area.getAnimations?.().forEach(a => a.cancel())
@@ -157,16 +174,35 @@ function NetWorthLineChart({ data }: Props) {
       }
     }
 
-    const schedule = () => {
-      if (performance.now() > deadline) { obs?.disconnect(); obs = null; return }
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(draw)
+    // Sessizliği (debounce) her karede kontrol et: oturunca veya MAX_WAIT'te çiz
+    const loop = () => {
+      if (drawn) return
+      const { line, len } = getLine()
+      if (line && len) {
+        const now = performance.now()
+        if (now - lastChange >= DEBOUNCE || now - t0 >= MAX_WAIT) { draw(line, len); return }
+      }
+      loopRaf = requestAnimationFrame(loop)
     }
 
-    // Düğüm eklenmesi/değişmesi (childList) ve çizgi şekli (`d`) değişimini izle
-    obs = new MutationObserver(schedule)
+    // Düğüm/şekil değişimini yakala → gizli tut + "son değişim" zamanını güncelle.
+    // MutationObserver geri çağrısı boyamadan ÖNCE (microtask) çalışır; böylece
+    // path ilk eklendiğinde tam boyanmadan gizlenir (parlama olmaz).
+    const onMutate = () => {
+      if (drawn) return
+      const { line, len } = getLine()
+      if (!line || !len) return
+      const d = line.getAttribute('d') ?? ''
+      if (line === lastNode && d === lastD) return // hover vb. — şekil değişmedi
+      lastNode = line; lastD = d
+      lastChange = performance.now()
+      hold(line, len)
+    }
+
+    obs = new MutationObserver(onMutate)
     obs.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['d'] })
-    schedule() // ilk çizim denemesi (path zaten varsa hemen çizer)
+    onMutate()                       // path zaten varsa hemen gizle
+    loopRaf = requestAnimationFrame(loop)
   }, [])
 
   if (data.length < 2) {
