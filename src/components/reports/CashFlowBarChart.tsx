@@ -24,10 +24,22 @@ export function CashFlowBarChart({
   data,
   onBarClick,
   chartType,
+  incomeColor,
+  expenseColor,
 }: {
   data: CashFlowPoint[]
   onBarClick?: (point: CashFlowPoint) => void
   chartType?: CashFlowChartType
+  incomeColor?: string
+  expenseColor?: string
 }) {
-  return <Inner data={data} onBarClick={onBarClick} chartType={chartType} />
+  return (
+    <Inner
+      data={data}
+      onBarClick={onBarClick}
+      chartType={chartType}
+      incomeColor={incomeColor}
+      expenseColor={expenseColor}
+    />
+  )
 }

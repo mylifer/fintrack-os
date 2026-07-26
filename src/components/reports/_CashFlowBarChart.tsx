@@ -53,10 +53,15 @@ export function CashFlowBarChartInner({
   data,
   onBarClick,
   chartType = 'bar',
+  incomeColor = 'var(--cf-income)',
+  expenseColor = 'var(--cf-expense)',
 }: {
   data: CashFlowPoint[]
   onBarClick?: (point: CashFlowPoint) => void
   chartType?: CashFlowChartType
+  /** Bar/çizgi dolgu-vuruş rengi override — varsayılan nakit akışı yeşil/kırmızısı. */
+  incomeColor?: string
+  expenseColor?: string
 }) {
   // Recharts Bar onClick, tıklanan noktanın payload'ını (label/from/to dahil)
   // döndürür. Payload doğrudan da spread edilmiş gelebilir; ikisini de karşıla.
@@ -116,14 +121,14 @@ export function CashFlowBarChartInner({
           >
             {commonAxes}
             <Line
-              dataKey="income" name="Gelir" stroke="var(--cf-income)" strokeWidth={2.5}
-              dot={{ r: 3, strokeWidth: 0, fill: 'var(--cf-income)' }}
+              dataKey="income" name="Gelir" stroke={incomeColor} strokeWidth={2.5}
+              dot={{ r: 3, strokeWidth: 0, fill: incomeColor }}
               activeDot={{ r: 5 }}
               isAnimationActive={false}
             />
             <Line
-              dataKey="expense" name="Gider" stroke="var(--cf-expense)" strokeWidth={2.5}
-              dot={{ r: 3, strokeWidth: 0, fill: 'var(--cf-expense)' }}
+              dataKey="expense" name="Gider" stroke={expenseColor} strokeWidth={2.5}
+              dot={{ r: 3, strokeWidth: 0, fill: expenseColor }}
               activeDot={{ r: 5 }}
               isAnimationActive={false}
             />
@@ -132,12 +137,12 @@ export function CashFlowBarChartInner({
           <BarChart data={data} barGap={3} barCategoryGap="28%">
             {commonAxes}
             <Bar
-              dataKey="income"  name="Gelir" fill="var(--cf-income)" radius={[3, 3, 0, 0]} maxBarSize={28}
+              dataKey="income"  name="Gelir" fill={incomeColor} radius={[3, 3, 0, 0]} maxBarSize={28}
               onClick={handleClick}
               className={onBarClick ? 'cursor-pointer' : undefined}
             />
             <Bar
-              dataKey="expense" name="Gider" fill="var(--cf-expense)" radius={[3, 3, 0, 0]} maxBarSize={28}
+              dataKey="expense" name="Gider" fill={expenseColor} radius={[3, 3, 0, 0]} maxBarSize={28}
               onClick={handleClick}
               className={onBarClick ? 'cursor-pointer' : undefined}
             />
