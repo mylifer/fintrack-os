@@ -100,6 +100,9 @@ export function CashflowChart({ periodType, customRange, periodLabel }: Props) {
                 onBarClick={p => openDetail({ from: p.from, to: p.to, label: p.label })}
                 incomeColor="var(--chart-2)"
                 expenseColor="var(--chart-1)"
+                barGap={1}
+                barCategoryGap="10%"
+                maxBarSize={40}
               />
             </div>
           </div>

@@ -48,6 +48,9 @@ export function CashFlowBarChartInner({
   chartType = 'bar',
   incomeColor = 'var(--cf-income)',
   expenseColor = 'var(--cf-expense)',
+  barGap = 3,
+  barCategoryGap = '28%',
+  maxBarSize = 28,
 }: {
   data: CashFlowPoint[]
   onBarClick?: (point: CashFlowPoint) => void
@@ -55,6 +58,11 @@ export function CashFlowBarChartInner({
   /** Bar/çizgi dolgu-vuruş rengi override — varsayılan nakit akışı yeşil/kırmızısı. */
   incomeColor?: string
   expenseColor?: string
+  /** Bar kalınlığı override'ları — çok sayıda kova (ör. günlük görünüm) gösterirken
+   * varsayılan boşluklar barları çok inceltir; çağıran daha sık bir yerleşim isteyebilir. */
+  barGap?: number
+  barCategoryGap?: string | number
+  maxBarSize?: number
 }) {
   // Recharts Bar onClick, tıklanan noktanın payload'ını (label/from/to dahil)
   // döndürür. Payload doğrudan da spread edilmiş gelebilir; ikisini de karşıla.
@@ -127,15 +135,15 @@ export function CashFlowBarChartInner({
             />
           </LineChart>
         ) : (
-          <BarChart data={data} barGap={3} barCategoryGap="28%">
+          <BarChart data={data} barGap={barGap} barCategoryGap={barCategoryGap}>
             {commonAxes}
             <Bar
-              dataKey="income"  name="Gelir" fill={incomeColor} radius={[3, 3, 0, 0]} maxBarSize={28}
+              dataKey="income"  name="Gelir" fill={incomeColor} radius={[3, 3, 0, 0]} maxBarSize={maxBarSize}
               onClick={handleClick}
               className={onBarClick ? 'cursor-pointer' : undefined}
             />
             <Bar
-              dataKey="expense" name="Gider" fill={expenseColor} radius={[3, 3, 0, 0]} maxBarSize={28}
+              dataKey="expense" name="Gider" fill={expenseColor} radius={[3, 3, 0, 0]} maxBarSize={maxBarSize}
               onClick={handleClick}
               className={onBarClick ? 'cursor-pointer' : undefined}
             />

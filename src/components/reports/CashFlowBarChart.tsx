@@ -26,12 +26,18 @@ export function CashFlowBarChart({
   chartType,
   incomeColor,
   expenseColor,
+  barGap,
+  barCategoryGap,
+  maxBarSize,
 }: {
   data: CashFlowPoint[]
   onBarClick?: (point: CashFlowPoint) => void
   chartType?: CashFlowChartType
   incomeColor?: string
   expenseColor?: string
+  barGap?: number
+  barCategoryGap?: string | number
+  maxBarSize?: number
 }) {
   return (
     <Inner
@@ -40,6 +46,9 @@ export function CashFlowBarChart({
       chartType={chartType}
       incomeColor={incomeColor}
       expenseColor={expenseColor}
+      barGap={barGap}
+      barCategoryGap={barCategoryGap}
+      maxBarSize={maxBarSize}
     />
   )
 }
