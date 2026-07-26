@@ -1,8 +1,10 @@
 'use client'
 
 import Link from 'next/link'
+import { ArrowRight } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { Button } from '@/components/ui/button'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { TYPE_LABELS, barColor, type AccountRow } from './shared'
 import type { Account } from '@/types'
@@ -13,8 +15,8 @@ import type { Account } from '@/types'
  * bakiye, altta dönem gelir/gider ya da kredi kartı limit çubuğu. Yumuşak
  * gölge/kenarlık, hover'da hafif yükselme.
  *
- * Kartın tamamı hesap detayına götürür (gerilmiş bağlantı, z-10); Düzenle
- * butonu z-20 ile bağlantının üstünde kalır. Altta görünür "Detay →" CTA'sı.
+ * Kartın tamamı hesap detayına götürür (gerilmiş bağlantı, z-10); sağ üstteki
+ * "Detay" butonu ve Düzenle z-20 ile bağlantının üstünde kalır.
  */
 export function GridView({ rows, onEdit }: { rows: AccountRow[]; onEdit: (a: Account) => void }) {
   return (
@@ -47,12 +49,24 @@ export function GridView({ rows, onEdit }: { rows: AccountRow[]; onEdit: (a: Acc
                     <span className="text-xs text-muted-foreground">{TYPE_LABELS[account.type]} · {account.currency}</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => onEdit(account)}
-                  className="relative z-20 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary flex-shrink-0"
-                >
-                  Düzenle
-                </button>
+                {/* Sağ üst aksiyonlar — CTA her zaman görünür, Düzenle hover'da */}
+                <div className="relative z-20 flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => onEdit(account)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary"
+                  >
+                    Düzenle
+                  </button>
+                  <Button
+                    asChild
+                    size="xs"
+                    variant="secondary"
+                    rightIcon={<ArrowRight className="size-3" />}
+                    className="font-semibold group-hover:bg-primary group-hover:text-primary-foreground"
+                  >
+                    <Link href={`/accounts/${account.id}`}>Detay</Link>
+                  </Button>
+                </div>
               </div>
 
               <div className={`mt-4 text-2xl font-semibold tabular-nums tracking-tight ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
@@ -82,14 +96,6 @@ export function GridView({ rows, onEdit }: { rows: AccountRow[]; onEdit: (a: Acc
                   )}
                 </div>
               )}
-
-              {/* CTA — hesap detayı (tıklamayı gerilmiş bağlantı karşılar) */}
-              <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-end">
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground group-hover:text-primary transition-colors">
-                  Detayı gör
-                  <span className="transition-transform group-hover:translate-x-0.5">→</span>
-                </span>
-              </div>
             </div>
           </div>
         )

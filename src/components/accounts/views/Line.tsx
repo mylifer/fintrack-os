@@ -1,8 +1,10 @@
 'use client'
 
 import Link from 'next/link'
+import { ArrowRight } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { Button } from '@/components/ui/button'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { TYPE_LABELS, type AccountRow } from './shared'
 import type { Account } from '@/types'
@@ -59,10 +61,16 @@ export function AccountLine({ row, onEdit }: { row: AccountRow; onEdit: (a: Acco
         Düzenle
       </button>
 
-      {/* CTA — hesap detayı (tıklamayı gerilmiş bağlantı karşılar) */}
-      <span className="text-muted-foreground/50 group-hover:text-primary transition-all group-hover:translate-x-0.5 flex-shrink-0" aria-hidden>
-        →
-      </span>
+      {/* CTA — hesap detayı */}
+      <Button
+        asChild
+        size="xs"
+        variant="secondary"
+        rightIcon={<ArrowRight className="size-3" />}
+        className="relative z-20 font-semibold group-hover:bg-primary group-hover:text-primary-foreground"
+      >
+        <Link href={`/accounts/${account.id}`}>Detay</Link>
+      </Button>
     </div>
   )
 }
