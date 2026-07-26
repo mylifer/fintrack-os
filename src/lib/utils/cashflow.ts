@@ -134,14 +134,15 @@ export function buildCashFlowData(
  * sekmesine (Günlük/Haftalık/Aylık/Yıllık/Tüm Zamanlar) göre sabit, aralık
  * uzunluğundan bağımsızdır (Raporlar'daki buildCashFlowData'nın aksine) —
  * Günlük→gün, Haftalık→hafta, Aylık→ay, Yıllık→yıl kovası. "Özel" (custom)
- * aralık seçiliyken raporlardakiyle aynı aralık-uzunluğu sezgisine düşer.
+ * aralıkta da gün kovası kullanılır — kullanıcı hangi aralığı seçerse seçsin
+ * gün bazında detay görür.
  */
 export function buildDashboardCashFlowData(
   transactions: Transaction[],
   periodType: PeriodType,
   customRange: { from: string; to: string } | null,
 ): CashFlowPoint[] {
-  if (customRange) return buildCashFlowData(transactions, customRange)
+  if (customRange) return dailyBuckets(transactions, customRange.from, customRange.to)
 
   const now         = new Date()
   const todayISO     = format(now, 'yyyy-MM-dd')
