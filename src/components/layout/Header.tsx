@@ -21,10 +21,11 @@ export function Header({ title, action }: HeaderProps) {
       <div className="flex items-center gap-2">
         {/* Bildirim merkezi — Header her sayfada olduğundan zil tek noktadan gelir */}
         <NotificationBell />
+        {/* h-11 (44px) dokunmatikte; masaüstünde eski h-9 yoğunluğu korunur. */}
         {action && (
           <button
             onClick={action.onClick}
-            className="flex items-center gap-1.5 px-4 h-9 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+            className="flex items-center gap-1.5 px-4 h-11 lg:h-9 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
           >
             <span className="text-base leading-none">+</span>
             {action.label}
@@ -33,7 +34,7 @@ export function Header({ title, action }: HeaderProps) {
         {!action && (
           <button
             onClick={() => openModal('add-transaction')}
-            className="lg:hidden flex items-center gap-1.5 px-4 h-9 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+            className="lg:hidden flex items-center gap-1.5 px-4 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
           >
             + İşlem
           </button>

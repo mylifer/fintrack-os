@@ -52,9 +52,12 @@ export function GridView({ rows, onEdit }: { rows: AccountRow[]; onEdit: (a: Acc
                 </div>
                 {/* Sağ üst aksiyonlar — CTA her zaman görünür, Düzenle hover'da */}
                 <div className="relative z-20 flex items-center gap-1 flex-shrink-0">
+                  {/* Yalnız işaretçili cihazlarda: dokunmatikte group-hover hiç
+                      tetiklenmediğinden (Tailwind hover: → @media (hover:hover))
+                      görünmez ama tıklanabilir bir hedef olarak kalıyordu. */}
                   <button
                     onClick={() => onEdit(account)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary"
+                    className="hidden lg:block opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary"
                   >
                     Düzenle
                   </button>

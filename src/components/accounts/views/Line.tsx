@@ -43,7 +43,7 @@ export function AccountLine({ row, onEdit }: { row: AccountRow; onEdit: (a: Acco
         </div>
       </div>
 
-      <div className="text-right">
+      <div className="text-right flex-shrink-0">
         <div className={`text-sm font-semibold tabular-nums ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
           <AnimatedNumber value={account.balance} format={v => formatCurrency(v, account.currency)} />
         </div>
@@ -55,9 +55,15 @@ export function AccountLine({ row, onEdit }: { row: AccountRow; onEdit: (a: Acco
         )}
       </div>
 
+      {/* Hover ile açılan Düzenle yalnız işaretçili cihazlarda. Tailwind `hover:`
+          varyantını @media (hover:hover) ile sardığından dokunmatikte
+          group-hover HİÇ tetiklenmiyordu: buton kalıcı olarak opacity-0 kalıp
+          hem GÖRÜNMEZ bir dokunma hedefi bırakıyor hem de ~60px yer kaplayarak
+          hesap adını 320px'te 37px'e eziyordu. Mobilde düzenleme hesap detay
+          sayfasından yapılır (satırın tamamı oraya gider). */}
       <button
         onClick={() => onEdit(account)}
-        className="relative z-20 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-lg hover:bg-secondary flex-shrink-0"
+        className="relative z-20 hidden lg:block opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-lg hover:bg-secondary flex-shrink-0"
       >
         Düzenle
       </button>

@@ -314,9 +314,9 @@ export default function DashboardPage() {
             const isPositiveTrend = trendDiff !== null && (betterWhenHigher ? trendDiff >= 0 : trendDiff <= 0)
             return (
               <Card key={label} className="gap-2">
-                <CardHeader className="pb-2">
+                <CardHeader className="@container px-4 sm:px-6 pb-2">
                   <CardDescription>{label}</CardDescription>
-                  <p className={`text-3xl font-normal tabular-nums ${ok ? 'text-green-600' : 'text-destructive'}`}>{value}</p>
+                  <p className={`kpi-value font-normal tabular-nums ${ok ? 'text-green-600' : 'text-destructive'}`}>{value}</p>
                 </CardHeader>
                 <CardContent className="space-y-1">
                   {trendDiff !== null && trendDiff !== 0 && (
@@ -463,7 +463,7 @@ export default function DashboardPage() {
                   const cat     = categories.find(c => c.id === r.categoryId)
                   const account = allAccounts.find(a => a.id === r.accountId)
                   return (
-                    <li key={r.id} className="flex items-center gap-3 px-6 py-3">
+                    <li key={r.id} className="flex items-center gap-2.5 sm:gap-3 px-4 sm:px-6 py-3">
                       {cat ? (
                         <span
                           className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
@@ -476,7 +476,7 @@ export default function DashboardPage() {
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{r.name}</p>
-                        {account && <p className="text-xs text-muted-foreground">{account.name}</p>}
+                        {account && <p className="text-xs text-muted-foreground truncate">{account.name}</p>}
                       </div>
                       <span className={`text-sm tabular-nums shrink-0 font-medium ${r.type === 'income' ? 'text-green-600' : 'text-destructive'}`}>
                         {r.type === 'income' ? '+' : '−'}{formatCurrency(r.amount)}

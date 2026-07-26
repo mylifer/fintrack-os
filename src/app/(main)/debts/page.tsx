@@ -265,7 +265,7 @@ export default function DebtsPage() {
               <div className="text-xs text-muted-foreground mt-0.5">{debt.counterparty}</div>
             )}
           </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="row-actions flex items-center gap-1.5 flex-shrink-0">
             {overdue ? (
               <Badge variant="danger">Gecikmiş</Badge>
             ) : days !== null && days <= 7 ? (

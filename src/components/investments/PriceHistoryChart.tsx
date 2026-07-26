@@ -327,13 +327,14 @@ export function PriceHistoryChart({
 
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="px-5 pt-4 pb-2 flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="@container min-w-0">
           <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground block mb-1.5">
             {label}
           </span>
 
           {currentValue !== undefined ? (
-            <div className="text-[22px] font-black tabular tracking-tight text-foreground leading-none">
+            /* Sabit 22px dar kolonda tutarı kırpıyordu — bkz. globals.css .kpi-value */
+            <div className="text-[clamp(0.8125rem,13cqi,1.375rem)] font-black tabular tracking-tight text-foreground leading-none">
               {formatCompact(currentValue)}
             </div>
           ) : loading ? (
@@ -354,7 +355,7 @@ export function PriceHistoryChart({
               key={p.key}
               onClick={() => setPeriod(p.key)}
               className={[
-                'px-2 py-1 text-[9px] font-bold rounded transition-colors leading-none',
+                'px-2 py-1 min-h-9 lg:min-h-0 text-[9px] font-bold rounded transition-colors leading-none',
                 period === p.key ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground/60',
               ].join(' ')}
             >

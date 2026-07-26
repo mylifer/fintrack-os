@@ -216,7 +216,7 @@ export function PeopleManager({ role, emptyText }: Props) {
                           {count} işlem
                         </button>
                       )}
-                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <div className="row-actions flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                         <button
                           onClick={() => { setEditId(person.id); setEditName(person.name); setEditUrl(person.url ?? ''); setDeleteId(null) }}
                           className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors text-sm"

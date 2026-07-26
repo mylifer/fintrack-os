@@ -334,7 +334,7 @@ export function CategoryManager() {
         )}
 
         <div
-          className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+          className="row-actions flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
           onClick={e => e.stopPropagation()}
         >
           <button

@@ -110,7 +110,7 @@ export default function SubscriptionsPage() {
                   <Link
                     key={g.key}
                     href={`/subscriptions/${encodeURIComponent(g.key)}`}
-                    className="flex items-center gap-4 px-5 py-4 hover:bg-accent/50 transition-colors"
+                    className="flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 hover:bg-accent/50 transition-colors"
                   >
                     <BrandLogo brand={g.brand} name={g.name} size={40} />
 
@@ -123,24 +123,28 @@ export default function SubscriptionsPage() {
                           </span>
                         )}
                       </div>
-                      <div className="text-xs font-medium text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                      {/* flex-wrap dar ekranda bu satırı 5-6 satıra bölüp kartı
+                          bozuyordu (320px'te ad kolonu ~2px'e iniyordu); tek
+                          satırda kalıp taşarsa kısaltılır. */}
+                      <div className="text-xs font-medium text-muted-foreground mt-0.5 flex items-center gap-2 whitespace-nowrap overflow-hidden text-ellipsis">
                         <span>{formatDate(g.lastDate)}</span>
                         <span>·</span>
                         <span>{agoLabel(g.lastDate)}</span>
-                        <span>·</span>
-                        <span className="tabular-nums">Toplam {formatCurrency(g.totalTry)}</span>
+                        <span className="hidden sm:inline">·</span>
+                        <span className="hidden sm:inline tabular-nums">Toplam {formatCurrency(g.totalTry)}</span>
                       </div>
                     </div>
 
                     <div className="flex-shrink-0 text-right">
-                      <div className="font-medium tabular-nums text-lg text-foreground">
+                      <div className="font-medium tabular-nums text-base sm:text-lg text-foreground">
                         {formatCurrency(g.latestAmount, g.currency)}
                       </div>
                       <div className="text-[11px] font-medium text-muted-foreground">son ödeme</div>
                     </div>
 
+                    {/* Dekoratif chevron — dar ekranda ad kolonuna yer açmak için gizli */}
                     <svg
-                      className="flex-shrink-0 text-muted-foreground/40"
+                      className="hidden sm:block flex-shrink-0 text-muted-foreground/40"
                       fill="none" stroke="currentColor" strokeWidth={1.5}
                       viewBox="0 0 24 24" width={16} height={16} aria-hidden
                     >

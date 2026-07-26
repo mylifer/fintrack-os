@@ -436,7 +436,7 @@ export default function InvestmentsPage() {
                     </span>
 
                     {/* Edit + Delete */}
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 flex-shrink-0">
+                    <div className="row-actions opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => openEdit(tx)}
                         className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-xs"
@@ -556,11 +556,11 @@ function SumCard({ label, value, color = 'neutral' }: {
   const colorClass = color === 'ok' ? 'text-green-600' : color === 'danger' ? 'text-destructive' : 'text-foreground'
   return (
     <Card>
-      <CardContent className="px-5 py-4">
+      <CardContent className="@container px-4 sm:px-5 py-4">
         <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground block mb-2">
           {label}
         </span>
-        <div className={`text-3xl font-normal tabular-nums ${colorClass}`}>{value}</div>
+        <div className={`kpi-value font-normal tabular-nums ${colorClass}`}>{value}</div>
       </CardContent>
     </Card>
   )

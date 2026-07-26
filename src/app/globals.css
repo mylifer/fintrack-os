@@ -192,6 +192,45 @@
    ───────────────────────────────────────────────────────────────── */
 .tabular { font-variant-numeric: tabular-nums; }
 
+/* KPI tutarı — kapsayıcı genişliğine göre ölçeklenen punto.
+   Para birimi dizesi ("₺372.886,02") bölünemez TEK bir parçadır: sarılamaz, o
+   yüzden sabit büyük punto dar bir kolona sığmadığında kart `overflow:hidden`
+   ile sayıyı KIRPIYOR ve kullanıcı eksik tutar görüyordu (mobil 2 kolonlu
+   ızgarada 375px'te "₺372.886,0"). cqi viewport'a değil KAPSAYICININ içerik
+   genişliğine bağlı olduğundan kolon sayısı/kenar çubuğu ne olursa olsun sığar;
+   üst sınır masaüstündeki 1.875rem (text-3xl) görünümünü aynen korur.
+   Kullanım: punto referansı olan kapsayıcıya Tailwind'in `@container` sınıfı,
+   tutarın kendisine `kpi-value`. */
+.kpi-value {
+  font-size: clamp(0.875rem, 13cqi, 1.875rem);
+  line-height: 1.15;
+}
+
+/* Satır-içi aksiyon grubu (düzenle / sil / iade).
+   Tailwind'in `hover:` ve `group-hover:` varyantları @media (hover: hover) ile
+   sarılıdır → DOKUNMATİK cihazda hiç tetiklenmez. Bu gruplar `opacity-0
+   group-hover:opacity-100` ile yazıldığından telefonda kalıcı olarak opacity-0
+   kalıyordu: butonlar GÖRÜNMEZ ama tıklanabilir durumdaydı. İki sonucu vardı —
+   (1) mobilde bir işlemi düzenlemenin/silmenin görünür yolu yoktu (satırın
+   kendisi tıklanabilir değil), (2) satırın sağ kenarına yapılan kazara dokunuş
+   sil/iade tetikleyebiliyordu.
+   Hover'ı olmayan cihazlarda grubu kalıcı görünür yapıp dokunma hedeflerini
+   36px'e çıkarır. İşaretçili cihazlarda davranış aynen korunur.
+
+   İkinci kullanım: DAİMA görünür olan satır ikon grupları (bütçe/borç
+   düzenle+sil) için de kullanılır — orada `opacity: 1` etkisizdir, amaç yalnız
+   dokunma hedefini büyütmektir; 24px'lik sil butonu 4px aralıkla düzenlemenin
+   yanında duruyordu ve telefonda yanlış basma riski taşıyordu.
+   DİKKAT: doğrudan çocuk butonları kareye sabitler — yalnız ikon butonu içeren
+   gruplara uygulanmalı, metinli butonlara (ör. "Kaydet") DEĞİL. */
+@media (hover: none) {
+  .row-actions { opacity: 1; }
+  .row-actions > button,
+  .row-actions > a { width: 2.25rem; height: 2.25rem; }
+  /* Grup içinde değil, tek başına duran hover-reveal buton için aynı kural. */
+  .row-action { opacity: 1; width: 2.25rem; height: 2.25rem; }
+}
+
 @keyframes caret-blink {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }

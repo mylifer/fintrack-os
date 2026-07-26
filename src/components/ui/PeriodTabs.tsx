@@ -34,17 +34,26 @@ export function PeriodTabs({ rightSlot, nav, custom }: { rightSlot?: ReactNode; 
   const periodType    = useUIStore(s => s.periodType)
   const setPeriodType = useUIStore(s => s.setPeriodType)
 
-  const navBtnCls = 'w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-sm leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors'
-  const dateInputCls = 'flex-shrink-0 border border-border rounded-lg px-2 py-1 text-xs text-foreground bg-card focus:outline-none focus:border-primary'
+  // Dokunma hedefleri mobilde ≥44px (w-11/h-11), lg'de eski yoğun ölçüler.
+  const navBtnCls = 'w-11 h-11 lg:w-6 lg:h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-sm leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors'
+  const tabBtnCls = 'flex-shrink-0 flex items-center px-3.5 min-h-11 lg:min-h-0 py-1.5 rounded-xl text-xs font-medium transition-colors'
+  const dateInputCls = 'flex-shrink-0 border border-border rounded-lg px-2 py-2 lg:py-1 text-xs text-foreground bg-card focus:outline-none focus:border-primary'
 
+  /* Mobilde İKİ SATIR: üstte yatay kaydırılabilir dönem sekmeleri, altta
+     rightSlot. Eskiden hepsi tek bir `overflow-x-auto` satırındaydı ve
+     `ml-auto` olan rightSlot (ör. "Fon getirileri dahil" / "Gelecek işlemler"
+     anahtarı) 375px'te görünür alanın ~200px dışında kalıyordu — kullanıcı bir
+     sekme şeridini yatay kaydırmadan o anahtarı hiç göremiyordu. lg'de düzen
+     eskisi gibi tek satır + ml-auto. */
   return (
-    <div className="flex items-center gap-1 px-6 py-3 border-b border-border/50 bg-transparent overflow-x-auto flex-shrink-0">
+    <div className="flex flex-col lg:flex-row lg:items-center lg:overflow-x-auto gap-1.5 lg:gap-1 px-4 lg:px-6 py-2 lg:py-3 border-b border-border/50 bg-transparent flex-shrink-0">
+      <div className="flex items-center gap-1 overflow-x-auto lg:contents">
       {PERIODS.map(({ type, label }) => (
         <button
           key={type}
           onClick={() => { setPeriodType(type); custom?.onExit() }}
           className={[
-            'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors',
+            tabBtnCls,
             periodType === type && !custom?.active
               ? 'bg-secondary text-foreground font-medium'
               : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
@@ -59,7 +68,7 @@ export function PeriodTabs({ rightSlot, nav, custom }: { rightSlot?: ReactNode; 
           <button
             onClick={custom.onActivate}
             className={[
-              'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors',
+              tabBtnCls,
               custom.active
                 ? 'bg-secondary text-foreground font-medium'
                 : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
@@ -95,7 +104,7 @@ export function PeriodTabs({ rightSlot, nav, custom }: { rightSlot?: ReactNode; 
             onClick={() => nav.onChange(0)}
             title={nav.offset !== 0 ? 'Bugüne dön' : undefined}
             className={[
-              'px-2 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors',
+              'flex items-center px-2 min-h-11 lg:min-h-0 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors',
               nav.offset !== 0
                 ? 'text-primary hover:bg-secondary/60'
                 : 'text-foreground cursor-default',
@@ -107,7 +116,9 @@ export function PeriodTabs({ rightSlot, nav, custom }: { rightSlot?: ReactNode; 
         </div>
       )}
 
-      {rightSlot && <div className="ml-auto pl-3 flex-shrink-0 flex items-center">{rightSlot}</div>}
+      </div>
+
+      {rightSlot && <div className="lg:ml-auto lg:pl-3 flex-shrink-0 flex items-center">{rightSlot}</div>}
     </div>
   )
 }

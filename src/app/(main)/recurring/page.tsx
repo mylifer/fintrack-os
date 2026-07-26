@@ -268,7 +268,7 @@ function RecurringRow({
         <span className={`tabular-nums text-lg font-medium ${r.type === 'income' ? 'text-green-600' : 'text-muted-foreground'}`}>
           {formatCurrency(r.amount)}
         </span>
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+        <div className="row-actions opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
           <button onClick={onEdit} className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent text-xs transition-colors" title="Düzenle">✎</button>
           <button
             onClick={onToggle}

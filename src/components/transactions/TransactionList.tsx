@@ -437,7 +437,7 @@ const TableTxRow = memo(function TableTxRow({
       </div>
 
       {/* Actions — planlanan (henüz gerçekleşmemiş) satırlar düzenlenemez/silinemez */}
-      <div className="px-2 py-2 flex items-center justify-end gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="row-actions px-2 py-2 flex items-center justify-end gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         {!projected && (
           <>
             {tx.type === 'expense' && tx.amount > 0 && (
@@ -552,7 +552,7 @@ const CardTxRow = memo(function CardTxRow({
       </span>
 
       {/* Actions — visible only on row hover; planlanan satırlar düzenlenemez/silinemez */}
-      <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="row-actions flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         {!projected && (
           <>
             {tx.type === 'expense' && tx.amount > 0 && (

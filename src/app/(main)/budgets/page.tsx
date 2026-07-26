@@ -67,7 +67,7 @@ function BudgetCard({
             {label}
           </div>
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="row-actions flex items-center gap-1 flex-shrink-0">
           {b.status !== 'ok' && (
             <Badge variant={b.status === 'exceeded' ? 'danger' : 'warning'}>
               {b.status === 'exceeded' ? 'Aşıldı' : 'Uyarı'}

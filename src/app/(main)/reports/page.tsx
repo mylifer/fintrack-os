@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
+import { useMemo, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import Link from 'next/link'
-import { useCountUp } from '@/lib/hooks/useCountUp'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { useShallow } from 'zustand/react/shallow'
 import {
   format, parseISO, startOfMonth, endOfMonth,
@@ -617,14 +617,17 @@ export default function ReportsPage() {
   const incomeTotal  = kpi.income + fundGain
   const netTotal     = kpi.net + fundGain
   const rateTotal    = incomeTotal > 0 ? (netTotal / incomeTotal) * 100 : 0
-  const animIncome  = useCountUp(incomeTotal)
-  const animExpense = useCountUp(kpi.expense)
-  const animNet     = useCountUp(Math.abs(netTotal))
+  // Sayaç animasyonu <AnimatedNumber> YAPRAK bileşeninde tutulur; useCountUp bu
+  // sayfada DOĞRUDAN çağrılamaz. Hook her karede setState eder: sayfa gövdesinde
+  // çağrıldığında 5 sayaç × ~60fps boyunca tüm ReportsPage'i (5 Recharts grafiği,
+  // tablolar, TransactionList) yeniden render ediyordu. Grafiklerin kare-başına
+  // commit'leri React'in sonsuz-döngü dedektörünü (nested update limiti 50)
+  // tetikleyip sayfayı "Maximum update depth exceeded" ile error boundary'ye
+  // düşürüyordu — mobilde her genişlikte tekrarlanabilir bir çökme.
+  // Yaprak bileşen animasyonu yalnız ilgili <span>'e hapseder.
   // Nakit akışı kartı başlığındaki Net, barlarla (gerçek nakit gelir/gider) tutarlı:
   // gerçekleşmemiş fon getirisi (fundGain) burada YOK — barlar da onu içermez.
   const cashFlowNet     = kpi.net
-  const animCashFlowNet = useCountUp(Math.abs(cashFlowNet))
-  const animTrend   = useCountUp(trendData.at(-1)?.balance ?? 0)
 
   // Seçili aralıktaki net değişim (ilk → son nokta), trend başlığında gösterilir
   const trendFirst = trendData[0]?.balance ?? 0
@@ -711,7 +714,7 @@ export default function ReportsPage() {
             <>
               <KPICard
                 label="Toplam Gelir"
-                value={formatCurrency(animIncome)}
+                value={<AnimatedNumber value={incomeTotal} format={formatCurrency} />}
                 sub={(() => {
                   const n = filteredTxs.filter(t => t.type === 'income').length
                   // Anahtar açık + pozitif getiri → gelire DAHİL (dashboard ile aynı).
@@ -726,13 +729,13 @@ export default function ReportsPage() {
               />
               <KPICard
                 label="Toplam Gider"
-                value={formatCurrency(animExpense)}
+                value={<AnimatedNumber value={kpi.expense} format={formatCurrency} />}
                 sub={`${filteredTxs.filter(t => t.type === 'expense').length} işlem`}
                 color="danger"
               />
               <KPICard
                 label="Net Tasarruf"
-                value={formatCurrency(animNet)}
+                value={<AnimatedNumber value={Math.abs(netTotal)} format={formatCurrency} />}
                 sub={netTotal >= 0 ? 'Pozitif birikim' : 'Açık var'}
                 prefix={netTotal >= 0 ? '+' : '−'}
                 color={netTotal >= 0 ? 'ok' : 'danger'}
@@ -757,7 +760,7 @@ export default function ReportsPage() {
               <div className="flex items-center gap-3">
                 {!isLoading && (
                   <span className={`text-xs font-medium tabular-nums ${cashFlowNet >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                    Net: {cashFlowNet >= 0 ? '+' : '−'}{formatCurrency(animCashFlowNet)}
+                    Net: {cashFlowNet >= 0 ? '+' : '−'}<AnimatedNumber value={Math.abs(cashFlowNet)} format={formatCurrency} />
                   </span>
                 )}
                 {!isLoading && (
@@ -975,7 +978,7 @@ export default function ReportsPage() {
                   </span>
                 )}
                 <span className={trendLast >= 0 ? 'text-green-600' : 'text-destructive'}>
-                  Güncel: {formatCurrency(animTrend)}
+                  Güncel: <AnimatedNumber value={trendLast} format={formatCurrency} />
                 </span>
               </span>
             )}
@@ -1098,7 +1101,7 @@ function KPICard({
   label, value, sub, prefix = '', color = 'neutral',
 }: {
   label: string
-  value: string
+  value: ReactNode
   sub?: string
   prefix?: string
   color?: 'ok' | 'danger' | 'neutral'
@@ -1106,9 +1109,9 @@ function KPICard({
   const cls = color === 'ok' ? 'text-green-600' : color === 'danger' ? 'text-destructive' : 'text-foreground'
   return (
     <Card>
-      <CardContent className="px-5 py-4">
+      <CardContent className="@container px-4 sm:px-5 py-4">
         <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-2">{label}</div>
-        <div className={`text-3xl font-normal tabular-nums ${cls}`}>
+        <div className={`kpi-value font-normal tabular-nums ${cls}`}>
           {prefix}{value}
         </div>
         {sub && <div className="text-xs text-muted-foreground mt-1.5 font-medium">{sub}</div>}

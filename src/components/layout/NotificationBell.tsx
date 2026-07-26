@@ -39,7 +39,7 @@ export function NotificationBell() {
           setOpen(o => !o)
           if (!open) markSeen()
         }}
-        className="relative w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        className="relative w-11 h-11 lg:w-9 lg:h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         title="Bildirimler"
         aria-label={count > 0 ? `Bildirimler — ${count} onay bekleyen` : 'Bildirimler'}
       >
