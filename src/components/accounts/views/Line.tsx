@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { TYPE_LABELS, type AccountRow } from './shared'
 import type { Account } from '@/types'
@@ -62,15 +63,18 @@ export function AccountLine({ row, onEdit }: { row: AccountRow; onEdit: (a: Acco
       </button>
 
       {/* CTA — hesap detayı */}
-      <Button
-        asChild
-        size="xs"
-        variant="secondary"
-        rightIcon={<ArrowRight className="size-3" />}
-        className="relative z-20 font-semibold group-hover:bg-primary group-hover:text-primary-foreground"
+      {/* NOT: <Button asChild> KULLANMA — bkz. GridView'daki açıklama (Radix Slot
+          tek çocuk ister, Button 3 yuva geçirir). */}
+      <Link
+        href={`/accounts/${account.id}`}
+        className={cn(
+          buttonVariants({ variant: 'secondary', size: 'xs' }),
+          'relative z-20 font-semibold group-hover:bg-primary group-hover:text-primary-foreground',
+        )}
       >
-        <Link href={`/accounts/${account.id}`}>Detay</Link>
-      </Button>
+        Detay
+        <ArrowRight className="size-3" />
+      </Link>
     </div>
   )
 }

@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { TYPE_LABELS, barColor, type AccountRow } from './shared'
 import type { Account } from '@/types'
@@ -57,15 +58,20 @@ export function GridView({ rows, onEdit }: { rows: AccountRow[]; onEdit: (a: Acc
                   >
                     Düzenle
                   </button>
-                  <Button
-                    asChild
-                    size="xs"
-                    variant="secondary"
-                    rightIcon={<ArrowRight className="size-3" />}
-                    className="font-semibold group-hover:bg-primary group-hover:text-primary-foreground"
+                  {/* NOT: <Button asChild> KULLANMA — Button daima 3 çocuk yuvası
+                      (leftIcon/children/rightIcon) geçirir, Radix Slot ise tek
+                      çocuk ister ve boş yuvaları da sayar → "Slot failed to slot
+                      onto its children". Bağlantıya buttonVariants sınıfı veriyoruz. */}
+                  <Link
+                    href={`/accounts/${account.id}`}
+                    className={cn(
+                      buttonVariants({ variant: 'secondary', size: 'xs' }),
+                      'font-semibold group-hover:bg-primary group-hover:text-primary-foreground',
+                    )}
                   >
-                    <Link href={`/accounts/${account.id}`}>Detay</Link>
-                  </Button>
+                    Detay
+                    <ArrowRight className="size-3" />
+                  </Link>
                 </div>
               </div>
 
