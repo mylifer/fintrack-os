@@ -14,8 +14,6 @@ import { ListFilter, BarChart3, LineChart as LineChartIcon } from 'lucide-react'
 import type { CashFlowPoint, CashFlowChartType } from '@/components/reports/_CashFlowBarChart'
 import type { PeriodType } from '@/types'
 
-const MIN_PX_PER_BUCKET = 26
-
 interface Props {
   /** Dashboard'un üst kısmındaki dönem sekmesi — kova genişliğini belirler:
    * Günlük→gün, Haftalık→hafta, Aylık→ay, Yıllık→yıl, Tüm Zamanlar→ay
@@ -95,7 +93,7 @@ export function CashflowChart({ periodType, customRange, periodLabel }: Props) {
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <div style={{ minWidth: Math.max(360, data.length * MIN_PX_PER_BUCKET) }}>
+            <div className="min-w-[360px]">
               <CashFlowBarChart
                 data={data}
                 chartType={chartType}
