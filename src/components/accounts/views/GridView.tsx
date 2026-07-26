@@ -12,6 +12,9 @@ import type { Account } from '@/types'
  * Duyarlı, zarif kart ızgarası. Üstte hesap renginde ince vurgu şeridi, büyük
  * bakiye, altta dönem gelir/gider ya da kredi kartı limit çubuğu. Yumuşak
  * gölge/kenarlık, hover'da hafif yükselme.
+ *
+ * Kartın tamamı hesap detayına götürür (gerilmiş bağlantı, z-10); Düzenle
+ * butonu z-20 ile bağlantının üstünde kalır. Altta görünür "Detay →" CTA'sı.
  */
 export function GridView({ rows, onEdit }: { rows: AccountRow[]; onEdit: (a: Account) => void }) {
   return (
@@ -26,20 +29,27 @@ export function GridView({ rows, onEdit }: { rows: AccountRow[]; onEdit: (a: Acc
             {/* Renk vurgu şeridi — her hesaba paletten farklı renk */}
             <div className="h-1 w-full" style={{ background: barColor(i) }} />
 
+            {/* Gerilmiş bağlantı — kartın her yeri hesap detayına gider */}
+            <Link
+              href={`/accounts/${account.id}`}
+              aria-label={`${account.name} hesap detayı`}
+              className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset"
+            />
+
             <div className="p-5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <AccountAvatar account={account} size="md" />
                   <div className="min-w-0">
-                    <Link href={`/accounts/${account.id}`} className="text-sm font-semibold text-foreground hover:text-primary transition-colors truncate block">
+                    <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate block">
                       {account.name}
-                    </Link>
+                    </span>
                     <span className="text-xs text-muted-foreground">{TYPE_LABELS[account.type]} · {account.currency}</span>
                   </div>
                 </div>
                 <button
                   onClick={() => onEdit(account)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary flex-shrink-0"
+                  className="relative z-20 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary flex-shrink-0"
                 >
                   Düzenle
                 </button>
@@ -72,6 +82,14 @@ export function GridView({ rows, onEdit }: { rows: AccountRow[]; onEdit: (a: Acc
                   )}
                 </div>
               )}
+
+              {/* CTA — hesap detayı (tıklamayı gerilmiş bağlantı karşılar) */}
+              <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-end">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground group-hover:text-primary transition-colors">
+                  Detayı gör
+                  <span className="transition-transform group-hover:translate-x-0.5">→</span>
+                </span>
+              </div>
             </div>
           </div>
         )

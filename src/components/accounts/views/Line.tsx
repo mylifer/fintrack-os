@@ -18,16 +18,20 @@ export function AccountLine({ row, onEdit }: { row: AccountRow; onEdit: (a: Acco
   const isCredit = account.type === 'credit_card' && !!account.creditLimit
 
   return (
-    <div className="group flex items-center gap-3.5 px-4 h-[68px] transition-colors hover:bg-secondary/40">
+    <div className="group relative flex items-center gap-3.5 px-4 h-[68px] transition-colors hover:bg-secondary/40">
+      {/* Gerilmiş bağlantı — satırın her yeri hesap detayına gider */}
+      <Link
+        href={`/accounts/${account.id}`}
+        aria-label={`${account.name} hesap detayı`}
+        className="absolute inset-0 z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset"
+      />
+
       <AccountAvatar account={account} size="md" />
 
       <div className="min-w-0 flex-1">
-        <Link
-          href={`/accounts/${account.id}`}
-          className="text-sm font-semibold text-foreground hover:text-primary transition-colors truncate block"
-        >
+        <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate block">
           {account.name}
-        </Link>
+        </span>
         <div className="text-xs text-muted-foreground truncate">
           {TYPE_LABELS[account.type]}
           {isCredit && available !== null && (
@@ -50,10 +54,15 @@ export function AccountLine({ row, onEdit }: { row: AccountRow; onEdit: (a: Acco
 
       <button
         onClick={() => onEdit(account)}
-        className="opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-lg hover:bg-secondary flex-shrink-0"
+        className="relative z-20 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-lg hover:bg-secondary flex-shrink-0"
       >
         Düzenle
       </button>
+
+      {/* CTA — hesap detayı (tıklamayı gerilmiş bağlantı karşılar) */}
+      <span className="text-muted-foreground/50 group-hover:text-primary transition-all group-hover:translate-x-0.5 flex-shrink-0" aria-hidden>
+        →
+      </span>
     </div>
   )
 }
