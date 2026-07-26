@@ -2,9 +2,9 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { useTransactionStore } from '@/store'
-import { calcMonthlyFlow, excludeFuture } from '@/lib/utils/calculations'
+import { excludeFuture } from '@/lib/utils/calculations'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { lastNMonths, monthRange } from '@/lib/utils/date'
+import { buildCashFlowData } from '@/lib/utils/cashflow'
 import { formatCurrency } from '@/lib/utils/currency'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
@@ -13,7 +13,18 @@ import { CashFlowDetailOverlay } from '@/components/reports/CashFlowDetailOverla
 import { ListFilter, BarChart3, LineChart as LineChartIcon } from 'lucide-react'
 import type { CashFlowPoint, CashFlowChartType } from '@/components/reports/_CashFlowBarChart'
 
-export function CashflowChart() {
+interface Props {
+  /** Dashboard'un üst kısmındaki dönem sekmelerinden (Günlük/Haftalık/Aylık/…)
+   * hesaplanan aralık — raporlar sayfasındaki karşılık gelen preset ile aynı
+   * from/to üretir (bkz. getPeriodRange), böylece iki sayfa aynı filtrede
+   * birebir aynı çubukları gösterir. */
+  from: string
+  to: string
+  /** Üst dönem sekmesinin etiketi (ör. "Bu Ay") — "Detay" panelinin başlığında. */
+  periodLabel: string
+}
+
+export function CashflowChart({ from, to, periodLabel }: Props) {
   const transactions = useTransactionStore(s => s.transactions)
   const [chartType, setChartType] = useState<CashFlowChartType>('bar')
   const [detail, setDetail]         = useState<{ from: string; to: string; label: string } | null>(null)
@@ -24,26 +35,21 @@ export function CashflowChart() {
     setDetailOpen(true)
   }, [])
 
-  // Nakit akışı = yalnızca gerçek nakit gelir/gider (bkz. calcMonthlyFlow/isFlowTx) —
-  // gerçekleşmemiş fon getirisi barlara enjekte edilmez.
-  const data = useMemo<CashFlowPoint[]>(() => {
-    return lastNMonths(6).map(my => {
-      const { from, to } = monthRange(my)
-      const { income, expense } = calcMonthlyFlow(transactions, my)
-      const label = new Date(my.year, my.month - 1).toLocaleDateString('tr-TR', { month: 'short' })
-      return { label, income, expense, from, to }
-    })
-  }, [transactions])
-
-  const net = useMemo(() => data.reduce((s, d) => s + d.income - d.expense, 0), [data])
-  const rangeLabel = data.length ? `${data[0].label} – ${data[data.length - 1].label}` : 'Son 6 Ay'
-
   // Drill-down overlay'in kendi toplamları bar verisiyle tutarlı olsun diye
   // aynı kapsam: onaylanmış (pending/gelecek hariç) + mutabakat ayıklanmış.
+  // buildCashFlowData bunun üzerine yalnız tip (gelir/gider) + yatırım anapara
+  // filtresi uygular — raporlar sayfasıyla birebir aynı fonksiyon.
   const flowTxs = useMemo(
     () => excludeFuture(transactions).filter(tx => !isReconciliation(tx)),
     [transactions],
   )
+
+  const data = useMemo<CashFlowPoint[]>(
+    () => buildCashFlowData(flowTxs, { from, to }),
+    [flowTxs, from, to],
+  )
+
+  const net = useMemo(() => data.reduce((s, d) => s + d.income - d.expense, 0), [data])
 
   return (
     <>
@@ -73,7 +79,7 @@ export function CashflowChart() {
               </button>
             </div>
             <button
-              onClick={() => openDetail({ from: data[0]?.from ?? '', to: data[data.length - 1]?.to ?? '', label: rangeLabel })}
+              onClick={() => openDetail({ from, to, label: periodLabel })}
               className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-accent transition-colors"
               title="İşlemleri görüntüle"
             >

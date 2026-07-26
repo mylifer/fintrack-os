@@ -3,16 +3,9 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { formatCompact, formatAxisCompact } from '@/lib/utils/currency'
+import type { CashFlowPoint } from '@/lib/utils/cashflow'
 
-export type CashFlowPoint = {
-  label: string
-  income: number
-  expense: number
-  /** Bu barın kapsadığı tarih aralığı — detay overlay'i bu aralığı okur. */
-  from: string
-  to: string
-}
-
+export type { CashFlowPoint }
 export type CashFlowChartType = 'bar' | 'line'
 
 function CustomTooltip({ active, payload, label }: any) {

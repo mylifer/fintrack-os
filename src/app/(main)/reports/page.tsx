@@ -7,7 +7,7 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   format, parseISO, startOfMonth, endOfMonth,
   subMonths, subDays, startOfYear, endOfYear,
-  differenceInDays, addMonths, addWeeks, addDays,
+  differenceInDays, addMonths, addDays,
   startOfWeek, endOfWeek,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -19,9 +19,10 @@ import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, isInvestmentPrincipalTx, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { buildCashFlowData } from '@/lib/utils/cashflow'
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
-import { sumBy, toMinor, toMajor } from '@/lib/utils/money'
+import { toMinor, toMajor } from '@/lib/utils/money'
 import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
 import { tefasCodesIn } from '@/lib/tefas'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
@@ -31,7 +32,6 @@ import { BalanceTrendChart }   from '@/components/reports/BalanceTrendChart'
 import { CategoryTrendChart }  from '@/components/reports/CategoryTrendChart'
 import { TransactionList }     from '@/components/transactions/TransactionList'
 import { ListFilter, BarChart3, LineChart as LineChartIcon } from 'lucide-react'
-import type { CashFlowPoint }       from '@/components/reports/_CashFlowBarChart'
 import type { CategorySlice }       from '@/components/reports/_CategoryDonutChart'
 import type { TrendPoint }          from '@/components/reports/_BalanceTrendChart'
 import type { CategoryTrendPoint }  from '@/components/reports/_CategoryTrendChart'
@@ -89,57 +89,6 @@ function getPresetRange(preset: Preset, customFrom: string, customTo: string) {
         to:   customTo   || format(endOfMonth(now),   'yyyy-MM-dd'),
       }
   }
-}
-
-function buildCashFlowData(
-  transactions: Transaction[],
-  dateRange: { from: string; to: string },
-): CashFlowPoint[] {
-  const from = parseISO(dateRange.from)
-  const to   = parseISO(dateRange.to)
-  const days = differenceInDays(to, from) + 1
-  const pts: CashFlowPoint[] = []
-
-  // TRY-normalize (baseAmount, S2/S3) + kuruş-exact (S8) — dashboard'daki
-  // calcMonthlyFlow ile aynı para birimi kuralı; ham `amount` karışık PB toplamaz.
-  // Yatırım anapara satırları (… Alımı/… Satışı) akış grafiğine girmez; yalnızca
-  // gerçekleşen K/Z ile normal gelir/gider — KPI kartlarıyla aynı kapsam.
-  // slice(0,10): calcPeriodFlow/isInRange ile aynı gün-sınırı toleransı — legacy
-  // tam-ISO datetime (ör. '2026-07-31T15:00') aralığın son gününden düşmesin,
-  // yoksa çubuklar KPI'dan az toplar (bar↔KPI tutarsızlığı).
-  const income  = (pFrom: string, pTo: string) =>
-    sumBy(transactions.filter(t => t.type === 'income'  && t.date.slice(0, 10) >= pFrom && t.date.slice(0, 10) <= pTo && !isInvestmentPrincipalTx(t)), baseAmount)
-  const expense = (pFrom: string, pTo: string) =>
-    sumBy(transactions.filter(t => t.type === 'expense' && t.date.slice(0, 10) >= pFrom && t.date.slice(0, 10) <= pTo && !isInvestmentPrincipalTx(t)), baseAmount)
-
-  if (days <= 45) {
-    let wStart = startOfWeek(from, { locale: tr })
-    while (wStart <= to) {
-      const wEnd  = endOfWeek(wStart, { locale: tr })
-      const s     = wStart < from ? from : wStart
-      const e     = wEnd   > to   ? to   : wEnd
-      const pFrom = format(s, 'yyyy-MM-dd')
-      const pTo   = format(e, 'yyyy-MM-dd')
-      // Etiket tek bir GÜN değil, bir HAFTA aralığını gösterir (ör. "13–19 Tem").
-      // Yalnız başlangıç gününü ("13 Tem") yazmak "tüm gider tek güne yığılmış"
-      // yanılgısına yol açıyordu; ay sınırını aşan haftalarda iki ay da yazılır.
-      const label = s.getMonth() === e.getMonth()
-        ? `${format(s, 'd', { locale: tr })}–${format(e, 'd MMM', { locale: tr })}`
-        : `${format(s, 'd MMM', { locale: tr })}–${format(e, 'd MMM', { locale: tr })}`
-      pts.push({ label, income: income(pFrom, pTo), expense: expense(pFrom, pTo), from: pFrom, to: pTo })
-      wStart = addWeeks(wStart, 1)
-    }
-  } else {
-    let mStart = startOfMonth(from)
-    while (mStart <= to) {
-      const mEnd  = endOfMonth(mStart)
-      const pFrom = format(mStart < from ? from : mStart, 'yyyy-MM-dd')
-      const pTo   = format(mEnd   > to   ? to   : mEnd,   'yyyy-MM-dd')
-      pts.push({ label: format(mStart, 'MMM yy', { locale: tr }), income: income(pFrom, pTo), expense: expense(pFrom, pTo), from: pFrom, to: pTo })
-      mStart = addMonths(mStart, 1)
-    }
-  }
-  return pts
 }
 
 function buildCategoryData(
