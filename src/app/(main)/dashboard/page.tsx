@@ -334,7 +334,11 @@ export default function DashboardPage() {
 
         {/* ── Charts ─────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <CashflowChart from={from} to={to} periodLabel={prefix} />
+          <CashflowChart
+            periodType={periodType}
+            customRange={customActive ? { from, to } : null}
+            periodLabel={prefix}
+          />
           <NetWorthChart />
         </div>
 

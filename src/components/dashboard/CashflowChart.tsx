@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useTransactionStore } from '@/store'
 import { excludeFuture } from '@/lib/utils/calculations'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { buildCashFlowData } from '@/lib/utils/cashflow'
+import { buildDashboardCashFlowData } from '@/lib/utils/cashflow'
 import { formatCurrency } from '@/lib/utils/currency'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
@@ -12,19 +12,22 @@ import { CashFlowBarChart } from '@/components/reports/CashFlowBarChart'
 import { CashFlowDetailOverlay } from '@/components/reports/CashFlowDetailOverlay'
 import { ListFilter, BarChart3, LineChart as LineChartIcon } from 'lucide-react'
 import type { CashFlowPoint, CashFlowChartType } from '@/components/reports/_CashFlowBarChart'
+import type { PeriodType } from '@/types'
+
+const MIN_PX_PER_BUCKET = 26
 
 interface Props {
-  /** Dashboard'un üst kısmındaki dönem sekmelerinden (Günlük/Haftalık/Aylık/…)
-   * hesaplanan aralık — raporlar sayfasındaki karşılık gelen preset ile aynı
-   * from/to üretir (bkz. getPeriodRange), böylece iki sayfa aynı filtrede
-   * birebir aynı çubukları gösterir. */
-  from: string
-  to: string
+  /** Dashboard'un üst kısmındaki dönem sekmesi — kova genişliğini belirler:
+   * Günlük→gün, Haftalık→hafta, Aylık→ay, Yıllık→yıl, Tüm Zamanlar→ay
+   * (bkz. buildDashboardCashFlowData). */
+  periodType: PeriodType
+  /** "Özel" sekmesi seçiliyken kullanıcının girdiği aralık; aksi halde null. */
+  customRange: { from: string; to: string } | null
   /** Üst dönem sekmesinin etiketi (ör. "Bu Ay") — "Detay" panelinin başlığında. */
   periodLabel: string
 }
 
-export function CashflowChart({ from, to, periodLabel }: Props) {
+export function CashflowChart({ periodType, customRange, periodLabel }: Props) {
   const transactions = useTransactionStore(s => s.transactions)
   const [chartType, setChartType] = useState<CashFlowChartType>('bar')
   const [detail, setDetail]         = useState<{ from: string; to: string; label: string } | null>(null)
@@ -37,19 +40,21 @@ export function CashflowChart({ from, to, periodLabel }: Props) {
 
   // Drill-down overlay'in kendi toplamları bar verisiyle tutarlı olsun diye
   // aynı kapsam: onaylanmış (pending/gelecek hariç) + mutabakat ayıklanmış.
-  // buildCashFlowData bunun üzerine yalnız tip (gelir/gider) + yatırım anapara
-  // filtresi uygular — raporlar sayfasıyla birebir aynı fonksiyon.
+  // buildDashboardCashFlowData bunun üzerine yalnız tip (gelir/gider) + yatırım
+  // anapara filtresi uygular.
   const flowTxs = useMemo(
     () => excludeFuture(transactions).filter(tx => !isReconciliation(tx)),
     [transactions],
   )
 
   const data = useMemo<CashFlowPoint[]>(
-    () => buildCashFlowData(flowTxs, { from, to }),
-    [flowTxs, from, to],
+    () => buildDashboardCashFlowData(flowTxs, periodType, customRange),
+    [flowTxs, periodType, customRange],
   )
 
   const net = useMemo(() => data.reduce((s, d) => s + d.income - d.expense, 0), [data])
+  const rangeFrom = data[0]?.from ?? ''
+  const rangeTo   = data[data.length - 1]?.to ?? ''
 
   return (
     <>
@@ -79,7 +84,7 @@ export function CashflowChart({ from, to, periodLabel }: Props) {
               </button>
             </div>
             <button
-              onClick={() => openDetail({ from, to, label: periodLabel })}
+              onClick={() => openDetail({ from: rangeFrom, to: rangeTo, label: periodLabel })}
               className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-accent transition-colors"
               title="İşlemleri görüntüle"
             >
@@ -90,7 +95,7 @@ export function CashflowChart({ from, to, periodLabel }: Props) {
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <div className="min-w-[360px]">
+            <div style={{ minWidth: Math.max(360, data.length * MIN_PX_PER_BUCKET) }}>
               <CashFlowBarChart
                 data={data}
                 chartType={chartType}
