@@ -121,9 +121,12 @@ export function SyncStatusBanner() {
           ? 'Bu kayıtlar şimdilik yalnızca bu tarayıcıda duruyor; sorun giderilmeden çıkış yapmayın.'
           : 'Bağlantı gelince otomatik gönderilecek.'}
       </div>
-      {isError && lastError && (
+      {/* Hata metnini BEKLEME (sarı) durumunda da göster: bir kayıt sessizce
+          yeniden denenip duruyorsa dead-letter (kırmızı) olmadan da nedenini
+          görebilmek gerek — teşhis için konsola girmeye gerek kalmaz. */}
+      {lastError && (
         <div className="mt-1.5 font-mono text-[10px] leading-snug break-words opacity-80" title={lastError}>
-          {lastError.length > 160 ? `${lastError.slice(0, 160)}…` : lastError}
+          {lastError.length > 200 ? `${lastError.slice(0, 200)}…` : lastError}
         </div>
       )}
       {isError && (

@@ -107,6 +107,13 @@ alter table public.transactions add column if not exists "amountTry" double prec
 alter table public.transactions add column if not exists "refundOfId" text;
 alter table public.transactions add column if not exists "systemKind" text;
 
+-- İade mimarisi (S4) bilinçli olarak NEGATİF tutarlı bir `expense` satırı yazar
+-- (orijinal harcamayı netler). Tablo ilk kurulduğunda konan `amount > 0` tipli
+-- eski CHECK kısıtı bu negatif satırları reddedip outbox'ı dead-letter yapıyordu
+-- ("transactions_amount_check" ihlali). Negatif tutarlar geçerli olduğundan kısıtı
+-- düşürüyoruz. Idempotent + veri-güvenli: mevcut satırlara dokunmaz.
+alter table public.transactions drop constraint if exists transactions_amount_check;
+
 -- ── Schema-drift guard: every column the client can push ────────────────────
 -- The sync engine upserts the FULL row snapshot (toSnapshot() copies all entity
 -- fields except user_id and the COMPUTED[table] fields). If any pushed field has
