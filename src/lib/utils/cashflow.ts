@@ -1,7 +1,7 @@
 import {
   format, parseISO, differenceInDays,
   startOfWeek, endOfWeek, addWeeks, addDays,
-  startOfMonth, endOfMonth, addMonths,
+  startOfMonth, endOfMonth, addMonths, subMonths,
   startOfYear, endOfYear, addYears,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -133,9 +133,9 @@ export function buildCashFlowData(
  * Dashboard'un nakit akışı grafiği için: kova GENİŞLİĞİ seçili dönem
  * sekmesine (Günlük/Haftalık/Aylık/Yıllık/Tüm Zamanlar) göre sabit, aralık
  * uzunluğundan bağımsızdır (Raporlar'daki buildCashFlowData'nın aksine) —
- * Günlük→gün, Haftalık→hafta, Aylık→ay, Yıllık→yıl kovası. "Özel" (custom)
- * aralıkta da gün kovası kullanılır — kullanıcı hangi aralığı seçerse seçsin
- * gün bazında detay görür.
+ * Günlük→gün (son 4 ay), Haftalık→hafta, Aylık→ay, Yıllık→yıl kovası. "Özel"
+ * (custom) aralıkta da gün kovası kullanılır — kullanıcı hangi aralığı
+ * seçerse seçsin gün bazında detay görür.
  */
 export function buildDashboardCashFlowData(
   transactions: Transaction[],
@@ -150,7 +150,7 @@ export function buildDashboardCashFlowData(
 
   switch (periodType) {
     case 'daily':
-      return dailyBuckets(transactions, yearStartISO, todayISO)
+      return dailyBuckets(transactions, format(subMonths(now, 4), 'yyyy-MM-dd'), todayISO)
     case 'weekly':
       return weeklyBuckets(transactions, yearStartISO, todayISO)
     case 'monthly':
