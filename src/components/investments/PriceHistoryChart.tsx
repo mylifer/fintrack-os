@@ -327,7 +327,9 @@ export function PriceHistoryChart({
 
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="px-5 pt-4 pb-2 flex items-start justify-between gap-3">
-        <div className="@container min-w-0">
+        {/* flex-1 şart: @container (container-type:inline-size) içsel genişliğe
+            katkı vermez — flex item olarak 0'a çöker, başlık 2. satıra kayar. */}
+        <div className="@container min-w-0 flex-1">
           <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground block mb-1.5">
             {label}
           </span>
