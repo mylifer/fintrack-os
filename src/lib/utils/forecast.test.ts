@@ -357,16 +357,17 @@ describe('buildForecast — tracked debt installments', () => {
     expect(f.drivers).toEqual([])
   })
 
-  it('dueDate anchors the final installment (schedule counts backward)', () => {
-    const payments = futureDebtPayments(
-      debt({ totalAmount: 3000, monthlyPayment: 1000, totalInstallments: 3, dueDate: '2026-03-01' }),
-      TODAY, '2026-06-01',
-    )
-    // Taksitler 01-01, 02-01, 03-01; sadece today'den sonrakiler.
-    expect(payments).toEqual([
+  it('takvim başlangıçtan ileri kurulur; vade planı kaydırmaz', () => {
+    const base = { totalAmount: 3000, monthlyPayment: 1000, totalInstallments: 3 }
+    // startDate = 2026-01-01 → taksitler 01-01, 02-01, 03-01 (ilki today'de,
+    // projeksiyona girmez). Vade girili olsun ya da olmasın sonuç aynı.
+    const expected = [
       { date: '2026-02-01', amount: 1000 },
       { date: '2026-03-01', amount: 1000 },
-    ])
+    ]
+    expect(futureDebtPayments(debt(base), TODAY, '2026-06-01')).toEqual(expected)
+    expect(futureDebtPayments(debt({ ...base, dueDate: '2026-12-31' }), TODAY, '2026-06-01'))
+      .toEqual(expected)
   })
 
   it('cash mode: a payment from a non-liquid account does not drain cash', () => {

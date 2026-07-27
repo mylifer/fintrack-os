@@ -155,7 +155,7 @@ export interface Debt {
   paidAmount: number        // Running total of payments
   interestRate?: number     // Annual % (e.g., 3.5)
   startDate: string         // First installment date (vade yoksa plan buradan başlar)
-  dueDate?: string          // Next payment / final maturity
+  dueDate?: string          // Hatırlatma (gecikme rozeti) — ödeme planını kaydırmaz
   monthlyPayment?: number
   totalInstallments?: number
   paidInstallments?: number

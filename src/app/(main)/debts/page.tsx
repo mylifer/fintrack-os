@@ -108,11 +108,10 @@ function buildPaymentPlan(debt: DebtWithRemaining): PlanRow[] {
     const amount = i === count - 1 && remainder > 0 ? remainder : monthly
     const prevCumulative = cumulative
     cumulative += amount
-    // Vade girilmişse son taksit vadeye denk gelecek şekilde geriye doğru,
-    // girilmemişse ilk taksit başlangıç tarihine denk gelecek şekilde ileri doğru.
-    const date = debt.dueDate
-      ? addMonthsClamped(debt.dueDate, -(count - 1 - i))
-      : addMonthsClamped(debt.startDate, i)
+    // Takvim daima başlangıçtan (= ilk taksit) ileri doğru kurulur. Vade,
+    // planın çapası DEĞİLDİR: karttaki "Gecikmiş"/"Ng" hatırlatmasında
+    // kullanılan ayrı bir alandır ve girilmesi planı kaydırmaz.
+    const date = addMonthsClamped(debt.startDate, i)
 
     let status: PlanRow['status']
     if (debt.paidAmount + 0.005 >= cumulative) status = 'paid'
