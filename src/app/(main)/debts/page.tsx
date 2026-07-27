@@ -109,10 +109,10 @@ function buildPaymentPlan(debt: DebtWithRemaining): PlanRow[] {
     const prevCumulative = cumulative
     cumulative += amount
     // Vade girilmişse son taksit vadeye denk gelecek şekilde geriye doğru,
-    // girilmemişse başlangıçtan bir ay sonra başlayacak şekilde ileri doğru.
+    // girilmemişse ilk taksit başlangıç tarihine denk gelecek şekilde ileri doğru.
     const date = debt.dueDate
       ? addMonthsClamped(debt.dueDate, -(count - 1 - i))
-      : addMonthsClamped(debt.startDate, i + 1)
+      : addMonthsClamped(debt.startDate, i)
 
     let status: PlanRow['status']
     if (debt.paidAmount + 0.005 >= cumulative) status = 'paid'
@@ -536,7 +536,7 @@ export default function DebtsPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Başlangıç" type="date" value={form.startDate} onChange={e => setForm(f => ({...f, startDate: e.target.value}))} />
+            <Input label="Başlangıç (ilk taksit)" type="date" value={form.startDate} onChange={e => setForm(f => ({...f, startDate: e.target.value}))} />
             <Input label="Son Ödeme / Vade" type="date" value={form.dueDate} onChange={e => setForm(f => ({...f, dueDate: e.target.value}))} />
           </div>
 

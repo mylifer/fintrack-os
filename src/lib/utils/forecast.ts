@@ -123,11 +123,11 @@ export function futureDebtPayments(debt: Debt, after: string, horizonEnd: string
     const amount = i === count - 1 && remainder > 0 ? remainder : monthly
     const prevCumulative = cumulative
     cumulative = addMoney(cumulative, amount)
-    // Vade girilmişse son taksit vadeye denk gelir; girilmemişse başlangıçtan
-    // bir ay sonra başlar (debts sayfasındaki takvimle birebir).
+    // Vade girilmişse son taksit vadeye denk gelir; girilmemişse ilk taksit
+    // başlangıç tarihine denk gelir (debts sayfasındaki takvimle birebir).
     const date = debt.dueDate
       ? addMonthsIso(debt.dueDate, -(count - 1 - i))
-      : addMonthsIso(debt.startDate, i + 1)
+      : addMonthsIso(debt.startDate, i)
     if (date <= after || date > horizonEnd) continue
     // Bu taksitin ödenmemiş kısmı (kısmi ödemeyi de ele alır).
     const covered = Math.max(prevCumulative, debt.paidAmount)

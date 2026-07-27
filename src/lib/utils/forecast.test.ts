@@ -319,11 +319,13 @@ describe('buildForecast — tracked debt installments', () => {
       horizonMonths: 3,
       todayStr: TODAY,
     })
+    // İlk taksit başlangıç gününde (= today) düşer, projeksiyona girmez.
     expect(f.events).toEqual([
-      { date: '2026-03-01', name: 'Kredi', type: 'expense', amountTry: 500,  balanceAfter: 4500 },
-      { date: '2026-04-01', name: 'Kredi', type: 'expense', amountTry: 1000, balanceAfter: 3500 },
+      { date: '2026-02-01', name: 'Kredi', type: 'expense', amountTry: 500,  balanceAfter: 4500 },
+      { date: '2026-03-01', name: 'Kredi', type: 'expense', amountTry: 1000, balanceAfter: 3500 },
+      { date: '2026-04-01', name: 'Kredi', type: 'expense', amountTry: 1000, balanceAfter: 2500 },
     ])
-    expect(f.totalExpense).toBe(1500)
+    expect(f.totalExpense).toBe(2500)
   })
 
   it('owed debts are projected as incoming money', () => {
