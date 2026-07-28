@@ -194,6 +194,11 @@ export interface ModalPayload {
   id?: string
   type?: TransactionType
   accountId?: string
+  /** Set when editing a projected (not yet generated) recurring occurrence —
+   *  the synthetic Transaction from projectPlannedTransactions(). Its `id` is
+   *  the deterministic recur:<templateId>:<date> id, so saving materializes
+   *  THIS occurrence only (template + other occurrences are untouched). */
+  plannedTx?: Transaction
 }
 
 export interface MonthYear {

@@ -436,9 +436,19 @@ const TableTxRow = memo(function TableTxRow({
         )}
       </div>
 
-      {/* Actions — planlanan (henüz gerçekleşmemiş) satırlar düzenlenemez/silinemez */}
+      {/* Actions — planlanan (henüz gerçekleşmemiş) satırlar yalnızca düzenlenebilir
+          (örn. erken yatan maaş için tarih öne çekilebilir); iade/silme yok, çünkü
+          henüz gerçek bir işlem olarak var olmuyorlar. */}
       <div className="row-actions px-2 py-2 flex items-center justify-end gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        {!projected && (
+        {projected ? (
+          <button
+            onClick={() => openModal('edit-transaction', { id: tx.id, plannedTx: tx })}
+            className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title="Tarihi Düzenle"
+          >
+            <PencilIcon size={12} />
+          </button>
+        ) : (
           <>
             {tx.type === 'expense' && tx.amount > 0 && (
               <button
@@ -551,9 +561,17 @@ const CardTxRow = memo(function CardTxRow({
         {isIncome || isRefund ? '+' : isXfer ? '' : '−'}{formatCurrency(Math.abs(tx.amount), tx.currency)}
       </span>
 
-      {/* Actions — visible only on row hover; planlanan satırlar düzenlenemez/silinemez */}
+      {/* Actions — visible only on row hover; planlanan satırlar yalnızca düzenlenebilir */}
       <div className="row-actions flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        {!projected && (
+        {projected ? (
+          <button
+            onClick={() => openModal('edit-transaction', { id: tx.id, plannedTx: tx })}
+            className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title="Tarihi Düzenle"
+          >
+            <PencilIcon size={12} />
+          </button>
+        ) : (
           <>
             {tx.type === 'expense' && tx.amount > 0 && (
               <button

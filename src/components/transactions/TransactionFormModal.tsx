@@ -385,8 +385,14 @@ export function TransactionFormModal() {
   const isEdit = modal === 'edit-transaction' || modal === 'edit-recurring'
 
   const editingTx: Transaction | undefined = modal === 'edit-transaction' && modalPayload?.id
-    ? transactions.find(t => t.id === modalPayload.id)
+    ? (modalPayload.plannedTx ?? transactions.find(t => t.id === modalPayload.id))
     : undefined
+  // Planlanan (henüz üretilmemiş) bir tekrarlayan oluşumu düzenliyoruz: kayıt
+  // "update" değil "create"tir — SADECE bu oluşum, deterministik id'siyle
+  // (recur:<şablonId>:<orijinal tarih>) gerçek bir işlem olarak doğar. Şablonun
+  // nextDueDate'i kasıtlı olarak dokunulmaz: vadesi geldiğinde normal onay akışı
+  // (approveRecurring) bu id zaten var diye tekrar üretmez, sadece imleci ilerletir.
+  const isPlannedEdit = modal === 'edit-transaction' && !!modalPayload?.plannedTx
   const editingRec: RecurringTransaction | undefined = modal === 'edit-recurring' && modalPayload?.id
     ? recurring.find(r => r.id === modalPayload.id)
     : undefined
@@ -632,6 +638,25 @@ export function TransactionFormModal() {
         recipientId:    formData.recipientId ?? null,
         date:           form.date,
       }, amounts)
+    } else if (editingTx && isPlannedEdit) {
+      // Materialize: recurring approval'la aynı felsefe — bu düzenleme onay
+      // anıdır, satır 'approved' doğar (approveRecurring ile tutarlı).
+      await addTx({
+        ...formData, id: editingTx.id, type: tab as TransactionType, amount, currency,
+        categoryId:     formData.categoryId     || undefined,
+        toAccountId:    formData.toAccountId    || undefined,
+        familyMemberId: formData.familyMemberId ?? null,
+        recipientId:    formData.recipientId    ?? null,
+        tags:           cleanTags.length ? cleanTags : undefined,
+        isInstallment:  false,
+        approvalStatus: 'approved',
+        approvedAt:     now,
+        createdAt:      now,
+        updatedAt:      now,
+      })
+      if (tab === 'transfer' && form.isDebtPayment && formData.debtId) {
+        await useDebtStore.getState().recordPayment(formData.debtId, amountTry)
+      }
     } else if (editingTx) {
       await updateTx(editingTx.id, {
         ...formData, type: tab as TransactionType, amount, currency, updatedAt: now,
@@ -731,6 +756,7 @@ export function TransactionFormModal() {
             <DialogTitle>
               {isRecurring
                 ? (isEdit ? 'Tekrarlayan İşlemi Düzenle' : 'Tekrarlayan İşlem Ekle')
+                : isPlannedEdit ? 'Planlanan İşlemi Düzenle'
                 : (isEdit ? 'İşlemi Düzenle' : 'İşlem Ekle')}
             </DialogTitle>
             <button
@@ -1234,7 +1260,7 @@ export function TransactionFormModal() {
             İptal
           </Button>
           <Button onClick={handleSubmit} loading={loading} disabled={loading}>
-            {isEdit ? 'Güncelle' : 'Kaydet'}
+            {isEdit && !isPlannedEdit ? 'Güncelle' : 'Kaydet'}
           </Button>
         </DialogFooter>
 
