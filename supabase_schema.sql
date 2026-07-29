@@ -41,6 +41,14 @@ create table if not exists public.workspaces (
   deleted_at timestamptz
 );
 
+-- Diğer 8 tablo Supabase Studio üzerinden oluşturulduğu için "authenticated"
+-- rolüne tablo-seviyesi GRANT'i otomatik almıştı; bu tablo SQL Editor'de ham
+-- DDL ile oluşturulduğundan bu grant'i otomatik almıyor — RLS politikaları
+-- doğru olsa da grant yoksa "permission denied for table workspaces" hatası
+-- alınır (RLS ihlalinden FARKLI bir hata; RLS engeli boş sonuç/"new row
+-- violates row-level security policy" verir, bu ise tablo-seviyesi izin).
+grant select, insert, update, delete on public.workspaces to authenticated;
+
 -- ── Reusable installer ──────────────────────────────────────────────────────
 -- A DO block applies the identical hardening to each table so no table can be
 -- accidentally left without a policy (the classic RLS foot-gun).
