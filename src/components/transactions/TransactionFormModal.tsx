@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useId } from 'react'
-import { useUIStore, useAccountStore, useCategoryStore, useTransactionStore, usePeopleStore, useDebtStore, useRecurringStore } from '@/store'
+import { useUIStore, useAccountStore, useCategoryStore, useTransactionStore, usePeopleStore, useDebtStore, useRecurringStore, useWorkspaceStore } from '@/store'
+import { db } from '@/lib/db'
+import { isLive } from '@/lib/sync/tombstone'
+import { rowInWorkspace } from '@/lib/workspace-context'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/Input'
@@ -16,7 +19,7 @@ import { today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency, Category } from '@/types'
+import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency, Category, Account } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
 import { X } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
@@ -519,6 +522,38 @@ export function TransactionFormModal() {
     [accounts],
   )
 
+  // ── Çalışma alanları arası transfer ─────────────────────────────────────
+  // Sadece YENİ (düzenlenmeyen, tekrarlamayan) transfer için — bkz.
+  // useTransactionStore.addCrossWorkspaceTransfer. Karşı bacak sıradan bir
+  // gider/gelir satırı olduğundan, mevcut bir bacağı düzenlerken bu blok hiç
+  // görünmez (o zaman tab 'expense'/'income'dir, 'transfer' değil).
+  const allWorkspaces    = useWorkspaceStore(s => s.workspaces)
+  const activeWorkspaceId = useWorkspaceStore(s => s.activeId)
+  const otherWorkspaces  = useMemo(
+    () => allWorkspaces.filter(w => w.id !== activeWorkspaceId),
+    [allWorkspaces, activeWorkspaceId],
+  )
+  const [crossWs, setCrossWs]                 = useState(false)
+  const [targetWorkspaceId, setTargetWorkspaceId] = useState('')
+  const [targetAccounts, setTargetAccounts]   = useState<Account[]>([])
+  const [targetAccountId, setTargetAccountId] = useState('')
+
+  useEffect(() => {
+    // Boş hedef alan durumunda state'e dokunulmaz — hesap picker'ı zaten
+    // `targetWorkspaceId` yokken render edilmiyor (aşağıda). Sıfırlama, alanı
+    // DEĞİŞTİREN event handler'da yapılır (bkz. AppSelect onChange), effect
+    // içinde senkron setState'ten kaçınmak için.
+    if (!crossWs || !targetWorkspaceId) return
+    let cancelled = false
+    db.accounts.toArray().then(rows => {
+      if (cancelled) return
+      setTargetAccounts(
+        rows.filter(isLive).filter(a => rowInWorkspace(a, targetWorkspaceId)) as Account[],
+      )
+    })
+    return () => { cancelled = true }
+  }, [crossWs, targetWorkspaceId])
+
   function validate(): boolean {
     const e: Record<string, string> = {}
     // Magnitude only — the sign is carried separately (amountSign). Negative
@@ -599,7 +634,44 @@ export function TransactionFormModal() {
     }
   }
 
+  // Çalışma alanları arası transfer: normal dal zincirinden (taksit/tekrarlayan/
+  // düzenleme) TAMAMEN ayrık — iki bağımsız satır atomik olarak store'da üretilir.
+  async function handleCrossWorkspaceSubmit() {
+    if (loading) return
+    const amount = parseCurrencyInput(amountStr)
+    const e: Record<string, string> = {}
+    if (!amount || amount <= 0)   e.amount            = 'Geçerli bir tutar girin'
+    if (!form.accountId)          e.accountId         = 'Hesap seçin'
+    if (!targetWorkspaceId)       e.targetWorkspaceId = 'Çalışma alanı seçin'
+    if (!targetAccountId)         e.toAccountId       = 'Hedef hesap seçin'
+    if (!form.date)               e.date              = 'Tarih seçin'
+    if (!form.description.trim()) e.description       = 'Açıklama girin'
+    setErrors(e)
+    if (Object.keys(e).length > 0) return
+
+    setLoading(true)
+    try {
+      await useTransactionStore.getState().addCrossWorkspaceTransfer({
+        sourceAccountId:   form.accountId,
+        targetWorkspaceId,
+        targetAccountId,
+        amount,
+        date:        form.date,
+        description: form.description.trim(),
+        notes:       form.notes || undefined,
+      })
+      lastAddedDate = form.date
+      closeModal()
+    } catch (err) {
+      console.error('[transaction:cross-workspace-transfer]', err)
+      setErrors({ description: 'Kaydetme başarısız oldu, tekrar deneyin' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSubmit() {
+    if (crossWs) return handleCrossWorkspaceSubmit()
     if (isRecurring) return handleRecurringSubmit()
     if (loading || !validate()) return
     setLoading(true)
@@ -952,33 +1024,74 @@ export function TransactionFormModal() {
             ) : tab === 'transfer' ? (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
-                  <span className={cn("text-sm font-medium", (errors.toAccountId || errors.debtId) && "text-destructive")}>
+                  <span className={cn("text-sm font-medium", (errors.toAccountId || errors.debtId || errors.targetWorkspaceId) && "text-destructive")}>
                     Hedef
                   </span>
                   <div className="flex rounded border border-input overflow-hidden text-[11px]">
                     <button
                       type="button"
-                      onClick={() => patch({ isDebtPayment: false, debtId: undefined })}
+                      onClick={() => { setCrossWs(false); patch({ isDebtPayment: false, debtId: undefined }) }}
                       className={cn(
                         "px-2 py-0.5 transition-colors",
-                        !form.isDebtPayment ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                        !form.isDebtPayment && !crossWs ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
                       )}
                     >
                       Hesap
                     </button>
                     <button
                       type="button"
-                      onClick={() => patch({ isDebtPayment: true, toAccountId: undefined })}
+                      onClick={() => { setCrossWs(false); patch({ isDebtPayment: true, toAccountId: undefined }) }}
                       className={cn(
                         "px-2 py-0.5 transition-colors border-l border-input",
-                        form.isDebtPayment ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                        form.isDebtPayment && !crossWs ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
                       )}
                     >
                       Borç
                     </button>
+                    {!isEdit && otherWorkspaces.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setCrossWs(true); patch({ isDebtPayment: false, toAccountId: undefined }) }}
+                        className={cn(
+                          "px-2 py-0.5 transition-colors border-l border-input",
+                          crossWs ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        Diğer Alan
+                      </button>
+                    )}
                   </div>
                 </div>
-                {form.isDebtPayment ? (
+                {crossWs ? (
+                  <div className="flex flex-col gap-2">
+                    <AppSelect
+                      value={targetWorkspaceId}
+                      onChange={v => { setTargetWorkspaceId(v); setTargetAccountId(''); setTargetAccounts([]) }}
+                      options={otherWorkspaces.map(w => ({ value: w.id, label: w.name }))}
+                      placeholder="Çalışma alanı seçin..."
+                      error={!!errors.targetWorkspaceId}
+                      onOpenChange={onSelectOpen}
+                    />
+                    {errors.targetWorkspaceId && <p className="text-xs text-destructive">{errors.targetWorkspaceId}</p>}
+                    {targetWorkspaceId && (
+                      targetAccounts.length === 0 ? (
+                        <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground select-none">
+                          Bu alanda hesap bulunamadı
+                        </div>
+                      ) : (
+                        <AppSelect
+                          value={targetAccountId}
+                          onChange={setTargetAccountId}
+                          options={targetAccounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
+                          placeholder="Hedef hesap seçin..."
+                          error={!!errors.toAccountId}
+                          onOpenChange={onSelectOpen}
+                        />
+                      )
+                    )}
+                    {errors.toAccountId && <p className="text-xs text-destructive">{errors.toAccountId}</p>}
+                  </div>
+                ) : form.isDebtPayment ? (
                   <>
                     {activeDebts.length === 0 ? (
                       <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground select-none">

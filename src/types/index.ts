@@ -108,6 +108,13 @@ export interface Transaction {
   updatedAt: string
   deleted_at?: string | null // Tombstone (C3)
   workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
+
+  // Çalışma alanları arası transfer: kaynak alanda 'expense', hedef alanda
+  // 'income' olarak iki bağımsız satır, ortak workspaceTransferId ile
+  // eşleştirilir. peerWorkspaceId karşı bacağın hangi alanda olduğunu taşır
+  // (UI rozeti/gösterimi için — okuma yolunu değiştirmez).
+  workspaceTransferId?: string
+  peerWorkspaceId?: string
 }
 
 // ─── Category ──────────────────────────────────────────────────────────────

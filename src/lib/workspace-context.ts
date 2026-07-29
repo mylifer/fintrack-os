@@ -45,9 +45,14 @@ export function setDefaultWorkspaceId(id: string | null): void {
   defaultWorkspaceId = id
 }
 
-/** Bir satırın AKTİF çalışma alanına ait olup olmadığını söyler. workspaceId
+/** Bir satırın VERİLEN çalışma alanına ait olup olmadığını söyler. workspaceId
  *  taşımayan (legacy) satırlar varsayılan çalışma alanına ait sayılır. */
-export function rowInActiveWorkspace(row: { workspaceId?: string | null }): boolean {
+export function rowInWorkspace(row: { workspaceId?: string | null }, workspaceId: string | null): boolean {
   const owner = row.workspaceId ?? defaultWorkspaceId
-  return owner === activeWorkspaceId
+  return owner === workspaceId
+}
+
+/** Bir satırın AKTİF çalışma alanına ait olup olmadığını söyler. */
+export function rowInActiveWorkspace(row: { workspaceId?: string | null }): boolean {
+  return rowInWorkspace(row, activeWorkspaceId)
 }

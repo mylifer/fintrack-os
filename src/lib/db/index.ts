@@ -191,6 +191,22 @@ class FinTrackDB extends Dexie {
       workspaces:             '&id, isDefault, deleted_at',
       _outbox:                '&id, table, entityId, enqueuedAt',
     })
+
+    // v12: çalışma alanları arası transfer (S1). transactions'a
+    // workspaceTransferId indeksi eklenir — bir bacak silinince karşı bacağı
+    // hızlıca bulup kaskad tombstone'lamak için (bkz. transactions.store.ts).
+    this.version(12).stores({
+      accounts:               '&id, type, currency, isArchived, deleted_at, workspaceId',
+      transactions:           '&id, type, accountId, toAccountId, categoryId, date, installGroupId, debtId, familyMemberId, recipientId, deleted_at, approvalStatus, workspaceId, workspaceTransferId',
+      categories:             '&id, scope, parentId, isSystem, isArchived, deleted_at, workspaceId',
+      budgets:                '&id, categoryId, period, year, month, deleted_at, workspaceId',
+      debts:                  '&id, type, direction, isSettled, dueDate, deleted_at, workspaceId',
+      investmentTransactions: '&id, type, asset, date, deleted_at, workspaceId',
+      people:                 '&id, role, deleted_at, workspaceId',
+      recurringTransactions:  '&id, type, frequency, nextDueDate, isActive, deleted_at, workspaceId',
+      workspaces:             '&id, isDefault, deleted_at',
+      _outbox:                '&id, table, entityId, enqueuedAt',
+    })
   }
 }
 

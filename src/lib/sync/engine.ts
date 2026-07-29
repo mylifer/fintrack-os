@@ -94,14 +94,18 @@ function now(): string {
   return new Date().toISOString()
 }
 
-// Yeni oluşturulan her varlık, hangi çalışma alanı aktifse ona damgalanır.
-// `workspaces` tablosu bunun İSTİSNASIdır — o, diğerlerinin bölümleme
-// eksenidir, kendi başına bir workspaceId taşımaz. Tek çağrı noktası: bu
-// modüldeki 3 yaratma primitive'i (localUpsert/localBulkUpsert/localBatch) —
-// store'ların hiçbiri workspaceId'yi kendisi set etmek ZORUNDA değildir.
+// Yeni oluşturulan her varlık, hangi çalışma alanı aktifse ona damgalanır —
+// AMA çağıran zaten açıkça bir workspaceId verdiyse (çalışma alanları arası
+// transferin karşı bacağı gibi — bkz. transactions.store.ts
+// addCrossWorkspaceTransfer) buna dokunulmaz. `workspaces` tablosu bunun
+// İSTİSNASIdır — o, diğerlerinin bölümleme eksenidir, kendi başına bir
+// workspaceId taşımaz. Tek çağrı noktası: bu modüldeki 3 yaratma primitive'i
+// (localUpsert/localBulkUpsert/localBatch) — store'ların büyük çoğunluğu
+// workspaceId'yi kendisi set etmek ZORUNDA değildir.
 function stampWorkspace<T extends { id: string }>(table: SyncTable, entity: T): T {
   if (table === 'workspaces') return entity
-  return { ...entity, workspaceId: getActiveWorkspaceId() }
+  const withId = entity as T & { workspaceId?: string | null }
+  return { ...entity, workspaceId: withId.workspaceId ?? getActiveWorkspaceId() }
 }
 
 // Dexie's update() DELETES keys whose value is undefined, so a "clear this

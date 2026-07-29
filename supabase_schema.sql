@@ -200,6 +200,11 @@ alter table public.transactions add column if not exists "updatedAt" text;
 -- 'approved' = onaylandı. Sütun adı camelCase: sync engine tam satır
 -- snapshot'ını alan adlarıyla birebir push eder (bkz. "amountTry"), snake_case
 -- sütun outbox'ı dead-letter yapar.
+-- Çalışma alanları arası transfer (S1): kaynak alanda 'expense', hedef alanda
+-- 'income' olarak iki bağımsız satır, ortak workspaceTransferId ile eşleşir.
+alter table public.transactions add column if not exists "workspaceTransferId" text;
+alter table public.transactions add column if not exists "peerWorkspaceId" text;
+
 alter table public.transactions add column if not exists "approvalStatus" text;
 alter table public.transactions drop constraint if exists transactions_approval_status_check;
 alter table public.transactions add constraint transactions_approval_status_check

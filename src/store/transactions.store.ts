@@ -14,7 +14,8 @@ import { useUndoStore, type RemoveOptions } from './undo.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, softDeleteMany, reconcilingPull, localBatch, type BatchOp } from '@/lib/sync/engine'
 import { rowInActiveWorkspace } from '@/lib/workspace-context'
-import { toBaseTry, baseAmount, rateFor } from '@/lib/utils/fx'
+import { useWorkspaceStore } from './workspace.store'
+import { toBaseTry, fromBaseTry, baseAmount, rateFor } from '@/lib/utils/fx'
 import { splitMoney } from '@/lib/utils/money'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 
@@ -46,6 +47,23 @@ function investRank(tx: Transaction): number {
   return 5
 }
 
+// Silinen satır(lar) çalışma alanları arası bir transferin bacağıysa, karşı
+// bacağı ham Dexie'den bulur — karşı bacak başka bir çalışma alanına ait
+// olduğundan bu store'da YÜKLENMEMİŞTİR (get().transactions'da yoktur).
+async function findTransferPeerIds(group: Transaction[]): Promise<string[]> {
+  const groupIds = new Set(group.map(t => t.id))
+  const peerIds: string[] = []
+  for (const t of group) {
+    if (!t.workspaceTransferId) continue
+    const peer = await db.transactions
+      .where('workspaceTransferId').equals(t.workspaceTransferId)
+      .filter(p => p.id !== t.id && !groupIds.has(p.id))
+      .first()
+    if (peer && isLive(peer)) peerIds.push(peer.id)
+  }
+  return peerIds
+}
+
 function txSortComparator(a: Transaction, b: Transaction): number {
   const d = b.date.localeCompare(a.date)
   if (d !== 0) return d
@@ -54,12 +72,23 @@ function txSortComparator(a: Transaction, b: Transaction): number {
   return investRank(a) - investRank(b)
 }
 
+export interface CrossWorkspaceTransferInput {
+  sourceAccountId: string
+  targetWorkspaceId: string
+  targetAccountId: string
+  amount: number            // Kaynak hesabın para biriminde
+  date: string
+  description: string
+  notes?: string
+}
+
 interface TransactionState {
   transactions: Transaction[]
   loading: boolean
   ready: boolean
   load: () => Promise<void>
   add: (tx: Transaction) => Promise<void>
+  addCrossWorkspaceTransfer: (input: CrossWorkspaceTransferInput) => Promise<void>
   addInstallmentGroup: (
     base: Omit<Transaction, 'id' | 'installIndex' | 'installGroupId' | 'createdAt' | 'updatedAt'>,
     count: number,
@@ -107,6 +136,80 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     await localUpsert('transactions', stamped)
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
     const next = [stamped, ...get().transactions]
+    next.sort(txSortComparator)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
+  },
+
+  // Çalışma alanları arası transfer (S1): kaynak alanda 'expense', hedef
+  // alanda 'income' olarak iki bağımsız satır, ortak workspaceTransferId ile
+  // eşleştirilir (bkz. yatırım al/sat linked-transaction deseni,
+  // investment.store.ts — farkla: burada ATOMİK tek localBatch kullanılır).
+  // Hedef hesap aktif alanda YÜKLENMEMİŞ olabileceğinden ham Dexie'den okunur.
+  // Para birimleri farklıysa hedef tutar OLUŞTURMA ANINDA donan bir FX
+  // dönüşümüyle hesaplanır — aynı-alan transferindeki gibi her okumada canlı
+  // yeniden hesaplanmaz (artık iki bağımsız satır olduğu için mümkün değil).
+  addCrossWorkspaceTransfer: async (input) => {
+    const sourceWorkspaceId = useWorkspaceStore.getState().activeId
+    if (!sourceWorkspaceId) throw new Error('Aktif çalışma alanı bulunamadı')
+
+    const sourceAccount = useAccountStore.getState().accounts.find(a => a.id === input.sourceAccountId)
+    if (!sourceAccount) throw new Error('Kaynak hesap bulunamadı')
+
+    const targetAccount = await db.accounts.get(input.targetAccountId)
+    if (!targetAccount || !isLive(targetAccount)) throw new Error('Hedef hesap bulunamadı')
+
+    const sourceCurrency = sourceAccount.currency
+    const targetCurrency = targetAccount.currency
+    const amountTry = toBaseTry(input.amount, sourceCurrency)
+    const targetAmount = targetCurrency === sourceCurrency
+      ? input.amount
+      : fromBaseTry(amountTry, targetCurrency)
+
+    const linkId = crypto.randomUUID()
+    const now = new Date().toISOString()
+    // Kategori analizlerinden hariç tutulsun diye bir ikon işareti taşır —
+    // yatırım defter satırlarının kategori dağılımından hariç tutulma
+    // deseniyle aynı (bkz. DetailedStats.tsx: `!t.icon` filtresi).
+    const ICON = '⇄'
+
+    const outgoing: Transaction = {
+      id: crypto.randomUUID(),
+      type: 'expense',
+      amount: input.amount,
+      amountTry,
+      currency: sourceCurrency,
+      date: input.date,
+      accountId: input.sourceAccountId,
+      icon: ICON,
+      description: input.description,
+      notes: input.notes,
+      isInstallment: false,
+      createdAt: now,
+      updatedAt: now,
+      workspaceId: sourceWorkspaceId,
+      workspaceTransferId: linkId,
+      peerWorkspaceId: input.targetWorkspaceId,
+    }
+    const incoming: Transaction = {
+      ...outgoing,
+      id: crypto.randomUUID(),
+      type: 'income',
+      amount: targetAmount,
+      currency: targetCurrency,
+      accountId: input.targetAccountId,
+      workspaceId: input.targetWorkspaceId,
+      peerWorkspaceId: sourceWorkspaceId,
+    }
+
+    await localBatch([
+      { kind: 'upsert', table: 'transactions', entity: outgoing },
+      { kind: 'upsert', table: 'transactions', entity: incoming },
+    ])
+
+    // Sadece AKTİF alana ait bacak belleğe alınır — karşı bacak o alan
+    // yüklenmediği için burada yok; o alana geçilince reconcilingPull getirir.
+    const next = [outgoing, ...get().transactions]
     next.sort(txSortComparator)
     set({ transactions: next })
     useAccountStore.getState().recomputeBalances(next)
@@ -337,6 +440,13 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const group = tx?.installGroupId
       ? all.filter(t => t.installGroupId === tx.installGroupId)
       : tx ? [tx] : []
+
+    // Çalışma alanları arası transferin karşı bacağı bu store'da YÜKLÜ DEĞİL
+    // (başka bir çalışma alanına ait) — ham Dexie'den bulunup o da
+    // tombstone'lanır (yetim kayıt kalmasın; mimari kısıt olarak onaylandı:
+    // düzenleme karşı bacağa yansımaz ama silme yansır).
+    const peerIds = await findTransferPeerIds(group)
+
     // Soft delete (C3) via the durable outbox: syncs as an UPDATE and cannot
     // resurrect on the next reconciling pull.
     for (const t of group) {
@@ -348,6 +458,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         await useDebtStore.getState().revertPayment(t.debtId, baseAmount(t))
       }
     }
+    for (const peerId of peerIds) await softDelete('transactions', peerId)
+
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
     const removedIds = new Set(group.map(t => t.id))
     const remaining = get().transactions.filter(t => !removedIds.has(t.id))
@@ -366,6 +478,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
             await useDebtStore.getState().recordPayment(t.debtId, baseAmount(t))
           }
         }
+        for (const peerId of peerIds) await localPatch('transactions', peerId, { deleted_at: null })
         const next = [...group, ...get().transactions]
         next.sort(txSortComparator)
         set({ transactions: next })
@@ -396,10 +509,16 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const group = [...targetIds].map(id => byId.get(id)!).filter(Boolean)
     if (group.length === 0) return
 
+    // Karşı bacağı da tombstone'la (bkz. remove() yorumu) — grup içinde her
+    // iki bacak birden seçilmişse (nadir) zaten grupta olan tekrar eklenmez.
+    const peerIds = await findTransferPeerIds(group)
+
     for (const t of group) {
       await softDelete('transactions', t.id)
       if (t.debtId) await useDebtStore.getState().revertPayment(t.debtId, baseAmount(t))
     }
+    for (const peerId of peerIds) await softDelete('transactions', peerId)
+
     const removedIds = new Set(group.map(t => t.id))
     const remaining = get().transactions.filter(t => !removedIds.has(t.id))
     set({ transactions: remaining })
@@ -411,6 +530,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         await localPatch('transactions', t.id, { deleted_at: null })
         if (t.debtId) await useDebtStore.getState().recordPayment(t.debtId, baseAmount(t))
       }
+      for (const peerId of peerIds) await localPatch('transactions', peerId, { deleted_at: null })
       const next = [...group, ...get().transactions]
       next.sort(txSortComparator)
       set({ transactions: next })
