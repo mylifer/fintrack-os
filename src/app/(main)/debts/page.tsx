@@ -12,10 +12,11 @@ import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { formatCurrency } from '@/lib/utils/currency'
-import { formatDate, daysUntil, isOverdue } from '@/lib/utils/date'
+import { formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { parseCurrencyInput } from '@/lib/utils/currency'
+import { toBaseTry } from '@/lib/utils/fx'
 import type { Debt, DebtType, DebtDirection, DebtWithRemaining, Transaction } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
 import { useShallow } from 'zustand/react/shallow'
@@ -130,6 +131,17 @@ const PLAN_STATUS: Record<PlanRow['status'], { label: string; variant: 'ok' | 'w
   pending: { label: 'Bekliyor', variant: 'outline' },
 }
 
+// Bir sonraki ödenmemiş taksitin tutarı — ödeme formunun varsayılan tutarı.
+// Plan yoksa (aylık taksit girilmemiş) kalan tutar varsayılan olur.
+function nextInstallmentAmount(debt: DebtWithRemaining): number {
+  const next = buildPaymentPlan(debt).find(r => r.status !== 'paid')
+  return next ? next.amount : Math.max(debt.remainingAmount, 0)
+}
+
+function emptyPayForm() {
+  return { amountStr: '', accountId: '', date: today() }
+}
+
 function emptyForm() {
   return {
     name: '', type: 'personal' as DebtType, direction: 'owe' as DebtDirection,
@@ -156,12 +168,17 @@ export default function DebtsPage() {
   const categories   = useCategoryStore(s => s.categories)
   const openModal    = useUIStore(s => s.openModal)
   const removeTx     = useTransactionStore(s => s.remove)
+  const addTx         = useTransactionStore(s => s.add)
+  const recordPayment = useDebtStore(s => s.recordPayment)
 
   const [showForm, setShowForm]         = useState(false)
   const [editingDebt, setEditingDebt]   = useState<Debt | undefined>()
   const [loading, setLoading]           = useState(false)
   const [form, setForm]                 = useState(emptyForm())
   const [selectedDebt, setSelectedDebt] = useState<DebtWithRemaining | undefined>()
+  const [payingDebt, setPayingDebt]     = useState<DebtWithRemaining | undefined>()
+  const [payForm, setPayForm]           = useState(emptyPayForm())
+  const [payLoading, setPayLoading]     = useState(false)
 
   const owe        = debts.filter(d => d.direction === 'owe')
   const owed       = debts.filter(d => d.direction === 'owed')
@@ -250,6 +267,53 @@ export default function DebtsPage() {
     }
   }
 
+  function openPay(debt: DebtWithRemaining) {
+    setPayingDebt(debt)
+    setPayForm({
+      amountStr: fmt(nextInstallmentAmount(debt)),
+      accountId: debt.accountId && accounts.some(a => a.id === debt.accountId)
+        ? debt.accountId
+        : (accounts[0]?.id ?? ''),
+      date: today(),
+    })
+  }
+
+  function closePay() {
+    setPayingDebt(undefined)
+    setPayForm(emptyPayForm())
+  }
+
+  async function handlePay() {
+    if (!payingDebt) return
+    const amount  = parseCurrencyInput(payForm.amountStr)
+    const account = accounts.find(a => a.id === payForm.accountId)
+    if (!amount || amount <= 0 || !account) return
+    setPayLoading(true)
+    try {
+      const now = new Date().toISOString()
+      await addTx({
+        id:            crypto.randomUUID(),
+        type:          'transfer',
+        amount,
+        currency:      account.currency,
+        accountId:     account.id,
+        description:   `${payingDebt.name} ödemesi`,
+        isInstallment: false,
+        debtId:        payingDebt.id,
+        date:          payForm.date,
+        createdAt:     now,
+        updatedAt:     now,
+      })
+      // Borçlar TRY bazlıdır — yabancı para hesaptan ödeme yapılırsa dönüştür (M4).
+      await recordPayment(payingDebt.id, toBaseTry(amount, account.currency))
+      closePay()
+    } catch (err) {
+      console.error('[debt:pay]', err)
+    } finally {
+      setPayLoading(false)
+    }
+  }
+
   function DebtCard({ debt }: { debt: DebtWithRemaining }) {
     const overdue = debt.dueDate && isOverdue(debt.dueDate)
     const days    = debt.dueDate ? daysUntil(debt.dueDate) : null
@@ -318,9 +382,14 @@ export default function DebtsPage() {
 
         {/* Actions */}
         <div className="flex items-center gap-2 pt-1">
-          <Button size="sm" className="flex-1 shrink" onClick={() => setSelectedDebt(debt)}>
+          <Button size="sm" variant="secondary" className="flex-1 shrink" onClick={() => setSelectedDebt(debt)}>
             Detay
           </Button>
+          {debt.direction === 'owe' && (
+            <Button size="sm" className="flex-1 shrink" onClick={() => openPay(debt)}>
+              Ödeme Yap
+            </Button>
+          )}
         </div>
       </div>
     )
@@ -380,13 +449,18 @@ export default function DebtsPage() {
           <div className="flex flex-col gap-5">
             {/* Debt summary */}
             <div>
-              <div className="flex items-baseline gap-2 mb-2">
-                <span className="text-2xl font-medium tabular-nums">
-                  {formatCurrency(selectedDebt.remainingAmount)}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  / {formatCurrency(selectedDebt.totalAmount)} toplam
-                </span>
+              <div className="flex items-baseline justify-between gap-2 mb-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-medium tabular-nums">
+                    {formatCurrency(selectedDebt.remainingAmount)}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    / {formatCurrency(selectedDebt.totalAmount)} toplam
+                  </span>
+                </div>
+                {selectedDebt.direction === 'owe' && (
+                  <Button size="sm" onClick={() => openPay(selectedDebt)}>Ödeme Yap</Button>
+                )}
               </div>
               <div className="h-[2px] bg-muted mb-1.5">
                 <div className="h-full bg-green-600" style={{ width: `${selectedDebt.progressPercent}%` }} />
@@ -551,6 +625,49 @@ export default function DebtsPage() {
             <Button variant="secondary" onClick={closeForm} fullWidth>İptal</Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Ödeme yap modal */}
+      <Modal open={!!payingDebt} onClose={closePay} title="Ödeme Yap" size="sm">
+        {payingDebt && (
+          <div className="flex flex-col gap-3">
+            <div className="text-sm text-muted-foreground">{payingDebt.name}</div>
+
+            <CurrencyInput
+              label="Ödeme Tutarı"
+              value={payForm.amountStr}
+              currency={accounts.find(a => a.id === payForm.accountId)?.currency}
+              onChange={v => setPayForm(f => ({ ...f, amountStr: v }))}
+            />
+
+            <Select
+              label="Hesap"
+              value={payForm.accountId}
+              onChange={e => setPayForm(f => ({ ...f, accountId: e.target.value }))}
+              options={accounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
+              placeholder="Hesap seçin"
+            />
+
+            <Input
+              label="Tarih"
+              type="date"
+              value={payForm.date}
+              onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))}
+            />
+
+            <div className="flex flex-col gap-2 pt-1">
+              <Button
+                onClick={handlePay}
+                loading={payLoading}
+                disabled={!parseCurrencyInput(payForm.amountStr) || !payForm.accountId}
+                fullWidth
+              >
+                Ödemeyi Kaydet
+              </Button>
+              <Button variant="secondary" onClick={closePay} fullWidth>İptal</Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   )
