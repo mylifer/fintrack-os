@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import { localBulkUpsert } from '@/lib/sync/engine'
+import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { createCloudBackup } from '@/lib/auto-backup'
 import type {
   Account, Transaction, Budget, Debt,
@@ -36,7 +37,7 @@ let INST_LAPTOP = ''
 const DEMO_CHK_NAME = 'Garanti BBVA Vadesiz'
 
 export async function isDemoLoaded(): Promise<boolean> {
-  const accounts = await db.accounts.toArray()
+  const accounts = (await db.accounts.toArray()).filter(rowInActiveWorkspace)
   const acc = accounts.find(a => a.name === DEMO_CHK_NAME && !a.deleted_at)
   if (!acc) return false
   const txCount = await db.transactions.where('accountId').equals(acc.id).count()

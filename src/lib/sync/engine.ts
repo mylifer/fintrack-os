@@ -7,6 +7,7 @@ import { getUserId } from '@/lib/auth'
 import { isLive } from './tombstone'
 import { useSyncStatusStore } from '@/store/sync-status.store'
 import type { OutboxEntry } from '@/types'
+import { getActiveWorkspaceId, rowInActiveWorkspace } from '@/lib/workspace-context'
 
 /* ────────────────────────────────────────────────────────────────────────
    Sync Engine — P0 remediation for offline data-loss (C1 / C2 / C6)
@@ -38,9 +39,11 @@ export type SyncTable =
   | 'investment_transactions'
   | 'people'
   | 'recurring_transactions'
+  | 'workspaces'
 
-// Minimal row shape every synced table shares.
-type Row = { id: string; deleted_at?: string | null }
+// Minimal row shape every synced table shares. `workspaces` itself has no
+// workspaceId (it IS the partition axis for the other 8 tables).
+type Row = { id: string; deleted_at?: string | null; workspaceId?: string | null }
 
 // Outbox row + the owner uid we tag at ENQUEUE time. `ownerId` is metadata ON
 // the outbox entry (NOT inside the snapshot payload) recording which user's
@@ -60,6 +63,7 @@ const DEXIE: Record<SyncTable, EntityTable<Row, 'id'>> = {
   investment_transactions: db.investmentTransactions as unknown as EntityTable<Row, 'id'>,
   people:                  db.people as unknown as EntityTable<Row, 'id'>,
   recurring_transactions:  db.recurringTransactions as unknown as EntityTable<Row, 'id'>,
+  workspaces:              db.workspaces as unknown as EntityTable<Row, 'id'>,
 }
 
 // Runtime-computed fields that are NOT Supabase columns and must be stripped
@@ -88,6 +92,16 @@ function toSnapshot(table: SyncTable, row: Record<string, unknown>): Record<stri
 
 function now(): string {
   return new Date().toISOString()
+}
+
+// Yeni oluşturulan her varlık, hangi çalışma alanı aktifse ona damgalanır.
+// `workspaces` tablosu bunun İSTİSNASIdır — o, diğerlerinin bölümleme
+// eksenidir, kendi başına bir workspaceId taşımaz. Tek çağrı noktası: bu
+// modüldeki 3 yaratma primitive'i (localUpsert/localBulkUpsert/localBatch) —
+// store'ların hiçbiri workspaceId'yi kendisi set etmek ZORUNDA değildir.
+function stampWorkspace<T extends { id: string }>(table: SyncTable, entity: T): T {
+  if (table === 'workspaces') return entity
+  return { ...entity, workspaceId: getActiveWorkspaceId() }
 }
 
 // Dexie's update() DELETES keys whose value is undefined, so a "clear this
@@ -133,10 +147,11 @@ async function putOutbox(table: SyncTable, row: { id: string }, ownerId: string 
 /** Insert-or-replace a full entity locally and enqueue it for push. */
 export async function localUpsert<T extends { id: string }>(table: SyncTable, entity: T): Promise<void> {
   const t = DEXIE[table]
+  const stamped = stampWorkspace(table, entity)
   const ownerId = await currentOwnerId()   // capture before the tx (see currentOwnerId)
   await db.transaction('rw', t, db._outbox, async () => {
-    await t.put(entity)
-    await putOutbox(table, entity, ownerId)
+    await t.put(stamped)
+    await putOutbox(table, stamped, ownerId)
   })
   kickSync()
 }
@@ -145,10 +160,11 @@ export async function localUpsert<T extends { id: string }>(table: SyncTable, en
 export async function localBulkUpsert<T extends { id: string }>(table: SyncTable, entities: T[]): Promise<void> {
   if (entities.length === 0) return
   const t = DEXIE[table]
+  const stamped = entities.map(e => stampWorkspace(table, e))
   const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
-    await t.bulkPut(entities)
-    for (const e of entities) await putOutbox(table, e, ownerId)
+    await t.bulkPut(stamped)
+    for (const e of stamped) await putOutbox(table, e, ownerId)
   })
   kickSync()
 }
@@ -213,8 +229,9 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
     for (const op of ops) {
       const t = DEXIE[op.table]
       if (op.kind === 'upsert') {
-        await t.put(op.entity)
-        await putOutbox(op.table, op.entity, ownerId)
+        const stamped = stampWorkspace(op.table, op.entity)
+        await t.put(stamped)
+        await putOutbox(op.table, stamped, ownerId)
       } else if (op.kind === 'patch') {
         await t.update(op.id, nullifyPatch(op.patch))
         const full = await t.get(op.id)
@@ -444,15 +461,18 @@ async function fetchAllRows(
 export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
   const t = DEXIE[table]
 
+  // `workspaces` is the partition axis itself — never filtered by workspace.
+  const scoped = (rows: Row[]): Row[] => table === 'workspaces' ? rows : rows.filter(rowInActiveWorkspace)
+
   const userId = await getUserId()
   if (!userId) {
-    return (await t.toArray()).filter(isLive) as unknown as T[]
+    return scoped((await t.toArray()).filter(isLive)) as unknown as T[]
   }
 
   const { rows: cloudRows, complete } = await fetchAllRows(table, userId)
 
   if (!complete) {
-    return (await t.toArray()).filter(isLive) as unknown as T[]
+    return scoped((await t.toArray()).filter(isLive)) as unknown as T[]
   }
 
   const cloudIds = new Set(cloudRows.map(r => r.id as string))
@@ -494,5 +514,5 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
     kickSync()
   }
 
-  return (await t.toArray()).filter(isLive) as unknown as T[]
+  return scoped((await t.toArray()).filter(isLive)) as unknown as T[]
 }

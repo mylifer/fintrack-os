@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import type { Person, PersonRole } from '@/types'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch } from '@/lib/sync/engine'
+import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { loadEntities } from './entity-helpers'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 import { getBrandDomain } from '@/lib/people/brands'
@@ -66,7 +67,7 @@ export const usePeopleStore = create<PeopleState>()((set, get) => ({
     set({ loading: true })
     const people = await loadEntities<Person>(
       'people', 'people',
-      async () => (await db.people.toArray()).filter(isLive),
+      async () => (await db.people.toArray()).filter(isLive).filter(rowInActiveWorkspace),
     )
     set({ people, loading: false, ready: true })
     void backfillRecipientLogos(people)

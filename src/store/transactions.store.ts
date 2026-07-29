@@ -13,6 +13,7 @@ import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, softDeleteMany, reconcilingPull, localBatch, type BatchOp } from '@/lib/sync/engine'
+import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { toBaseTry, baseAmount, rateFor } from '@/lib/utils/fx'
 import { splitMoney } from '@/lib/utils/money'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
@@ -95,7 +96,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       set({ transactions: txs, loading: false, ready: true })
     } catch (err) {
       console.error('[transactions:load]', err)
-      const txs = (await db.transactions.toArray()).filter(isLive).sort(txSortComparator)
+      const txs = (await db.transactions.toArray()).filter(isLive).filter(rowInActiveWorkspace).sort(txSortComparator)
       set({ transactions: txs, loading: false, ready: true })
     }
   },

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { clearLocalData } from '@/lib/auth'
 import { retryDeadLetters, pendingCount } from '@/lib/sync/engine'
 import { useAccountStore, useInvestmentStore, useRecurringStore, useTransactionStore, useBudgetStore, useCategoryStore } from '@/store'
+import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher'
 import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, computeTransactionEffect, isPosted, resolveBudgetCategories } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
@@ -195,7 +196,7 @@ export function Sidebar() {
     <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 shrink-0 bg-background border-r border-border">
 
       {/* ── Logo ── */}
-      <div className="px-5 pt-7 pb-6 flex-shrink-0">
+      <div className="px-5 pt-7 pb-4 flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white font-black text-sm select-none">
             F
@@ -204,6 +205,11 @@ export function Sidebar() {
             fin<span className="text-primary">track</span>
           </span>
         </div>
+      </div>
+
+      {/* ── Çalışma alanı geçişi ── */}
+      <div className="px-3 pb-3 flex-shrink-0">
+        <WorkspaceSwitcher />
       </div>
 
       {/* ── Main nav ── */}

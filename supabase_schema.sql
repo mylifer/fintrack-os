@@ -23,7 +23,23 @@
 -- Tables covered (Supabase/Postgres names). Keep this list in sync with the
 -- Dexie schema in src/lib/db/index.ts.
 --   accounts, transactions, categories, budgets, debts,
---   investment_transactions, people, recurring_transactions
+--   investment_transactions, people, recurring_transactions, workspaces
+
+-- ── Çoklu Çalışma Alanı (Workspace) desteği ─────────────────────────────────
+-- "workspaces": kullanıcının birden fazla, birbirini etkilemeyen bütçe/hesap
+-- alanı arasında geçiş yapabilmesini sağlayan konteyner tablo. Kendisi bir
+-- workspaceId taşımaz (diğer 8 tablonun bölümleme eksenidir). Legacy satırlar
+-- (bu özellik gelmeden önce oluşturulmuş) hiçbir tabloda workspaceId taşımaz
+-- ve istemci tarafında "varsayılan çalışma alanına ait" olarak okunur — bu
+-- yüzden burada bilinçli olarak bir veri backfill'i YOK.
+create table if not exists public.workspaces (
+  id text primary key,
+  user_id uuid not null,
+  "name" text,
+  "isDefault" boolean,
+  "createdAt" text,
+  deleted_at timestamptz
+);
 
 -- ── Reusable installer ──────────────────────────────────────────────────────
 -- A DO block applies the identical hardening to each table so no table can be
@@ -40,7 +56,8 @@ declare
     'debts',
     'investment_transactions',
     'people',
-    'recurring_transactions'
+    'recurring_transactions',
+    'workspaces'
   ];
 begin
   foreach t in array tables loop
@@ -122,6 +139,18 @@ alter table public.transactions drop constraint if exists transactions_amount_ch
 -- on 2026-07-14). This block adds every pushable column for all 8 synced tables.
 -- Idempotent + data-safe: never touches id / user_id / deleted_at or existing
 -- data. Keep in sync with src/types/index.ts as the model evolves.
+-- ── Çoklu Çalışma Alanı: bölümleme kolonu ────────────────────────────────────
+-- Nullable/opsiyonel: legacy satırlar (workspaceId'siz) varsayılan çalışma
+-- alanına ait sayılır (istemci tarafı kuralı — bkz. src/lib/workspace-context.ts).
+alter table public.accounts add column if not exists "workspaceId" text;
+alter table public.transactions add column if not exists "workspaceId" text;
+alter table public.categories add column if not exists "workspaceId" text;
+alter table public.budgets add column if not exists "workspaceId" text;
+alter table public.debts add column if not exists "workspaceId" text;
+alter table public.investment_transactions add column if not exists "workspaceId" text;
+alter table public.people add column if not exists "workspaceId" text;
+alter table public.recurring_transactions add column if not exists "workspaceId" text;
+
 alter table public.accounts add column if not exists "name" text;
 alter table public.accounts add column if not exists "type" text;
 alter table public.accounts add column if not exists "currency" text;

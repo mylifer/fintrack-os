@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { loadEntities } from './entity-helpers'
 import { setBaseRates } from '@/lib/utils/fx'
 import { sellCleanupTxIds } from '@/lib/utils/investment-links'
@@ -292,7 +293,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     // stays self-contained and `post` only re-sorts the reconciled cloud rows.
     const txs = await loadEntities<InvestmentTransaction>(
       'investment_transactions', 'investment',
-      async () => (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive),
+      async () => (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive).filter(rowInActiveWorkspace),
       rows => rows.sort((a, b) => b.date.localeCompare(a.date)),
     )
     set({ transactions: txs, loading: false })
@@ -425,7 +426,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
         }
       }
 
-      const txs = (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive)
+      const txs = (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive).filter(rowInActiveWorkspace)
       set({ transactions: txs })
     } catch (err) {
       if (typeof window !== 'undefined') localStorage.removeItem(MIGRATION_KEY)

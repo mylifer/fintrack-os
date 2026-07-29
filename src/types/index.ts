@@ -4,6 +4,20 @@ export type CurrencyCode = 'TRY' | 'USD' | 'EUR' | 'GBP'
 
 export type PeriodType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'all'
 
+// ─── Workspace (Çalışma Alanı) ──────────────────────────────────────────────
+// Aynı kullanıcıya bağlı, birbirini etkilemeyen birden fazla bütçe/hesap alanı.
+// Kendisi bir workspaceId TAŞIMAZ — diğer tüm entity'lerin bölümleme eksenidir.
+// Legacy entity'ler (bu özellikten önce oluşturulmuş) workspaceId'siz kalır ve
+// istemci tarafında isDefault=true olan çalışma alanına ait sayılır.
+
+export interface Workspace {
+  id: string
+  name: string
+  isDefault: boolean
+  createdAt: string         // ISO 8601
+  deleted_at?: string | null // Tombstone (C3)
+}
+
 // ─── Account ───────────────────────────────────────────────────────────────
 
 export type AccountType =
@@ -26,6 +40,7 @@ export interface Account {
   isArchived: boolean
   createdAt: string         // ISO 8601
   deleted_at?: string | null // Tombstone (C3): ISO 8601 when soft-deleted, else null/undefined
+  workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 
   // Credit card fields
   creditLimit?: number
@@ -46,6 +61,7 @@ export interface Person {
   createdAt: string
   isArchived?: boolean       // Archive (soft-hide): linked transactions keep resolving the name
   deleted_at?: string | null // Tombstone (C3) — legacy hard-remove path; new deletes archive instead
+  workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
 // ─── Transaction ───────────────────────────────────────────────────────────
@@ -91,6 +107,7 @@ export interface Transaction {
   createdAt: string
   updatedAt: string
   deleted_at?: string | null // Tombstone (C3)
+  workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
 // ─── Category ──────────────────────────────────────────────────────────────
@@ -108,6 +125,7 @@ export interface Category {
   isArchived?: boolean      // Soft-deleted; hidden from pickers but kept for historical data
   sortOrder: number
   deleted_at?: string | null // Tombstone (C3)
+  workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
 // ─── Budget ────────────────────────────────────────────────────────────────
@@ -126,6 +144,7 @@ export interface Budget {
   alertThreshold: number    // Warn at X% (default: 80)
   categoryName?: string     // display-name snapshot; shown as "<name> (arşiv)" when the live category is gone
   deleted_at?: string | null // Tombstone (C3)
+  workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
 export interface BudgetWithSpent extends Budget {
@@ -165,6 +184,7 @@ export interface Debt {
   isSettled: boolean
   createdAt: string
   deleted_at?: string | null // Tombstone (C3)
+  workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
 export interface DebtWithRemaining extends Debt {
@@ -252,6 +272,7 @@ export interface InvestmentTransaction {
   note?: string
   createdAt: string
   deleted_at?: string | null // Tombstone (C3)
+  workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
 export interface PriceData {
@@ -324,6 +345,7 @@ export interface RecurringTransaction {
   recipientId?: string
   createdAt: string
   deleted_at?: string | null // Tombstone (C3)
+  workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
 // ─── Sync outbox (C1 — durable offline writes) ──────────────────────────────

@@ -6,6 +6,7 @@ import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
 import { enrichBudget, getBudgetCategoryIds } from '@/lib/utils/calculations'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { loadEntities } from './entity-helpers'
 import { useCategoryStore } from './categories.store'
 import { useUndoStore, type RemoveOptions } from './undo.store'
@@ -41,7 +42,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     set({ loading: true })
     const budgets = await loadEntities<Budget>(
       'budgets', 'budgets',
-      async () => (await db.budgets.toArray()).filter(isLive),
+      async () => (await db.budgets.toArray()).filter(isLive).filter(rowInActiveWorkspace),
     )
     // BACKFILL — capture the name snapshot for legacy budgets WHILE their
     // category is still alive, so it survives a later deletion. Categories load

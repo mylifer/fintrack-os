@@ -10,6 +10,7 @@ import { useRecurringStore } from './recurring.store'
 import { useInvestmentStore } from './investment.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, localBatch, reconcilingPull } from '@/lib/sync/engine'
+import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { baseAmount } from '@/lib/utils/fx'
 
 interface AccountState {
@@ -39,7 +40,7 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
       set({ accounts, loading: false, ready: true })
     } catch (err) {
       console.error('[accounts:load]', err)
-      const raw = (await db.accounts.toArray()).filter(isLive)
+      const raw = (await db.accounts.toArray()).filter(isLive).filter(rowInActiveWorkspace)
       const accounts = raw.map(a => ({ ...a, initialBalance: a.initialBalance ?? a.balance }))
       set({ accounts, loading: false, ready: true })
     }

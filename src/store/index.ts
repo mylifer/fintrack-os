@@ -21,3 +21,5 @@ export { useSyncStatusStore } from './sync-status.store'
 export { useNotificationsStore } from './notifications.store'
 
 export { useSettingsStore } from './settings.store'
+
+export { useWorkspaceStore } from './workspace.store'

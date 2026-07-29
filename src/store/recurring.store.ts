@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import type { RecurringTransaction } from '@/types'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { loadEntities } from './entity-helpers'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 import { recurringOccurrences, nextDueAfter } from '@/lib/utils/recurrence'
@@ -38,7 +39,7 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
       rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
     const recurring = await loadEntities<RecurringTransaction>(
       'recurring_transactions', 'recurring',
-      async () => byName((await db.recurringTransactions.toArray()).filter(isLive)),
+      async () => byName((await db.recurringTransactions.toArray()).filter(isLive).filter(rowInActiveWorkspace)),
       byName,
     )
     set({ recurring, loading: false, ready: true })

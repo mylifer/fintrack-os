@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { BackupManager }  from '@/components/backup/BackupManager'
 import { TransactionImportModal } from '@/components/settings/TransactionImportModal'
+import { WorkspaceManager } from '@/components/settings/WorkspaceManager'
 import { loadDemoData, clearAllData } from '@/lib/seed'
 import { scanDemoData, removeDemoData, type DemoScan } from '@/lib/demo-cleanup'
 import { transactionsToCsvString, downloadCsv } from '@/lib/utils/csv'
@@ -101,6 +102,9 @@ export default function SettingsPage() {
             <div className="text-xs text-muted-foreground mt-1">Veri yerel depolama (IndexedDB) üzerinde saklanır.</div>
           </CardContent>
         </Card>
+
+        {/* Çalışma Alanları */}
+        <WorkspaceManager />
 
         {/* Demo & Reset */}
         <Card>

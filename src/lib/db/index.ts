@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Account, Transaction, Category, Budget, Debt, InvestmentTransaction, Person, RecurringTransaction, OutboxEntry } from '@/types'
+import type { Account, Transaction, Category, Budget, Debt, InvestmentTransaction, Person, RecurringTransaction, OutboxEntry, Workspace } from '@/types'
 // Shared legacy→Tabler icon map (single source of truth). The v6 migration only
 // ever encounters the noto: subset, but lookups are by exact key so the
 // superset is harmless and correct. A plain module import is safe inside the
@@ -15,6 +15,7 @@ class FinTrackDB extends Dexie {
   investmentTransactions!: EntityTable<InvestmentTransaction, 'id'>
   people!: EntityTable<Person, 'id'>
   recurringTransactions!: EntityTable<RecurringTransaction, 'id'>
+  workspaces!: EntityTable<Workspace, 'id'>
   _outbox!: EntityTable<OutboxEntry, 'id'>
 
   constructor() {
@@ -170,6 +171,24 @@ class FinTrackDB extends Dexie {
       investmentTransactions: '&id, type, asset, date, deleted_at',
       people:                 '&id, role, deleted_at',
       recurringTransactions:  '&id, type, frequency, nextDueDate, isActive, deleted_at',
+      _outbox:                '&id, table, entityId, enqueuedAt',
+    })
+
+    // v11: Çoklu Çalışma Alanı (Workspace) desteği. `workspaces` kendisi bir
+    // workspaceId taşımaz (diğer tabloların bölümleme eksenidir). Legacy
+    // satırlar workspaceId'siz kalır — data dönüşümü GEREKMİYOR (istemci
+    // tarafında "workspaceId yok = varsayılan çalışma alanına ait" kuralı,
+    // bkz. src/lib/workspace-context.ts).
+    this.version(11).stores({
+      accounts:               '&id, type, currency, isArchived, deleted_at, workspaceId',
+      transactions:           '&id, type, accountId, toAccountId, categoryId, date, installGroupId, debtId, familyMemberId, recipientId, deleted_at, approvalStatus, workspaceId',
+      categories:             '&id, scope, parentId, isSystem, isArchived, deleted_at, workspaceId',
+      budgets:                '&id, categoryId, period, year, month, deleted_at, workspaceId',
+      debts:                  '&id, type, direction, isSettled, dueDate, deleted_at, workspaceId',
+      investmentTransactions: '&id, type, asset, date, deleted_at, workspaceId',
+      people:                 '&id, role, deleted_at, workspaceId',
+      recurringTransactions:  '&id, type, frequency, nextDueDate, isActive, deleted_at, workspaceId',
+      workspaces:             '&id, isDefault, deleted_at',
       _outbox:                '&id, table, entityId, enqueuedAt',
     })
   }

@@ -1,12 +1,10 @@
 'use client'
 
 import { useEffect, type ReactNode } from 'react'
-import {
-  useAccountStore, useTransactionStore, useCategoryStore,
-  useBudgetStore, useDebtStore, useInvestmentStore, usePeopleStore,
-  useRecurringStore,
-} from '@/store'
+import { useAccountStore, useTransactionStore, useInvestmentStore } from '@/store'
+import { useWorkspaceStore } from '@/store/workspace.store'
 import { startAutoSync, guardUserSwitch } from '@/lib/sync/engine'
+import { reloadAllStores } from '@/lib/reload-stores'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { today } from '@/lib/utils/date'
 import { maybeAutoBackup } from '@/lib/auto-backup'
@@ -17,16 +15,8 @@ import { maybeAutoBackup } from '@/lib/auto-backup'
 let initPromise: Promise<void> | null = null
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const loadAccounts              = useAccountStore(s => s.load)
-  const loadTransactions          = useTransactionStore(s => s.load)
-  const loadCategories            = useCategoryStore(s => s.load)
-  const initCategories            = useCategoryStore(s => s.initDefaults)
-  const loadBudgets               = useBudgetStore(s => s.load)
-  const loadDebts                 = useDebtStore(s => s.load)
-  const loadInvestments           = useInvestmentStore(s => s.load)
+  const loadWorkspaces            = useWorkspaceStore(s => s.load)
   const fetchPrices               = useInvestmentStore(s => s.fetchPrices)
-  const loadPeople                = usePeopleStore(s => s.load)
-  const loadRecurring             = useRecurringStore(s => s.load)
   const reprocessSellLinkedTxs    = useInvestmentStore(s => s.reprocessSellLinkedTxs)
 
   useEffect(() => {
@@ -36,31 +26,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // (yoksa pull onları yeni hesaba itmeye çalışır; bkz. engine.ts).
       await guardUserSwitch()
 
-      // Phase 1: FK parent tablolarını Supabase'e upsert et (await).
-      // transactions/budgets/recurring bu tablolara FK referans verdiği için
-      // child'lar yüklenmeden önce Supabase'de hazır olmaları şart.
-      await Promise.all([
-        loadAccounts(),
-        loadCategories().then(initCategories),
-        loadDebts(),
-        loadPeople(),
-      ])
+      // Phase 0.5: aktif/varsayılan çalışma alanını çöz — bundan sonraki tüm
+      // yaratma/okuma işlemleri buna göre damgalanır/filtrelenir (bkz.
+      // src/lib/workspace-context.ts). Diğer store'lardan ÖNCE tamamlanmalı.
+      await loadWorkspaces()
 
-      // Phase 2: FK child tabloları yükle + arka planda Supabase'e sync et.
+      // Phase 1+2: FK parent/child tabloları yükle (bkz. reloadAllStores).
       await Promise.all([
-        loadTransactions(),
-        loadBudgets(),
-        loadInvestments(),
-        loadRecurring(),
+        reloadAllStores(),
         fetchPrices(),
       ])
 
       reprocessSellLinkedTxs().catch(err => {
         console.error('[init:reprocessSellLinkedTxs]', err)
       })
-      const { recomputeBalances } = useAccountStore.getState()
-      const { transactions }      = useTransactionStore.getState()
-      recomputeBalances(transactions)
 
       // C1: drain any mutations left in the outbox from a previous (possibly
       // offline) session, and keep draining whenever connectivity returns.
@@ -84,7 +63,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         initPromise = null // başarısız init tekrar denenebilsin
       })
     }
-  }, [loadAccounts, loadTransactions, loadCategories, initCategories, loadBudgets, loadDebts, loadInvestments, fetchPrices, loadPeople, loadRecurring, reprocessSellLinkedTxs])
+  }, [loadWorkspaces, fetchPrices, reprocessSellLinkedTxs])
 
   // Gün değişince bakiyeleri yeniden hesapla: gelecek tarihli işlemler güncel
   // bakiyeye dahil edilmez, günü gelen LEGACY (approvalStatus null) işlem o gün

@@ -7,6 +7,7 @@ import { enrichDebt } from '@/lib/utils/calculations'
 import { isDueSoon } from '@/lib/utils/date'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
+import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { loadEntities } from './entity-helpers'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 
@@ -37,7 +38,7 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     set({ loading: true })
     const debts = await loadEntities<Debt>(
       'debts', 'debts',
-      async () => (await db.debts.toArray()).filter(isLive),
+      async () => (await db.debts.toArray()).filter(isLive).filter(rowInActiveWorkspace),
     )
     set({ debts, loading: false })
   },

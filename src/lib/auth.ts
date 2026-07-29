@@ -16,6 +16,7 @@ export async function clearLocalData(): Promise<void> {
     db.investmentTransactions.clear(),
     db.people.clear(),
     db.recurringTransactions.clear(),
+    db.workspaces.clear(),
     db._outbox.clear(), // drop pending mutations on a full local reset
   ])
   // Shared-device hardening: wipe ALL browser storage so nothing (migration

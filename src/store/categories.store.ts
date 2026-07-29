@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, reconcilingPull } from '@/lib/sync/engine'
+import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import type { Category, CategoryScope, DefaultCategoryDef } from '@/types'
 import { DEFAULT_CATEGORIES } from '@/types'
 // One-time icon migration map (emoji / Lucide PascalCase / noto: → Tabler kebab).
@@ -57,14 +58,17 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       }
     } catch (err) {
       console.error('[categories:load]', err)
-      const raw = (await db.categories.toArray()).filter(isLive)
+      const raw = (await db.categories.toArray()).filter(isLive).filter(rowInActiveWorkspace)
       const { categories } = applyIconMigration(raw.sort(compareCategoriesByName))
       set({ categories, loading: false, ready: true })
     }
   },
 
   initDefaults: async () => {
-    const existing = await db.categories.toArray()
+    // Sadece AKTİF çalışma alanının kategorileri sayılır — aksi halde başka
+    // bir çalışma alanında zaten var olan bir isim burada da "var" sayılıp
+    // yeni (boş) çalışma alanına hiç varsayılan kategori eklenmezdi.
+    const existing = (await db.categories.toArray()).filter(rowInActiveWorkspace)
     const byName   = new Map(existing.map(c => [c.name, c.id]))
 
     // Phase 1: üst kategoriler — _parentName olmayanlar
