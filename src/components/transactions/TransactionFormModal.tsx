@@ -21,7 +21,7 @@ import { tr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency, Category, Account } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
-import { X } from 'lucide-react'
+import { X, Pencil, Trash2 } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { PersonSelect } from '@/components/people/PersonSelect'
 import {
@@ -68,16 +68,24 @@ function newRecurringForm() {
   }
 }
 
-// Son eklenen işlemin tarihi — art arda işlem girerken yeni form bu tarihle
-// açılır. Modül seviyesinde tutulur: sayfa yenilenince today()'e döner.
-let lastAddedDate: string | null = null
+// Modal her açılışta remount olduğundan (layout'ta key'li) açılışlar arasında
+// hatırlanması gereken iki şey modül seviyesinde yaşar; sayfa yenilenince
+// varsayılana döner:
+//   · date      — son eklenen işlemin tarihi, yeni form onunla açılır
+//   · keepOpen  — "art arda ekle" tercihi
+// Okuma/yazma modül fonksiyonlarından geçer: değerler render sırasında değil,
+// kayıt/işleyici içinde değişir (React Compiler'ın global yeniden atama kuralı).
+const modalMemory: { date: string | null; keepOpen: boolean } = { date: null, keepOpen: false }
+function rememberAddedDate(date: string) { modalMemory.date = date }
+function rememberKeepOpen(on: boolean)   { modalMemory.keepOpen = on }
+function recallKeepOpen(): boolean       { return modalMemory.keepOpen }
 
 function newForm() {
   return {
     type: 'expense' as Tab,
     amount: 0,
     currency: 'TRY' as CurrencyCode,
-    date: lastAddedDate ?? today(),
+    date: modalMemory.date ?? today(),
     accountId: '',
     toAccountId: undefined as string | undefined,
     categoryId: '' as string | undefined,
@@ -90,6 +98,13 @@ function newForm() {
     isDebtPayment: false,
     debtId: undefined as string | undefined,
   }
+}
+
+// Art arda ekleme: bir sonraki giriş için form. Tip, hesap ve tarih taşınır;
+// geri kalan her şey (tutar, açıklama, kategori, kişi, etiket, not, taksit ve
+// borç ayarları) temizlenir.
+function formForNextEntry(type: Tab, accountId: string, date: string): ReturnType<typeof newForm> {
+  return { ...newForm(), type, accountId, date }
 }
 
 // Build the initial form once (used as a lazy useState initializer). On edit it
@@ -138,6 +153,23 @@ function buildInitialForm(
   const f = newForm()
   if (modalPayload?.accountId) f.accountId = modalPayload.accountId
   return f
+}
+
+// Art arda ekleme oturumunda modal içinde biriken satır. Sadece görüntüleme
+// için tutulur — gerçek kayıt store'dadır; `id` silme/düzenleme hedefidir
+// (taksitli grupta ilk taksitin id'si; remove() zaten tüm grubu siler).
+interface SessionRow {
+  id:          string
+  description: string
+  amount:      number            // taksitli grupta TOPLAM satın alma tutarı
+  currency:    CurrencyCode
+  type:        Tab
+  categoryId?: string
+  accountName: string
+  // Satır modal içinde düzenlenebilir mi: tekil, taksitsiz, borç ödemesi
+  // olmayan sıradan satırlar. Diğerleri yalnızca silinebilir (kendi kapsamlı
+  // akışları var; art arda oturumunda yarım yamalak düzenlenmemeli).
+  editable:    boolean
 }
 
 interface Suggestion {
@@ -464,6 +496,13 @@ export function TransactionFormModal() {
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
 
+  // ── Art arda ekleme (oturum) ───────────────────────────────────────────
+  // Açıkken Kaydet modalı kapatmaz: satır store'a yazılır, footer'ın üstündeki
+  // oturum listesine düşer ve form bir sonraki giriş için sıfırlanır.
+  const [keepOpen, setKeepOpen]           = useState(recallKeepOpen)
+  const [session, setSession]             = useState<SessionRow[]>([])
+  const [sessionEditId, setSessionEditId] = useState<string | null>(null)
+
   const [isFocused, setIsFocused] = useState(false)
   const [cursorX, setCursorX]    = useState(0)
   const amountInputRef    = useRef<HTMLInputElement>(null)
@@ -672,7 +711,7 @@ export function TransactionFormModal() {
         description: form.description.trim(),
         notes:       form.notes || undefined,
       })
-      lastAddedDate = form.date
+      rememberAddedDate(form.date)
       closeModal()
     } catch (err) {
       console.error('[transaction:cross-workspace-transfer]', err)
@@ -681,6 +720,76 @@ export function TransactionFormModal() {
       setLoading(false)
     }
   }
+
+  // ── Art arda ekleme yardımcıları ────────────────────────────────────────
+  // Checkbox yalnızca YENİ tekil işlem eklerken anlamlı: düzenleme, tekrarlayan
+  // şablon ve çalışma alanları arası transfer kendi tek-seferlik akışlarıdır.
+  const canKeepOpen = !isEdit && !isRecurring && !crossWs
+
+  // Bir sonraki giriş için formu topla: tip, hesap ve tarih taşınır; tutar,
+  // açıklama, kategori, kişi, etiket, not ve taksit/borç ayarları temizlenir.
+  function resetForNext(keepDate: string) {
+    setForm(f => formForNextEntry(f.type, f.accountId, keepDate))
+    setAmountStr('')
+    setAmountSign(1)
+    setInstallments(1)
+    setManualAmounts(null)
+    setErrors({})
+    requestAnimationFrame(() => amountInputRef.current?.focus())
+  }
+
+  // Oturum satırını forma geri yükler — Kaydet artık o satırı GÜNCELLER.
+  function editSessionRow(row: SessionRow) {
+    const tx = useTransactionStore.getState().transactions.find(t => t.id === row.id)
+    if (!tx) return
+    setTab(tx.type as Tab)
+    setForm({
+      type:           tx.type as Tab,
+      amount:         tx.amount,
+      currency:       tx.currency,
+      date:           tx.date,
+      accountId:      tx.accountId,
+      toAccountId:    tx.toAccountId,
+      categoryId:     tx.categoryId ?? '',
+      description:    tx.description,
+      notes:          tx.notes,
+      tags:           tx.tags ?? [],
+      isInstallment:  false,
+      familyMemberId: tx.familyMemberId ?? undefined,
+      recipientId:    tx.recipientId    ?? undefined,
+      isDebtPayment:  false,
+      debtId:         undefined,
+    })
+    setAmountStr(toAmountStr(Math.abs(tx.amount)))
+    setAmountSign(tx.amount < 0 ? -1 : 1)
+    setInstallments(1)
+    setManualAmounts(null)
+    setErrors({})
+    setSessionEditId(row.id)
+    requestAnimationFrame(() => amountInputRef.current?.focus())
+  }
+
+  // Satırı sil: store'un normal silme yolu — taksitli grup birlikte gider,
+  // borç katkısı geri alınır ve "geri al" toast'ı çıkar.
+  async function removeSessionRow(row: SessionRow) {
+    await useTransactionStore.getState().remove(row.id)
+    setSession(rows => rows.filter(r => r.id !== row.id))
+    if (sessionEditId === row.id) {
+      setSessionEditId(null)
+      resetForNext(form.date)
+    }
+  }
+
+  // Oturum listesi görünürken form gövdesi kısalır; modalın toplam boyu
+  // liste olmadığındakiyle aynı kalsın (dikeyde taşma olmasın).
+  const showSession = canKeepOpen && keepOpen && session.length > 0
+
+  // Oturum toplamı — para birimi başına ayrı (karışık kurlarda "₺1.240 · $30").
+  const sessionTotals = useMemo(() => {
+    const byCurrency = new Map<CurrencyCode, number>()
+    session.forEach(r => byCurrency.set(r.currency, sumMoney([byCurrency.get(r.currency) ?? 0, r.amount])))
+    return Array.from(byCurrency, ([cur, sum]) => formatCurrency(sum, cur)).join(' · ')
+  }, [session])
 
   async function handleSubmit() {
     if (crossWs) return handleCrossWorkspaceSubmit()
@@ -777,6 +886,31 @@ export function TransactionFormModal() {
       } else if (!wasDebtPayment && isDebtPaymentNow && formDebtId) {
         await recordPayment(formDebtId, amountTry)
       }
+    } else if (sessionEditId) {
+      // Art arda oturumundaki bir satırın düzeltilmesi. Bu satırlar tanımı
+      // gereği sıradan (taksitsiz, borçsuz) olduğundan borç mutabakatı yok —
+      // düzenleme yalnızca alanları günceller.
+      await updateTx(sessionEditId, {
+        ...formData, type: tab as TransactionType, amount, currency, updatedAt: now,
+        categoryId:     formData.categoryId     || undefined,
+        toAccountId:    formData.toAccountId    || undefined,
+        familyMemberId: formData.familyMemberId ?? null,
+        recipientId:    formData.recipientId    ?? null,
+        tags:           cleanTags.length ? cleanTags : undefined,
+      })
+      setSession(rows => rows.map(r => r.id === sessionEditId ? {
+        ...r,
+        description: form.description.trim(),
+        amount,
+        currency,
+        type:        tab,
+        categoryId:  formData.categoryId || undefined,
+        accountName: account?.name ?? r.accountName,
+      } : r))
+      setSessionEditId(null)
+      rememberAddedDate(formData.date)
+      resetForNext(formData.date)
+      return
     } else {
       const base = {
         ...formData,
@@ -787,14 +921,35 @@ export function TransactionFormModal() {
         toAccountId: formData.toAccountId || undefined,
         tags:        cleanTags.length ? cleanTags : undefined,
       }
-      if (formData.isInstallment && installments > 1) {
-        await addGroup(base, installments, manualAmounts?.map(s => parseCurrencyInput(s)))
+      const isGroup = formData.isInstallment && installments > 1
+      let newId: string
+      if (isGroup) {
+        const ids = await addGroup(base, installments, manualAmounts?.map(s => parseCurrencyInput(s)))
+        newId = ids[0]
       } else {
-        await addTx({ ...base, id: crypto.randomUUID(), isInstallment: false, createdAt: now, updatedAt: now })
+        newId = crypto.randomUUID()
+        await addTx({ ...base, id: newId, isInstallment: false, createdAt: now, updatedAt: now })
       }
-      lastAddedDate = formData.date
-      if (tab === 'transfer' && form.isDebtPayment && formData.debtId) {
+      rememberAddedDate(formData.date)
+      const isDebtPay = tab === 'transfer' && form.isDebtPayment && !!formData.debtId
+      if (isDebtPay && formData.debtId) {
         await useDebtStore.getState().recordPayment(formData.debtId, amountTry)
+      }
+      // Art arda ekle: modal kapanmaz — satır oturum listesine düşer ve form
+      // bir sonraki giriş için toplanır.
+      if (canKeepOpen && keepOpen) {
+        setSession(rows => [...rows, {
+          id:          newId,
+          description: form.description.trim(),
+          amount:      isGroup ? parseCurrencyInput(amountStr) : amount,
+          currency,
+          type:        tab,
+          categoryId:  formData.categoryId || undefined,
+          accountName: account?.name ?? '',
+          editable:    !isGroup && !isDebtPay,
+        }])
+        resetForNext(formData.date)
+        return
       }
     }
     closeModal()
@@ -965,7 +1120,10 @@ export function TransactionFormModal() {
         </div>
 
         {/* ── Form body ──────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[55vh]">
+        <div className={cn(
+          "flex flex-col gap-4 px-6 py-5 overflow-y-auto",
+          showSession ? "max-h-[36vh]" : "max-h-[55vh]",
+        )}>
 
           {/* Name (recurring only) */}
           {isRecurring && (
@@ -1053,17 +1211,22 @@ export function TransactionFormModal() {
                     >
                       Hesap
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => { setCrossWs(false); patch({ isDebtPayment: true, toAccountId: undefined }) }}
-                      className={cn(
-                        "px-2 py-0.5 transition-colors border-l border-input",
-                        form.isDebtPayment && !crossWs ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      Borç
-                    </button>
-                    {!isEdit && otherWorkspaces.length > 0 && (
+                    {/* Oturum satırı düzenlenirken hedef yalnızca hesap olabilir:
+                        satır sıradan bir transfer olarak doğdu, borç/alan-transferi
+                        mutabakatı bu dalda yürütülmez. */}
+                    {!sessionEditId && (
+                      <button
+                        type="button"
+                        onClick={() => { setCrossWs(false); patch({ isDebtPayment: true, toAccountId: undefined }) }}
+                        className={cn(
+                          "px-2 py-0.5 transition-colors border-l border-input",
+                          form.isDebtPayment && !crossWs ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        Borç
+                      </button>
+                    )}
+                    {!isEdit && !sessionEditId && otherWorkspaces.length > 0 && (
                       <button
                         type="button"
                         onClick={() => { setCrossWs(true); patch({ isDebtPayment: false, toAccountId: undefined }) }}
@@ -1284,7 +1447,7 @@ export function TransactionFormModal() {
 
           {/* Installment — oluşturmada checkbox'la açılır; taksitli bir grup
               düzenlenirken 'ilk giriş' gibi tutar/sayı/taksitler değiştirilebilir. */}
-          {!isRecurring && tab === 'expense' && (!isEdit || installGroup.length > 0) && (
+          {!isRecurring && tab === 'expense' && !sessionEditId && (!isEdit || installGroup.length > 0) && (
             <div className="rounded-lg border border-dashed p-4 flex flex-col gap-3">
               {isEdit ? (
                 <div className="flex items-center justify-between">
@@ -1382,14 +1545,105 @@ export function TransactionFormModal() {
           )}
         </div>
 
+        {/* ── Oturum listesi (art arda ekleme) ───────────────────────────── */}
+        {showSession && (
+          <div className="border-t bg-muted/40">
+            <div className="flex items-baseline justify-between px-6 pt-3 pb-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Bu oturumda eklenenler ({session.length})
+              </span>
+              <span className="text-xs font-semibold tabular-nums">{sessionTotals}</span>
+            </div>
+            <div className="max-h-40 overflow-y-auto flex flex-col gap-1.5 px-6 pb-3">
+              {/* En yeni üstte — store dizisi bozulmadan ters çevrilir. */}
+              {[...session].reverse().map(row => {
+                const cat = row.categoryId ? categories.find(c => c.id === row.categoryId) : undefined
+                const isEditing = sessionEditId === row.id
+                return (
+                  <div
+                    key={row.id}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-md border bg-background dark:bg-card px-2.5 py-1.5",
+                      isEditing && "border-primary ring-1 ring-primary/30",
+                    )}
+                  >
+                    {cat
+                      ? <CategoryIcon icon={cat.icon} color={cat.color} size={14} />
+                      : <span className="size-6 shrink-0" />}
+                    <span className="flex-1 truncate text-sm">{row.description}</span>
+                    <span className={cn(
+                      "text-sm font-semibold tabular-nums",
+                      row.type === 'income' && "text-[var(--cf-income)]",
+                    )}>
+                      {row.type === 'income' ? '+' : row.type === 'expense' ? '−' : ''}
+                      {formatCurrency(Math.abs(row.amount), row.currency)}
+                    </span>
+                    <span className="w-20 shrink-0 truncate text-right text-[11px] text-muted-foreground">
+                      {row.accountName}
+                    </span>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      {row.editable && (
+                        <button
+                          type="button"
+                          onClick={() => editSessionRow(row)}
+                          aria-label={`${row.description} satırını düzenle`}
+                          title="Forma geri yükle"
+                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void removeSessionRow(row)}
+                        aria-label={`${row.description} satırını sil`}
+                        title="Sil"
+                        className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-destructive"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* ── Footer ─────────────────────────────────────────────────────── */}
-        <DialogFooter className="border-t px-6 py-4">
-          <Button variant="outline" onClick={closeModal} disabled={loading}>
-            İptal
-          </Button>
-          <Button onClick={handleSubmit} loading={loading} disabled={loading}>
-            {isEdit && !isPlannedEdit ? 'Güncelle' : 'Kaydet'}
-          </Button>
+        <DialogFooter className="border-t px-6 py-4 sm:justify-between">
+          {canKeepOpen ? (
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={keepOpen}
+                onChange={e => { setKeepOpen(e.target.checked); rememberKeepOpen(e.target.checked) }}
+                className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+              />
+              <span className="text-sm text-muted-foreground">Art arda ekle</span>
+            </label>
+          ) : <span />}
+          <div className="flex gap-2 sm:ml-auto">
+            {sessionEditId ? (
+              <Button
+                variant="outline"
+                onClick={() => { setSessionEditId(null); resetForNext(form.date) }}
+                disabled={loading}
+              >
+                Vazgeç
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={closeModal} disabled={loading}>
+                {showSession ? 'Bitir' : 'İptal'}
+              </Button>
+            )}
+            <Button onClick={handleSubmit} loading={loading} disabled={loading}>
+              {sessionEditId ? 'Satırı Güncelle'
+                : isEdit && !isPlannedEdit ? 'Güncelle'
+                : canKeepOpen && keepOpen ? 'Kaydet ve devam'
+                : 'Kaydet'}
+            </Button>
+          </div>
         </DialogFooter>
 
       </DialogContent>

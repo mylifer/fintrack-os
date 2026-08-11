@@ -89,11 +89,12 @@ interface TransactionState {
   load: () => Promise<void>
   add: (tx: Transaction) => Promise<void>
   addCrossWorkspaceTransfer: (input: CrossWorkspaceTransferInput) => Promise<void>
+  /** Üretilen satırların id'lerini taksit sırasıyla döndürür (ilk taksit başta). */
   addInstallmentGroup: (
     base: Omit<Transaction, 'id' | 'installIndex' | 'installGroupId' | 'createdAt' | 'updatedAt'>,
     count: number,
     amounts?: number[],
-  ) => Promise<void>
+  ) => Promise<string[]>
   updateInstallmentGroup: (
     groupId: string,
     shared: Partial<Transaction> & { date: string },
@@ -234,6 +235,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     next.sort(txSortComparator)
     set({ transactions: next })
     useAccountStore.getState().recomputeBalances(next)
+    return txs.map(t => t.id)
   },
 
   // Taksitli grubu 'ilk giriş' gibi topluca günceller. Mevcut satırların ID'leri
