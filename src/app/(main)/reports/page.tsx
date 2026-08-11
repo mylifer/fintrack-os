@@ -23,7 +23,7 @@ import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKe
 import { collapseInstallments } from '@/lib/utils/installments'
 import { buildCashFlowData } from '@/lib/utils/cashflow'
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
-import { toMinor, toMajor } from '@/lib/utils/money'
+import { toMinor, toMajor, sumBy } from '@/lib/utils/money'
 import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
 import { tefasCodesIn } from '@/lib/tefas'
 import { CashFlowBarChart }   from '@/components/reports/CashFlowBarChart'
@@ -118,6 +118,48 @@ function buildCategoryData(
       const categoryId = key === '__none__' ? null : key
       return { categoryId, name: cat?.name ?? 'Kategorisiz', amount, percent: (amount / total) * 100, color: cat?.color ?? '#8C8C8C' }
     })
+    .sort((a, b) => b.amount - a.amount)
+}
+
+/* ── Income distribution + fon getirisi dilimi ─────────────────────────
+   "Fon getirileri dahil" anahtarı AÇIKKEN fon getirisi gelir donut'unda da tek
+   bir dilim olarak görünür — Toplam Gelir KPI'ı ile AYNI iki bileşenden:
+     (1) defterdeki GERÇEKLEŞEN "… Satış Kârı" gelir satırları. Bunlar icon'lu
+         olduğundan sumIncomeByKey onları atlar (dağılım kuralı), bu yüzden
+         burada ayrıca toplanır.
+     (2) GERÇEKLEŞMEMİŞ dönem fon getirisi (mark-to-market) — defterde satırı
+         yoktur, çağıran hesaplar (fundGain, pozitif-kapılı).
+   Anahtar KAPALIYKEN ikisi de 0: realize satırlar filteredTxs'te zaten
+   ayıklanmıştır, fundGain 0 gelir → donut yalnız kategorili gelirleri gösterir.
+   Anapara ("… Satışı") HİÇBİR durumda girmez — özsermaye geri dönüşü, gelir değil.
+ ──────────────────────────────────────────────────────────────────────── */
+
+const FUND_GAIN_SLICE_ID = '__fund_gain__'
+const FUND_GAIN_COLOR    = '#a855f7'
+
+function buildIncomeCategoryData(
+  transactions: Transaction[],
+  categories: Array<{ id: string; name: string; color: string }>,
+  unrealizedFundGain: number,
+): CategorySlice[] {
+  const base = buildCategoryData(transactions, categories, 'income')
+
+  const realized  = sumBy(transactions.filter(tx => tx.type === 'income' && isRealizedInvestmentPnlTx(tx)), baseAmount)
+  const fundTotal = toMajor(toMinor(realized) + toMinor(unrealizedFundGain))
+  if (fundTotal <= 0) return base
+
+  // Yüzdeler tüm dilimler üzerinden YENİDEN hesaplanır — buildCategoryData'nın
+  // döndürdüğü percent yalnız kategorili gelir toplamına göreceliydi.
+  const slices = [...base, {
+    categoryId: FUND_GAIN_SLICE_ID,
+    name:       'Fon Getirisi',
+    amount:     fundTotal,
+    percent:    0,
+    color:      FUND_GAIN_COLOR,
+  }]
+  const total = sumBy(slices, s => s.amount)
+  return slices
+    .map(s => ({ ...s, percent: total > 0 ? (s.amount / total) * 100 : 0 }))
     .sort((a, b) => b.amount - a.amount)
 }
 
@@ -476,10 +518,13 @@ export default function ReportsPage() {
     return calcFundPeriodGain(investTxs, fundPrices, hist, dateRange.from, dateRange.to, preset === 'today')
   }, [fundEligible, fundCodes, fundHistory, investTxs, fundPrices, dateRange, preset])
 
-  // NOT: Gerçekleşmemiş fon getirisi (fundPeriodNet) artık "Toplam Gelir" KPI
-  // değerine EKLENMEZ — yalnız kartın alt-etiketinde bilgi olarak ayrı gösterilir
-  // (includeInvestmentIncome checkbox'ına bağlı). Ledger'daki gerçekleşen "Satış
-  // Kârı" gelir satırları zaten flow.income içinde her durumda sayılır.
+  // Anahtar AÇIKKEN gerçekleşmemiş dönem fon getirisi (pozitif-kapı) Toplam Gelir/
+  // Net Tasarruf KPI'larına ve gelir donut'una ("Fon Getirisi" dilimi) eklenir —
+  // dashboard ile BİREBİR aynı formül, iki sayfa aynı aylık geliri göstersin.
+  // Negatif dönem getirisi eklenmez (fundGain=0); alt-etikette bilgi olarak görünür.
+  // Ledger'daki gerçekleşen "Satış Kârı" satırları ayrı yol izler: anahtar açıkken
+  // filteredTxs'te kalıp flow.income'a girerler (bkz. buildIncomeCategoryData).
+  const fundGain = includeInvestmentIncome && fundPeriodNet > 0 ? fundPeriodNet : 0
 
   // Taksitli alışverişler raporda BÖLÜNMEZ: tüm taksitler satın alma ayına tek
   // bir toplam gider olarak yazılır (bkz. collapseInstallments). İndirgeme
@@ -541,7 +586,7 @@ export default function ReportsPage() {
   // yalnız gerçekleşen nakit olduğundan ikisi tam tutarlı.
   const cashFlowData    = useMemo(() => buildCashFlowData(filteredTxs, dateRange), [filteredTxs, dateRange])
   const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
-  const incomeCatData   = useMemo(() => buildCategoryData(filteredTxs, categories, 'income'),          [filteredTxs, categories])
+  const incomeCatData   = useMemo(() => buildIncomeCategoryData(filteredTxs, categories, fundGain),    [filteredTxs, categories, fundGain])
   const tagData         = useMemo(() => buildTagExpenseData(filteredTxs),                             [filteredTxs])
   const topTags         = useMemo(() => tagData.slice(0, 8),                                          [tagData])
   const trendData       = useMemo(
@@ -593,11 +638,6 @@ export default function ReportsPage() {
   // varken gösterilir (aksi halde gereksiz gürültü).
   const hasInstallment = useMemo(() => filteredTxs.some(t => t.isInstallment), [filteredTxs])
 
-  // Anahtar AÇIKKEN gerçekleşmemiş dönem fon getirisi (pozitif-kapı) Toplam Gelir/
-  // Net Tasarruf KPI'larına eklenir — dashboard ile BİREBİR aynı formül, iki sayfa
-  // aynı aylık geliri göstersin. Negatif dönem getirisi eklenmez (fundGain=0);
-  // alt-etikette bilgi olarak görünür.
-  const fundGain     = includeInvestmentIncome && fundPeriodNet > 0 ? fundPeriodNet : 0
   const incomeTotal  = kpi.income + fundGain
   const netTotal     = kpi.net + fundGain
   const rateTotal    = incomeTotal > 0 ? (netTotal / incomeTotal) * 100 : 0
@@ -877,10 +917,13 @@ export default function ReportsPage() {
                         if (activeIncomeSliceIdx === idx) {
                           setSelectedIncomeCat(null)
                           setActiveIncomeSliceIdx(null)
-                        } else {
-                          setSelectedIncomeCat(slice)
-                          setActiveIncomeSliceIdx(idx)
+                          return
                         }
+                        setActiveIncomeSliceIdx(idx)
+                        // "Fon Getirisi" bir defter kategorisi değil: gerçekleşmemiş
+                        // kısmının işlem satırı yok, dolayısıyla başlıktaki toplam
+                        // listeyle tutmaz → yalnız vurgulanır, drill-down açılmaz.
+                        setSelectedIncomeCat(slice.categoryId === FUND_GAIN_SLICE_ID ? null : slice)
                       }}
                     />
                   )}
