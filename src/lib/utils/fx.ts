@@ -41,6 +41,18 @@ export function toBaseTry(amount: number, currency: CurrencyCode): number {
   return mulMoney(amount, r)
 }
 
+/** The `amountTry` snapshot to PERSIST for a write — the converted value, or
+ *  `null` when no rate is available yet.
+ *
+ *  Neden ayrı bir fonksiyon: toBaseTry kur yokken ham tutara düşer, bu OKUMA
+ *  için kasıtlı bir degrade. Ama snapshot KALICIDIR — baseAmount() bir kez
+ *  yazılmış değeri döndürür, kurlar sonradan gelse bile düzelmez. Ham fallback'i
+ *  damgalamak $100'ü sonsuza dek 100₺ yapar. Bu yüzden yazma yolunun tamamı
+ *  (withBase + update) kararı BURADAN alır; null gelince alan temizlenir. */
+export function baseSnapshot(amount: number, currency: CurrencyCode): number | null {
+  return rateFor(currency) === null ? null : toBaseTry(amount, currency)
+}
+
 /** Convert a base-TRY amount back into `currency` (cross-currency transfer legs). */
 export function fromBaseTry(amountTry: number, currency: CurrencyCode): number {
   const r = rateFor(currency)

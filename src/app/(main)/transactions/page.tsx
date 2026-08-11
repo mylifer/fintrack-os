@@ -8,7 +8,7 @@ import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/component
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore } from '@/store'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
-import { sumByType, isFlowTx } from '@/lib/utils/calculations'
+import { sumByType, isFlowTx, txTouchesAccount } from '@/lib/utils/calculations'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { formatCurrency }  from '@/lib/utils/currency'
 import { transactionsToCsvString, downloadCsv } from '@/lib/utils/csv'
@@ -111,7 +111,8 @@ export default function TransactionsPage() {
       if (to   && t.date > to)   return false
       if (typeFilter && t.type !== typeFilter) return false
       if (categoryFilter && t.categoryId !== categoryFilter) return false
-      if (accountFilter  && t.accountId  !== accountFilter)  return false
+      // getFiltered ile aynı kural: transferin hedef bacağı da sayılır
+      if (accountFilter  && !txTouchesAccount(t, accountFilter))  return false
       if (familyFilter    && t.familyMemberId !== familyFilter.id)    return false
       if (recipientFilter && t.recipientId    !== recipientFilter.id) return false
       if (search && !searchMatcher(t)) return false

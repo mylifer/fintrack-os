@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isInvestmentPrincipalTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey } from './calculations'
+import { calcBudgetSpent, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isInvestmentPrincipalTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -254,5 +254,77 @@ describe('enrich helpers', () => {
     const d = enrichDebt({ totalAmount: 1000, paidAmount: 1200 } as Debt)
     expect(d.remainingAmount).toBe(0)
     expect(d.progressPercent).toBe(100)
+  })
+})
+
+/* Bütçe harcaması bir AKIŞ metriğidir → isFlowTx ile aynı kapsam. Onay bekleyen
+   (approvalStatus:'pending') veya tarihi gelmemiş satırlar hiçbir bakiyeyi
+   etkilemediği gibi bütçe çubuğunu da doldurmamalı. Eskiden calcBudgetSpent
+   yalnız tür+tarih bakıyordu: iki bekleyen gider bütçeyi onay verilmeden
+   'exceeded' yapabiliyordu. */
+describe('calcBudgetSpent — approval gate (isFlowTx ile aynı kapsam)', () => {
+  const budget = {
+    id: 'b', categoryId: 'market', amount: 2000, period: 'monthly',
+    month: 1, year: 2026, rollover: false, alertThreshold: 80,
+  } as Budget
+  const inMonth = (o: Partial<Transaction>) =>
+    tx({ type: 'expense', categoryId: 'market', date: '2026-01-20', ...o })
+
+  it('excludes a PENDING row awaiting approval', () => {
+    const pending = inMonth({ amount: 1000, amountTry: 1000, approvalStatus: 'pending' })
+    expect(isPosted(pending)).toBe(false)
+    expect(calcBudgetSpent(budget, [pending], { month: 1, year: 2026 }, [])).toBe(0)
+  })
+
+  it('two pending rows can no longer mark a budget exceeded', () => {
+    const e = enrichBudget(budget, [
+      inMonth({ amount: 1000, amountTry: 1000, approvalStatus: 'pending' }),
+      inMonth({ amount: 1000, amountTry: 1000, approvalStatus: 'pending' }),
+    ], { month: 1, year: 2026 }, [])
+    expect(e.spent).toBe(0)
+    expect(e.status).toBe('ok')
+  })
+
+  it('counts an approved row and a legacy row with no approvalStatus', () => {
+    const spent = calcBudgetSpent(budget, [
+      inMonth({ amount: 300, amountTry: 300, approvalStatus: 'approved' }),
+      inMonth({ amount: 200, amountTry: 200 }),                     // legacy → auto-post
+      inMonth({ amount: -50, amountTry: -50 }),                     // iade netlenir
+    ], { month: 1, year: 2026 }, [])
+    expect(spent).toBe(450)
+  })
+
+  it('still excludes a future-dated row even once approved', () => {
+    const future = inMonth({ amount: 500, amountTry: 500, date: '2099-01-05', approvalStatus: 'approved' })
+    const b = { ...budget, month: 1, year: 2099 } as Budget
+    expect(calcBudgetSpent(b, [future], { month: 1, year: 2099 }, [])).toBe(0)
+  })
+})
+
+/* Bir transferin HEDEF hesabı, kaynak kadar "o hesabın işlemi"dir —
+   computeTransactionEffect iki bakiyeyi de oynatır. Hesap detayı, arama ve
+   raporlar bu kuralı zaten paylaşıyordu; işlemler sayfasının hesap filtresi
+   yalnız accountId'ye bakıp gelen transferleri gizliyordu. */
+describe('txTouchesAccount — transferin iki bacağı da sayılır', () => {
+  const transfer = tx({ type: 'transfer', amount: 500, accountId: 'A', toAccountId: 'B' })
+
+  it('matches the source leg', () => expect(txTouchesAccount(transfer, 'A')).toBe(true))
+  it('matches the target leg', () => expect(txTouchesAccount(transfer, 'B')).toBe(true))
+  it('rejects an unrelated account', () => expect(txTouchesAccount(transfer, 'C')).toBe(false))
+
+  it('a plain expense matches only its own account', () => {
+    const spend = tx({ type: 'expense', amount: 100, accountId: 'A' })
+    expect(txTouchesAccount(spend, 'A')).toBe(true)
+    expect(txTouchesAccount(spend, 'B')).toBe(false)
+  })
+
+  it('agrees with computeTransactionEffect on which balances move', () => {
+    const acct = (id: string) => ({ id, currency: 'TRY' as const })
+    for (const id of ['A', 'B']) {
+      expect(txTouchesAccount(transfer, id)).toBe(true)
+      expect(computeTransactionEffect(acct(id), [transfer])).not.toBe(0)
+    }
+    expect(txTouchesAccount(transfer, 'C')).toBe(false)
+    expect(computeTransactionEffect(acct('C'), [transfer])).toBe(0)
   })
 })

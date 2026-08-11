@@ -1,7 +1,7 @@
 import {
   format, parseISO, startOfMonth, endOfMonth,
   subMonths, addMonths, isWithinInterval, startOfYear, endOfYear,
-  differenceInDays, isAfter, isBefore, addDays, subDays, subWeeks, subYears,
+  differenceInCalendarDays, isBefore, addDays, subDays, subWeeks, subYears,
   addWeeks, addYears, startOfWeek, endOfWeek, startOfDay,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -80,8 +80,12 @@ export function getStatementPeriod(account: Account, my: MonthYear): { from: str
   }
 }
 
+// TAKVİM günü farkı — duvar saatinden bağımsız. differenceInDays kullanılamaz:
+// hedefin gece yarısını şimdiki SAATLE kıyaslayıp kesirli günü kırpıyor, yani
+// öğleden sonra "yarın" 0, 7 gün sonrası 6 çıkıyordu (abonelikte "bugün" yazan,
+// borç kartında "6g" gösteren hata).
 export function daysUntil(iso: string): number {
-  return differenceInDays(parseISO(iso), new Date())
+  return differenceInCalendarDays(parseISO(iso), new Date())
 }
 
 export function getPeriodRange(type: PeriodType): { from: string; to: string } {
@@ -160,10 +164,12 @@ export function getPrevPeriodRange(type: PeriodType): { from: string; to: string
   }
 }
 
+// [bugün, bugün+days] takvim aralığı — isOverdue ile birlikte BOŞLUK bırakmaz.
+// Saat bazlı isAfter(d, now) karşılaştırması bugün vadesi geleni dışlıyordu:
+// dueSoon=false + overdue=false → vade günü hiçbir uyarıda görünmüyordu.
 export function isDueSoon(iso: string, days = 7): boolean {
-  const d = parseISO(iso)
-  const now = new Date()
-  return isAfter(d, now) && isBefore(d, addDays(now, days))
+  const d = differenceInCalendarDays(parseISO(iso), new Date())
+  return d >= 0 && d <= days
 }
 
 export function isOverdue(iso: string): boolean {

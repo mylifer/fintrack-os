@@ -15,7 +15,8 @@ import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDelete, softDeleteMany, reconcilingPull, localBatch, type BatchOp } from '@/lib/sync/engine'
 import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { useWorkspaceStore } from './workspace.store'
-import { toBaseTry, fromBaseTry, baseAmount, rateFor } from '@/lib/utils/fx'
+import { toBaseTry, fromBaseTry, baseAmount, baseSnapshot } from '@/lib/utils/fx'
+import { txTouchesAccount } from '@/lib/utils/calculations'
 import { splitMoney } from '@/lib/utils/money'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 
@@ -26,8 +27,8 @@ import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 // leave amountTry UNSET rather than stamping a wrong raw value — baseAmount()
 // then converts it live once rates arrive (L3). TRY always has a rate (1).
 function withBase(tx: Transaction): Transaction {
-  if (rateFor(tx.currency) == null) return tx
-  return { ...tx, amountTry: toBaseTry(tx.amount, tx.currency) }
+  const snap = baseSnapshot(tx.amount, tx.currency)
+  return snap === null ? tx : { ...tx, amountTry: snap }
 }
 
 // Onay kapısı (bildirim merkezi): gelecek tarihli YENİ işlemler 'pending' doğar —
@@ -162,7 +163,12 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
     const sourceCurrency = sourceAccount.currency
     const targetCurrency = targetAccount.currency
+    // Hedef tutar hesabı kur yokken ham fallback'e düşebilir (transfer ANINDA
+    // donar, sonradan düzeltilemez). KALICI snapshot ise baseSnapshot'tan gelir:
+    // kur yoksa damgalanmaz, böylece baseAmount() kurlar gelince canlı çevirir
+    // (withBase/update ile aynı kural — yanlış ham değer kalıcılaşmasın).
     const amountTry = toBaseTry(input.amount, sourceCurrency)
+    const amountTrySnap = baseSnapshot(input.amount, sourceCurrency) ?? undefined
     const targetAmount = targetCurrency === sourceCurrency
       ? input.amount
       : fromBaseTry(amountTry, targetCurrency)
@@ -178,7 +184,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       id: crypto.randomUUID(),
       type: 'expense',
       amount: input.amount,
-      amountTry,
+      amountTry: amountTrySnap,
       currency: sourceCurrency,
       date: input.date,
       accountId: input.sourceAccountId,
@@ -328,14 +334,26 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const now = new Date().toISOString()
     const updated: Partial<Transaction> = { ...patch, updatedAt: now }
     // Re-snapshot amountTry whenever amount or currency changes (S2/S3).
+    // withBase ile AYNI kural (baseSnapshot): kur henüz yoksa yanlış bir ham
+    // değer damgalamak yerine snapshot'ı temizleriz — baseAmount() kurlar
+    // gelince canlı çevirir. Eskiden koşulsuz toBaseTry çağrılıyordu ve fiyatlar
+    // yüklenmeden düzenlenen $100 kalıcı olarak 100₺ diye kaydoluyordu.
+    let clearBase = false
     if ('amount' in patch || 'currency' in patch) {
       const cur = get().transactions.find(t => t.id === id)
       if (cur) {
         const merged = { ...cur, ...patch }
-        updated.amountTry = toBaseTry(merged.amount, merged.currency)
+        const snap = baseSnapshot(merged.amount, merged.currency)
+        // Eski snapshot yeni tutara ait DEĞİL → kur yoksa da bırakılamaz.
+        updated.amountTry = snap ?? undefined
+        clearBase = snap === null
       }
     }
-    await localPatch('transactions', id, updated as Record<string, unknown>)
+    // Dexie/Supabase'e `undefined` yazmak alanı ATLAR (eski snapshot kalırdı) →
+    // temizleme niyetini açık `null` ile gönder.
+    const persisted: Record<string, unknown> = { ...updated }
+    if (clearBase) persisted.amountTry = null
+    await localPatch('transactions', id, persisted)
     // NOT: Borç paidAmount mutabakatı burada YAPILMAZ — düzenleme akışının tek
     // sahibi TransactionFormModal'dır (borç değişimi/kaldırma dahil tüm dalları
     // yönetir). Burada da ayarlamak çift sayıma yol açıyordu.
@@ -542,7 +560,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
   getFiltered: (filters) => {
     let txs = get().transactions
-    if (filters.accountIds?.length) txs = txs.filter(t => filters.accountIds!.includes(t.accountId))
+    // txTouchesAccount: transferin HEDEF bacağı da bu hesabın işlemidir —
+    // yalnız accountId'ye bakmak gelen transferleri listeden gizliyordu.
+    if (filters.accountIds?.length) txs = txs.filter(t => filters.accountIds!.some(id => txTouchesAccount(t, id)))
     if (filters.categoryIds?.length) txs = txs.filter(t => t.categoryId && filters.categoryIds!.includes(t.categoryId))
     if (filters.types?.length) txs = txs.filter(t => filters.types!.includes(t.type))
     if (filters.familyMemberIds?.length) txs = txs.filter(t => t.familyMemberId && filters.familyMemberIds!.includes(t.familyMemberId))

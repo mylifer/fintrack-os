@@ -18,7 +18,7 @@ import {
 } from '@/lib/utils/date'
 import {
   getBudgetCategoryIds, enrichBudget, calcBudgetSpent, resolveBudgetCategories,
-  expandCategoryIds,
+  expandCategoryIds, isFlowTx,
 } from '@/lib/utils/calculations'
 import { baseAmount } from '@/lib/utils/fx'
 import { sumBy } from '@/lib/utils/money'
@@ -139,6 +139,10 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     return transactions.filter(tx => {
       if (tx.type !== 'expense') return false
       if (!tx.categoryId || !activeCatIds.has(tx.categoryId)) return false
+      // isFlowTx: başlık (enriched.spent = calcBudgetSpent) onay bekleyen ve
+      // tarihi gelmemiş satırları saymıyor — liste/stats-bar toplamı da saymasın,
+      // yoksa başlıkla liste yeniden ayrışır.
+      if (!isFlowTx(tx)) return false
       // isInRange (slice(0,10)): aylık başlık (enriched.spent = calcBudgetSpent)
       // ile AYNI gün-sınırı kuralı — ham string kıyası son-gün datetime satırını
       // düşürüp liste/stats-bar toplamını başlıktan düşük gösteriyordu.

@@ -53,6 +53,18 @@ export function computeTransactionEffect(
   return toMajor(minor)
 }
 
+// Bir işlem `accountId`'ye DOKUNUYOR mu — transferin HEDEF bacağı da dahil.
+// computeTransactionEffect (yukarıda) transferde İKİ hesabın da bakiyesini
+// oynatır, dolayısıyla gelen transfer hedef hesabın da işlemidir. Hesap detayı
+// (AccountDetailClient), hesap kartları (views/shared), arama (txSearch) ve
+// raporlar bu kuralı zaten uyguluyordu; tek doğruluk kaynağı olsun diye burada.
+export function txTouchesAccount(
+  t: Pick<Transaction, 'accountId' | 'toAccountId'>,
+  accountId: string,
+): boolean {
+  return t.accountId === accountId || t.toAccountId === accountId
+}
+
 export function calcNetWorth(accounts: Account[], prices?: PriceData | null): number {
   let minor = 0
   for (const a of accounts) {
@@ -183,10 +195,15 @@ export function calcBudgetSpent(
 
   const categoryIds = expandCategoryIds(getBudgetCategoryIds(budget), categories)
   // Budgets are TRY-denominated → sum the normalized amountTry (S3), not raw.
+  // isFlowTx: harcanan tutar bir AKIŞ metriğidir → onay bekleyen (pending) ve
+  // tarihi gelmemiş satırlar sayılmaz, tıpkı hiçbir bakiyeyi etkilemedikleri
+  // gibi (isPosted tek doğruluk kaynağı). Aksi halde iki bekleyen gider bütçeyi
+  // kullanıcı onaylamadan 'exceeded' gösteriyordu.
   const matching = transactions.filter(tx =>
     tx.type === 'expense' &&
     tx.categoryId !== undefined &&
     categoryIds.has(tx.categoryId) &&
+    isFlowTx(tx) &&
     isInRange(tx.date, range.from, range.to),
   )
   return sumBy(matching, baseAmount)
