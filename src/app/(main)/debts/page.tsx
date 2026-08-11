@@ -164,6 +164,14 @@ export default function DebtsPage() {
     () => rawDebts.filter(d => !d.isSettled).map(enrichDebt),
     [rawDebts],
   )
+  // Kapatılan borçlar silinmez — aşağıda katlanabilir bir bölümde kalır.
+  const settledDebts = useMemo(
+    () => rawDebts
+      .filter(d => d.isSettled)
+      .map(enrichDebt)
+      .sort((a, b) => b.startDate.localeCompare(a.startDate) || b.createdAt.localeCompare(a.createdAt)),
+    [rawDebts],
+  )
   const transactions = useTransactionStore(useShallow(s => s.transactions))
   const categories   = useCategoryStore(s => s.categories)
   const openModal    = useUIStore(s => s.openModal)
@@ -179,6 +187,7 @@ export default function DebtsPage() {
   const [payingDebt, setPayingDebt]     = useState<DebtWithRemaining | undefined>()
   const [payForm, setPayForm]           = useState(emptyPayForm())
   const [payLoading, setPayLoading]     = useState(false)
+  const [showSettled, setShowSettled]   = useState(false)
 
   const owe        = debts.filter(d => d.direction === 'owe')
   const owed       = debts.filter(d => d.direction === 'owed')
@@ -314,12 +323,15 @@ export default function DebtsPage() {
     }
   }
 
-  function DebtCard({ debt }: { debt: DebtWithRemaining }) {
-    const overdue = debt.dueDate && isOverdue(debt.dueDate)
+  function DebtCard({ debt, settled = false }: { debt: DebtWithRemaining; settled?: boolean }) {
+    const overdue = !settled && debt.dueDate && isOverdue(debt.dueDate)
     const days    = debt.dueDate ? daysUntil(debt.dueDate) : null
 
     return (
-      <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-3">
+      <div className={[
+        'rounded-xl border border-border bg-card p-5 flex flex-col gap-3',
+        settled ? 'opacity-70 hover:opacity-100 transition-opacity' : '',
+      ].join(' ')}>
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -329,7 +341,9 @@ export default function DebtsPage() {
             )}
           </div>
           <div className="row-actions flex items-center gap-1.5 flex-shrink-0">
-            {overdue ? (
+            {settled ? (
+              <Badge variant="ok">Kapandı</Badge>
+            ) : overdue ? (
               <Badge variant="danger">Gecikmiş</Badge>
             ) : days !== null && days <= 7 ? (
               <Badge variant="warning">{days}g</Badge>
@@ -357,10 +371,10 @@ export default function DebtsPage() {
         {/* Amount */}
         <div className="flex items-baseline gap-2">
           <span className="text-xl font-medium tabular-nums">
-            <AnimatedNumber value={debt.remainingAmount} format={formatCurrency} />
+            <AnimatedNumber value={settled ? debt.paidAmount : debt.remainingAmount} format={formatCurrency} />
           </span>
           <span className="text-xs text-muted-foreground">
-            / <AnimatedNumber value={debt.totalAmount} format={formatCurrency} /> toplam
+            {settled ? 'tamamı ödendi' : <>/ <AnimatedNumber value={debt.totalAmount} format={formatCurrency} /> toplam</>}
           </span>
         </div>
 
@@ -385,7 +399,7 @@ export default function DebtsPage() {
           <Button size="sm" variant="secondary" className="flex-1 shrink" onClick={() => setSelectedDebt(debt)}>
             Detay
           </Button>
-          {debt.direction === 'owe' && (
+          {debt.direction === 'owe' && !settled && (
             <Button size="sm" className="flex-1 shrink" onClick={() => openPay(debt)}>
               Ödeme Yap
             </Button>
@@ -436,6 +450,24 @@ export default function DebtsPage() {
             {debts.map(d => <DebtCard key={d.id} debt={d} />)}
           </div>
         )}
+
+        {/* Kapatılan borçlar — tamamı ödendiği için aktif listede görünmez */}
+        {settledDebts.length > 0 && (
+          <div className="mt-8">
+            <button
+              onClick={() => setShowSettled(v => !v)}
+              className="flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <span className={`text-[10px] transition-transform ${showSettled ? 'rotate-90' : ''}`}>▶</span>
+              Kapatılanlar ({settledDebts.length})
+            </button>
+            {showSettled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                {settledDebts.map(d => <DebtCard key={d.id} debt={d} settled />)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Detail modal */}
@@ -457,8 +489,9 @@ export default function DebtsPage() {
                   <span className="text-sm text-muted-foreground">
                     / {formatCurrency(selectedDebt.totalAmount)} toplam
                   </span>
+                  {selectedDebt.isSettled && <Badge variant="ok">Kapandı</Badge>}
                 </div>
-                {selectedDebt.direction === 'owe' && (
+                {selectedDebt.direction === 'owe' && !selectedDebt.isSettled && (
                   <Button size="sm" onClick={() => openPay(selectedDebt)}>Ödeme Yap</Button>
                 )}
               </div>
