@@ -22,8 +22,9 @@ interface Props {
   data: CategorySlice[]
   activeIndex: number | null
   onSliceClick: (slice: CategorySlice, index: number) => void
+  emptyMessage?: string
 }
 
-export function CategoryDonutChart({ data, activeIndex, onSliceClick }: Props) {
-  return <Inner data={data} activeIndex={activeIndex} onSliceClick={onSliceClick} />
+export function CategoryDonutChart({ data, activeIndex, onSliceClick, emptyMessage }: Props) {
+  return <Inner data={data} activeIndex={activeIndex} onSliceClick={onSliceClick} emptyMessage={emptyMessage} />
 }

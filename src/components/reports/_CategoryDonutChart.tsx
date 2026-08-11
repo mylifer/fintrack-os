@@ -33,13 +33,14 @@ interface Props {
   data: CategorySlice[]
   activeIndex: number | null
   onSliceClick: (slice: CategorySlice, index: number) => void
+  emptyMessage?: string
 }
 
-export function CategoryDonutChartInner({ data, activeIndex, onSliceClick }: Props) {
+export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, emptyMessage }: Props) {
   if (data.length === 0) {
     return (
       <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">
-        Bu dönemde gider kaydedilmemiş
+        {emptyMessage ?? 'Bu dönemde gider kaydedilmemiş'}
       </div>
     )
   }

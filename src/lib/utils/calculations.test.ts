@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isInvestmentPrincipalTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey } from './calculations'
+import { calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isInvestmentPrincipalTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -191,6 +191,22 @@ describe('sumExpenseByKey (category/tag donut grouping)', () => {
     ], t => t.categoryId ?? '__none__')
     expect(m.get('food')).toBe(272.5)
     expect(m.get('transport')).toBe(40)
+    expect(m.size).toBe(2)
+  })
+})
+
+describe('sumIncomeByKey (income category donut grouping)', () => {
+  it('groups income by key in TRY, skipping expense/investment-linked & reconciliation', () => {
+    const m = sumIncomeByKey([
+      tx({ type: 'income',  amount: 1000, amountTry: 1000, categoryId: 'salary' }),
+      tx({ type: 'income',  amount: 5, currency: 'USD', amountTry: 172.5, categoryId: 'salary' }), // 5*34.5
+      tx({ type: 'income',  amount: 250, amountTry: 250 }),                                        // uncategorized
+      tx({ type: 'expense', amount: 999, amountTry: 999, categoryId: 'salary' }),                  // not income
+      tx({ type: 'income',  amount: 500, amountTry: 500, categoryId: 'salary', icon: 'Au' }),       // investment-linked
+      tx({ type: 'income',  amount: 700, amountTry: 700, categoryId: 'salary', systemKind: 'reconciliation' }), // ghost
+    ], t => t.categoryId ?? '__none__')
+    expect(m.get('salary')).toBe(1172.5)
+    expect(m.get('__none__')).toBe(250)
     expect(m.size).toBe(2)
   })
 })

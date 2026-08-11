@@ -19,7 +19,7 @@ import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, sumIncomeByKey, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { buildCashFlowData } from '@/lib/utils/cashflow'
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
@@ -95,10 +95,15 @@ function getPresetRange(preset: Preset, customFrom: string, customTo: string) {
 function buildCategoryData(
   transactions: Transaction[],
   categories: Array<{ id: string; name: string; color: string }>,
+  type: 'expense' | 'income' = 'expense',
 ): CategorySlice[] {
   // TRY-normalize + kuruş-exact, skip investment-linked (icon) & reconciliation
   // ghosts — DetailedStats ve kategori 6-ay trendiyle aynı kural (tek kaynak).
-  const catMap = sumExpenseByKey(transactions, tx => tx.categoryId ?? '__none__')
+  // Gelir tarafı aynı kuralı sumIncomeByKey ile paylaşır (yatırım satır dışlaması
+  // dahil), böylece iki donut birbirine simetrik okunur.
+  const catMap = type === 'income'
+    ? sumIncomeByKey(transactions,  tx => tx.categoryId ?? '__none__')
+    : sumExpenseByKey(transactions, tx => tx.categoryId ?? '__none__')
   // A category whose *net* total is ≤ 0 — fully refunded, or carrying only a
   // refund (negative expense) for a purchase made in an earlier period — is not
   // a positive expense contribution. Drop it before building slices: a negative
@@ -372,6 +377,10 @@ export default function ReportsPage() {
   const setIncludeInvestmentIncome = useSettingsStore(s => s.setIncludeFundGain)
   const [selectedCat,   setSelectedCat]   = useState<CategorySlice | null>(null)
   const [activeSliceIdx, setActiveSliceIdx] = useState<number | null>(null)
+  // Gelir donut'u kendi drill-down seçimini tutar — gider seçimiyle çakışmasın,
+  // ikisi aynı anda açık kalabilsin.
+  const [selectedIncomeCat,   setSelectedIncomeCat]   = useState<CategorySlice | null>(null)
+  const [activeIncomeSliceIdx, setActiveIncomeSliceIdx] = useState<number | null>(null)
   const [tagSliceIdx,   setTagSliceIdx]   = useState<number | null>(null)
   const [trendCatKey,   setTrendCatKey]   = useState<string>('')  // '' = auto (first in comparison list)
 
@@ -392,6 +401,8 @@ export default function ReportsPage() {
   const resetDrilldown = useCallback(() => {
     setSelectedCat(null)
     setActiveSliceIdx(null)
+    setSelectedIncomeCat(null)
+    setActiveIncomeSliceIdx(null)
     setTagSliceIdx(null)
     setTrendCatKey('')
     setDetailOpen(false)
@@ -530,6 +541,7 @@ export default function ReportsPage() {
   // yalnız gerçekleşen nakit olduğundan ikisi tam tutarlı.
   const cashFlowData    = useMemo(() => buildCashFlowData(filteredTxs, dateRange), [filteredTxs, dateRange])
   const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
+  const incomeCatData   = useMemo(() => buildCategoryData(filteredTxs, categories, 'income'),          [filteredTxs, categories])
   const tagData         = useMemo(() => buildTagExpenseData(filteredTxs),                             [filteredTxs])
   const topTags         = useMemo(() => tagData.slice(0, 8),                                          [tagData])
   const trendData       = useMemo(
@@ -563,6 +575,17 @@ export default function ReportsPage() {
       return selectedCat.categoryId === null ? !tx.categoryId : tx.categoryId === selectedCat.categoryId
     })
   }, [filteredTxs, selectedCat])
+
+  // Gelir drill-down'u: donut kapsamıyla birebir aynı satırlar — yatırım-ikonlu
+  // gelirler (anapara/realize kâr) dilimlere girmediği için listeye de girmez,
+  // aksi halde başlıktaki toplam listedekiyle tutmazdı.
+  const incomeCatFilteredTxs = useMemo(() => {
+    if (!selectedIncomeCat) return []
+    return filteredTxs.filter(tx => {
+      if (tx.type !== 'income' || tx.icon) return false
+      return selectedIncomeCat.categoryId === null ? !tx.categoryId : tx.categoryId === selectedIncomeCat.categoryId
+    })
+  }, [filteredTxs, selectedIncomeCat])
 
   const isLoading = !txsReady || !accountsReady
 
@@ -712,8 +735,8 @@ export default function ReportsPage() {
           )}
         </div>
 
-        {/* ── Charts row 1: Cash Flow + Category ────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* ── Charts row 1: Cash Flow (tam genişlik) ────────────────── */}
+        <div className="grid grid-cols-1 gap-6">
 
           <Card className="overflow-hidden gap-0 py-0">
             <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
@@ -786,6 +809,11 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
 
+        </div>
+
+        {/* ── Charts row 2: Kategori dağılımları (gider + gelir) ─────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
           <Card className="overflow-hidden gap-0 py-0">
             <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
               <span className="text-sm font-semibold text-foreground/90">Kategori Bazlı Giderler</span>
@@ -823,6 +851,44 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
 
+          <Card className="overflow-hidden gap-0 py-0">
+            <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
+              <span className="text-sm font-semibold text-foreground/90">Kategori Bazlı Gelirler</span>
+              {selectedIncomeCat && (
+                <button
+                  onClick={() => { setSelectedIncomeCat(null); setActiveIncomeSliceIdx(null) }}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                >
+                  <span className="w-2 h-2 rounded-sm inline-block" style={{ background: selectedIncomeCat.color }} />
+                  {selectedIncomeCat.name}
+                  <span className="ml-1 opacity-50">✕</span>
+                </button>
+              )}
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <div className="min-w-[360px]">
+                  {isLoading ? <DonutSkeleton /> : (
+                    <CategoryDonutChart
+                      data={incomeCatData}
+                      activeIndex={activeIncomeSliceIdx}
+                      emptyMessage="Bu dönemde gelir kaydedilmemiş"
+                      onSliceClick={(slice, idx) => {
+                        if (activeIncomeSliceIdx === idx) {
+                          setSelectedIncomeCat(null)
+                          setActiveIncomeSliceIdx(null)
+                        } else {
+                          setSelectedIncomeCat(slice)
+                          setActiveIncomeSliceIdx(idx)
+                        }
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
         </div>
 
         {/* ── Category drill-down ───────────────────────────────────── */}
@@ -849,6 +915,36 @@ export default function ReportsPage() {
                   showAccount
                   emptyTitle="İşlem bulunamadı"
                   emptyDescription="Seçili dönemde bu kategoride gider yok."
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Income category drill-down ────────────────────────────── */}
+        {selectedIncomeCat && !isLoading && (
+          <Card className="overflow-hidden gap-0 py-0">
+            <CardHeader className="flex-row items-center gap-3 px-5 py-4 border-b border-border/50">
+              <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: selectedIncomeCat.color }} />
+              <span className="text-sm font-semibold text-foreground/90 flex-1">
+                {selectedIncomeCat.name} — {incomeCatFilteredTxs.length} işlem
+              </span>
+              <span className="text-sm font-medium tabular-nums text-green-600">
+                +{formatCurrency(selectedIncomeCat.amount)}
+              </span>
+              <button
+                onClick={() => { setSelectedIncomeCat(null); setActiveIncomeSliceIdx(null) }}
+                className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors text-sm flex-shrink-0"
+                title="Kapat"
+              >✕</button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto" style={{ maxHeight: 440 }}>
+                <TransactionList
+                  transactions={incomeCatFilteredTxs}
+                  showAccount
+                  emptyTitle="İşlem bulunamadı"
+                  emptyDescription="Seçili dönemde bu kategoride gelir yok."
                 />
               </div>
             </CardContent>

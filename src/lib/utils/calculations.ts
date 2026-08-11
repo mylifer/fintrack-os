@@ -317,9 +317,28 @@ export function sumExpenseByKey(
   transactions: Transaction[],
   keyOf: (t: Transaction) => string,
 ): Map<string, number> {
+  return sumTypeByKey(transactions, keyOf, 'expense')
+}
+
+// Gelir tarafının aynısı (kategori bazlı gelir dağılımı). Yatırım-ikonlu gelir
+// satırları (anapara "… Satışı" ve gerçekleşen "… Satış Kârı") burada da dışlanır
+// — dağılım grafiklerinin ortak kuralı: dağılım = "gerçek gelir/harcama", KPI =
+// "akış" (realize K/Z KPI'da kalır). Bkz. sumExpenseByKey.
+export function sumIncomeByKey(
+  transactions: Transaction[],
+  keyOf: (t: Transaction) => string,
+): Map<string, number> {
+  return sumTypeByKey(transactions, keyOf, 'income')
+}
+
+function sumTypeByKey(
+  transactions: Transaction[],
+  keyOf: (t: Transaction) => string,
+  type: 'expense' | 'income',
+): Map<string, number> {
   const minor = new Map<string, number>()
   for (const t of transactions) {
-    if (t.type !== 'expense' || t.icon) continue
+    if (t.type !== type || t.icon) continue
     if (isReconciliation(t)) continue
     const k = keyOf(t)
     minor.set(k, (minor.get(k) ?? 0) + toMinor(baseAmount(t)))
