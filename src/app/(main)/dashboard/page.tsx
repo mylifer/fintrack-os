@@ -14,7 +14,7 @@ import { computeHoldings } from '@/store/investment.store'
 import { tefasCodesIn } from '@/lib/tefas'
 import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
-import { getPeriodRange, getPrevPeriodRange, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
+import { getPeriodRangeAt, formatPeriodLabel, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import { approveRecurring } from '@/lib/utils/recurring-actions'
 import dynamic from 'next/dynamic'
 import { useCountUp } from '@/lib/hooks/useCountUp'
@@ -96,6 +96,14 @@ export default function DashboardPage() {
   const [customFrom,   setCustomFrom]   = useState('')
   const [customTo,     setCustomTo]     = useState('')
 
+  // Dönem gezintisi (hesap detayındaki ile aynı): 0 = içinde bulunulan dönem,
+  // −1 = önceki ay/hafta/yıl. Offset ait olduğu dönem türüyle birlikte tutulur;
+  // tür değişince türev olarak 0'a döner (efektle sıfırlamaya gerek kalmadan) —
+  // Aylık'ta Mart'a gidip Yıllık'a geçmek 2021'de bırakmasın.
+  const [navState, setNavState] = useState<{ type: PeriodType; offset: number }>({ type: periodType, offset: 0 })
+  const periodOffset = navState.type === periodType ? navState.offset : 0
+  const setPeriodOffset = (offset: number) => setNavState({ type: periodType, offset })
+
   const { from, to } = useMemo(() => {
     if (customActive) {
       return {
@@ -103,8 +111,12 @@ export default function DashboardPage() {
         to:   customTo   || today(),
       }
     }
-    return getPeriodRange(periodType)
-  }, [customActive, customFrom, customTo, periodType])
+    return getPeriodRangeAt(periodType, periodOffset)
+  }, [customActive, customFrom, customTo, periodType, periodOffset])
+
+  // Gezinti/özel aralık yokken (offset 0) canlı dönem — fon getirisinde 'Bugün'
+  // kısayolu yalnız burada geçerli, geçmiş günler tarihsel seriden hesaplanır.
+  const isCurrentPeriod = !customActive && periodOffset === 0
 
   // Seçili dönemin TEFAS fon getirisi. Dönem başı kapanışı için fon başına
   // günlük seri bir kez çekilir (kod+dönem anahtarıyla; tarihi veri değişmez).
@@ -115,7 +127,9 @@ export default function DashboardPage() {
   const histRequested = useRef(new Set<string>())
   useEffect(() => {
     // Özel aralık her zaman sınırlı bir dönemdir → 'daily'/'all' atlamasına takılmaz.
-    if (!customActive && (periodType === 'daily' || periodType === 'all')) return
+    // Geçmiş bir gün (offset ≠ 0) de seri ister: 'Bugün' kısayolu son iki kapanışı
+    // kullandığından yalnız içinde bulunulan gün için geçerlidir.
+    if (!customActive && ((periodType === 'daily' && periodOffset === 0) || periodType === 'all')) return
     // Baz fiyat dönem içindeki ilk kapanış; seri yine de 10 gün geriden istenir
     // (fazla noktalar yok sayılır — anahtar `kod:from` olduğundan cache bozulmaz)
     const histFrom = new Date(new Date(from + 'T00:00:00Z').getTime() - 10 * 86_400_000)
@@ -132,7 +146,7 @@ export default function DashboardPage() {
         })
         .catch(() => histRequested.current.delete(key))
     }
-  }, [fundCodes, from, periodType, customActive])
+  }, [fundCodes, from, periodType, customActive, periodOffset])
 
   // Seçili dönemin işaretli fon getirisi (checkbox açıkken Gelir/Net'e eklenir).
   const fundPeriodNet = useMemo(() => {
@@ -141,8 +155,8 @@ export default function DashboardPage() {
       const pts = fundHistory[`${code}:${from}`]
       if (pts) hist[code] = pts
     }
-    return calcFundPeriodGain(investTxs, fundPrices, hist, from, to, !customActive && periodType === 'daily')
-  }, [fundCodes, fundHistory, investTxs, fundPrices, from, to, periodType, customActive])
+    return calcFundPeriodGain(investTxs, fundPrices, hist, from, to, isCurrentPeriod && periodType === 'daily')
+  }, [fundCodes, fundHistory, investTxs, fundPrices, from, to, periodType, isCurrentPeriod])
   // "Fon getirileri dahil" (sağ üst checkbox): açıkken dönemin POZİTİF fon getirisi
   // Gelir/Net kartına eklenir, kapalıyken hariç tutulur — kullanıcı isteğine göre
   // fonlu/fonsuz geliri görebilsin. Negatif dönem getirisi gelire yansıtılmaz (gelir
@@ -162,8 +176,10 @@ export default function DashboardPage() {
   )
   const netWorth    = calcNetWorth(accounts, prices) + investValue
   const totalAssets = calcTotalAssets(accounts, prices) + investValue
-  const prefix      = customActive ? 'Seçili Dönem' : PERIOD_LABEL[periodType]
-  const fundGainLabel = customActive ? 'seçili dönem' : FUND_GAIN_LABEL[periodType]
+  // Gezinilen dönemde "Bu Ay" yanıltıcı olur → gerçek dönem adı ("Temmuz 2026")
+  const periodLabel = formatPeriodLabel(periodType, periodOffset)
+  const prefix      = customActive ? 'Seçili Dönem' : isCurrentPeriod ? PERIOD_LABEL[periodType] : periodLabel
+  const fundGainLabel = customActive ? 'seçili dönem' : isCurrentPeriod ? FUND_GAIN_LABEL[periodType] : periodLabel
 
   const totalOwed = getActive().filter(d => d.direction === 'owe').reduce((s, d) => s + d.remainingAmount, 0)
 
@@ -188,8 +204,10 @@ export default function DashboardPage() {
       const days = differenceInDays(parseISO(to), f) + 1
       return { from: format(subDays(f, days), 'yyyy-MM-dd'), to: format(subDays(f, 1), 'yyyy-MM-dd') }
     }
-    return getPrevPeriodRange(periodType)
-  }, [customActive, from, to, periodType])
+    // Gezinti sırasında karşılaştırma da kayar: Temmuz'a bakarken trend Haziran'a göre
+    if (periodType === 'all') return null
+    return getPeriodRangeAt(periodType, periodOffset - 1)
+  }, [customActive, from, to, periodType, periodOffset])
   const prevFlow = useMemo(() => {
     if (!prevRange) return null
     // flowTxs: anahtar kapalıyken önceki dönem de fon-sız tabana oturur → trend
@@ -244,12 +262,21 @@ export default function DashboardPage() {
       <Header title="Dashboard" action={{ label: 'İşlem Ekle', onClick: () => openModal('add-transaction') }} />
       <PeriodTabs
         rightSlot={<FundGainToggle />}
+        // Özel aralık açıkken gezinti bir şeyi değiştirmez → gizlenir
+        nav={customActive ? undefined : {
+          offset:   periodOffset,
+          label:    periodLabel,
+          onChange: setPeriodOffset,
+        }}
         custom={{
           active: customActive,
           from: customFrom,
           to: customTo,
-          onActivate: () => setCustomActive(true),
-          onExit: () => setCustomActive(false),
+          onActivate: () => { setCustomActive(true); setPeriodOffset(0) },
+          // Her dönem sekmesi tıklamasında çalışır; "bugüne dön" demektir (aynı
+          // sekmeye basmak da gezintiyi sıfırlasın — tür değişmediğinde türev
+          // sıfırlama devreye girmez)
+          onExit: () => { setCustomActive(false); setPeriodOffset(0) },
           onChange: ({ from: f, to: t }) => {
             if (f !== undefined) setCustomFrom(f)
             if (t !== undefined) setCustomTo(t)
