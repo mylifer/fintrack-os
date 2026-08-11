@@ -7,7 +7,7 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   format, parseISO, startOfMonth, endOfMonth,
   subMonths, subDays, startOfYear, endOfYear,
-  differenceInDays, addMonths, addDays,
+  differenceInDays, addMonths, addDays, addWeeks, addYears,
   startOfWeek, endOfWeek,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -53,10 +53,49 @@ const PRESETS: { key: Preset; label: string }[] = [
   { key: 'custom',     label: 'Özel' },
 ]
 
+// Gezinti birimi — ‹ › ile kaydırılabilen presetler ve kaydırma adımı. Burada
+// olmayanlar ('all-time', 'custom') sabit aralıktır, gezinti şeridi gizlenir.
+const PRESET_UNIT: Partial<Record<Preset, 'day' | 'week' | 'month' | 'year'>> = {
+  'today':      'day',
+  'this-week':  'week',
+  'this-month': 'month',
+  'last-month': 'month',
+  '3-months':   'month',  // 3 aylık pencere ay ay kayar
+  'this-year':  'year',
+}
+
 /* ── Data helpers ─────────────────────────────────────────────────── */
 
-function getPresetRange(preset: Preset, customFrom: string, customTo: string) {
+/** Preset'in "şimdi" referansını `offset` birim kaydırır; aralık hesabı bunun
+ *  üzerinden yürüdüğü için tek noktadan tüm presetler gezinilebilir olur. */
+function presetAnchor(preset: Preset, offset: number): Date {
   const now = new Date()
+  if (!offset) return now
+  switch (PRESET_UNIT[preset]) {
+    case 'day':   return addDays(now, offset)
+    case 'week':  return addWeeks(now, offset)
+    case 'month': return addMonths(now, offset)
+    case 'year':  return addYears(now, offset)
+    default:      return now
+  }
+}
+
+/** Gezinilen dönemin insan-okur adı — ör. "Temmuz 2026", "Haz – Ağu 2026". */
+function formatPresetLabel(preset: Preset, offset: number): string {
+  const { from, to } = getPresetRange(preset, '', '', offset)
+  switch (preset) {
+    case 'today':      return format(parseISO(from), 'd MMMM yyyy', { locale: tr })
+    case 'this-week':  return `${format(parseISO(from), 'd MMM', { locale: tr })} – ${format(parseISO(to), 'd MMM', { locale: tr })}`
+    case 'this-month':
+    case 'last-month': return format(parseISO(from), 'MMMM yyyy', { locale: tr })
+    case '3-months':   return `${format(parseISO(from), 'MMM', { locale: tr })} – ${format(parseISO(to), 'MMM yyyy', { locale: tr })}`
+    case 'this-year':  return format(parseISO(from), 'yyyy')
+    default:           return ''
+  }
+}
+
+function getPresetRange(preset: Preset, customFrom: string, customTo: string, offset = 0) {
+  const now = presetAnchor(preset, offset)
   switch (preset) {
     case 'today': {
       const t = format(now, 'yyyy-MM-dd')
@@ -411,6 +450,19 @@ export default function ReportsPage() {
   const [preset,       setPreset]       = useState<Preset>('this-month')
   const [customFrom,   setCustomFrom]   = useState('')
   const [customTo,     setCustomTo]     = useState('')
+
+  // Dönem gezintisi (dashboard/hesap detayı ile aynı ‹ › şeridi): 0 = preset'in
+  // kendi dönemi, −1 = bir önceki. Offset ait olduğu preset'le birlikte tutulur;
+  // preset değişince türev olarak 0'a döner — "Bu Ay"da Mart'a gidip "Bu Yıl"a
+  // geçmek 2021'de bırakmasın.
+  const [navState, setNavState] = useState<{ preset: Preset; offset: number }>({ preset: 'this-month', offset: 0 })
+  const presetOffset = navState.preset === preset ? navState.offset : 0
+  const setPresetOffset = (offset: number) => setNavState({ preset, offset })
+  const canNavigate  = PRESET_UNIT[preset] !== undefined
+  const periodLabel  = formatPresetLabel(preset, presetOffset)
+  // Gezinti dışındayken 'Bugün' preset'i fon getirisinde son-iki-kapanış kısayolunu
+  // kullanır; geçmiş bir güne gidildiğinde tarihsel seri gerekir.
+  const isTodayPreset = preset === 'today' && presetOffset === 0
   const [accountId,    setAccountId]    = useState('all')
   // Fon getirisi anahtarı, Dashboard'daki "Fon getirileri dahil" ile AYNI kalıcı
   // ayardır (settings.includeFundGain) → iki sayfa aynı dönem için aynı Net'i
@@ -468,9 +520,9 @@ export default function ReportsPage() {
         const to = format(new Date(), 'yyyy-MM-dd') // bugüne kadar
         if (min && min <= to) return { from: min, to }
       }
-      return getPresetRange(preset, customFrom, customTo)
+      return getPresetRange(preset, customFrom, customTo, presetOffset)
     },
-    [preset, customFrom, customTo, transactions],
+    [preset, customFrom, customTo, presetOffset, transactions],
   )
 
   /* ── Fon getirisi (gerçekleşmemiş) ──────────────────────────────────
@@ -492,7 +544,7 @@ export default function ReportsPage() {
   // Dönem başı kapanış serisi ('Bugün' son iki kapanış farkını kullandığından
   // seri gerektirmez; uygun olmayan dönemlerde hiç istenmez).
   useEffect(() => {
-    if (!fundEligible || preset === 'today' || fundCodes.length === 0) return
+    if (!fundEligible || isTodayPreset || fundCodes.length === 0) return
     const histFrom = format(subDays(parseISO(dateRange.from), 10), 'yyyy-MM-dd')
     for (const code of fundCodes) {
       const key = `${code}:${dateRange.from}`
@@ -506,7 +558,7 @@ export default function ReportsPage() {
         })
         .catch(() => histRequested.current.delete(key))
     }
-  }, [fundEligible, preset, fundCodes, dateRange.from])
+  }, [fundEligible, isTodayPreset, fundCodes, dateRange.from])
 
   const fundPeriodNet = useMemo(() => {
     if (!fundEligible) return 0
@@ -515,8 +567,8 @@ export default function ReportsPage() {
       const pts = fundHistory[`${code}:${dateRange.from}`]
       if (pts) hist[code] = pts
     }
-    return calcFundPeriodGain(investTxs, fundPrices, hist, dateRange.from, dateRange.to, preset === 'today')
-  }, [fundEligible, fundCodes, fundHistory, investTxs, fundPrices, dateRange, preset])
+    return calcFundPeriodGain(investTxs, fundPrices, hist, dateRange.from, dateRange.to, isTodayPreset)
+  }, [fundEligible, fundCodes, fundHistory, investTxs, fundPrices, dateRange, isTodayPreset])
 
   // Anahtar AÇIKKEN gerçekleşmemiş dönem fon getirisi (pozitif-kapı) Toplam Gelir/
   // Net Tasarruf KPI'larına ve gelir donut'una ("Fon Getirisi" dilimi) eklenir —
@@ -670,7 +722,9 @@ export default function ReportsPage() {
           {PRESETS.map(p => (
             <button
               key={p.key}
-              onClick={() => { setPreset(p.key); resetDrilldown() }}
+              // Preset'e basmak "bugüne dön" demektir — aynı sekmeye tekrar
+              // basıldığında preset değişmediği için türev sıfırlama devreye girmez
+              onClick={() => { setPreset(p.key); setNavState({ preset: p.key, offset: 0 }); resetDrilldown() }}
               className={[
                 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap',
                 preset === p.key ? 'bg-secondary text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground rounded-xl',
@@ -680,6 +734,37 @@ export default function ReportsPage() {
             </button>
           ))}
         </div>
+
+        {/* Dönem gezintisi — sabit aralıklı presetlerde ('Tüm Zamanlar', 'Özel')
+            anlamsız, gizlenir */}
+        {canNavigate && (
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => { setPresetOffset(presetOffset - 1); resetDrilldown() }}
+              title="Önceki dönem"
+              className="w-11 h-11 lg:w-6 lg:h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-sm leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+            >
+              ‹
+            </button>
+            <button
+              onClick={() => { setPresetOffset(0); resetDrilldown() }}
+              title={presetOffset !== 0 ? 'Bugüne dön' : undefined}
+              className={[
+                'flex items-center px-2 min-h-11 lg:min-h-0 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors',
+                presetOffset !== 0 ? 'text-primary hover:bg-secondary/60' : 'text-foreground cursor-default',
+              ].join(' ')}
+            >
+              {periodLabel}
+            </button>
+            <button
+              onClick={() => { setPresetOffset(presetOffset + 1); resetDrilldown() }}
+              title="Sonraki dönem"
+              className="w-11 h-11 lg:w-6 lg:h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-sm leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+            >
+              ›
+            </button>
+          </div>
+        )}
 
         {preset === 'custom' && (
           <div className="flex items-center gap-2">
@@ -812,7 +897,8 @@ export default function ReportsPage() {
                     onClick={() => openDetail({
                       from:  dateRange.from,
                       to:    dateRange.to,
-                      label: PRESETS.find(p => p.key === preset)?.label ?? 'Dönem',
+                      // Gezinilen dönemde "Bu Ay" yanıltıcı olur → gerçek dönem adı
+                      label: (presetOffset !== 0 && periodLabel) || PRESETS.find(p => p.key === preset)?.label || 'Dönem',
                     })}
                     className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-accent transition-colors"
                     title="İşlemleri görüntüle"
