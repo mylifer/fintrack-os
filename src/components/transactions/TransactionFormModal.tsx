@@ -31,7 +31,7 @@ import { CategoryCascadeSelect } from '@/components/categories/CategoryCascadeSe
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { TagInput } from '@/components/transactions/TagInput'
 import { useTags } from '@/lib/hooks/useTags'
-import { dedupeTags } from '@/lib/utils/tags'
+import { dedupeTags, tagColor, tagKey } from '@/lib/utils/tags'
 import { SUBSCRIPTION_TAG, isSubscriptionTag, detectBrand } from '@/lib/subscriptions/brands'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 
@@ -146,6 +146,7 @@ interface Suggestion {
   familyMemberId?: string
   recipientId?:    string
   toAccountId?:    string
+  tags?:           string[]
 }
 
 // ── Field wrapper ─────────────────────────────────────────────────────────────
@@ -290,6 +291,15 @@ function DescriptionAutocomplete({
               >
                 <span className="flex-1 truncate">{s.description}</span>
                 <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                  {s.tags?.slice(0, 2).map(t => (
+                    <span
+                      key={tagKey(t)}
+                      className="rounded-md px-1.5 py-0.5 font-medium"
+                      style={{ background: `${tagColor(tagKey(t))}1A`, color: tagColor(tagKey(t)) }}
+                    >
+                      {t}
+                    </span>
+                  ))}
                   {famPerson && <span>{famPerson.name}</span>}
                   {recPerson && <span>{recPerson.name}</span>}
                   {toAcc && <span>→ {toAcc.name}</span>}
@@ -476,7 +486,7 @@ export function TransactionFormModal() {
 
   // Autocomplete suggestions
   const suggestions = useMemo<Suggestion[]>(() => {
-    const map = new Map<string, { description: string; categoryId: string; date: string; familyMemberId?: string; recipientId?: string; toAccountId?: string }>()
+    const map = new Map<string, { description: string; categoryId: string; date: string; familyMemberId?: string; recipientId?: string; toAccountId?: string; tags?: string[] }>()
     transactions
       .filter(tx => tx.type === tab && tx.description?.trim())
       .forEach(tx => {
@@ -493,11 +503,13 @@ export function TransactionFormModal() {
             toAccountId:    tx.toAccountId && accounts.some(a => a.id === tx.toAccountId)
               ? tx.toAccountId
               : undefined,
+            // Etiketler de son işlemden gelir — boşsa alan hiç taşınmaz
+            tags:           tx.tags?.length ? dedupeTags(tx.tags) : undefined,
           })
         }
       })
-    return Array.from(map.values()).map(({ description, categoryId, familyMemberId, recipientId, toAccountId }) =>
-      ({ description, categoryId, familyMemberId, recipientId, toAccountId }))
+    return Array.from(map.values()).map(({ description, categoryId, familyMemberId, recipientId, toAccountId, tags }) =>
+      ({ description, categoryId, familyMemberId, recipientId, toAccountId, tags }))
   }, [transactions, tab, accounts])
 
   // FLIP slide-left animation: fires after React paints the new (wider) number,
@@ -982,6 +994,9 @@ export function TransactionFormModal() {
                 categoryId:     s.categoryId,
                 familyMemberId: s.familyMemberId,
                 recipientId:    s.recipientId,
+                // Etiketler yalnızca öneride varsa gelir; kullanıcının elle
+                // girdikleri korunur (abonelik etiketi dahil)
+                ...(s.tags?.length ? { tags: dedupeTags([...form.tags, ...s.tags]) } : {}),
                 // Transferde alıcı hesabı son işlemden getir — kaynakla aynıysa
                 // veya borç ödeme modundaysa dokunma
                 ...(tab === 'transfer' && !form.isDebtPayment && s.toAccountId && s.toAccountId !== form.accountId
