@@ -51,9 +51,9 @@ interface Props {
 }
 
 export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, onDrillChange, emptyMessage }: Props) {
-  // "Diğer" kırılımının başlangıç sırası (0 = kök görünüm). Kategori sayısı
-  // sonradan azalırsa (dönem/hesap filtresi) bayat offset kök görünüme kırpılır.
-  const [offset, setOffset] = useState(0)
+  // Tek katman kırılım: "Diğer" açıkken kalan TÜM kategoriler tek seferde
+  // listelenir — içeride yeniden "Diğer" oluşturulmaz.
+  const [drilled, setDrilled] = useState(false)
 
   if (data.length === 0) {
     return (
@@ -63,22 +63,23 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, onDri
     )
   }
 
-  const safeOffset = offset < data.length ? offset : 0
+  const rest = data.slice(PAGE_SIZE)
+  // Kategori sayısı sonradan azaldıysa (dönem/hesap filtresi) "Diğer" kovası
+  // boşalır → bayat kırılım görünümüne düşmeyi engelle.
+  const isDrilled = drilled && rest.length > 0
 
-  // Görünen sayfanın 8 dilimi + kalanı "Diğer" olarak TEK dilimde. Recharts yay
-  // açılarını verilen dilimler üzerinden normalize eder; kalan kategoriler
-  // çizilmezse görünen yaylar etiketlerindeki yüzdeden büyük olur ve merkezdeki
-  // Toplam ile dilimler tutmaz → yüzdeler de merkezdeki toplamla AYNI kovaya
-  // (bu seviyede gösterilen + "Diğer"e giren tüm dilimler) göre hesaplanır.
-  // Kökte bu kova tüm veri olduğundan yüzdeler gelen değerlerle birebir aynıdır.
-  const page = data.slice(safeOffset, safeOffset + PAGE_SIZE)
-  const rest = data.slice(safeOffset + PAGE_SIZE)
-  const bucketTotal = sumBy(data.slice(safeOffset), d => d.amount)
+  // Kök: ilk 8 dilim + kalanı "Diğer" olarak TEK dilimde. Recharts yay açılarını
+  // verilen dilimler üzerinden normalize eder; kalan kategoriler çizilmezse
+  // görünen yaylar etiketlerindeki yüzdeden büyük olur ve merkezdeki Toplam ile
+  // dilimler tutmaz → yüzdeler de merkezdeki toplamla AYNI kovaya göre
+  // hesaplanır (kök = tüm veri, kırılım = "Diğer"in kendi toplamı).
+  const shown = isDrilled ? rest : data.slice(0, PAGE_SIZE)
+  const bucketTotal = sumBy(isDrilled ? rest : data, d => d.amount)
   const pct = (amount: number) => (bucketTotal > 0 ? (amount / bucketTotal) * 100 : 0)
 
   const top: CategorySlice[] = [
-    ...page.map(s => ({ ...s, percent: pct(s.amount) })),
-    ...(rest.length === 0 ? [] : [{
+    ...shown.map(s => ({ ...s, percent: pct(s.amount) })),
+    ...(isDrilled || rest.length === 0 ? [] : [{
       categoryId: OTHER_ID,
       name:       'Diğer',
       amount:     sumBy(rest, d => d.amount),
@@ -88,31 +89,31 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, onDri
   ]
   const totalLabel = formatCurrency(bucketTotal)
 
-  const goTo = (next: number) => {
-    setOffset(next)
-    onDrillChange?.()   // dışarıdaki index tabanlı seçim bu sayfada geçersiz
+  const goTo = (next: boolean) => {
+    setDrilled(next)
+    onDrillChange?.()   // dışarıdaki index tabanlı seçim bu görünümde geçersiz
   }
 
   const handlePieClick = (pieData: any, index: number) => {
     const slice = pieData as CategorySlice
     // "Diğer" toplama dilimi — kendi drill-down hedefi yok, alt kırılımını aç.
-    if (slice.categoryId === OTHER_ID) { goTo(safeOffset + PAGE_SIZE); return }
+    if (slice.categoryId === OTHER_ID) { goTo(true); return }
     onSliceClick(slice, index)
   }
 
   return (
     <div>
-      {safeOffset > 0 && (
+      {isDrilled && (
         <div className="px-5 pt-3 flex items-center gap-2 min-w-0">
           <button
-            onClick={() => goTo(safeOffset - PAGE_SIZE)}
+            onClick={() => goTo(false)}
             className="flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors -ml-1"
           >
             <ChevronLeft size={13} />
             Geri
           </button>
           <span className="text-[11px] text-muted-foreground/70 truncate">
-            Diğer · kalan {data.length - safeOffset} kategori
+            Diğer · {rest.length} kategori
           </span>
         </div>
       )}
