@@ -20,6 +20,7 @@ import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
 import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { buildCashFlowData } from '@/lib/utils/cashflow'
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
 import { toMinor, toMajor } from '@/lib/utils/money'
@@ -469,11 +470,18 @@ export default function ReportsPage() {
   // (includeInvestmentIncome checkbox'ına bağlı). Ledger'daki gerçekleşen "Satış
   // Kârı" gelir satırları zaten flow.income içinde her durumda sayılır.
 
+  // Taksitli alışverişler raporda BÖLÜNMEZ: tüm taksitler satın alma ayına tek
+  // bir toplam gider olarak yazılır (bkz. collapseInstallments). İndirgeme
+  // excludeFuture'dan ÖNCE, tüm defter üzerinde yapılmalı — aksi halde henüz
+  // gelmemiş taksitler elenir ve toplam eksik çıkar.
+  const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
+
   // Analitik akış yüzeylerinin ortak temeli: yalnız İŞLENMİŞ satırlar (isPosted —
   // pending/gelecek tarihli satırlar hiçbir gelir/gider toplamına girmez; bakiye
   // ile aynı kural). Bakiye/net varlık trendleri ham `transactions` okumaya devam
-  // eder (kendi excludeFuture'ları var, ghost'ları da bilerek tutarlar).
-  const postedTxs = useMemo(() => excludeFuture(transactions), [transactions])
+  // eder (kendi excludeFuture'ları var, ghost'ları da bilerek tutarlar; taksitler
+  // orada gerçek nakit akışı olarak aya yayılı kalmalı).
+  const postedTxs = useMemo(() => excludeFuture(reportTxs), [reportTxs])
 
   // Base analytic scope: period + account filtered, with ghost balance-
   // reconciliation entries stripped out. Every income/expense aggregate below
@@ -557,6 +565,10 @@ export default function ReportsPage() {
   }, [filteredTxs, selectedCat])
 
   const isLoading = !txsReady || !accountsReady
+
+  // Nakit akışı kartındaki açıklama notu yalnız dönemde taksitli bir satın alma
+  // varken gösterilir (aksi halde gereksiz gürültü).
+  const hasInstallment = useMemo(() => filteredTxs.some(t => t.isInstallment), [filteredTxs])
 
   // Anahtar AÇIKKEN gerçekleşmemiş dönem fon getirisi (pozitif-kapı) Toplam Gelir/
   // Net Tasarruf KPI'larına eklenir — dashboard ile BİREBİR aynı formül, iki sayfa
@@ -760,9 +772,16 @@ export default function ReportsPage() {
                   )}
                 </div>
               </div>
-              <div className="px-5 pb-4 flex gap-4">
+              <div className="px-5 pb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5">
                 <LegendDot color="var(--cf-income)" label="Gelir" />
                 <LegendDot color="var(--cf-expense)" label="Gider" />
+                {/* Taksitli alışverişler burada aya yayılmaz — toplam tutar satın
+                    alma ayında görünür (bkz. collapseInstallments). */}
+                {hasInstallment && (
+                  <span className="text-[11px] text-muted-foreground/80">
+                    Taksitli alışverişler satın alma ayına toplam yazılır
+                  </span>
+                )}
               </div>
             </CardContent>
           </Card>

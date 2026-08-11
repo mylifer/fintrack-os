@@ -7,6 +7,7 @@ import { SelectField } from '@/components/ui/Select'
 import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { excludeFuture } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { DetailedStats } from '@/components/reports/DetailedStats'
 
 /* ── Types & period helpers (same semantics as the Reports page) ──────── */
@@ -86,11 +87,16 @@ export default function StatisticsPage() {
     [preset, customFrom, customTo, transactions],
   )
 
+  // Taksitli alışverişler Raporlar'daki gibi bölünmez: grup, satın alma ayına
+  // tek toplam gider olarak indirgenir (collapseInstallments). İndirgeme
+  // excludeFuture'dan ÖNCE olmalı — gelecek taksitler de toplama girsin.
+  const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
+
   // excludeFuture (isPosted): onay bekleyen/gelecek satırlar dönem gelir/gider
   // analizine girmez — Dashboard/Raporlar akış kapsamıyla aynı (net-varlık geri
   // yürüyüşü tam geçmişi kendi excludeFuture'ıyla ayrıca kullanır, alttaki prop).
   const filteredTxs = useMemo(() =>
-    excludeFuture(transactions).filter(tx => {
+    excludeFuture(reportTxs).filter(tx => {
       // slice(0,10): son-gün datetime satırı aralıktan düşmesin (isInRange kuralı)
       const d = tx.date.slice(0, 10)
       if (d < dateRange.from || d > dateRange.to) return false
@@ -99,7 +105,7 @@ export default function StatisticsPage() {
       }
       return true
     }),
-    [transactions, dateRange, accountId],
+    [reportTxs, dateRange, accountId],
   )
 
   /* Effective range: the start date is always the date of the first

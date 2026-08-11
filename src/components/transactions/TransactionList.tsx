@@ -39,6 +39,14 @@ const RefundIcon = ({ size = 13 }: { size?: number }) => (
   </svg>
 )
 
+// Taksit rozeti. Normal defter satırı tek bir taksittir → "3/12". Raporlarda
+// gösterilen indirgenmiş satır (collapseInstallments) ise satın almanın TAMAMINI
+// temsil eder ve installIndex taşımaz → "12 taksit".
+function installmentLabel(tx: Pick<Transaction, 'installIndex' | 'installTotal'>): string {
+  if (tx.installIndex == null) return `${tx.installTotal ?? '?'} taksit`
+  return `${tx.installIndex}/${tx.installTotal}`
+}
+
 // Silinmek istenen defter işlemi bir yatırım satışının bacağı mı? İki bacak var:
 // satış geliri (invest tx'in linkedTransactionId'si) ve kâr/zarar satırı
 // (cleanSellLinkedTxs ile aynı sezgisel: hesap + tarih + "X Satış Kârı/Zararı").
@@ -323,7 +331,7 @@ const TableTxRow = memo(function TableTxRow({
             {tx.description}
             {tx.isInstallment && (
               <span className="ml-1 font-normal text-orange-500/80">
-                ({tx.installIndex}/{tx.installTotal})
+                ({installmentLabel(tx)})
               </span>
             )}
             {isRefund && (
@@ -497,7 +505,7 @@ const CardTxRow = memo(function CardTxRow({
   const metaItems: MetaItem[] = []
   if (showAccount && account) metaItems.push({ text: account.name, href: `/accounts/${tx.accountId}` })
   if (cat) metaItems.push({ text: cat.name, href: `/categories/${tx.categoryId}` })
-  if (tx.isInstallment) metaItems.push({ text: `${tx.installIndex}/${tx.installTotal}` })
+  if (tx.isInstallment) metaItems.push({ text: installmentLabel(tx) })
   if (recipient) metaItems.push({ text: recipient.name, href: `/alicilar/${tx.recipientId}` })
   if (family)    metaItems.push({ text: family.name,    href: `/aile-uyeleri/${tx.familyMemberId}` })
 
