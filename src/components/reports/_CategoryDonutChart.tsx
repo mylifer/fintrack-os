@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+import { ChevronLeft } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/currency'
 import { sumBy } from '@/lib/utils/money'
 
@@ -9,6 +11,12 @@ export type CategorySlice = {
   percent: number
   color: string
 }
+
+/* "Diğer" = tek sayfaya sığmayan kategorilerin toplama dilimi. Gerçek bir
+   kategori değil (defterde karşılığı yok) → drill-down hedefi de olamaz;
+   tıklanınca bir sonraki sayfaya (kendi alt kırılımına) inilir. */
+const OTHER_ID  = '__other__'
+const PAGE_SIZE = 8
 
 function CustomTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
@@ -24,6 +32,9 @@ function CustomTooltip({ active, payload }: any) {
         <div className="font-semibold text-foreground">{slice.name}</div>
         <div className="text-foreground tabular font-semibold mt-0.5">{formatCurrency(slice.amount)}</div>
         <div className="text-muted-foreground">{slice.percent.toFixed(1)}%</div>
+        {slice.categoryId === OTHER_ID && (
+          <div className="text-muted-foreground/70 mt-1">Alt kırılım için tıkla</div>
+        )}
       </div>
     </>
   )
@@ -33,10 +44,17 @@ interface Props {
   data: CategorySlice[]
   activeIndex: number | null
   onSliceClick: (slice: CategorySlice, index: number) => void
+  /** "Diğer" kırılımına inip çıkarken çağrılır — activeIndex görünen diliminin
+   *  sırasına göre olduğundan, sayfa değişince dışarıdaki seçim bayatlar. */
+  onDrillChange?: () => void
   emptyMessage?: string
 }
 
-export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, emptyMessage }: Props) {
+export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, onDrillChange, emptyMessage }: Props) {
+  // "Diğer" kırılımının başlangıç sırası (0 = kök görünüm). Kategori sayısı
+  // sonradan azalırsa (dönem/hesap filtresi) bayat offset kök görünüme kırpılır.
+  const [offset, setOffset] = useState(0)
+
   if (data.length === 0) {
     return (
       <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">
@@ -45,32 +63,60 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, empty
     )
   }
 
-  // İlk 8 dilim + kalanı "Diğer" olarak TEK dilimde. Recharts yay açılarını
-  // verilen dilimler üzerinden normalize eder; kalan kategoriler çizilmezse
-  // görünen yaylar etiketlerindeki yüzdeden büyük olur ve merkezdeki Toplam
-  // (tüm veri) ile dilimler tutmaz.
-  const OTHER_ID = '__other__'
-  const rest = data.slice(8)
-  const top: CategorySlice[] = rest.length === 0 ? data.slice(0, 8) : [
-    ...data.slice(0, 8),
-    {
+  const safeOffset = offset < data.length ? offset : 0
+
+  // Görünen sayfanın 8 dilimi + kalanı "Diğer" olarak TEK dilimde. Recharts yay
+  // açılarını verilen dilimler üzerinden normalize eder; kalan kategoriler
+  // çizilmezse görünen yaylar etiketlerindeki yüzdeden büyük olur ve merkezdeki
+  // Toplam ile dilimler tutmaz → yüzdeler de merkezdeki toplamla AYNI kovaya
+  // (bu seviyede gösterilen + "Diğer"e giren tüm dilimler) göre hesaplanır.
+  // Kökte bu kova tüm veri olduğundan yüzdeler gelen değerlerle birebir aynıdır.
+  const page = data.slice(safeOffset, safeOffset + PAGE_SIZE)
+  const rest = data.slice(safeOffset + PAGE_SIZE)
+  const bucketTotal = sumBy(data.slice(safeOffset), d => d.amount)
+  const pct = (amount: number) => (bucketTotal > 0 ? (amount / bucketTotal) * 100 : 0)
+
+  const top: CategorySlice[] = [
+    ...page.map(s => ({ ...s, percent: pct(s.amount) })),
+    ...(rest.length === 0 ? [] : [{
       categoryId: OTHER_ID,
       name:       'Diğer',
       amount:     sumBy(rest, d => d.amount),
-      percent:    rest.reduce((s, d) => s + d.percent, 0),
+      percent:    pct(sumBy(rest, d => d.amount)),
       color:      '#9CA3AF',
-    },
+    }]),
   ]
-  const totalLabel = formatCurrency(sumBy(data, d => d.amount))
+  const totalLabel = formatCurrency(bucketTotal)
+
+  const goTo = (next: number) => {
+    setOffset(next)
+    onDrillChange?.()   // dışarıdaki index tabanlı seçim bu sayfada geçersiz
+  }
 
   const handlePieClick = (pieData: any, index: number) => {
     const slice = pieData as CategorySlice
-    if (slice.categoryId === OTHER_ID) return  // "Diğer" toplama dilimi — drill-down hedefi yok
+    // "Diğer" toplama dilimi — kendi drill-down hedefi yok, alt kırılımını aç.
+    if (slice.categoryId === OTHER_ID) { goTo(safeOffset + PAGE_SIZE); return }
     onSliceClick(slice, index)
   }
 
   return (
     <div>
+      {safeOffset > 0 && (
+        <div className="px-5 pt-3 flex items-center gap-2 min-w-0">
+          <button
+            onClick={() => goTo(safeOffset - PAGE_SIZE)}
+            className="flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors -ml-1"
+          >
+            <ChevronLeft size={13} />
+            Geri
+          </button>
+          <span className="text-[11px] text-muted-foreground/70 truncate">
+            Diğer · kalan {data.length - safeOffset} kategori
+          </span>
+        </div>
+      )}
+
       <div className="px-4">
         <ResponsiveContainer width="100%" height={200}>
           <PieChart>
@@ -153,6 +199,9 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, empty
               <span className="text-[10px] text-muted-foreground tabular flex-shrink-0">
                 {slice.percent.toFixed(0)}%
               </span>
+              {slice.categoryId === OTHER_ID && (
+                <span className="text-[10px] text-muted-foreground/60 flex-shrink-0 leading-none">›</span>
+              )}
             </button>
           )
         })}

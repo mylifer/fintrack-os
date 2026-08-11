@@ -875,6 +875,7 @@ export default function ReportsPage() {
                     <CategoryDonutChart
                       data={categoryData}
                       activeIndex={activeSliceIdx}
+                      onDrillChange={() => { setSelectedCat(null); setActiveSliceIdx(null) }}
                       onSliceClick={(slice, idx) => {
                         if (activeSliceIdx === idx) {
                           setSelectedCat(null)
@@ -913,6 +914,7 @@ export default function ReportsPage() {
                       data={incomeCatData}
                       activeIndex={activeIncomeSliceIdx}
                       emptyMessage="Bu dönemde gelir kaydedilmemiş"
+                      onDrillChange={() => { setSelectedIncomeCat(null); setActiveIncomeSliceIdx(null) }}
                       onSliceClick={(slice, idx) => {
                         if (activeIncomeSliceIdx === idx) {
                           setSelectedIncomeCat(null)
@@ -1014,6 +1016,7 @@ export default function ReportsPage() {
                     <CategoryDonutChart
                       data={tagData}
                       activeIndex={tagSliceIdx}
+                      onDrillChange={() => setTagSliceIdx(null)}
                       onSliceClick={(_slice, idx) => setTagSliceIdx(prev => prev === idx ? null : idx)}
                     />
                   )}
