@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/components/ui/card'
-import { formatCompact } from '@/lib/utils/currency'
+import { formatCompact, formatCurrency } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
 import { AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import type { AssetGroup, PricePoint } from '@/app/api/prices/history/route'
@@ -336,8 +336,10 @@ export function PriceHistoryChart({
 
           {currentValue !== undefined ? (
             /* Sabit 22px dar kolonda tutarı kırpıyordu — bkz. globals.css .kpi-value */
+            /* Bakiye kısaltılmaz: kuruşuna kadar tam yazılır (formatCurrency).
+               Uzun tutarlar 13cqi clamp'i ile kart genişliğine göre küçülür. */
             <div className="text-[clamp(0.8125rem,13cqi,1.375rem)] font-black tabular tracking-tight text-foreground leading-none">
-              {formatCompact(currentValue)}
+              {formatCurrency(currentValue)}
             </div>
           ) : loading ? (
             <div className="h-7 w-28 bg-muted rounded animate-pulse" />
