@@ -12,7 +12,7 @@ import { formatDate }        from '@/lib/utils/date'
 import { useCountUp }        from '@/lib/hooks/useCountUp'
 import { AnimatedNumber }    from '@/components/ui/AnimatedNumber'
 import { isTefasAsset, tefasCode, tefasAsset, tefasCodesIn } from '@/lib/tefas'
-import type { InvestmentAsset, StaticInvestmentAsset, TefasFundPrice } from '@/types'
+import type { InvestmentAsset, InvestmentHolding, StaticInvestmentAsset, TefasFundPrice } from '@/types'
 
 type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP' | 'TEFAS'
 const GOLD_ASSETS: InvestmentAsset[] = ['GOLD_GRAM', 'GOLD_QUARTER', 'GOLD_HALF', 'GOLD_FULL', 'GOLD_OZ', 'GOLD_BRACELET']
@@ -346,7 +346,7 @@ export default function InvestmentsPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border/50">
-                    {['Varlık', 'Miktar', 'Ort. Maliyet', 'Güncel Fiyat', 'Değer', 'K/Z', 'K/Z%'].map(h => (
+                    {['Varlık', 'Miktar', 'Ort. Maliyet', 'Toplam Maliyet', 'Güncel Fiyat', 'Değer', 'K/Z', 'K/Z%'].map(h => (
                       <th key={h} className="px-4 py-4 text-left font-medium text-muted-foreground whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -510,13 +510,12 @@ function Ticker({ label, value, current, previous }: {
   )
 }
 
-type Holding = { asset: InvestmentAsset; quantity: number; avgCostPerUnit: number; currentPrice: number; currentValue: number; pnl: number; pnlPercent: number }
-
-function HoldingRow({ h, meta, hasPrices }: { h: Holding; meta: AssetMeta; hasPrices: boolean }) {
-  const animAvgCost = useCountUp(h.avgCostPerUnit)
-  const animPrice   = useCountUp(h.currentPrice)
-  const animValue   = useCountUp(h.currentValue)
-  const animPnl     = useCountUp(Math.abs(h.pnl))
+function HoldingRow({ h, meta, hasPrices }: { h: InvestmentHolding; meta: AssetMeta; hasPrices: boolean }) {
+  const animAvgCost   = useCountUp(h.avgCostPerUnit)
+  const animTotalCost = useCountUp(h.totalCost)
+  const animPrice     = useCountUp(h.currentPrice)
+  const animValue     = useCountUp(h.currentValue)
+  const animPnl       = useCountUp(Math.abs(h.pnl))
   return (
     <tr className="border-b border-border/50 hover:bg-accent transition-colors">
       <td className="px-4 py-4 font-medium text-foreground whitespace-nowrap">
@@ -534,6 +533,9 @@ function HoldingRow({ h, meta, hasPrices }: { h: Holding; meta: AssetMeta; hasPr
       </td>
       <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">{fmtQty(h.quantity, meta.unit)}</td>
       <td className="px-4 py-4 tabular-nums text-sm font-medium text-muted-foreground">{formatCurrency(animAvgCost)}</td>
+      {/* Elde kalan miktarın maliyet bazı (satışlarda ort. maliyetle azalır) —
+          K/Z bu tutara göre hesaplandığı için fiyat verisinden bağımsız gösterilir. */}
+      <td className="px-4 py-4 tabular-nums text-sm font-medium text-foreground">{formatCurrency(animTotalCost)}</td>
       <td className="px-4 py-4 tabular-nums text-sm font-medium text-muted-foreground">
         {hasPrices ? formatCurrency(animPrice) : '—'}
       </td>
