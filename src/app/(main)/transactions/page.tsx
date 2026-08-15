@@ -10,6 +10,7 @@ import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useR
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { sumByType, isFlowTx, txTouchesAccount } from '@/lib/utils/calculations'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
+import { isFutureDate } from '@/components/transactions/views/shared'
 import { formatCurrency }  from '@/lib/utils/currency'
 import { transactionsToCsvString, downloadCsv } from '@/lib/utils/csv'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
@@ -121,7 +122,14 @@ export default function TransactionsPage() {
   }, [showFuture, recurring, periodType, from, to, transactions, typeFilter, categoryFilter, accountFilter, familyFilter, recipientFilter, search, searchMatcher])
 
   const projectedIds = useMemo(() => new Set(projectedTxs.map(t => t.id)), [projectedTxs])
-  const displayTxs   = useMemo(() => [...filtered, ...projectedTxs], [filtered, projectedTxs])
+
+  // "Gelecek işlemler" kapalıyken SADECE planlananları elemek yetmez: deftere
+  // kaydedilmiş gelecek tarihli işlemler (ileri tarihli fatura, gelecek taksit)
+  // de gizlenmeli — kutu kaldırılınca listede hiçbir gelecek satır kalmasın.
+  const displayTxs = useMemo(
+    () => (showFuture ? [...filtered, ...projectedTxs] : filtered.filter(t => !isFutureDate(t.date))),
+    [filtered, projectedTxs, showFuture],
+  )
 
   // Özet çubuğu ₺ (baz PB) gösterir → TRY-normalize (baseAmount, S2/S3) + kuruş-exact
   // (S8) topla; ham `amount` USD'yi ₺ gibi sayardı. Kapsam Dashboard/Raporlar KPI

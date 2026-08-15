@@ -14,12 +14,14 @@ import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
+import { isFutureDate } from '@/components/transactions/views/shared'
 import { Badge }              from '@/components/ui/Badge'
 import { Button }             from '@/components/ui/button'
 import { SelectField }        from '@/components/ui/Select'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
 import { TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import { TxViewsShell } from '@/components/transactions/views/TxViewsShell'
+import { DEFAULT_TX_VIEW, type TxViewId } from '@/lib/tx-view'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import type { Account, PersonRole, Transaction } from '@/types'
@@ -31,7 +33,14 @@ const TYPE_LABELS: Record<string, string> = {
 
 type PersonFilter = { id: string; name: string } | null
 
-export default function AccountDetailClient({ id }: { id: string }) {
+export default function AccountDetailClient({
+  id,
+  initialView = DEFAULT_TX_VIEW,
+}: {
+  id: string
+  /** Sunucuda çerezden okunan işlem listesi görünümü (bkz. lib/tx-view.ts). */
+  initialView?: TxViewId
+}) {
   const accounts      = useAccountStore(s => s.accounts)
   const accountsReady = useAccountStore(s => s.ready)
   const txsReady      = useTransactionStore(s => s.ready)
@@ -92,6 +101,11 @@ export default function AccountDetailClient({ id }: { id: string }) {
   // Transactions filtered by period + person + search + type + category (planlananlar dahil)
   const filteredTxs = useMemo(
     () => [...accountTxs, ...projectedTxs].filter(t => {
+      // "Gelecek işlemler" kapalıyken SADECE planlananları elemek yetmez:
+      // deftere kaydedilmiş gelecek tarihli işlemler (ileri tarihli fatura,
+      // gelecek taksit) de gizlenmeli — kullanıcı kutuyu kaldırdığında listede
+      // hiçbir gelecek satır kalmasın.
+      if (!showFuture && isFutureDate(t.date)) return false
       if (from && t.date < from) return false
       if (to   && t.date > to)   return false
       if (familyFilter    && t.familyMemberId !== familyFilter.id)   return false
@@ -101,7 +115,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
       if (search && !searchMatcher(t)) return false
       return true
     }),
-    [accountTxs, projectedTxs, from, to, familyFilter, recipientFilter, typeFilter, categoryFilter, search, searchMatcher],
+    [accountTxs, projectedTxs, showFuture, from, to, familyFilter, recipientFilter, typeFilter, categoryFilter, search, searchMatcher],
   )
 
   // Toplu düzenleme seçimi — filtre/dönem değişince temizlenir
@@ -320,6 +334,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
           listeyi alır: gerçekleşen + gelecek (planlanan) işlemler. */}
       <div className="flex-1 overflow-auto">
         <TxViewsShell
+          initialView={initialView}
           transactions={filteredTxs}
           account={account}
           projectedIds={projectedIds}
