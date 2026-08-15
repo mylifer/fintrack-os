@@ -217,7 +217,15 @@ export const TX_SORT_OPTIONS: { value: TxSortOption; label: string }[] = [
 type Row =
   | { kind: 'section'; id: 'future' | 'past'; count: number; first: boolean }
   | { kind: 'header'; date: string; dateIdx: number; future: boolean }
-  | { kind: 'tx'; tx: Transaction; isFirst: boolean; isLast: boolean; future: boolean }
+  | {
+      kind: 'tx'
+      tx: Transaction
+      isFirst: boolean
+      isLast: boolean
+      future: boolean
+      /** Kompakt gelecek konteyneri: dar satır + satır içi tarih öneki. */
+      compact?: boolean
+    }
 
 // ── Date separator (both layouts share the same look, only top spacing differs) ─
 function DateSeparator({ date, topClass, future }: { date: string; topClass: string; future?: boolean }) {
@@ -260,7 +268,7 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
   tx, cat, account, toAccount, recipient, family, balanceAfter, projected, future, openModal, removeTx,
-  selectable, selected, onToggleSelect, grouped, isFirst, isLast,
+  selectable, selected, onToggleSelect, grouped, isFirst, isLast, compact,
 }: {
   tx: Transaction
   cat?: Category
@@ -281,10 +289,17 @@ const TableTxRow = memo(function TableTxRow({
   grouped?: boolean
   isFirst?: boolean
   isLast?: boolean
+  /** Kompakt satır (gelecek konteyneri): hücre dolgusu yarıya iner ve açıklama
+   *  hücresi tarihi satır içinde önek olarak taşır — üstünde gün etiketi yok. */
+  compact?: boolean
 }) {
   const isIncome    = tx.type === 'income'
   const isXfer      = tx.type === 'transfer'
   const isRefund    = tx.type === 'expense' && tx.amount < 0
+  // Kompaktta hücrelerin py-2'si tek yerden ezilir: alt seçici (0,2,0) tek
+  // sınıftan (0,1,0) daha özgül olduğu için her hücreyi ayrı koşullamaya gerek
+  // yok. Satır yüksekliği ~40px'ten ~30px'e iner.
+  const compactCells = compact ? '[&>div]:py-1' : ''
   return (
     // Tarih gruplamasında her gün, kenarlıklı ve köşeleri yuvarlatılmış bir
     // "ada" (gün bloğu) olur → günler net ayrışır. Miktar sıralamasında blok
@@ -302,11 +317,13 @@ const TableTxRow = memo(function TableTxRow({
                 : future ? 'bg-sky-500/[0.06] hover:bg-sky-500/[0.09]'
                 : 'bg-card hover:bg-accent/40',
               projected ? 'opacity-60' : '',
+              compactCells,
             ].join(' ')
           : [
               'group grid transition-colors border-b border-border/50',
               selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'hover:bg-accent/40',
               projected ? 'opacity-60' : '',
+              compactCells,
             ].join(' ')
       }
       style={{ gridTemplateColumns: colsFor(!!selectable) }}
@@ -324,8 +341,14 @@ const TableTxRow = memo(function TableTxRow({
         </div>
       )}
 
-      {/* Açıklama */}
+      {/* Açıklama — kompakt konteynerde gün etiketi olmadığı için tarih burada,
+          satır içi bir önek olarak durur. */}
       <div className="px-3 py-2 flex items-center gap-2 min-w-0 overflow-hidden">
+        {compact && (
+          <span className="flex-shrink-0 text-[10px] font-bold tabular-nums text-sky-600 dark:text-sky-400">
+            {formatDate(tx.date, 'd MMM')}
+          </span>
+        )}
         <TxIcon description={tx.description} />
         <div className="min-w-0 overflow-hidden">
           <div className="text-xs font-medium text-foreground truncate leading-none">
@@ -711,16 +734,47 @@ export function TransactionList({
       else pushDateGrouped(txs, future)
     }
 
+    // Gelecek işlemler (tablo düzeni): gün gün ayrı adalara BÖLÜNMEZ — hepsi tek
+    // bir kompakt konteynerde toplanır. Sıra aynı kuralı izler (tarihe göre gün
+    // gün, gün içinde sortDay; ya da tutara göre), yalnızca gün etiketleri ve
+    // ada kenarlıkları düşer. Tarih, satır içinde önek olarak görünür.
+    const pushFutureCompact = (txs: Transaction[]) => {
+      let flat: Transaction[]
+      if (sort === 'amount-desc' || sort === 'amount-asc') {
+        flat = [...txs].sort((a, b) => {
+          const d = Math.abs(a.amount) - Math.abs(b.amount)
+          return sort === 'amount-asc' ? d : -d
+        })
+      } else {
+        const grouped = groupByDate(txs)
+        const dates = [...grouped.keys()].sort((a, b) =>
+          sort === 'date-asc' ? a.localeCompare(b) : b.localeCompare(a),
+        )
+        flat = dates.flatMap(d => sortDay(grouped.get(d)!))
+      }
+      flat.forEach((tx, i) => {
+        out.push({
+          kind:    'tx',
+          tx,
+          isFirst: i === 0,
+          isLast:  i === flat.length - 1,
+          future:  true,
+          compact: true,
+        })
+      })
+    }
+
     if (futureTxs.length > 0) {
       out.push({ kind: 'section', id: 'future', count: futureTxs.length, first: true })
-      pushSection(futureTxs, true)
+      if (layout === 'table') pushFutureCompact(futureTxs)
+      else pushSection(futureTxs, true)
       if (currentTxs.length > 0) {
         out.push({ kind: 'section', id: 'past', count: currentTxs.length, first: false })
       }
     }
     pushSection(currentTxs, false)
     return out
-  }, [transactions, sort])
+  }, [transactions, sort, layout])
 
   // Güncel bakiye (yalnızca table layout) — hesaplama computeRunningBalances'ta,
   // gün kartı görünümüyle ORTAK (aynı satır aynı bakiyeyi göstersin diye tek
@@ -757,6 +811,7 @@ export function TransactionList({
       const r = rows[i]
       if (r.kind === 'section') return 44
       if (r.kind === 'header')  return 52
+      if (r.compact)            return 34
       return layout === 'table' ? 64 : 60
     },
     overscan: 12,
@@ -847,7 +902,8 @@ export function TransactionList({
                       <TableTxRow
                         tx={row.tx}
                         future={row.future}
-                        grouped={dateGrouped}
+                        compact={row.compact}
+                        grouped={row.compact ? true : dateGrouped}
                         isFirst={row.isFirst}
                         isLast={row.isLast}
                         cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
