@@ -9,12 +9,12 @@
    Bu dosya sunucu bileşenlerinden de import edildiği için 'use client' YOK ve
    tarayıcıya özgü API kullanmaz. */
 
-export type TxViewId = 'table' | 'ruleless'
+export type TxViewId = 'table' | 'ruleless' | 'datecol'
 
 export const TX_VIEW_COOKIE = 'fintrack-tx-view'
 export const DEFAULT_TX_VIEW: TxViewId = 'table'
 
-const VALID: readonly TxViewId[] = ['table', 'ruleless']
+const VALID: readonly TxViewId[] = ['table', 'ruleless', 'datecol']
 
 /** Çerez değeri bozuk/eksik/ARTIK GEÇERSİZ ise varsayılana düşer — kaldırılmış
  *  bir görünümün adı tarayıcıda kalmış olabilir. */

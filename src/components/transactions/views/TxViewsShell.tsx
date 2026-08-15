@@ -2,8 +2,9 @@
 
 import { useCallback, useState } from 'react'
 import { DEFAULT_TX_VIEW, TX_VIEW_COOKIE, type TxViewId } from '@/lib/tx-view'
-import { TableView }         from './TableView'
-import { RulelessTableView } from './RulelessTableView'
+import { TableView }           from './TableView'
+import { RulelessTableView }   from './RulelessTableView'
+import { DateColumnTableView } from './DateColumnTableView'
 import type { TxViewProps } from './shared'
 
 /* ── İşlem listesi görünüm kabuğu ────────────────────────────────────────────
@@ -20,8 +21,9 @@ import type { TxViewProps } from './shared'
  * atlama (sıçrama) olmaz. Kullanıcı değiştirene kadar gördüğü görünüm budur.
  * ------------------------------------------------------------------------- */
 const VIEWS = [
-  { id: 'table',    label: 'Tablo',     icon: TableIcon,    Comp: TableView },
-  { id: 'ruleless', label: 'Ayraçsız',  icon: RulelessIcon, Comp: RulelessTableView },
+  { id: 'table',    label: 'Tablo',        icon: TableIcon,    Comp: TableView },
+  { id: 'ruleless', label: 'Ayraçsız',     icon: RulelessIcon, Comp: RulelessTableView },
+  { id: 'datecol',  label: 'Tarih Kolonu', icon: DateColIcon,  Comp: DateColumnTableView },
 ] as const satisfies readonly { id: TxViewId; label: string; icon: () => React.ReactElement; Comp: unknown }[]
 
 const ONE_YEAR = 60 * 60 * 24 * 365
@@ -94,6 +96,18 @@ function TableIcon() {
     </svg>
   )
 }
+/* Tarih Kolonu: solda ayrı bir tarih sütunu, gövde kesintisiz. */
+function DateColIcon() {
+  return (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round">
+      <path d="M3 4v16" opacity=".45" />
+      <path d="M8.5 4v16" />
+      <path d="M11 7.5h10M11 12h10M11 16.5h7" opacity=".55" />
+      <path d="M5 8h1.5M5 15h1.5" />
+    </svg>
+  )
+}
+
 /* Ayraçsız: kolonlar (dikey kesikli) var, satır çizgisi yok. */
 function RulelessIcon() {
   return (
