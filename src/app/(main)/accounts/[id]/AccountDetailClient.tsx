@@ -18,7 +18,8 @@ import { Badge }              from '@/components/ui/Badge'
 import { Button }             from '@/components/ui/button'
 import { SelectField }        from '@/components/ui/Select'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
-import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
+import { TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
+import { TxViewsShell } from '@/components/transactions/views/TxViewsShell'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import type { Account, PersonRole, Transaction } from '@/types'
@@ -315,15 +316,15 @@ export default function AccountDetailClient({ id }: { id: string }) {
         </div>
       )}
 
-      {/* Transaction list */}
+      {/* Transaction list — dört alternatif görünüm (tablo / kompakt / akış / takvim).
+          Hepsi AYNI listeyi alır: gerçekleşen + gelecek (planlanan) işlemler. */}
       <div className="flex-1 overflow-auto">
-        <TransactionList
+        <TxViewsShell
           transactions={filteredTxs}
+          account={account}
           projectedIds={projectedIds}
-          layout="table"
+          plannedTxs={projectedTxs}
           sort={sortOption}
-          showAccount={false}
-          primaryAccountId={id}
           emptyTitle="Bu dönemde işlem yok"
           emptyDescription="Farklı bir dönem seçin veya İşlem Ekle ile kayıt oluşturun."
           onPersonClick={handlePersonClick}
@@ -331,6 +332,7 @@ export default function AccountDetailClient({ id }: { id: string }) {
           selectedIds={sel.selectedIds}
           onToggleSelect={sel.toggle}
           onSelectMany={sel.selectMany}
+          onClearSelection={sel.clear}
         />
       </div>
 
