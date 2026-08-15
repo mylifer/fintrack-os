@@ -9,14 +9,15 @@
    Bu dosya sunucu bileşenlerinden de import edildiği için 'use client' YOK ve
    tarayıcıya özgü API kullanmaz. */
 
-export type TxViewId = 'table' | 'daycard' | 'statement'
+export type TxViewId = 'table' | 'ruleless'
 
 export const TX_VIEW_COOKIE = 'fintrack-tx-view'
 export const DEFAULT_TX_VIEW: TxViewId = 'table'
 
-const VALID: readonly TxViewId[] = ['table', 'daycard', 'statement']
+const VALID: readonly TxViewId[] = ['table', 'ruleless']
 
-/** Çerez değeri bozuk/eksikse varsayılana düşer. */
+/** Çerez değeri bozuk/eksik/ARTIK GEÇERSİZ ise varsayılana düşer — kaldırılmış
+ *  bir görünümün adı tarayıcıda kalmış olabilir. */
 export function parseTxView(value: string | undefined | null): TxViewId {
   return VALID.includes(value as TxViewId) ? (value as TxViewId) : DEFAULT_TX_VIEW
 }

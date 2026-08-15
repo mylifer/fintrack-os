@@ -2,25 +2,26 @@
 
 import { useCallback, useState } from 'react'
 import { DEFAULT_TX_VIEW, TX_VIEW_COOKIE, type TxViewId } from '@/lib/tx-view'
-import { TableView }     from './TableView'
-import { DayCardView }   from './DayCardView'
-import { StatementView } from './StatementView'
+import { TableView }         from './TableView'
+import { RulelessTableView } from './RulelessTableView'
 import type { TxViewProps } from './shared'
 
 /* ── İşlem listesi görünüm kabuğu ────────────────────────────────────────────
- * Hesap detayındaki işlem listesinin üç sunumu. Kabuk yalnızca hangisinin
+ * Hesap detayındaki işlem listesinin sunumları. Kabuk yalnızca hangisinin
  * basılacağını seçer; veri (filtre / dönem / planlanan işlemler) sayfada
  * hazırlanır, dolayısıyla görünüm değiştirmek listenin KAPSAMINI değiştirmez —
- * üçü de aynı işlemleri gösterir.
+ * hepsi aynı işlemleri gösterir.
+ *
+ * Alternatifler KOLONLU düzen üzerine kurulur: kolon hizası kullanıcı için
+ * pazarlık konusu değil, yeni bir görünüm eklerken korunmalı.
  *
  * Seçim ÇEREZDE tutulur ve sunucuda okunur (bkz. lib/tx-view.ts): sayfa ilk
  * HTML'den itibaren kullanıcının seçtiği görünümle gelir, Tablo'dan diğerine
  * atlama (sıçrama) olmaz. Kullanıcı değiştirene kadar gördüğü görünüm budur.
  * ------------------------------------------------------------------------- */
 const VIEWS = [
-  { id: 'table',     label: 'Tablo',     icon: TableIcon,     Comp: TableView },
-  { id: 'daycard',   label: 'Gün Kartı', icon: CardIcon,      Comp: DayCardView },
-  { id: 'statement', label: 'Ekstre',    icon: StatementIcon, Comp: StatementView },
+  { id: 'table',    label: 'Tablo',     icon: TableIcon,    Comp: TableView },
+  { id: 'ruleless', label: 'Ayraçsız',  icon: RulelessIcon, Comp: RulelessTableView },
 ] as const satisfies readonly { id: TxViewId; label: string; icon: () => React.ReactElement; Comp: unknown }[]
 
 const ONE_YEAR = 60 * 60 * 24 * 365
@@ -93,19 +94,13 @@ function TableIcon() {
     </svg>
   )
 }
-function CardIcon() {
-  return (
-    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
-      <rect x="3" y="3" width="18" height="8" rx="2" />
-      <rect x="3" y="13" width="18" height="8" rx="2" />
-    </svg>
-  )
-}
-function StatementIcon() {
+/* Ayraçsız: kolonlar (dikey kesikli) var, satır çizgisi yok. */
+function RulelessIcon() {
   return (
     <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round">
-      <path d="M4 6h9M4 10h13M4 14h7M4 18h11" />
-      <path d="M20 5.5v13" strokeDasharray="2 3" />
+      <path d="M3 5h18" />
+      <path d="M9 8.5v12M15.5 8.5v12" strokeDasharray="2 3" />
+      <path d="M3 11h4M3 15h4M3 19h4" opacity=".55" />
     </svg>
   )
 }
