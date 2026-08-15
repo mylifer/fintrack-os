@@ -9,8 +9,7 @@ import { assetLabel } from '@/store/investment.store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import { groupByDate } from '@/lib/utils/calculations'
-import { computeRunningBalances } from '@/lib/utils/runningBalance'
-import { splitFuture } from '@/components/transactions/views/shared'
+import { toMinor, toMajor } from '@/lib/utils/money'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Transaction, PersonRole, Category, Account, Person, ModalType, ModalPayload, InvestmentTransaction } from '@/types'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
@@ -24,7 +23,7 @@ import { resolveBrandDomain } from '@/lib/people/brand-logo'
 
 type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
-export const PencilIcon = ({ size = 13 }: { size?: number }) => (
+const PencilIcon = ({ size = 13 }: { size?: number }) => (
   <svg fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" width={size} height={size}>
     <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
   </svg>
@@ -34,7 +33,7 @@ const TrashIcon = ({ size = 13 }: { size?: number }) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
   </svg>
 )
-export const RefundIcon = ({ size = 13 }: { size?: number }) => (
+const RefundIcon = ({ size = 13 }: { size?: number }) => (
   <svg fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" width={size} height={size}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
   </svg>
@@ -43,7 +42,7 @@ export const RefundIcon = ({ size = 13 }: { size?: number }) => (
 // Taksit rozeti. Normal defter satırı tek bir taksittir → "3/12". Raporlarda
 // gösterilen indirgenmiş satır (collapseInstallments) ise satın almanın TAMAMINI
 // temsil eder ve installIndex taşımaz → "12 taksit".
-export function installmentLabel(tx: Pick<Transaction, 'installIndex' | 'installTotal'>): string {
+function installmentLabel(tx: Pick<Transaction, 'installIndex' | 'installTotal'>): string {
   if (tx.installIndex == null) return `${tx.installTotal ?? '?'} taksit`
   return `${tx.installIndex}/${tx.installTotal}`
 }
@@ -65,7 +64,7 @@ export function findLinkedInvestSell(
   })
 }
 
-export function DeleteConfirmDialog({
+function DeleteConfirmDialog({
   tx,
   onDelete,
   compact,
@@ -153,7 +152,7 @@ type MetaItem = { text: string; href?: string }
 //   2. açıklamadaki marka deseninden bilinen domain → favicon
 //   3. çevrimiçi birebir isim çözümü (/api/brand-logo) → favicon
 //   4. baş harf monogramı
-export const TxIcon = memo(function TxIcon({ description }: { description: string }) {
+const TxIcon = memo(function TxIcon({ description }: { description: string }) {
   const brand  = useMemo(() => detectBrand(description), [description])
   const known  = useMemo(() => (brand ? null : getBrandDomain(description)), [brand, description])
   const [resolved, setResolved] = useState<{ for: string; domain: string | null } | null>(null)
@@ -484,7 +483,7 @@ const TableTxRow = memo(function TableTxRow({
 })
 
 // ── CARDS row (compact minimal) ───────────────────────────────────────────
-export const CardTxRow = memo(function CardTxRow({
+const CardTxRow = memo(function CardTxRow({
   tx, cat, account, recipient, family, showAccount, projected, future, openModal, removeTx,
 }: {
   tx: Transaction
@@ -619,10 +618,6 @@ interface Props {
   /** Ids of projected (henüz gerçekleşmemiş, tekrarlayan şablondan türetilmiş)
    *  transactions — rendered dimmed with a "Planlandı" badge, no edit/delete. */
   projectedIds?: Set<string>
-  /** Planlanan işlemlerin kendisi. Verilirse "Güncel Bakiye" sütunu bu satırlar
-   *  için de ileriye dönük projeksiyon bakiyesi gösterir (defterde olmadıkları
-   *  için aksi halde boş kalırlar). */
-  plannedTxs?: Transaction[]
   /** Sıralama seçeneği (filtre çubuğundaki alandan gelir). Varsayılan: yeni → eski. */
   sort?: TxSortOption
   /** Toplu düzenleme: satırlara seçim kutusu ekler (yalnızca table layout). */
@@ -636,10 +631,6 @@ interface Props {
   /** Tablo kartının en üstünde, sticky sütun başlığının hemen üstünde render
    *  edilen özet şeridi (yalnızca table layout). Aynı çerçevenin parçası olur. */
   summary?: React.ReactNode
-  /** Kaydırma kabının yükseklik sınıfı. Varsayılan viewport'a göre sabittir;
-   *  liste bir flex kolonuna gömülüyse (görünüm seçicili kabuk) 'h-full' verilip
-   *  kalan alana oturtulur — aksi halde araya giren çubuk kadar taşar. */
-  heightClass?: string
 }
 
 export function TransactionList({
@@ -650,14 +641,12 @@ export function TransactionList({
   emptyDescription = 'Filtrelerinizi değiştirin veya yeni işlem ekleyin.',
   primaryAccountId,
   projectedIds,
-  plannedTxs,
   sort = 'date-desc',
   selectable = false,
   selectedIds,
   onToggleSelect,
   onSelectMany,
   summary,
-  heightClass = 'h-[calc(100vh-220px)]',
 }: Props) {
   const categories = useCategoryStore(s => s.categories)
   const accounts   = useAccountStore(s => s.accounts)
@@ -675,10 +664,9 @@ export function TransactionList({
   // ayrı bir "Gelecek İşlemler" bölümünde, gerçekleşenlerle karışmadan gösterilir.
   // Her iki bölüm de seçili sıralamaya uyar (varsayılan: yeni → eski).
   const rows = useMemo<Row[]>(() => {
-    // splitFuture: gün sınırı slice(0,10) ile — legacy tam-ISO datetime tarihli
-    // bir satır ("2026-08-15T15:00") bugünün işlemiyken geleceğe düşmesin.
-    // Dört görünüm de aynı ayrımı paylaşır (views/shared).
-    const { future: futureTxs, past: currentTxs } = splitFuture(transactions, today())
+    const todayStr = today()
+    const futureTxs  = transactions.filter(t => t.date > todayStr)
+    const currentTxs = transactions.filter(t => t.date <= todayStr)
     const out: Row[] = []
     let dateIdx = 0
 
@@ -722,21 +710,65 @@ export function TransactionList({
     return out
   }, [transactions, sort])
 
-  // Güncel bakiye (yalnızca table layout) — hesaplama computeRunningBalances'ta,
-  // zaman çizelgesi/takvim görünümleriyle ORTAK (aynı satır aynı bakiyeyi
-  // göstersin diye tek doğruluk kaynağı).
+  // Güncel bakiye (yalnızca table layout). Eski kod her hesap için tüm defteri
+  // filter+sort ediyordu → O(hesap × N log N). Artık defteri BİR kez kronolojik
+  // sıralayıp tek geçişte süpürüyoruz ve işlem-sonrası bakiyeyi tx.id başına
+  // kaydediyoruz. Semantik korunur: bir işleme birden çok izlenen hesap
+  // dokunuyorsa neededIds sırasında EN SON gelen hesabın bakiyesi yazılır.
   const runningBalances = useMemo(() => {
-    if (layout !== 'table') return new Map<string, number>()
+    const map = new Map<string, number>()
+    if (layout !== 'table') return map
 
     const neededIds = primaryAccountId
       ? [primaryAccountId]
       : [...new Set(transactions.map(t => t.accountId))]
 
-    // Planlanan satırlar defterde yok; verilirse defterin sonuna eklenip ileriye
-    // dönük (projeksiyon) bakiye üretirler.
-    const ledger = plannedTxs?.length ? [...allTxs, ...plannedTxs] : allTxs
-    return computeRunningBalances(ledger, neededIds, accById)
-  }, [layout, primaryAccountId, transactions, allTxs, plannedTxs, accById])
+    const order    = new Map<string, number>()          // hesap → neededIds sırası
+    const balances = new Map<string, number>()          // hesap → minor birim (kuruş)
+    neededIds.forEach((id, i) => {
+      const account = accById.get(id)
+      if (!account) return
+      order.set(id, i)
+      balances.set(id, toMinor(account.initialBalance))
+    })
+    if (balances.size === 0) return map
+
+    const sorted = [...allTxs].sort((a, b) =>
+      (a.date + (a.createdAt ?? '')).localeCompare(b.date + (b.createdAt ?? '')),
+    )
+
+    for (const tx of sorted) {
+      // Onay kapısı: pending satır bakiyeye hiç işlenmez (isPosted ile tutarlı) —
+      // satırın "Güncel Bakiye" hücresi boş kalır.
+      if (tx.approvalStatus === 'pending') continue
+      let winner: string | undefined
+      let winnerRank = -1
+      const consider = (id: string) => {
+        const rank = order.get(id)
+        if (rank !== undefined && rank > winnerRank) { winnerRank = rank; winner = id }
+      }
+
+      if (tx.type === 'income' && balances.has(tx.accountId)) {
+        balances.set(tx.accountId, balances.get(tx.accountId)! + toMinor(tx.amount))
+        consider(tx.accountId)
+      } else if (tx.type === 'expense' && balances.has(tx.accountId)) {
+        balances.set(tx.accountId, balances.get(tx.accountId)! - toMinor(tx.amount))
+        consider(tx.accountId)
+      } else if (tx.type === 'transfer') {
+        if (balances.has(tx.accountId)) {
+          balances.set(tx.accountId, balances.get(tx.accountId)! - toMinor(tx.amount))
+          consider(tx.accountId)
+        }
+        if (tx.toAccountId && balances.has(tx.toAccountId)) {
+          balances.set(tx.toAccountId, balances.get(tx.toAccountId)! + toMinor(tx.amount))
+          consider(tx.toAccountId)
+        }
+      }
+
+      if (winner !== undefined) map.set(tx.id, toMajor(balances.get(winner)!))
+    }
+    return map
+  }, [layout, primaryAccountId, transactions, allTxs, accById])
 
   // Toplu seçim için uygun satırlar: planlanan (projected) işlemler düzenlenemez,
   // bu yüzden "tümünü seç" kapsamı dışında tutulur.
@@ -788,7 +820,7 @@ export function TransactionList({
       // Katmanlı nötr: çerçeve zemini bloklardan bir kademe koyu, gün blokları
       // kart yüzeyinde ada gibi durur. Dark'ta mockup B değeri (#101010) —
       // #0a0a0a'dan bir tık açık, blok kontrastı daha yumuşak.
-      <div ref={parentRef} className={`${heightClass} overflow-auto mx-6 my-3 rounded-xl border border-border/70 bg-background dark:bg-[#101010]`}>
+      <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-auto mx-6 my-3 rounded-xl border border-border/70 bg-background dark:bg-[#101010]">
         <div style={{ minWidth: TABLE_MIN_W + (selectable ? SELECT_COL_W : 0) }}>
 
           {/* Özet şeridi — sütun başlığının hemen üstünde, aynı çerçevenin parçası
@@ -876,7 +908,7 @@ export function TransactionList({
 
   // ── CARDS layout (compact minimal) ────────────────────────────────────────
   return (
-    <div ref={parentRef} className={`${heightClass} overflow-y-auto`}>
+    <div ref={parentRef} className="h-[calc(100vh-220px)] overflow-y-auto">
       <div className="px-4 py-2">
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
           {virtualItems.map(vi => {
