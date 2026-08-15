@@ -74,8 +74,8 @@ export function BalanceTrendChartInner({ data }: { data: TrendPoint[] }) {
         <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="rpt_grad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="#2563eb" stopOpacity={0.15} />
-              <stop offset="100%" stopColor="#2563eb" stopOpacity={0}    />
+              <stop offset="0%"   stopColor="var(--primary)" stopOpacity={0.15} />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity={0}    />
             </linearGradient>
           </defs>
           <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -101,11 +101,11 @@ export function BalanceTrendChartInner({ data }: { data: TrendPoint[] }) {
           <Area
             type="monotone"
             dataKey="balance"
-            stroke="#2563eb"
+            stroke="var(--primary)"
             strokeWidth={2}
             fill="url(#rpt_grad)"
-            dot={data.length <= 14 ? { fill: '#2563eb', r: 3, strokeWidth: 0 } : false}
-            activeDot={{ r: 4, fill: '#2563eb', strokeWidth: 0 }}
+            dot={data.length <= 14 ? { fill: 'var(--primary)', r: 3, strokeWidth: 0 } : false}
+            activeDot={{ r: 4, fill: 'var(--primary)', strokeWidth: 0 }}
           />
         </AreaChart>
       </ResponsiveContainer>

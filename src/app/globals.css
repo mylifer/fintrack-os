@@ -62,9 +62,11 @@
   --card-foreground:      oklch(0.141 0.005 285.82);
   --popover:              #ffffff;
   --popover-foreground:   oklch(0.141 0.005 285.82);
-  /* Birincil aksan: mavi (mockup) — nötr temadan ayrışır */
-  --primary:              #2563eb;
-  --primary-foreground:   #ffffff;
+  /* Birincil aksan: turkuaz — nötr temadan ayrışır.
+     Aksan parlak (luminans ~0.55) olduğu için üstündeki yazı KOYU olmalı:
+     beyaz metin 1.8:1 ile okunmaz, koyu mürekkep ~11:1 verir. */
+  --primary:              #00D9D9;
+  --primary-foreground:   #062626;
   --secondary:            oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.034 264.665);
   --muted:                oklch(0.967 0.001 286.375);
@@ -74,7 +76,7 @@
   --destructive:          oklch(0.577 0.245 27.325);
   --border:               oklch(0.92 0.004 286.32);
   --input:                oklch(0.92 0.004 286.32);
-  --ring:                 #2563eb;
+  --ring:                 #00D9D9;
   --radius:               0.625rem;
 
   --chart-1: oklch(0.646 0.222 41.116);
@@ -87,15 +89,15 @@
   --cf-income:  #16a34a;
   --cf-expense: #dc2626;
 
-  /* Toplu düzenleme (batch edit) seçim aksanı — mavi (nötr temadan ayrışır) */
-  --batch-accent:        #2563eb;
-  --batch-accent-soft:   #eff4ff;
-  --batch-accent-border: #bfd3ff;
+  /* Toplu düzenleme (batch edit) seçim aksanı — turkuaz (nötr temadan ayrışır) */
+  --batch-accent:        #00D9D9;
+  --batch-accent-soft:   #e8fbfb;
+  --batch-accent-border: #a3e9e9;
 
   --sidebar-background:           oklch(0.985 0.002 247.839);
   --sidebar-foreground:           oklch(0.373 0.016 285.806);
-  --sidebar-primary:              #2563eb;
-  --sidebar-primary-foreground:   #ffffff;
+  --sidebar-primary:              #00D9D9;
+  --sidebar-primary-foreground:   #062626;
   --sidebar-accent:               oklch(0.967 0.001 286.375);
   --sidebar-accent-foreground:    oklch(0.21 0.034 264.665);
   --sidebar-border:               oklch(0.92 0.004 286.32);
@@ -113,9 +115,9 @@
   --card-foreground:      oklch(0.985 0.001 106.424);
   --popover:              #1b1b1b;
   --popover-foreground:   oklch(0.985 0.001 106.424);
-  /* Birincil aksan: koyu temada parlak mavi */
-  --primary:              #4f8cff;
-  --primary-foreground:   #ffffff;
+  /* Birincil aksan: koyu temada da aynı turkuaz (zaten koyu zeminde parlak) */
+  --primary:              #00D9D9;
+  --primary-foreground:   #062626;
   --secondary:            oklch(0.274 0.006 286.033);
   --secondary-foreground: oklch(0.985 0.001 106.424);
   --muted:                oklch(0.274 0.006 286.033);
@@ -125,7 +127,7 @@
   --destructive:          oklch(0.704 0.191 22.216);
   --border:               oklch(1 0 0 / 14%);
   --input:                oklch(1 0 0 / 20%);
-  --ring:                 #4f8cff;
+  --ring:                 #00D9D9;
 
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -137,15 +139,15 @@
   --cf-income:  #34d399;
   --cf-expense: #fb7185;
 
-  /* Toplu düzenleme (batch edit) seçim aksanı — koyu temada parlak mavi + koyu soft */
-  --batch-accent:        #4f8cff;
-  --batch-accent-soft:   #14203a;
-  --batch-accent-border: #2b4a86;
+  /* Toplu düzenleme (batch edit) seçim aksanı — koyu temada turkuaz + koyu soft */
+  --batch-accent:        #00D9D9;
+  --batch-accent-soft:   #0b2a2a;
+  --batch-accent-border: #1e5e5e;
 
   --sidebar-background:           #0f0f0f;
   --sidebar-foreground:           oklch(0.985 0.001 106.424);
-  --sidebar-primary:              #4f8cff;
-  --sidebar-primary-foreground:   #ffffff;
+  --sidebar-primary:              #00D9D9;
+  --sidebar-primary-foreground:   #062626;
   --sidebar-accent:               oklch(0.274 0.006 286.033);
   --sidebar-accent-foreground:    oklch(0.985 0.001 106.424);
   --sidebar-border:               oklch(1 0 0 / 10%);
