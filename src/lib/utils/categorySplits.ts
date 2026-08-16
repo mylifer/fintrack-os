@@ -28,10 +28,25 @@ export function splitsMatchAmount(splits: readonly CategorySplit[], amount: numb
   return acc === toMinor(amount)
 }
 
-/** Kaydedilebilir mi: 2+ pay, her payın kategorisi dolu ve toplam tutarı tutuyor. */
+/** Aynı kategori birden fazla payda geçiyor mu? (Alt/üst kategori ilişkisi
+ *  kurala DAHİL DEĞİL — yalnız birebir aynı kategori tekrarı sayılır.) */
+export function hasDuplicateCategory(splits: readonly CategorySplit[]): boolean {
+  const seen = new Set<string>()
+  for (const s of splits) {
+    if (seen.has(s.categoryId)) return true
+    seen.add(s.categoryId)
+  }
+  return false
+}
+
+/**
+ * Kaydedilebilir mi: 2+ pay, her payın kategorisi dolu, kategoriler birbirinden
+ * farklı ve toplam tutarı tutuyor.
+ */
 export function splitsAreValid(splits: readonly CategorySplit[] | undefined, amount: number): boolean {
   if (!splits || splits.length < 2) return false
   if (splits.some(s => !s.categoryId)) return false
+  if (hasDuplicateCategory(splits)) return false
   return splitsMatchAmount(splits, amount)
 }
 

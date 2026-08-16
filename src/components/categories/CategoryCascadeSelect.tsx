@@ -21,6 +21,14 @@ interface Props {
   placeholder?: string
   /** Aramada sonuç yoksa "yeni ekle" satırı gösterir; yeni kategorinin id'sini döndürmeli. */
   onCreate?: (name: string) => Promise<string | null>
+  /**
+   * Başka yerde KULLANILMIŞ kategoriler — seçilemez görünür (işlem bölmede aynı
+   * kategori iki paya girmesin diye). Kural yalnızca kategorinin KENDİSİNİ
+   * kapsar: hiyerarşiye yayılmaz, üst kategori kullanılmış olsa da alt
+   * kategorileri seçilebilir kalır. Devre dışı satırın üstüne gelmek yine
+   * alt kolonu açar — çocuklarına ulaşmak engellenmez.
+   */
+  disabledIds?: ReadonlySet<string>
 }
 
 const ITEM     = 'flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm select-none transition-colors'
@@ -35,7 +43,7 @@ function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
   el.scrollTop += e.deltaY
 }
 
-export function CategoryCascadeSelect({ categories, value, onChange, error, placeholder, onCreate }: Props) {
+export function CategoryCascadeSelect({ categories, value, onChange, error, placeholder, onCreate, disabledIds }: Props) {
   const [open,      setOpen]      = useState(false)
   const [hoveredL0, setHoveredL0] = useState<string | null>(null)
   const [hoveredL1, setHoveredL1] = useState<string | null>(null)
@@ -90,12 +98,20 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
         {items.map(cat => {
           const hasChildren = getChildren(cat.id).length > 0
           const active = cat.id === activeId
+          // Başka bir payda kullanılmış kategori seçilemez — ama üzerine gelmek
+          // yine alt kolonu açar, çünkü kural alt kategorilere yayılmaz.
+          const taken = !!disabledIds?.has(cat.id) && cat.id !== value
           return (
             <div
               key={cat.id}
-              className={active ? ITEM_ACT : ITEM_DEF}
+              aria-disabled={taken || undefined}
+              title={taken ? 'Bu kategori zaten bir paya eklendi' : undefined}
+              className={cn(
+                active ? ITEM_ACT : taken ? `${ITEM} opacity-40` : ITEM_DEF,
+                taken && 'cursor-not-allowed',
+              )}
               onMouseEnter={() => onHover?.(cat.id)}
-              onClick={() => onSelect(cat.id)}
+              onClick={() => { if (!taken) onSelect(cat.id) }}
             >
               <CategoryIcon icon={cat.icon} color={cat.color} size={iconSize} className="shrink-0" />
               <span className="flex-1 truncate">{cat.name}</span>
@@ -186,8 +202,18 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
                 )
               ) : searchResults.map(cat => {
                 const parent = active.find(p => p.id === cat.parentId)
+                const taken = !!disabledIds?.has(cat.id) && cat.id !== value
                 return (
-                  <div key={cat.id} className={cat.id === value ? ITEM_ACT : ITEM_DEF} onClick={() => select(cat.id)}>
+                  <div
+                    key={cat.id}
+                    aria-disabled={taken || undefined}
+                    title={taken ? 'Bu kategori zaten bir paya eklendi' : undefined}
+                    className={cn(
+                      cat.id === value ? ITEM_ACT : taken ? `${ITEM} opacity-40` : ITEM_DEF,
+                      taken && 'cursor-not-allowed',
+                    )}
+                    onClick={() => { if (!taken) select(cat.id) }}
+                  >
                     <CategoryIcon icon={cat.icon} color={cat.color} size={13} className="shrink-0" />
                     <span className="flex-1 truncate">{cat.name}</span>
                     {parent && <span className="shrink-0 text-xs opacity-40">{parent.name}</span>}

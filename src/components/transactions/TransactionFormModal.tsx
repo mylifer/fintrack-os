@@ -37,7 +37,7 @@ import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { CategorySplitField } from '@/components/transactions/CategorySplitField'
 import {
   equalSplit, rescaleSplits, distributeSplits, unpinSplits, primarySplitCategoryId,
-  type DraftSplit,
+  hasDuplicateCategory, type DraftSplit,
 } from '@/lib/utils/categorySplits'
 import type { CategorySplit } from '@/types'
 
@@ -641,6 +641,8 @@ export function TransactionFormModal() {
     // kategorisi dolu ve payı 0'dan büyük olmalı (0 paylı kategori hiçbir rapora
     // katkı vermez, yalnızca yanıltır — taksit editörüyle aynı kural).
     if (splits?.some(s => !s.categoryId))            e.categorySplits = 'Her pay için kategori seçin'
+    else if (splits && hasDuplicateCategory(splits))
+      e.categorySplits = 'Aynı kategori birden fazla payda seçilemez'
     else if (splits?.some(s => Math.abs(s.amount) < 0.01))
       e.categorySplits = 'Her payın tutarı 0’dan büyük olmalı'
     if (isRecurring) {

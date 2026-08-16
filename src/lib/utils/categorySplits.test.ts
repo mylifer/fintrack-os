@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   equalSplit, splitsMatchAmount, splitsAreValid, setSplitAmount, distributeSplits, unpinSplits,
   rescaleSplits, primarySplitCategoryId, txCategorySlices, expandByCategory, txHasCategory,
-  txCategoryIds, type DraftSplit,
+  txCategoryIds, hasDuplicateCategory, type DraftSplit,
 } from './categorySplits'
 import { sumMoney } from './money'
 import type { Transaction } from '@/types'
@@ -42,6 +42,36 @@ describe('splitsMatchAmount / splitsAreValid', () => {
 
   it('toplamı tutan çok paylı bölme geçerlidir', () => {
     expect(splitsAreValid(equalSplit(1000, ['a', 'b', 'c']), 1000)).toBe(true)
+  })
+
+  it('aynı kategori iki payda geçemez', () => {
+    expect(splitsAreValid([
+      { categoryId: 'a', amount: 500 },
+      { categoryId: 'a', amount: 500 },
+    ], 1000)).toBe(false)
+  })
+})
+
+/* Aynı kategori bir işlemde tek bir paya girebilir. Kural kategorinin
+   KENDİSİNE özeldir: üst kategori bir payda kullanılsa da alt kategorileri
+   (ve tersi) ayrı birer pay olabilir — bunlar farklı kategorilerdir. */
+describe('hasDuplicateCategory', () => {
+  it('birebir tekrarı yakalar', () => {
+    expect(hasDuplicateCategory([
+      { categoryId: 'market', amount: 500 },
+      { categoryId: 'market', amount: 500 },
+    ])).toBe(true)
+  })
+
+  it('üst kategori ile alt kategorisi birlikte kullanılabilir', () => {
+    expect(hasDuplicateCategory([
+      { categoryId: 'ev',          amount: 600 },   // üst
+      { categoryId: 'ev-elektrik', amount: 400 },   // alt
+    ])).toBe(false)
+  })
+
+  it('farklı kategoriler tekrar sayılmaz', () => {
+    expect(hasDuplicateCategory(equalSplit(900, ['a', 'b', 'c']))).toBe(false)
   })
 })
 

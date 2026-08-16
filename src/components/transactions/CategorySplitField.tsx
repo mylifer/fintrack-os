@@ -108,6 +108,8 @@ export function CategorySplitField({
     onChange(next)
   }
 
+  // Paylarda seçili kategoriler — her satırın seçicisi bunları devre dışı
+  // gösterir (kendi seçimi hariç, bkz. CategoryCascadeSelect.disabledIds).
   const usedIds = new Set(splits.map(s => s.categoryId).filter(Boolean))
   const canAdd = splits.length < 8 && categories.some(c => !usedIds.has(c.id) && !c.isArchived)
   const hasPinned = splits.some(s => s.pinned)
@@ -182,6 +184,10 @@ export function CategorySplitField({
               onChange={id => onChange(splits.map((x, j) => j === i ? { ...x, categoryId: id } : x))}
               error={!s.categoryId}
               onCreate={onCreateCategory}
+              // Aynı kategori iki paya giremez. Kural kategorinin KENDİSİNE
+              // özeldir: üst kategori bir payda kullanılsa da alt kategorileri
+              // (ve tersi) seçilebilir kalır.
+              disabledIds={usedIds}
             />
             <span className="text-right text-[11px] tabular-nums text-muted-foreground">
               {Math.round(pct(s.amount))}%
