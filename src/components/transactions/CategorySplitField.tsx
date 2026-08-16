@@ -4,18 +4,21 @@ import { useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { CategoryCascadeSelect } from '@/components/categories/CategoryCascadeSelect'
 import { formatCurrency, getCurrencySymbol, parseCurrencyInput } from '@/lib/utils/currency'
-import { rebalanceSplits } from '@/lib/utils/categorySplits'
+import { setSplitAmount, type DraftSplit } from '@/lib/utils/categorySplits'
 import { toMinor } from '@/lib/utils/money'
 import { cn } from '@/lib/utils'
-import type { Category, CategorySplit, CurrencyCode } from '@/types'
+import type { Category, CurrencyCode } from '@/types'
 
 /* ────────────────────────────────────────────────────────────────────────
    Kategori bölme — oran barı
 
    İşlem tutarı kategoriler arasında paylaştırılır. Barın değişmezi: paylar
-   toplamı HER ZAMAN işlem tutarına eşittir. Bir payı büyütmek diğerlerini
-   oranlarınca küçültür (rebalanceSplits), tutamaç sürüklemek ise yalnızca iki
-   komşu pay arasında para taşır. Bu yüzden "eksik/fazla" hata durumu bu alanda
+   toplamı HER ZAMAN işlem tutarına eşittir.
+
+   Tutarını YAZDIĞIN pay sabitlenir ve bir daha kendiliğinden değişmez; kalan
+   tutar otomatik payların arasında paylaşılır, pratikte sonuncusu kalanı yutar
+   (setSplitAmount). Tutamaç sürüklemek yalnızca iki komşu pay arasında para
+   taşır ve ikisini de sabitler. Bu yüzden "eksik/fazla" hata durumu bu alanda
    oluşamaz — tek doğrulama, her satırın kategorisinin seçilmiş olmasıdır.
 ──────────────────────────────────────────────────────────────────────── */
 
@@ -37,8 +40,8 @@ function sanitize(input: string): string {
 }
 
 interface Props {
-  splits: CategorySplit[]
-  onChange: (splits: CategorySplit[]) => void
+  splits: DraftSplit[]
+  onChange: (splits: DraftSplit[]) => void
   /** İşlem tutarının BÜYÜKLÜĞÜ (işaret taşımaz). */
   total: number
   currency: CurrencyCode
@@ -46,11 +49,12 @@ interface Props {
   onCreateCategory: (name: string) => Promise<string | null>
   onAdd: () => void
   onRemove: (index: number) => void
+  onReset: () => void
   error?: string
 }
 
 export function CategorySplitField({
-  splits, onChange, total, currency, categories, onCreateCategory, onAdd, onRemove, error,
+  splits, onChange, total, currency, categories, onCreateCategory, onAdd, onRemove, onReset, error,
 }: Props) {
   // Yazarken odaktaki alanın ham metni burada yaşar; diğer satırlar her zaman
   // biçimlenmiş değeri gösterir (odak kaybı ve imleç zıplaması olmasın diye).
@@ -62,7 +66,7 @@ export function CategorySplitField({
   const pct = (v: number) => (safeTotal > 0 ? (Math.abs(v) / safeTotal) * 100 : 100 / splits.length)
 
   function commit(index: number, nextAmount: number) {
-    onChange(rebalanceSplits(splits, index, nextAmount, safeTotal))
+    onChange(setSplitAmount(splits, index, nextAmount, safeTotal))
   }
 
   // Tutamaç sürükleme: yalnızca i ve i+1 payları arasında para taşır, toplam sabit.
@@ -79,9 +83,10 @@ export function CategorySplitField({
     const move = (ev: PointerEvent) => {
       const deltaMinor = Math.round(((ev.clientX - startX) / width) * totalMinor)
       const mine = Math.max(0, Math.min(pairMinor, startMinor + deltaMinor))
+      // Sürükleme de elle bir karardır → iki pay da sabitlenir.
       const next = splits.map(s => ({ ...s }))
-      next[i].amount = mine / 100
-      next[i + 1].amount = (pairMinor - mine) / 100
+      next[i]     = { ...next[i],     amount: mine / 100,               pinned: true }
+      next[i + 1] = { ...next[i + 1], amount: (pairMinor - mine) / 100, pinned: true }
       onChange(next)
     }
     const up = () => {
@@ -105,15 +110,25 @@ export function CategorySplitField({
 
   const usedIds = new Set(splits.map(s => s.categoryId).filter(Boolean))
   const canAdd = splits.length < 8 && categories.some(c => !usedIds.has(c.id) && !c.isArchived)
+  const hasPinned = splits.some(s => s.pinned)
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          Payları sürükleyerek veya tutar yazarak ayarla
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
+          {hasPinned
+            ? 'Girdiğin tutarlar sabit — kalan otomatik paya yazılır'
+            : 'Payları sürükleyerek veya tutar yazarak ayarla'}
         </span>
-        <span className="text-xs font-medium tabular-nums text-[var(--cf-income)]">
-          Toplam {formatCurrency(safeTotal, currency)}
+        <span className="flex shrink-0 items-center gap-2">
+          {hasPinned && (
+            <button type="button" onClick={onReset} className="text-xs font-medium text-primary hover:underline">
+              Eşit böl
+            </button>
+          )}
+          <span className="text-xs font-medium tabular-nums text-[var(--cf-income)]">
+            Toplam {formatCurrency(safeTotal, currency)}
+          </span>
         </span>
       </div>
 
@@ -188,7 +203,16 @@ export function CategorySplitField({
               onFocus={e => setDraft({ index: i, value: e.target.value })}
               onBlur={() => setDraft(null)}
               aria-label={`${catById(s.categoryId)?.name ?? `${i + 1}. kategori`} tutarı`}
-              className="h-8 w-full rounded-md border border-input bg-background px-2 text-right text-sm tabular-nums outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 dark:bg-muted"
+              // Otomatik pay: değeri kalandan hesaplanıyor → kesikli kenar ve
+              // soluk mürekkep, sabitlenmiş paylardan ayrılsın diye.
+              title={s.pinned ? undefined : 'Kalan tutardan otomatik hesaplanır'}
+              className={cn(
+                'h-8 w-full rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none',
+                'focus:border-ring focus:ring-2 focus:ring-ring/50 dark:bg-muted',
+                hasPinned && !s.pinned
+                  ? 'border-dashed border-border text-muted-foreground'
+                  : 'border-input',
+              )}
             />
             <span className="text-xs text-muted-foreground">{getCurrencySymbol(currency)}</span>
             <button

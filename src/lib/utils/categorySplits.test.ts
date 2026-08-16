@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
-  equalSplit, splitsMatchAmount, splitsAreValid, rebalanceSplits, rescaleSplits,
-  primarySplitCategoryId, txCategorySlices, expandByCategory, txHasCategory, txCategoryIds,
+  equalSplit, splitsMatchAmount, splitsAreValid, setSplitAmount, distributeSplits, unpinSplits,
+  rescaleSplits, primarySplitCategoryId, txCategorySlices, expandByCategory, txHasCategory,
+  txCategoryIds, type DraftSplit,
 } from './categorySplits'
 import { sumMoney } from './money'
 import type { Transaction } from '@/types'
@@ -44,27 +45,113 @@ describe('splitsMatchAmount / splitsAreValid', () => {
   })
 })
 
-describe('rebalanceSplits', () => {
-  const base = equalSplit(1000, ['a', 'b', 'c'])   // 333.34 / 333.33 / 333.33
+/* Elle girilen pay SABİTLENİR: sonraki girişler onu oynatmaz, kalanı otomatik
+   pay (pratikte sonuncusu) yutar. Sabitler kalana sığmazsa SONDAN serbest
+   bırakılır — en eski girişler korunur. */
+describe('setSplitAmount — sabitlenen paylar', () => {
+  const amounts = (s: DraftSplit[]) => s.map(x => x.amount)
+  const base = equalSplit(1000, ['a', 'b', 'c']) as DraftSplit[]
 
-  it('bir payı büyütünce farkı diğerlerine oranlarınca dağıtır, toplam sabit kalır', () => {
-    const next = rebalanceSplits(base, 0, 700, 1000)
-    expect(next[0].amount).toBe(700)
-    expect(sumMoney(next.map(s => s.amount))).toBe(1000)
+  it('bir payı yazınca kalan otomatik paylara eşit dağıtılır', () => {
+    const next = setSplitAmount(base, 0, 700, 1000)
+    expect(amounts(next)).toEqual([700, 150, 150])
+    expect(sumMoney(amounts(next))).toBe(1000)
+  })
+
+  it('ikinci giriş BİRİNCİYİ değiştirmez, kalanı son pay yutar', () => {
+    const first  = setSplitAmount(base, 0, 700, 1000)
+    const second = setSplitAmount(first, 1, 200, 1000)
+    expect(second[0].amount).toBe(700)     // önceki giriş korundu
+    expect(second[1].amount).toBe(200)
+    expect(second[2].amount).toBe(100)     // kalan
+    expect(sumMoney(amounts(second))).toBe(1000)
+  })
+
+  it('iki kategoride: ilkini yazmak ikincisini kalana çevirir', () => {
+    const two = equalSplit(1250, ['a', 'b']) as DraftSplit[]
+    const next = setSplitAmount(two, 0, 900, 1250)
+    expect(amounts(next)).toEqual([900, 350])
+  })
+
+  it('üçüncü giriş de ilk ikisini korur (kalan yettiği sürece)', () => {
+    const s1 = setSplitAmount(base, 0, 500, 1000)   // a sabit 500
+    const s2 = setSplitAmount(s1,  1, 300, 1000)    // b sabit 300 → c otomatik 200
+    expect(amounts(s2)).toEqual([500, 300, 200])
+  })
+
+  it('kalandan büyük giriş sabitleri SONDAN serbest bırakır, toplam yine tutar', () => {
+    const s1 = setSplitAmount(base, 0, 500, 1000)
+    const s2 = setSplitAmount(s1,  1, 300, 1000)    // a=500, b=300, c=200
+    const s3 = setSplitAmount(s2,  2, 900, 1000)    // c için yalnız 200 boştu
+    expect(s3[2].amount).toBe(900)                  // yazılan tutar uygulanır
+    expect(s3[0].amount + s3[1].amount).toBe(100)   // sığmayan sabitler bırakıldı
+    expect(sumMoney(amounts(s3))).toBe(1000)
   })
 
   it('tutarın üstüne çıkan girişi kırpar, diğer paylar sıfırlanır', () => {
-    const next = rebalanceSplits(base, 1, 99999, 1000)
+    const next = setSplitAmount(base, 1, 99999, 1000)
     expect(next[1].amount).toBe(1000)
-    expect(sumMoney(next.map(s => s.amount))).toBe(1000)
+    expect(sumMoney(amounts(next))).toBe(1000)
   })
 
   it('negatif tutarda (iade) işareti korur', () => {
-    const neg = equalSplit(-1000, ['a', 'b'])
-    const next = rebalanceSplits(neg, 0, -800, -1000)
-    expect(next[0].amount).toBe(-800)
-    expect(next[1].amount).toBe(-200)
-    expect(sumMoney(next.map(s => s.amount))).toBe(-1000)
+    const neg = equalSplit(-1000, ['a', 'b']) as DraftSplit[]
+    const next = setSplitAmount(neg, 0, -800, -1000)
+    expect(amounts(next)).toEqual([-800, -200])
+    expect(sumMoney(amounts(next))).toBe(-1000)
+  })
+})
+
+describe('distributeSplits — tutar/pay değişimi', () => {
+  const amounts = (s: DraftSplit[]) => s.map(x => x.amount)
+
+  it('toplam artınca sabit pay aynen kalır, farkı otomatik pay yutar', () => {
+    const pinned = setSplitAmount(equalSplit(1000, ['a', 'b']) as DraftSplit[], 0, 700, 1000)
+    const next = distributeSplits(pinned, 1500)
+    expect(next[0].amount).toBe(700)
+    expect(next[1].amount).toBe(800)
+    expect(sumMoney(amounts(next))).toBe(1500)
+  })
+
+  it('toplam sabitlerin altına düşerse SONDAN serbest bırakır, ilk giriş kalır', () => {
+    let s = setSplitAmount(equalSplit(1000, ['a', 'b', 'c']) as DraftSplit[], 0, 300, 1000)
+    s = setSplitAmount(s, 1, 300, 1000)              // a=300, b=300, c=400
+    const next = distributeSplits(s, 500)            // 600 sabit > 500 → b bırakılır
+    expect(next[0].amount).toBe(300)                 // en eski giriş korundu
+    expect(sumMoney(amounts(next))).toBe(500)
+  })
+
+  it('tek bir sabit bile toplamı aşıyorsa paylar baştan eşit bölünür', () => {
+    const s = setSplitAmount(equalSplit(1000, ['a', 'b']) as DraftSplit[], 0, 900, 1000)
+    const next = distributeSplits(s, 400)            // 900 hiçbir şekilde sığmaz
+    expect(sumMoney(amounts(next))).toBe(400)
+    expect(next.every(x => x.amount > 0)).toBe(true)
+  })
+
+  it('yeni pay eklemek elle girilen tutarlara dokunmaz', () => {
+    const pinned = setSplitAmount(equalSplit(1000, ['a', 'b']) as DraftSplit[], 0, 700, 1000)
+    const next = distributeSplits([...pinned, { categoryId: 'c', amount: 0 }], 1000)
+    expect(next[0].amount).toBe(700)
+    expect(next[1].amount + next[2].amount).toBe(300)
+    expect(sumMoney(amounts(next))).toBe(1000)
+  })
+
+  it('hepsi sabitken toplam değişirse son pay kalanı yutar', () => {
+    let s = setSplitAmount(equalSplit(1000, ['a', 'b']) as DraftSplit[], 0, 600, 1000)
+    s = setSplitAmount(s, 1, 400, 1000)
+    const next = distributeSplits(s, 1200)
+    expect(next[0].amount).toBe(600)
+    expect(next[1].amount).toBe(600)
+    expect(sumMoney(amounts(next))).toBe(1200)
+  })
+})
+
+describe('unpinSplits', () => {
+  it('sabitleri kaldırır ve eşit bölüşe döner', () => {
+    const pinned = setSplitAmount(equalSplit(1000, ['a', 'b', 'c']) as DraftSplit[], 0, 900, 1000)
+    const next = unpinSplits(pinned, 1000)
+    expect(next.map(s => s.amount)).toEqual([333.34, 333.33, 333.33])
+    expect(next.every(s => !s.pinned)).toBe(true)
   })
 })
 

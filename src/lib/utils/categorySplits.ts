@@ -45,47 +45,105 @@ export function equalSplit(amount: number, categoryIds: readonly string[]): Cate
   return categoryIds.map((categoryId, i) => ({ categoryId, amount: parts[i] }))
 }
 
-/**
- * Bir payın tutarı elle değişince farkı DİĞER paylara mevcut oranlarıyla
- * dağıtır — toplam her zaman `amount`ta sabit kalır (oran barının değişmezi).
- * `index` elle girilen payın sırasıdır; onun tutarı [0, amount] aralığına
- * kırpılır. Kuruş kalanı en son dokunulmamış paya eklenir.
- */
-export function rebalanceSplits(
-  splits: readonly CategorySplit[],
-  index: number,
-  nextAmount: number,
-  amount: number,
-): CategorySplit[] {
-  const totalMinor = toMinor(amount)
-  if (splits.length < 2) return splits.map(s => ({ ...s }))
+/* ── Elle girilen paylar (form durumu) ──────────────────────────────────────
+   Formda her pay "sabit" ya da "otomatik"tir. Kullanıcının tutarını YAZDIĞI
+   pay sabitlenir ve bir daha kendiliğinden değişmez; kalan tutar otomatik
+   payların arasında paylaşılır — pratikte sonuncusu kalanı yutar.
 
-  // İşaret korunur: iade (negatif tutar) işlemlerinde paylar da negatiftir.
+   Sabitler kalana sığmıyorsa (tutar küçüldü ya da yeni giriş çok büyük)
+   SONDAN başlayarak serbest bırakılır: en eski girişler korunur, kalanı
+   emen hep son paydır. `pinned` yalnızca form durumudur — kayda gitmez.
+─────────────────────────────────────────────────────────────────────────── */
+
+export interface DraftSplit extends CategorySplit {
+  /** Kullanıcı bu payın tutarını elle yazdı → kalan dağıtılırken korunur. */
+  pinned?: boolean
+}
+
+/** Minor birimde eşit bölüm; kuruş kalanı ilk paylara (splitMoney konvansiyonu). */
+function splitMinor(totalMinor: number, count: number): number[] {
+  const per = Math.floor(totalMinor / count)
+  const rem = totalMinor - per * count
+  return Array.from({ length: count }, (_, i) => per + (i < rem ? 1 : 0))
+}
+
+/**
+ * Payları `total`a oturtur: sabitler korunur, kalan otomatik paylara eşit
+ * dağıtılır. `forced` verilirse o pay bu çağrıda sabitlenir (elle giriş).
+ * Toplam HER ZAMAN tam tutar; sığmayan sabitler sondan serbest bırakılır.
+ */
+function allocate(
+  splits: readonly DraftSplit[],
+  total: number,
+  forced?: { index: number; amount: number },
+): DraftSplit[] {
+  if (splits.length === 0) return []
+  const totalMinor = toMinor(total)
   const sign = totalMinor < 0 ? -1 : 1
   const absTotal = Math.abs(totalMinor)
-  const mine = Math.min(absTotal, Math.max(0, Math.abs(toMinor(nextAmount))))
-  const left = absTotal - mine
+  // Tek pay bölme değildir: tutarın tamamını taşır.
+  if (splits.length === 1) return [{ ...splits[0], amount: total, pinned: false }]
 
-  const others = splits.map((s, i) => (i === index ? 0 : Math.abs(toMinor(s.amount))))
-  const otherSum = others.reduce((a, b) => a + b, 0)
+  const amt    = splits.map(s => Math.abs(toMinor(s.amount)))
+  const pinned = splits.map(s => !!s.pinned)
 
-  const out = splits.map((s, i) => ({ ...s, amount: toMajor(sign * (i === index ? mine : 0)) }))
-  let acc = 0
-  let lastOther = -1
-  for (let i = 0; i < splits.length; i++) {
-    if (i === index) continue
-    const share = otherSum > 0
-      ? Math.round((left * others[i]) / otherSum)
-      : Math.round(left / (splits.length - 1))
-    out[i].amount = toMajor(sign * share)
-    acc += share
-    lastOther = i
+  // Elle giriş: kendi payı [0, toplam] aralığına kırpılır ve sabitlenir.
+  let rest = absTotal
+  if (forced) {
+    amt[forced.index]    = Math.min(absTotal, Math.max(0, Math.abs(toMinor(forced.amount))))
+    pinned[forced.index] = true
+    rest = absTotal - amt[forced.index]
   }
-  // Yuvarlama artığı son paya — toplam tam tutsun.
-  if (lastOther >= 0 && acc !== left) {
-    out[lastOther].amount = toMajor(sign * (Math.abs(toMinor(out[lastOther].amount)) + (left - acc)))
+
+  const isFixed = (j: number) => pinned[j] && !(forced && j === forced.index)
+  const fixedSum = () => splits.reduce((acc, _, j) => acc + (isFixed(j) ? amt[j] : 0), 0)
+
+  // Sığmayan sabitleri SONDAN serbest bırak — kalanı emen hep son paydır.
+  for (let j = splits.length - 1; j >= 0 && fixedSum() > rest; j--) {
+    if (isFixed(j)) pinned[j] = false
   }
-  return out
+
+  const freeIdx = () => splits.map((_, j) => j).filter(j => !isFixed(j) && !(forced && j === forced.index))
+  // Kalan bir yere YAZILMALI (toplam değişmezi): tek bir otomatik pay bile
+  // kalmadıysa son sabit serbest bırakılır.
+  if (freeIdx().length === 0 && fixedSum() !== rest) {
+    for (let j = splits.length - 1; j >= 0; j--) if (isFixed(j)) { pinned[j] = false; break }
+  }
+
+  const free = freeIdx()
+  const left = Math.max(0, rest - fixedSum())
+  if (free.length > 0) {
+    const parts = splitMinor(left, free.length)
+    free.forEach((j, k) => { amt[j] = parts[k] })
+  }
+
+  return splits.map((s, j) => ({ ...s, amount: toMajor(sign * amt[j]), pinned: pinned[j] }))
+}
+
+/**
+ * Bir payın tutarı elle girildi. O pay sabitlenir, DAHA ÖNCE girilen paylar
+ * aynen kalır ve kalan tutar otomatik paylara (pratikte sonuncusuna) yazılır.
+ */
+export function setSplitAmount(
+  splits: readonly DraftSplit[],
+  index: number,
+  nextAmount: number,
+  total: number,
+): DraftSplit[] {
+  return allocate(splits, total, { index, amount: nextAmount })
+}
+
+/**
+ * Tutar değişti ya da pay eklendi/çıkarıldı: sabitler korunur, kalan otomatik
+ * paylara dağıtılır.
+ */
+export function distributeSplits(splits: readonly DraftSplit[], total: number): DraftSplit[] {
+  return allocate(splits, total)
+}
+
+/** Tüm sabitleri kaldırır → paylar yeniden eşit bölünür. */
+export function unpinSplits(splits: readonly DraftSplit[], total: number): DraftSplit[] {
+  return allocate(splits.map(s => ({ ...s, pinned: false })), total)
 }
 
 /**

@@ -35,7 +35,10 @@ import { dedupeTags, tagColor, tagKey } from '@/lib/utils/tags'
 import { SUBSCRIPTION_TAG, isSubscriptionTag, detectBrand } from '@/lib/subscriptions/brands'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { CategorySplitField } from '@/components/transactions/CategorySplitField'
-import { equalSplit, rescaleSplits, primarySplitCategoryId } from '@/lib/utils/categorySplits'
+import {
+  equalSplit, rescaleSplits, distributeSplits, unpinSplits, primarySplitCategoryId,
+  type DraftSplit,
+} from '@/lib/utils/categorySplits'
 import type { CategorySplit } from '@/types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -501,14 +504,16 @@ export function TransactionFormModal() {
   // Paylar BÜYÜKLÜK uzayında tutulur; işaret kayıtta amountSign ile verilir.
   // Taksitli grup düzenlenirken paylar TOPLAM tutara ölçeklenir (ilk-giriş
   // görünümüyle tutarlı: satır satır değil, satın almanın tamamı üzerinden).
-  const [splits, setSplits] = useState<CategorySplit[] | null>(() => {
+  // Kayıtlı paylar SABİT gelir: düzenlemede kullanıcının bir kez verdiği
+  // tutarlar kendiliğinden oynamaz (tutar değişirse kalanı son pay yutar).
+  const [splits, setSplits] = useState<DraftSplit[] | null>(() => {
     const src = installGroup.length ? installGroup[0].categorySplits : editingTx?.categorySplits
     if (!src?.length || src.length < 2) return null
     const magnitude = src.map(s => ({ ...s, amount: Math.abs(s.amount) }))
     const totalSeed = installGroup.length
       ? sumMoney(installGroup.map(t => Math.abs(t.amount)))
       : Math.abs(editingTx?.amount ?? 0)
-    return rescaleSplits(magnitude, totalSeed)
+    return rescaleSplits(magnitude, totalSeed).map(s => ({ ...s, pinned: true }))
   })
 
   const [loading, setLoading]     = useState(false)
@@ -1028,9 +1033,11 @@ export function TransactionFormModal() {
     setErrors(prev => ({ ...prev, categorySplits: '' }))
   }
 
+  // Yeni pay otomatik doğar: elle girilmiş tutarlara dokunulmaz, yalnızca
+  // kalan yeniden paylaşılır.
   function addSplitRow() {
     if (!splits) return
-    setSplits(equalSplit(splitTotal, [...splits.map(s => s.categoryId), '']))
+    setSplits(distributeSplits([...splits, { categoryId: '', amount: 0 }], splitTotal))
   }
 
   function removeSplitRow(i: number) {
@@ -1042,7 +1049,13 @@ export function TransactionFormModal() {
       setErrors(prev => ({ ...prev, categorySplits: '' }))
       return
     }
-    setSplits(rescaleSplits(rest, splitTotal))
+    setSplits(distributeSplits(rest, splitTotal))
+  }
+
+  /** "Eşit böl": tüm sabitleri kaldırır, paylar baştan eşit bölünür. */
+  function resetSplits() {
+    if (!splits) return
+    setSplits(unpinSplits(splits, splitTotal))
   }
 
   const createCategory = async (name: string) => {
@@ -1206,8 +1219,9 @@ export function TransactionFormModal() {
               }
               setAmountStr(raw)
               setManualAmounts(null)
-              // Paylar oranlarını koruyarak yeni tutara ölçeklenir — bar hep dolu.
-              setSplits(s => s ? rescaleSplits(s, parseCurrencyInput(raw)) : s)
+              // Elle girilen paylar aynen kalır, farkı otomatik pay yutar;
+              // sabitler yeni tutara sığmıyorsa sondan serbest bırakılır.
+              setSplits(s => s ? distributeSplits(s, parseCurrencyInput(raw)) : s)
               if (errors.amount) setErrors(prev => ({ ...prev, amount: '' }))
               requestAnimationFrame(() => {
                 if (mirrorRef.current) setCursorX(mirrorRef.current.offsetWidth)
@@ -1464,6 +1478,7 @@ export function TransactionFormModal() {
               onCreateCategory={createCategory}
               onAdd={addSplitRow}
               onRemove={removeSplitRow}
+              onReset={resetSplits}
               error={errors.categorySplits}
             />
           )}
