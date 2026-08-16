@@ -21,7 +21,7 @@ import { tr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency, Category, Account } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
-import { X, Pencil, Trash2 } from 'lucide-react'
+import { X, Pencil, Trash2, Wallet, CreditCard, Repeat } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { PersonSelect } from '@/components/people/PersonSelect'
 import {
@@ -1087,6 +1087,42 @@ export function TransactionFormModal() {
   }
   const subBrand = isSubscription ? detectBrand(form.description) : null
 
+  // ── Ödeme tipi ──────────────────────────────────────────────────────────
+  // Abonelik ve taksit aynı sorunun cevabı ("bu gider nasıl ödeniyor"), o
+  // yüzden tek bir segmentte toplanır. Seçenek kümesi duruma göre daralır:
+  // taksit yalnızca yeni kayıtta ya da taksitli bir grup düzenlenirken anlamlı.
+  const canSubscription = !isRecurring && tab === 'expense'
+  const canInstallment  = canSubscription && !sessionEditId && (!isEdit || installGroup.length > 0)
+  // Taksitli grup düzenlenirken taksit KAPATILAMAZ: grubu tekil işleme
+  // dönüştürme mutabakatı bu modalda yürütülmüyor (eskiden de checkbox
+  // yerine sabit başlık gösteriliyordu). Segment kilitli görünür.
+  const installmentLocked = canInstallment && isEdit && installGroup.length > 0
+  // Segment tek seçimli; eski kayıtlarda ikisi birden işaretli olabilir —
+  // taksit öncelenir, abonelik etiketi Etiketler alanında görünür kalır
+  // (etiket silinmez, veri kaybı olmaz).
+  type PayType = 'one' | 'installment' | 'subscription'
+  const payType: PayType = form.isInstallment ? 'installment'
+    : isSubscription ? 'subscription'
+    : 'one'
+  // Taksit seçeneği kullanılamaz durumdayken bile mevcut seçimse gösterilir,
+  // yoksa segmentte hiçbir şey aktif görünmez.
+  const payTypeOptions = ([
+    { key: 'one',          label: 'Tek çekim', Icon: Wallet,     show: true },
+    { key: 'installment',  label: 'Taksitli',  Icon: CreditCard, show: canInstallment || payType === 'installment' },
+    { key: 'subscription', label: 'Abonelik',  Icon: Repeat,     show: canSubscription },
+  ] as const).filter(o => o.show)
+
+  const selectPayType = (next: PayType) => {
+    if (installmentLocked || next === payType) return
+    if (next === 'installment') {
+      patch({ isInstallment: true })
+    } else if (form.isInstallment) {
+      patch({ isInstallment: false })
+      setManualAmounts(null)
+    }
+    toggleSubscription(next === 'subscription')
+  }
+
   return (
     <Dialog open={open} onOpenChange={v => !v && closeModal()}>
       <DialogContent
@@ -1537,6 +1573,140 @@ export function TransactionFormModal() {
             </Field>
           )}
 
+          {/* Ödeme tipi — abonelik + taksit tek segmentte, tarihin hemen
+              altında. Eskiden gövdenin en altında iki ayrı kesikli kart
+              olarak duruyor, çoğu ekranda kaydırmadan görünmüyorlardı. */}
+          {canSubscription && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Ödeme tipi</Label>
+                {installmentLocked && (
+                  <span className="text-xs text-muted-foreground">
+                    Değişiklik tüm taksitlere uygulanır
+                  </span>
+                )}
+              </div>
+
+              <div className={cn(
+                "grid gap-1 rounded-lg bg-muted p-1",
+                payTypeOptions.length === 3 ? "grid-cols-3" : "grid-cols-2",
+              )}>
+                {payTypeOptions.map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={installmentLocked}
+                    aria-pressed={payType === key}
+                    onClick={() => selectPayType(key)}
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 rounded-md py-1.5 text-sm font-medium transition-all",
+                      payType === key
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                      installmentLocked && "cursor-default",
+                    )}
+                  >
+                    <Icon className={cn("size-3.5", payType === key && "text-primary")} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Abonelik detayı — marka açıklamadan tanınır. */}
+              {payType === 'subscription' && (
+                <div className="rounded-lg border border-dashed p-4">
+                  {subBrand ? (
+                    <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <BrandLogo brand={subBrand} name={subBrand.name} size={20} />
+                      {subBrand.name} olarak tanındı — Abonelikler sayfasında görünür.
+                    </span>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Marka otomatik tanınacak — Abonelikler sayfasında görünür.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Taksit detayı — sayı + taksit tutarları (elle düzenlenebilir). */}
+              {form.isInstallment && (
+                <div className="rounded-lg border border-dashed p-4 flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground">Taksit sayısı</span>
+                    <input
+                      type="number"
+                      min={2}
+                      max={60}
+                      value={installments}
+                      onChange={e => {
+                        setInstallments(Math.min(60, Math.max(2, Number(e.target.value) || 2)))
+                        setManualAmounts(null)
+                      }}
+                      className="w-20 h-9 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm text-center outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
+                    />
+                    <span className="text-sm text-muted-foreground">taksit</span>
+                  </div>
+                  {parseCurrencyInput(amountStr) > 0 && (() => {
+                    const total    = parseCurrencyInput(amountStr)
+                    const cur      = (accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode
+                    const rows     = manualAmounts ?? splitMoney(total, installments).map(toAmountStr)
+                    const sum      = sumMoney(rows.map(s => parseCurrencyInput(s) || 0))
+                    const sumDiff  = Math.round(sum * 100) !== Math.round(total * 100)
+                    return (
+                      <div className="flex flex-col gap-2 border-t border-dashed pt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Aylık taksitler {manualAmounts ? '(elle düzenlendi)' : '(otomatik bölündü — düzenlenebilir)'}
+                          </span>
+                          {manualAmounts && (
+                            <button
+                              type="button"
+                              onClick={() => setManualAmounts(null)}
+                              className="text-xs font-medium text-primary hover:underline"
+                            >
+                              Otomatik böl
+                            </button>
+                          )}
+                        </div>
+                        <div className="max-h-44 overflow-y-auto flex flex-col gap-1.5 pr-1">
+                          {rows.map((val, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground w-32 shrink-0">
+                                {i + 1}. taksit · {format(addMonths(parseISO(form.date || today()), i), 'MMM yyyy', { locale: tr })}
+                              </span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={val}
+                                onChange={e => {
+                                  let raw = e.target.value.replace(/[^0-9,]/g, '')
+                                  const fc = raw.indexOf(',')
+                                  if (fc !== -1) raw = raw.slice(0, fc + 1) + raw.slice(fc + 1).replace(/,/g, '')
+                                  const next = [...rows]
+                                  next[i] = raw
+                                  setManualAmounts(next)
+                                  if (errors.installments) setErrors(prev => ({ ...prev, installments: '' }))
+                                }}
+                                aria-label={`${i + 1}. taksit tutarı`}
+                                className="flex-1 h-8 rounded-md border border-input bg-background dark:bg-muted px-2.5 text-sm text-right outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
+                              />
+                              <span className="text-xs text-muted-foreground w-8">{getCurrencySymbol(cur)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className={cn('text-xs', sumDiff ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground')}>
+                          Toplam: {formatCurrency(sum, cur)}
+                          {sumDiff && ` — girilen tutardan (${formatCurrency(total, cur)}) farklı`}
+                        </p>
+                        {errors.installments && <p className="text-xs text-destructive">{errors.installments}</p>}
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* People */}
           {tab !== 'transfer' && (
             <div className="grid grid-cols-2 gap-3">
@@ -1573,131 +1743,6 @@ export function TransactionFormModal() {
                 suggestions={tagSuggestions}
               />
             </Field>
-          )}
-
-          {/* Subscription toggle (expenses only) */}
-          {!isRecurring && tab === 'expense' && (
-            <div className="rounded-lg border border-dashed p-4 flex flex-col gap-2">
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={isSubscription}
-                  onChange={e => toggleSubscription(e.target.checked)}
-                  className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
-                />
-                <span className="text-sm font-medium">Abonelik</span>
-                {isSubscription && subBrand && (
-                  <span className="ml-auto flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                    <BrandLogo brand={subBrand} name={subBrand.name} size={20} />
-                    {subBrand.name} olarak tanındı
-                  </span>
-                )}
-              </label>
-              {isSubscription && !subBrand && (
-                <p className="text-xs text-muted-foreground">
-                  Marka otomatik tanınacak — Abonelikler sayfasında görünür.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Installment — oluşturmada checkbox'la açılır; taksitli bir grup
-              düzenlenirken 'ilk giriş' gibi tutar/sayı/taksitler değiştirilebilir. */}
-          {!isRecurring && tab === 'expense' && !sessionEditId && (!isEdit || installGroup.length > 0) && (
-            <div className="rounded-lg border border-dashed p-4 flex flex-col gap-3">
-              {isEdit ? (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Taksitli ödeme</span>
-                  <span className="text-xs text-muted-foreground">Değişiklik tüm taksitlere uygulanır</span>
-                </div>
-              ) : (
-                <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={form.isInstallment}
-                    onChange={e => {
-                      patch({ isInstallment: e.target.checked })
-                      if (!e.target.checked) setManualAmounts(null)
-                    }}
-                    className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
-                  />
-                  <span className="text-sm font-medium">Taksitli ödeme</span>
-                </label>
-              )}
-              {form.isInstallment && (
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">Taksit sayısı</span>
-                  <input
-                    type="number"
-                    min={2}
-                    max={60}
-                    value={installments}
-                    onChange={e => {
-                      setInstallments(Math.min(60, Math.max(2, Number(e.target.value) || 2)))
-                      setManualAmounts(null)
-                    }}
-                    className="w-20 h-9 rounded-md border border-input bg-background dark:bg-muted px-3 text-sm text-center outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
-                  />
-                  <span className="text-sm text-muted-foreground">taksit</span>
-                </div>
-              )}
-              {form.isInstallment && parseCurrencyInput(amountStr) > 0 && (() => {
-                const total    = parseCurrencyInput(amountStr)
-                const cur      = (accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode
-                const rows     = manualAmounts ?? splitMoney(total, installments).map(toAmountStr)
-                const sum      = sumMoney(rows.map(s => parseCurrencyInput(s) || 0))
-                const sumDiff  = Math.round(sum * 100) !== Math.round(total * 100)
-                return (
-                  <div className="flex flex-col gap-2 border-t border-dashed pt-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        Aylık taksitler {manualAmounts ? '(elle düzenlendi)' : '(otomatik bölündü — düzenlenebilir)'}
-                      </span>
-                      {manualAmounts && (
-                        <button
-                          type="button"
-                          onClick={() => setManualAmounts(null)}
-                          className="text-xs font-medium text-primary hover:underline"
-                        >
-                          Otomatik böl
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-44 overflow-y-auto flex flex-col gap-1.5 pr-1">
-                      {rows.map((val, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground w-32 shrink-0">
-                            {i + 1}. taksit · {format(addMonths(parseISO(form.date || today()), i), 'MMM yyyy', { locale: tr })}
-                          </span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={val}
-                            onChange={e => {
-                              let raw = e.target.value.replace(/[^0-9,]/g, '')
-                              const fc = raw.indexOf(',')
-                              if (fc !== -1) raw = raw.slice(0, fc + 1) + raw.slice(fc + 1).replace(/,/g, '')
-                              const next = [...rows]
-                              next[i] = raw
-                              setManualAmounts(next)
-                              if (errors.installments) setErrors(prev => ({ ...prev, installments: '' }))
-                            }}
-                            aria-label={`${i + 1}. taksit tutarı`}
-                            className="flex-1 h-8 rounded-md border border-input bg-background dark:bg-muted px-2.5 text-sm text-right outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
-                          />
-                          <span className="text-xs text-muted-foreground w-8">{getCurrencySymbol(cur)}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <p className={cn('text-xs', sumDiff ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground')}>
-                      Toplam: {formatCurrency(sum, cur)}
-                      {sumDiff && ` — girilen tutardan (${formatCurrency(total, cur)}) farklı`}
-                    </p>
-                    {errors.installments && <p className="text-xs text-destructive">{errors.installments}</p>}
-                  </div>
-                )
-              })()}
-            </div>
           )}
         </div>
 
