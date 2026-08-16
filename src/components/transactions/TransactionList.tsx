@@ -16,6 +16,7 @@ import type { Transaction, PersonRole, Category, Account, Person, ModalType, Mod
 import { PersonAvatar, recipientIconDomain } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { TagBadges } from '@/components/transactions/TagBadges'
+import { SplitCountBadge } from '@/components/transactions/SplitCountBadge'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { detectBrand } from '@/lib/subscriptions/brands'
@@ -476,6 +477,7 @@ const TableTxRow = memo(function TableTxRow({
           >
             <span className="h-[7px] w-[7px] rounded-full flex-shrink-0" style={{ background: cat.color }} />
             <span className="text-[11px] font-medium text-foreground/80 truncate min-w-0 group-hover/link:text-foreground transition-colors">{cat.name}</span>
+            <SplitCountBadge tx={tx} />
           </Link>
         ) : (
           <span className="text-xs text-muted-foreground/25">—</span>
@@ -567,7 +569,11 @@ const CardTxRow = memo(function CardTxRow({
   // Build meta items — each can have an href for navigation
   const metaItems: MetaItem[] = []
   if (showAccount && account) metaItems.push({ text: account.name, href: `/accounts/${tx.accountId}` })
-  if (cat) metaItems.push({ text: cat.name, href: `/categories/${tx.categoryId}` })
+  // Bölünmüş satırda kategori adı "Market +2" olarak okunur (bkz. SplitCountBadge).
+  if (cat) metaItems.push({
+    text: (tx.categorySplits?.length ?? 0) > 1 ? `${cat.name} +${tx.categorySplits!.length - 1}` : cat.name,
+    href: `/categories/${tx.categoryId}`,
+  })
   if (tx.isInstallment) metaItems.push({ text: installmentLabel(tx) })
   if (recipient) metaItems.push({ text: recipient.name, href: `/alicilar/${tx.recipientId}` })
   if (family)    metaItems.push({ text: family.name,    href: `/aile-uyeleri/${tx.familyMemberId}` })

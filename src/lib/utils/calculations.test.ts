@@ -301,6 +301,67 @@ describe('calcBudgetSpent — approval gate (isFlowTx ile aynı kapsam)', () => 
   })
 })
 
+/* Çoklu kategori: bölünmüş bir işlem, bütçeye yalnızca O KATEGORİYE düşen payı
+   kadar yazmalı. Eskiden bütçe tx.categoryId'ye bakıyordu; bölünmüş satırın
+   tamamı baskın kategorinin bütçesine yazılır, diğer kategoriler hiç görmezdi. */
+describe('calcBudgetSpent — kategori payları', () => {
+  const budget = (categoryId: string) => ({
+    id: 'b', categoryId, amount: 2000, period: 'monthly',
+    month: 1, year: 2026, rollover: false, alertThreshold: 80,
+  } as Budget)
+  const split = tx({
+    type: 'expense', date: '2026-01-20', amount: 1000, amountTry: 1000,
+    categoryId: 'market',                       // baskın pay
+    categorySplits: [
+      { categoryId: 'market',   amount: 700 },
+      { categoryId: 'temizlik', amount: 300 },
+    ],
+  })
+
+  it('baskın kategorinin bütçesine yalnızca kendi payı yazılır', () => {
+    expect(calcBudgetSpent(budget('market'), [split], { month: 1, year: 2026 }, [])).toBe(700)
+  })
+
+  it('ikincil kategorinin bütçesi de payını görür', () => {
+    expect(calcBudgetSpent(budget('temizlik'), [split], { month: 1, year: 2026 }, [])).toBe(300)
+  })
+
+  it('paylar toplamı işlemin tamamını aşmaz', () => {
+    const market   = calcBudgetSpent(budget('market'),   [split], { month: 1, year: 2026 }, [])
+    const temizlik = calcBudgetSpent(budget('temizlik'), [split], { month: 1, year: 2026 }, [])
+    expect(market + temizlik).toBe(1000)
+  })
+
+  it('onay bekleyen bölünmüş satır hiçbir bütçeye yazılmaz', () => {
+    const pending = { ...split, approvalStatus: 'pending' as const }
+    expect(calcBudgetSpent(budget('market'),   [pending], { month: 1, year: 2026 }, [])).toBe(0)
+    expect(calcBudgetSpent(budget('temizlik'), [pending], { month: 1, year: 2026 }, [])).toBe(0)
+  })
+})
+
+/* Kategori donut'u da paylara açılır: bölünmüş satır iki dilime dağılır ve
+   toplam değişmez. */
+describe('sumExpenseByKey — kategori payları', () => {
+  it('bölünmüş satırı kategorilere dağıtır, toplamı korur', () => {
+    const split = tx({
+      type: 'expense', amount: 1000, amountTry: 1000, categoryId: 'a',
+      categorySplits: [{ categoryId: 'a', amount: 600 }, { categoryId: 'b', amount: 400 }],
+    })
+    const map = sumExpenseByKey([split], t => t.categoryId ?? '__none__')
+    expect(map.get('a')).toBe(600)
+    expect(map.get('b')).toBe(400)
+  })
+
+  it('etikete göre gruplarken bölme toplamı değiştirmez', () => {
+    const split = tx({
+      type: 'expense', amount: 1000, amountTry: 1000, categoryId: 'a', tags: ['fiş'],
+      categorySplits: [{ categoryId: 'a', amount: 600 }, { categoryId: 'b', amount: 400 }],
+    })
+    const map = sumExpenseByKey([split], t => t.tags?.[0] ?? '__none__')
+    expect(map.get('fiş')).toBe(1000)
+  })
+})
+
 /* Bir transferin HEDEF hesabı, kaynak kadar "o hesabın işlemi"dir —
    computeTransactionEffect iki bakiyeyi de oynatır. Hesap detayı, arama ve
    raporlar bu kuralı zaten paylaşıyordu; işlemler sayfasının hesap filtresi

@@ -21,6 +21,7 @@ import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
 import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, sumIncomeByKey, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
+import { expandByCategory, txHasCategory } from '@/lib/utils/categorySplits'
 import { buildCashFlowData } from '@/lib/utils/cashflow'
 import { baseAmount, fromBaseTry } from '@/lib/utils/fx'
 import { toMinor, toMajor, sumBy } from '@/lib/utils/money'
@@ -377,7 +378,8 @@ function buildPeriodComparison(
 
   const catMap = new Map<string, { current: number; prev: number }>()
 
-  for (const tx of transactions) {
+  // Çoklu kategori: karşılaştırma da kategori paylarını sayar (bkz. expandByCategory).
+  for (const tx of expandByCategory(transactions)) {
     if (tx.type !== 'expense' || tx.icon) continue
     if (isReconciliation(tx)) continue  // ghost reconciliation — never a comparison expense
     if (accountId !== 'all' && tx.accountId !== accountId) continue
@@ -417,11 +419,14 @@ function buildCategoryTrendData(
   categoryId: string | null,
 ): CategoryTrendPoint[] {
   const now = new Date()
+  // Çoklu kategori: bölünmüş satırlar paylarına açılır → trend, kategoriye
+  // düşen payı gösterir (işlemin tamamını değil).
+  const sliced = expandByCategory(transactions)
   return Array.from({ length: 6 }, (_, i) => {
     const mDate = subMonths(now, 5 - i)
     const mFrom = format(startOfMonth(mDate), 'yyyy-MM-dd')
     const mTo   = format(endOfMonth(mDate),   'yyyy-MM-dd')
-    const amount = transactions
+    const amount = sliced
       .filter(tx => {
         if (tx.type !== 'expense' || tx.icon) return false
         if (isReconciliation(tx)) return false  // ghost reconciliation — exclude from trend
@@ -667,9 +672,14 @@ export default function ReportsPage() {
 
   const catFilteredTxs = useMemo(() => {
     if (!selectedCat) return []
+    // Bölünmüş satırlar TAM haliyle listelenir (dilim olarak değil): satır
+    // gerçek işlemdir, tıklanınca düzenleme açar. Dilimin payı listede değil
+    // grafikte okunur — satırdaki çoklu-kategori rozeti farkı belli eder.
     return filteredTxs.filter(tx => {
       if (tx.type !== 'expense') return false
-      return selectedCat.categoryId === null ? !tx.categoryId : tx.categoryId === selectedCat.categoryId
+      return selectedCat.categoryId === null
+        ? !tx.categoryId
+        : txHasCategory(tx, selectedCat.categoryId)
     })
   }, [filteredTxs, selectedCat])
 
@@ -680,7 +690,9 @@ export default function ReportsPage() {
     if (!selectedIncomeCat) return []
     return filteredTxs.filter(tx => {
       if (tx.type !== 'income' || tx.icon) return false
-      return selectedIncomeCat.categoryId === null ? !tx.categoryId : tx.categoryId === selectedIncomeCat.categoryId
+      return selectedIncomeCat.categoryId === null
+        ? !tx.categoryId
+        : txHasCategory(tx, selectedIncomeCat.categoryId)
     })
   }, [filteredTxs, selectedIncomeCat])
 

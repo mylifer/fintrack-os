@@ -13,6 +13,7 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
 import { subMoney } from '@/lib/utils/money'
+import { expandByCategory, txCategoryIds } from '@/lib/utils/categorySplits'
 
 interface Props { id: string }
 
@@ -65,10 +66,13 @@ export default function CategoryDetailClient({ id }: Props) {
   )
 
   /* Transactions */
+  // Liste TAM işlem satırlarını gösterir: bölünmüş bir işlem paylarından biri
+  // bu kategoriye düşüyorsa satır tamamıyla listelenir (tıklanınca düzenleme
+  // açar). Başlıktaki toplam ise yalnızca bu kategoriye düşen PAYI sayar.
   const catTxs = useMemo(
     () => transactions
       .filter(t => {
-        if (!t.categoryId || !descendantIds.has(t.categoryId)) return false
+        if (!txCategoryIds(t).some(cid => descendantIds.has(cid))) return false
         if (typeFilter && t.type !== typeFilter) return false
         if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false
         return true
@@ -82,7 +86,8 @@ export default function CategoryDetailClient({ id }: Props) {
   // anaparası hariç, arama/tür kutusundan bağımsız (o yalnız listeyi süzer) →
   // Dashboard/Raporlar akış kapsamıyla tutarlı, toplam↔sayaç aynı kümeden.
   const flowCatTxs = useMemo(
-    () => transactions.filter(t => t.categoryId && descendantIds.has(t.categoryId) && isFlowTx(t)),
+    () => expandByCategory(transactions)
+      .filter(t => t.categoryId && descendantIds.has(t.categoryId) && isFlowTx(t)),
     [transactions, descendantIds],
   )
   // Net (gelir − gider), TRY-normalize (baseAmount) + kuruş-exact — ham `amount`
@@ -91,6 +96,7 @@ export default function CategoryDetailClient({ id }: Props) {
     const { income, expense } = sumByType(flowCatTxs)
     return subMoney(income, expense)
   }, [flowCatTxs])
+  const flowCatTxCount = useMemo(() => new Set(flowCatTxs.map(t => t.id)).size, [flowCatTxs])
 
   /* ── Parent options for the two-dropdown edit form ── */
   const l0Options = useMemo(() => {
@@ -258,7 +264,9 @@ export default function CategoryDetailClient({ id }: Props) {
       <div className="flex items-center gap-6 px-6 py-3 border-b border-border bg-muted/20 flex-shrink-0">
         <div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">İşlem</div>
-          <div className="text-sm font-semibold text-foreground tabular-nums">{flowCatTxs.length}</div>
+          {/* Dilimler değil GERÇEK işlemler sayılır: bölünmüş bir satırın iki
+              payı aynı alt ağaca düşse bile tek işlemdir. */}
+          <div className="text-sm font-semibold text-foreground tabular-nums">{flowCatTxCount}</div>
         </div>
         <div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Toplam</div>

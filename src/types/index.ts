@@ -68,6 +68,14 @@ export interface Person {
 
 export type TransactionType = 'expense' | 'income' | 'transfer'
 
+// Tek bir işlemin birden fazla kategoriye bölünmüş payı. Tutarlar işlemin
+// KENDİ para birimindedir (amount ile aynı) ve toplamları amount'a TAM eşit
+// olmak zorundadır — doğrulama lib/utils/categorySplits.ts'te.
+export interface CategorySplit {
+  categoryId: string
+  amount: number
+}
+
 export interface Transaction {
   id: string
   type: TransactionType
@@ -78,6 +86,11 @@ export interface Transaction {
   accountId: string
   toAccountId?: string      // Transfer target
   categoryId?: string
+  // Çoklu kategori: 2+ eleman varsa işlem bölünmüştür ve `categoryId` EN BÜYÜK
+  // paya sahip kategoriyi taşır (liste/arama/eski raporlar bozulmadan çalışsın
+  // diye). Tek kategorili işlemlerde bu alan hiç yazılmaz. Kategori bazlı
+  // toplamlar payları görmek için expandByCategory()'den geçmelidir.
+  categorySplits?: CategorySplit[]
   icon?: string             // Override icon when no category (e.g. investment linked txs)
   description: string
   notes?: string

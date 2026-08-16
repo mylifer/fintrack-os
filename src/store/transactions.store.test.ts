@@ -133,3 +133,89 @@ describe('update() — kur yüklenmeden düzenleme (regresyon)', () => {
     })
   })
 })
+
+/* ────────────────────────────────────────────────────────────────────────
+   Çoklu kategori değişmezi (withSplits)
+
+   Bölünmüş bir işlem yalnızca ŞU koşullarda kalıcı olur: 2+ pay, her payın
+   kategorisi dolu ve payların toplamı tutara TAM eşit. Aksi halde alan düşer
+   ve satır sıradan tek kategorili bir işlem olarak yaşar — "bölünmüş ama
+   toplamı tutmayan" bir satır hiçbir yazma yolundan içeri sızamaz.
+
+   `categoryId` her zaman EN BÜYÜK payla damgalanır: liste, arama, CSV ve
+   kategoriye göre okuyan eski raporlar tek kategori görmeye devam eder.
+──────────────────────────────────────────────────────────────────────── */
+describe('add() / update() — çoklu kategori değişmezi', () => {
+  const splitTx: Transaction = {
+    id: 'tx-split', type: 'expense', amount: 1000, currency: 'TRY', date: '2026-01-10',
+    accountId: 'a', description: 'Market', isInstallment: false,
+    createdAt: '2026-01-10', updatedAt: '2026-01-10',
+  }
+
+  beforeEach(() => {
+    patches.length = 0
+    upserts.length = 0
+    setBaseRates({ usdTry: 42, eurTry: 46, gbpTry: 54 } as never)
+    useTransactionStore.setState({ transactions: [], ready: true, loading: false })
+  })
+
+  it('geçerli bölmede categoryId en büyük payla damgalanır', async () => {
+    await useTransactionStore.getState().add({
+      ...splitTx,
+      categoryId: 'kucuk',
+      categorySplits: [{ categoryId: 'kucuk', amount: 300 }, { categoryId: 'buyuk', amount: 700 }],
+    })
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].categoryId).toBe('buyuk')
+    expect(upserts[0].categorySplits).toHaveLength(2)
+  })
+
+  it('toplamı tutmayan bölme kalıcı olmaz (alan tamamen düşer)', async () => {
+    await useTransactionStore.getState().add({
+      ...splitTx,
+      categoryId: 'market',
+      categorySplits: [{ categoryId: 'market', amount: 300 }, { categoryId: 'temizlik', amount: 300 }],
+    })
+    expect(upserts[0].categorySplits).toBeUndefined()
+    expect(upserts[0].categoryId).toBe('market')       // tek kategori olarak yaşar
+  })
+
+  it('kategorisi boş pay bölmeyi geçersiz kılar', async () => {
+    await useTransactionStore.getState().add({
+      ...splitTx,
+      categoryId: 'market',
+      categorySplits: [{ categoryId: 'market', amount: 500 }, { categoryId: '', amount: 500 }],
+    })
+    expect(upserts[0].categorySplits).toBeUndefined()
+  })
+
+  it('düzenlemede bölme kaldırılınca alan açık null olarak temizlenir', async () => {
+    useTransactionStore.setState({
+      transactions: [{
+        ...splitTx,
+        categoryId: 'buyuk',
+        categorySplits: [{ categoryId: 'kucuk', amount: 300 }, { categoryId: 'buyuk', amount: 700 }],
+      }],
+      ready: true, loading: false,
+    })
+    await useTransactionStore.getState().update('tx-split', { categorySplits: undefined, categoryId: 'tek' })
+    expect(patches).toHaveLength(1)
+    expect(patches[0].patch.categorySplits).toBeNull()   // undefined olsaydı eski paylar kalırdı
+    expect(useTransactionStore.getState().transactions[0].categorySplits).toBeUndefined()
+  })
+
+  it('paylar gönderilmeden tutar değişirse paylar oranlarıyla ölçeklenir', async () => {
+    useTransactionStore.setState({
+      transactions: [{
+        ...splitTx,
+        categoryId: 'buyuk',
+        categorySplits: [{ categoryId: 'kucuk', amount: 250 }, { categoryId: 'buyuk', amount: 750 }],
+      }],
+      ready: true, loading: false,
+    })
+    await useTransactionStore.getState().update('tx-split', { amount: 400 })
+    const next = patches[0].patch.categorySplits as { categoryId: string; amount: number }[]
+    expect(next.map(s => s.amount)).toEqual([100, 300])
+    expect(next[0].amount + next[1].amount).toBe(400)
+  })
+})

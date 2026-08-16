@@ -23,6 +23,7 @@ import { isInvestmentPrincipalTx, calcNetWorth, excludeFuture } from '@/lib/util
 import { computeHoldings, getAssetPrice } from '@/store/investment.store'
 import { today } from '@/lib/utils/date'
 import { baseAmount } from '@/lib/utils/fx'
+import { expandByCategory } from '@/lib/utils/categorySplits'
 import { toMinor, toMajor, sumBy } from '@/lib/utils/money'
 import type { Account, Category, Transaction, InvestmentTransaction, PriceData, TefasFundPrice } from '@/types'
 
@@ -184,7 +185,9 @@ export function DetailedStats({
   const topCategories = useMemo(() => {
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
       const groups = new Map<string, number>()   // accumulate in minor units (S8)
-      for (const t of analyticTxs) {
+      // Çoklu kategori: bölünmüş satırlar paylarına açılır — donut
+      // (sumExpenseByKey) ile aynı kapsam, aynı toplamlar.
+      for (const t of expandByCategory(analyticTxs)) {
         // Raporlar donut'uyla (sumExpenseByKey) aynı kapsam: TÜM yatırım-ikonlu
         // satırlar hariç (anapara + gerçekleşen K/Z). Realize zarar categoryId
         // taşımadığından "Kategorisiz"e düşüp donut ile top-kategori arasında

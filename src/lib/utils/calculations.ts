@@ -3,6 +3,7 @@ import { isInRange, monthRange, yearRange, today } from './date'
 import { isReconciliation } from './reconciliation'
 import { toMinor, toMajor, sumBy, subMoney } from './money'
 import { baseAmount, fromBaseTry } from './fx'
+import { expandByCategory } from './categorySplits'
 
 // A transaction is "posted" once its date has arrived AND it is not waiting for
 // user approval. approvalStatus null/undefined = legacy row: auto-posts on its
@@ -199,7 +200,9 @@ export function calcBudgetSpent(
   // tarihi gelmemiş satırlar sayılmaz, tıpkı hiçbir bakiyeyi etkilemedikleri
   // gibi (isPosted tek doğruluk kaynağı). Aksi halde iki bekleyen gider bütçeyi
   // kullanıcı onaylamadan 'exceeded' gösteriyordu.
-  const matching = transactions.filter(tx =>
+  // Çoklu kategori: bölünmüş işlem kategori başına birer paya açılır, böylece
+  // bütçe yalnızca KENDİ kategorisine düşen payı sayar (tamamını değil).
+  const matching = expandByCategory(transactions).filter(tx =>
     tx.type === 'expense' &&
     tx.categoryId !== undefined &&
     categoryIds.has(tx.categoryId) &&
@@ -354,7 +357,10 @@ function sumTypeByKey(
   type: 'expense' | 'income',
 ): Map<string, number> {
   const minor = new Map<string, number>()
-  for (const t of transactions) {
+  // Çoklu kategori: bölünmüş satır paylarına açılır. Paylar tutarı BÖLÜŞTÜRDÜĞÜ
+  // için kategori dışı anahtarlarda (etiket vb.) toplam değişmez — açmak yalnız
+  // kategoriye göre gruplarken sonucu değiştirir, ki istenen de budur.
+  for (const t of expandByCategory(transactions)) {
     if (t.type !== type || t.icon) continue
     if (isReconciliation(t)) continue
     const k = keyOf(t)
@@ -379,7 +385,7 @@ export function calcCategorySpend(
   from: string,
   to: string,
 ): number {
-  const matching = transactions.filter(tx =>
+  const matching = expandByCategory(transactions).filter(tx =>
     tx.type === 'expense' &&
     tx.categoryId === categoryId &&
     isInRange(tx.date, from, to),

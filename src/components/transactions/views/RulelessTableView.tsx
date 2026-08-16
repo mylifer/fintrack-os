@@ -11,6 +11,7 @@ import { computeRunningBalances } from '@/lib/utils/runningBalance'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { TagBadges } from '@/components/transactions/TagBadges'
+import { SplitCountBadge } from '@/components/transactions/SplitCountBadge'
 import {
   TxIcon, DeleteConfirmDialog, PencilIcon, RefundIcon, installmentLabel,
 } from '@/components/transactions/TransactionList'
@@ -348,6 +349,7 @@ const RulelessRow = memo(function RulelessRow({
           <Link href={`/categories/${tx.categoryId}`} className="flex min-w-0 items-center gap-1.5 transition-colors hover:text-foreground">
             <span className="h-[7px] w-[7px] flex-shrink-0 rounded-full" style={{ background: cat.color }} />
             <span className="truncate">{cat.name}</span>
+            <SplitCountBadge tx={tx} />
           </Link>
         ) : <Empty />}
       </Cell>

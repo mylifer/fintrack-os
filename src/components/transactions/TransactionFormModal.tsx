@@ -34,6 +34,9 @@ import { useTags } from '@/lib/hooks/useTags'
 import { dedupeTags, tagColor, tagKey } from '@/lib/utils/tags'
 import { SUBSCRIPTION_TAG, isSubscriptionTag, detectBrand } from '@/lib/subscriptions/brands'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
+import { CategorySplitField } from '@/components/transactions/CategorySplitField'
+import { equalSplit, rescaleSplits, primarySplitCategoryId } from '@/lib/utils/categorySplits'
+import type { CategorySplit } from '@/types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -493,6 +496,21 @@ export function TransactionFormModal() {
   // düzenleniyorsa mevcut taksit tutarlarıyla tohumlanır (gerçek tutarlar görünür).
   const [manualAmounts, setManualAmounts] = useState<string[] | null>(() =>
     installGroup.length ? installGroup.map(t => toAmountStr(t.amount)) : null)
+  // ── Çoklu kategori (oran barı) ─────────────────────────────────────────
+  // null → bölme kapalı (tek kategori, alan bugünkü haliyle çalışır).
+  // Paylar BÜYÜKLÜK uzayında tutulur; işaret kayıtta amountSign ile verilir.
+  // Taksitli grup düzenlenirken paylar TOPLAM tutara ölçeklenir (ilk-giriş
+  // görünümüyle tutarlı: satır satır değil, satın almanın tamamı üzerinden).
+  const [splits, setSplits] = useState<CategorySplit[] | null>(() => {
+    const src = installGroup.length ? installGroup[0].categorySplits : editingTx?.categorySplits
+    if (!src?.length || src.length < 2) return null
+    const magnitude = src.map(s => ({ ...s, amount: Math.abs(s.amount) }))
+    const totalSeed = installGroup.length
+      ? sumMoney(installGroup.map(t => Math.abs(t.amount)))
+      : Math.abs(editingTx?.amount ?? 0)
+    return rescaleSplits(magnitude, totalSeed)
+  })
+
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
 
@@ -612,7 +630,14 @@ export function TransactionFormModal() {
     const amount = parseCurrencyInput(amountStr)
     if (!amount || amount <= 0)                      e.amount      = 'Geçerli bir tutar girin'
     if (!form.accountId)                             e.accountId   = 'Hesap seçin'
-    if (tab !== 'transfer' && !form.categoryId)                         e.categoryId  = 'Kategori seçin'
+    // Bölme açıkken kategori payların içinden gelir; tek alan boş olabilir.
+    if (tab !== 'transfer' && !splits && !form.categoryId)              e.categoryId  = 'Kategori seçin'
+    // Oran barı toplamı yapısal olarak korur → geriye iki kural kalır: her payın
+    // kategorisi dolu ve payı 0'dan büyük olmalı (0 paylı kategori hiçbir rapora
+    // katkı vermez, yalnızca yanıltır — taksit editörüyle aynı kural).
+    if (splits?.some(s => !s.categoryId))            e.categorySplits = 'Her pay için kategori seçin'
+    else if (splits?.some(s => Math.abs(s.amount) < 0.01))
+      e.categorySplits = 'Her payın tutarı 0’dan büyük olmalı'
     if (isRecurring) {
       // Recurring: name + startDate required; description falls back to name;
       // transfer target is always an account (no debt payments on templates).
@@ -734,6 +759,7 @@ export function TransactionFormModal() {
     setAmountSign(1)
     setInstallments(1)
     setManualAmounts(null)
+    setSplits(null)
     setErrors({})
     requestAnimationFrame(() => amountInputRef.current?.focus())
   }
@@ -764,6 +790,9 @@ export function TransactionFormModal() {
     setAmountSign(tx.amount < 0 ? -1 : 1)
     setInstallments(1)
     setManualAmounts(null)
+    setSplits(tx.categorySplits?.length && tx.categorySplits.length > 1
+      ? tx.categorySplits.map(s => ({ ...s, amount: Math.abs(s.amount) }))
+      : null)
     setErrors({})
     setSessionEditId(row.id)
     requestAnimationFrame(() => amountInputRef.current?.focus())
@@ -813,6 +842,16 @@ export function TransactionFormModal() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { isDebtPayment: _idp, ...formData } = form
 
+    // Çoklu kategori: paylar işlemin işaretini alır (iade = negatif gider) ve
+    // `categoryId` en büyük payla damgalanır — store aynı değişmezi tekrar
+    // uygular, burada yazmak yalnızca yerel durumu da doğru tutar.
+    // Bölme kapalıysa alan AÇIKÇA undefined gönderilir: düzenlemede eski
+    // payların silinmesi buna bağlı (patch'te anahtarın VARLIĞI temizler).
+    const txSplits: CategorySplit[] | undefined = splits
+      ? splits.map(s => ({ categoryId: s.categoryId, amount: s.amount * amountSign }))
+      : undefined
+    const splitCategoryId = primarySplitCategoryId(txSplits)
+
     if (editingTx && editingTx.isInstallment && editingTx.installGroupId && installments > 1) {
       // Taksitli grup düzenleme: 'ilk giriş' gibi toplam/sayı/taksitler tüm gruba
       // uygulanır. Taksit tutarları pozitif harcamadır → büyüklük kullanılır.
@@ -823,7 +862,9 @@ export function TransactionFormModal() {
         type:           tab as TransactionType,
         currency,
         accountId:      form.accountId,
-        categoryId:     formData.categoryId || undefined,
+        // Paylar toplam tutara göre girilir; store her taksite ölçekler.
+        categorySplits: txSplits,
+        categoryId:     splitCategoryId ?? formData.categoryId ?? undefined,
         description:    form.description.trim(),
         notes:          formData.notes || undefined,
         tags:           cleanTags.length ? cleanTags : undefined,
@@ -836,7 +877,8 @@ export function TransactionFormModal() {
       // anıdır, satır 'approved' doğar (approveRecurring ile tutarlı).
       await addTx({
         ...formData, id: editingTx.id, type: tab as TransactionType, amount, currency,
-        categoryId:     formData.categoryId     || undefined,
+        categorySplits: txSplits,
+        categoryId:     splitCategoryId ?? formData.categoryId ?? undefined,
         toAccountId:    formData.toAccountId    || undefined,
         familyMemberId: formData.familyMemberId ?? null,
         recipientId:    formData.recipientId    ?? null,
@@ -853,7 +895,8 @@ export function TransactionFormModal() {
     } else if (editingTx) {
       await updateTx(editingTx.id, {
         ...formData, type: tab as TransactionType, amount, currency, updatedAt: now,
-        categoryId:     formData.categoryId     || undefined,
+        categorySplits: txSplits,
+        categoryId:     splitCategoryId ?? formData.categoryId ?? undefined,
         toAccountId:    formData.toAccountId    || undefined,
         familyMemberId: formData.familyMemberId ?? null,
         recipientId:    formData.recipientId    ?? null,
@@ -892,7 +935,8 @@ export function TransactionFormModal() {
       // düzenleme yalnızca alanları günceller.
       await updateTx(sessionEditId, {
         ...formData, type: tab as TransactionType, amount, currency, updatedAt: now,
-        categoryId:     formData.categoryId     || undefined,
+        categorySplits: txSplits,
+        categoryId:     splitCategoryId ?? formData.categoryId ?? undefined,
         toAccountId:    formData.toAccountId    || undefined,
         familyMemberId: formData.familyMemberId ?? null,
         recipientId:    formData.recipientId    ?? null,
@@ -917,7 +961,8 @@ export function TransactionFormModal() {
         type:        tab as TransactionType,
         amount,
         currency,
-        categoryId:  formData.categoryId  || undefined,
+        categorySplits: txSplits,
+        categoryId:  splitCategoryId ?? formData.categoryId ?? undefined,
         toAccountId: formData.toAccountId || undefined,
         tags:        cleanTags.length ? cleanTags : undefined,
       }
@@ -962,6 +1007,57 @@ export function TransactionFormModal() {
   }
 
   const patch = (p: Partial<ReturnType<typeof newForm>>) => setForm(f => ({ ...f, ...p }))
+
+  // ── Bölme yardımcıları ──────────────────────────────────────────────────
+  // Tüm pay matematiği BÜYÜKLÜK üzerinden yürür (tutar alanı da öyle);
+  // işaret yalnızca kayıt anında amountSign ile geri takılır.
+  const splitTotal = parseCurrencyInput(amountStr)
+
+  // Bölmeyi aç: mevcut kategori ilk pay olur, ikinci pay boş gelir (kullanıcı
+  // seçer — sessizce rastgele bir kategori atamak veriyi kirletirdi). Tutar
+  // eşit bölünür; kuruş kalanı ilk paya gider.
+  function openSplit() {
+    setSplits(equalSplit(splitTotal, [form.categoryId ?? '', '']))
+    if (errors.categoryId) setErrors(prev => ({ ...prev, categoryId: '' }))
+  }
+
+  // Bölmeyi kapat: baskın kategori tek kategori olarak kalır.
+  function closeSplit() {
+    patch({ categoryId: primarySplitCategoryId(splits ?? undefined) ?? form.categoryId })
+    setSplits(null)
+    setErrors(prev => ({ ...prev, categorySplits: '' }))
+  }
+
+  function addSplitRow() {
+    if (!splits) return
+    setSplits(equalSplit(splitTotal, [...splits.map(s => s.categoryId), '']))
+  }
+
+  function removeSplitRow(i: number) {
+    if (!splits) return
+    const rest = splits.filter((_, j) => j !== i)
+    if (rest.length < 2) {
+      patch({ categoryId: rest[0]?.categoryId || form.categoryId })
+      setSplits(null)
+      setErrors(prev => ({ ...prev, categorySplits: '' }))
+      return
+    }
+    setSplits(rescaleSplits(rest, splitTotal))
+  }
+
+  const createCategory = async (name: string) => {
+    const cat: Category = {
+      id:        crypto.randomUUID(),
+      name,
+      icon:      'package',
+      color:     '#6366F1',
+      scope:     tab === 'income' ? 'income' : 'expense',
+      isSystem:  false,
+      sortOrder: categories.reduce((m, c) => Math.max(m, c.sortOrder), 0) + 1,
+    }
+    await addCategory(cat)
+    return cat.id
+  }
 
   // Subscription toggle — marks an expense with the reserved tag. Derives its
   // checked state from the tag list (case-insensitive) and toggles it without
@@ -1015,6 +1111,8 @@ export function TransactionFormModal() {
                 type="button"
                 onClick={() => {
                   setTab(key)
+                  // Kategoriler tipe göre filtrelendiğinden paylar da geçersizleşir.
+                  setSplits(null)
                   patch({ type: key, categoryId: '', toAccountId: undefined, isDebtPayment: false, debtId: undefined })
                 }}
                 className={cn(
@@ -1108,6 +1206,8 @@ export function TransactionFormModal() {
               }
               setAmountStr(raw)
               setManualAmounts(null)
+              // Paylar oranlarını koruyarak yeni tutara ölçeklenir — bar hep dolu.
+              setSplits(s => s ? rescaleSplits(s, parseCurrencyInput(raw)) : s)
               if (errors.amount) setErrors(prev => ({ ...prev, amount: '' }))
               requestAnimationFrame(() => {
                 if (mirrorRef.current) setCursorX(mirrorRef.current.offsetWidth)
@@ -1305,29 +1405,68 @@ export function TransactionFormModal() {
                 )}
               </div>
             ) : (
-              <Field label="Kategori" error={errors.categoryId}>
-                <CategoryCascadeSelect
-                  categories={filteredCategories}
-                  value={form.categoryId ?? ''}
-                  onChange={v => patch({ categoryId: v })}
-                  error={!!errors.categoryId}
-                  onCreate={async name => {
-                    const cat: Category = {
-                      id:        crypto.randomUUID(),
-                      name,
-                      icon:      'package',
-                      color:     '#6366F1',
-                      scope:     tab === 'income' ? 'income' : 'expense',
-                      isSystem:  false,
-                      sortOrder: categories.reduce((m, c) => Math.max(m, c.sortOrder), 0) + 1,
-                    }
-                    await addCategory(cat)
-                    return cat.id
-                  }}
-                />
-              </Field>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className={cn("text-sm font-medium", errors.categoryId && "text-destructive")}>
+                    Kategori
+                  </Label>
+                  {/* Bölme yalnızca gerçek bir tutar varken anlamlı — 0'ı bölmek
+                      boş bir bar üretirdi. */}
+                  {splits ? (
+                    <button type="button" onClick={closeSplit} className="text-xs font-medium text-primary hover:underline">
+                      Bölmeyi kaldır
+                    </button>
+                  ) : splitTotal > 0 && (
+                    <button type="button" onClick={openSplit} className="text-xs font-medium text-primary hover:underline">
+                      Böl
+                    </button>
+                  )}
+                </div>
+                {splits ? (
+                  // Bölme açıkken alan özet gösterir; seçim aşağıdaki paylardan yapılır.
+                  <div className="flex h-8 w-full items-center gap-1.5 rounded-md border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm select-none dark:bg-input/30">
+                    <span className="flex items-center">
+                      {splits.slice(0, 3).map((s, i) => {
+                        const c = categories.find(x => x.id === s.categoryId)
+                        return (
+                          <span key={`${s.categoryId}-${i}`} className={cn("flex items-center", i > 0 && "-ml-1.5")}>
+                            {c
+                              ? <CategoryIcon icon={c.icon} color={c.color} size={13} />
+                              : <span className="size-3.5 rounded-full bg-muted" />}
+                          </span>
+                        )
+                      })}
+                    </span>
+                    <span className="truncate text-muted-foreground">{splits.length} kategori</span>
+                  </div>
+                ) : (
+                  <CategoryCascadeSelect
+                    categories={filteredCategories}
+                    value={form.categoryId ?? ''}
+                    onChange={v => patch({ categoryId: v })}
+                    error={!!errors.categoryId}
+                    onCreate={createCategory}
+                  />
+                )}
+                {errors.categoryId && <p className="text-xs text-destructive">{errors.categoryId}</p>}
+              </div>
             )}
           </div>
+
+          {/* Kategori bölme — oran barı (tam genişlik, ızgaranın hemen altında) */}
+          {splits && tab !== 'transfer' && (
+            <CategorySplitField
+              splits={splits}
+              onChange={setSplits}
+              total={splitTotal}
+              currency={(accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode}
+              categories={filteredCategories}
+              onCreateCategory={createCategory}
+              onAdd={addSplitRow}
+              onRemove={removeSplitRow}
+              error={errors.categorySplits}
+            />
+          )}
 
           {/* Date / Recurrence */}
           {isRecurring ? (

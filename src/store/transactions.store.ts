@@ -18,6 +18,7 @@ import { useWorkspaceStore } from './workspace.store'
 import { toBaseTry, fromBaseTry, baseAmount, baseSnapshot } from '@/lib/utils/fx'
 import { txTouchesAccount } from '@/lib/utils/calculations'
 import { splitMoney } from '@/lib/utils/money'
+import { splitsAreValid, splitsMatchAmount, primarySplitCategoryId, rescaleSplits } from '@/lib/utils/categorySplits'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 
 // Snapshot the base-currency (TRY) value at write time (S2/S3). Every creation
@@ -29,6 +30,22 @@ import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 function withBase(tx: Transaction): Transaction {
   const snap = baseSnapshot(tx.amount, tx.currency)
   return snap === null ? tx : { ...tx, amountTry: snap }
+}
+
+// Çoklu kategori değişmezini tek noktadan uygular: paylar geçerliyse (2+ pay,
+// hepsinin kategorisi dolu, toplam tutara tam eşit) `categoryId` EN BÜYÜK payla
+// damgalanır; geçersiz/tek paysa alan tamamen düşer ve işlem sıradan tek
+// kategorili satır olarak yaşar. Böylece "bölünmüş ama toplamı tutmayan" satır
+// hiçbir yazma yolundan içeri sızamaz (form dışından gelen import/refund dahil).
+function withSplits(tx: Transaction): Transaction {
+  const splits = tx.categorySplits
+  if (!splitsAreValid(splits, tx.amount)) {
+    if (splits === undefined) return tx
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { categorySplits: _drop, ...rest } = tx
+    return rest as Transaction
+  }
+  return { ...tx, categoryId: primarySplitCategoryId(splits) ?? tx.categoryId }
 }
 
 // Onay kapısı (bildirim merkezi): gelecek tarihli YENİ işlemler 'pending' doğar —
@@ -133,8 +150,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   },
 
   add: async (tx) => {
-    // Base-currency snapshot (S2/S3) + onay kapısı + durable write (C1).
-    const stamped = withApproval(withBase(tx))
+    // Base-currency snapshot (S2/S3) + onay kapısı + çoklu kategori değişmezi
+    // + durable write (C1).
+    const stamped = withSplits(withApproval(withBase(tx)))
     await localUpsert('transactions', stamped)
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
     const next = [stamped, ...get().transactions]
@@ -233,7 +251,13 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
       // Gelecek aylara düşen taksitler de onay kapısından geçer (pending doğar).
-      txs.push(withApproval(withBase({ ...base, amount: perInstallment[i], id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now })))
+      // Kategori payları toplam satın alma tutarına göre girilir; her taksit
+      // satırı kendi tutarına ölçeklenmiş payları taşır (toplamları o satırın
+      // tutarına eşit) — böylece kategori bazlı raporlar taksit taksit doğrudur.
+      const splits = base.categorySplits?.length
+        ? rescaleSplits(base.categorySplits, perInstallment[i])
+        : undefined
+      txs.push(withSplits(withApproval(withBase({ ...base, amount: perInstallment[i], categorySplits: splits, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now }))))
     }
     await localBulkUpsert('transactions', txs)
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
@@ -279,10 +303,21 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         installGroupId: groupId,
         updatedAt:      now,
       }
+      // Paylar toplam tutara göre gelir → her taksit kendi tutarına ölçeklenir
+      // (bkz. addInstallmentGroup). 'categorySplits' shared'da varsa ama boşsa
+      // bölme kaldırılmış demektir: alan açıkça null'lanır ki eski paylar kalmasın.
+      if ('categorySplits' in shared) {
+        const src = shared.categorySplits
+        rowFields.categorySplits = src?.length ? rescaleSplits(src, amounts[i]) : undefined
+      }
       if (i < existing.length) {
         const cur = existing[i]
-        const merged = withBase({ ...cur, ...rowFields } as Transaction)
-        const patch: Record<string, unknown> = { ...rowFields, amountTry: merged.amountTry ?? null }
+        const merged = withSplits(withBase({ ...cur, ...rowFields } as Transaction))
+        const patch: Record<string, unknown> = {
+          ...rowFields,
+          amountTry:  merged.amountTry ?? null,
+          categoryId: merged.categoryId ?? null,   // paylar değiştiyse baskın kategori de taşınır
+        }
         forward.push({ kind: 'patch', table: 'transactions', id: cur.id, patch })
         const rev: Record<string, unknown> = {}
         for (const k of Object.keys(patch)) rev[k] = (cur as unknown as Record<string, unknown>)[k] ?? null
@@ -290,13 +325,13 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         nextById.set(cur.id, merged)
       } else {
         // Yeni satır: ilk taksiti şablon al, onay kapısından yeniden geçir.
-        const row = withApproval(withBase({
+        const row = withSplits(withApproval(withBase({
           ...existing[0],
           ...rowFields,
           id:             crypto.randomUUID(),
           approvalStatus: undefined,
           createdAt:      now,
-        } as Transaction))
+        } as Transaction)))
         forward.push({ kind: 'upsert', table: 'transactions', entity: row })
         createdIds.push(row.id)
         nextById.set(row.id, row)
@@ -349,10 +384,37 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         clearBase = snap === null
       }
     }
+    // Çoklu kategori: patch payları YA DA tutarı değiştiriyorsa değişmezi
+    // yeniden kur. Tutar payları göndermeden değiştiyse (form dışı yollar)
+    // paylar mevcut oranlarıyla ölçeklenir; toplamı tutmayan bir bölünme
+    // hiçbir zaman kalıcı olmaz — geçersizse alan tamamen düşer.
+    let clearSplits = false
+    if ('categorySplits' in patch || 'amount' in patch) {
+      const cur = get().transactions.find(t => t.id === id)
+      if (cur) {
+        const merged = { ...cur, ...updated } as Transaction
+        let splits = merged.categorySplits
+        if (splits && splits.length > 1 && !('categorySplits' in patch) && !splitsMatchAmount(splits, merged.amount)) {
+          splits = rescaleSplits(splits, merged.amount)
+        }
+        if (splitsAreValid(splits, merged.amount)) {
+          updated.categorySplits = splits
+          updated.categoryId     = primarySplitCategoryId(splits)
+        } else if (cur.categorySplits !== undefined || 'categorySplits' in patch) {
+          // Satırda pay VARDI ya da patch açıkça pay gönderdi → temizleme
+          // niyeti açık null ile gider. `merged`e bakmak yetmez: patch
+          // `categorySplits: undefined` gönderdiğinde merged de undefined olur
+          // ve eski paylar sessizce yerinde kalırdı.
+          updated.categorySplits = undefined
+          clearSplits = true
+        }
+      }
+    }
     // Dexie/Supabase'e `undefined` yazmak alanı ATLAR (eski snapshot kalırdı) →
     // temizleme niyetini açık `null` ile gönder.
     const persisted: Record<string, unknown> = { ...updated }
-    if (clearBase) persisted.amountTry = null
+    if (clearBase)   persisted.amountTry     = null
+    if (clearSplits) persisted.categorySplits = null
     await localPatch('transactions', id, persisted)
     // NOT: Borç paidAmount mutabakatı burada YAPILMAZ — düzenleme akışının tek
     // sahibi TransactionFormModal'dır (borç değişimi/kaldırma dahil tüm dalları
@@ -388,6 +450,13 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       const fwd: Record<string, unknown> = { ...patch, updatedAt: now }
       const rev: Record<string, unknown> = { updatedAt: t.updatedAt }
       for (const k of keys) rev[k] = (t as unknown as Record<string, unknown>)[k] ?? null
+      // Toplu kategori ataması bölünmüş satırı TEK kategoriye indirger: paylar
+      // yeni kategoriyle çelişmesin diye temizlenir (geri alınabilir — eski
+      // paylar rev'e snapshot'lanır).
+      if ('categoryId' in patch && t.categorySplits?.length) {
+        fwd.categorySplits = null
+        rev.categorySplits = t.categorySplits
+      }
       if (addTags.length) {
         fwd.tags = [...new Set([...(t.tags ?? []), ...addTags])]
         rev.tags = t.tags ? [...t.tags] : null

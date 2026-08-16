@@ -5,6 +5,7 @@ import { useCategoryStore, useTransactionStore } from '@/store'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import { isFlowTx, sumByType } from '@/lib/utils/calculations'
 import { subMoney } from '@/lib/utils/money'
+import { expandByCategory } from '@/lib/utils/categorySplits'
 import type { Category, CategoryScope } from '@/types'
 
 /* ── Per-category aggregate stats ──────────────────────────────────── */
@@ -79,8 +80,10 @@ export function useCategoryData(scope: CategoryScope): CategoryData {
       return p?.parentId ? 2 : 1
     }
 
-    // flow transactions bucketed by category id
-    const flow = transactions.filter(t => t.categoryId && isFlowTx(t))
+    // flow transactions bucketed by category id — bölünmüş satırlar önce
+    // paylarına açılır, böylece kategori kartındaki tutar o kategoriye düşen
+    // payı gösterir (işlemin tamamını değil).
+    const flow = expandByCategory(transactions).filter(t => t.categoryId && isFlowTx(t))
     const byCat = new Map<string, typeof flow>()
     for (const t of flow) {
       const arr = byCat.get(t.categoryId!) ?? []
@@ -94,7 +97,8 @@ export function useCategoryData(scope: CategoryScope): CategoryData {
       const txs = flow.filter(t => ids.has(t.categoryId!))
       const { income, expense } = sumByType(txs)
       stats.set(c.id, {
-        txCount:    txs.length,
+        // Dilim değil gerçek işlem sayısı (bkz. expandByCategory).
+        txCount:    new Set(txs.map(t => t.id)).size,
         net:        subMoney(income, expense),
         expense,
         childCount: childrenOf(c.id).length,

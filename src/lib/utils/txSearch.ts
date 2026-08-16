@@ -28,7 +28,10 @@ export function makeTxSearchMatcher(
     t.amount.toFixed(2).replace('.', ',').includes(q) ||
     (t.familyMemberId != null && personIds.has(t.familyMemberId)) ||
     (t.recipientId    != null && personIds.has(t.recipientId)) ||
-    (t.categoryId     != null && categoryIds.has(t.categoryId)) ||
+    // Çoklu kategori: bölünmüş işlem paylarından HERHANGİ biri eşleşirse bulunur.
+    (t.categorySplits?.length
+      ? t.categorySplits.some(s => categoryIds.has(s.categoryId))
+      : (t.categoryId != null && categoryIds.has(t.categoryId))) ||
     accountIds.has(t.accountId) ||
     (t.toAccountId != null && accountIds.has(t.toAccountId))
 }
