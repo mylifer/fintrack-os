@@ -325,7 +325,7 @@ const RulelessRow = memo(function RulelessRow({
 
       {/* İkon — kolon değil, açıklamanın çapası */}
       <div className="flex items-center justify-center">
-        <TxIcon description={tx.description} />
+        <TxIcon description={tx.description} recipient={recipient} />
       </div>
 
       {/* Açıklama + durum rozetleri + etiketler */}

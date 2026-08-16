@@ -13,7 +13,7 @@ import { computeRunningBalances } from '@/lib/utils/runningBalance'
 import { splitFuture } from '@/components/transactions/views/shared'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Transaction, PersonRole, Category, Account, Person, ModalType, ModalPayload, InvestmentTransaction } from '@/types'
-import { PersonAvatar } from '@/components/people/PersonAvatar'
+import { PersonAvatar, recipientIconDomain } from '@/components/people/PersonAvatar'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { TagBadges } from '@/components/transactions/TagBadges'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -148,16 +148,25 @@ const colsFor = (selectable: boolean) => (selectable ? SELECT_COL + TABLE_COLS :
 
 type MetaItem = { text: string; href?: string }
 
-// İşlem ikonu yalnızca açıklamadan türetilir, sırasıyla:
+// İşlem ikonu önce açıklamadan türetilir, sırasıyla:
 //   1. küratörlü marka eşleşmesi (gömülü SVG logo)
 //   2. açıklamadaki marka deseninden bilinen domain → favicon
 //   3. çevrimiçi birebir isim çözümü (/api/brand-logo) → favicon
-//   4. baş harf monogramı
-export const TxIcon = memo(function TxIcon({ description }: { description: string }) {
+//   4. açıklamadan ikon ÇIKMIYORSA işlemin alıcısının ikonu (alıcı avatarıyla
+//      aynı kaynak: kayıtlı URL veya küratörlü marka listesi) → favicon
+//   5. baş harf monogramı
+export const TxIcon = memo(function TxIcon({
+  description,
+  recipient,
+}: {
+  description: string
+  recipient?: { name: string; url?: string }
+}) {
   const brand  = useMemo(() => detectBrand(description), [description])
   const known  = useMemo(() => (brand ? null : getBrandDomain(description)), [brand, description])
   const [resolved, setResolved] = useState<{ for: string; domain: string | null } | null>(null)
   const [failedDomain, setFailedDomain] = useState<string | null>(null)
+  const [recipientFailed, setRecipientFailed] = useState(false)
 
   useEffect(() => {
     // Küratörlü eşleşme varken dış servise sorulmaz; uzun serbest metinler de
@@ -169,21 +178,51 @@ export const TxIcon = memo(function TxIcon({ description }: { description: strin
     return () => { alive = false }
   }, [brand, known, description])
 
+  const recipientDomain = useMemo(
+    () => (recipient ? recipientIconDomain(recipient) : null),
+    [recipient],
+  )
+
   const domain = known ?? (resolved?.for === description ? resolved.domain : null)
   if (!brand && domain && failedDomain !== domain) {
+    return <Favicon domain={domain} alt={description} onError={() => setFailedDomain(domain)} />
+  }
+
+  // Açıklama tarafı ikon üretemedi. Çevrimiçi çözüm hâlâ uçuyorsa alıcıya
+  // geçilmez — yoksa satır önce alıcı ikonunu, saniyeler sonra ürün ikonunu
+  // gösterip titrer. Bekleyen tek durum: marka/known yok ve sonuç gelmedi.
+  const lookupPending =
+    !brand && !known &&
+    description.trim().length >= 2 && description.trim().length <= 64 &&
+    resolved?.for !== description
+
+  if (!lookupPending && recipientDomain && !recipientFailed) {
     return (
-      <span className="w-5 h-5 flex-shrink-0 inline-flex items-center justify-center rounded-md overflow-hidden bg-card border border-border p-[3px]">
-        <img
-          src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
-          alt={description}
-          className="max-w-full max-h-full object-contain"
-          onError={() => setFailedDomain(domain)}
-        />
-      </span>
+      <Favicon
+        domain={recipientDomain}
+        alt={recipient!.name}
+        onError={() => setRecipientFailed(true)}
+      />
     )
   }
+
   return <BrandLogo brand={brand} name={description} size={20} />
 })
+
+// 20px'lik favicon kutusu — ürün ve alıcı ikonu aynı çerçeveyi paylaşır ki
+// açıklamadan alıcıya düşen satırlarda hiza/ölçü değişmesin.
+function Favicon({ domain, alt, onError }: { domain: string; alt: string; onError: () => void }) {
+  return (
+    <span className="w-5 h-5 flex-shrink-0 inline-flex items-center justify-center rounded-md overflow-hidden bg-card border border-border p-[3px]">
+      <img
+        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+        alt={alt}
+        className="max-w-full max-h-full object-contain"
+        onError={onError}
+      />
+    </span>
+  )
+}
 
 // Günlük işlemleri kararlı bir sırayla dizer (kronolojik + yatırım rank + taksit).
 // Artık render başına değil, tek seferlik `rows` memo'sunda çağrılır.
@@ -349,7 +388,7 @@ const TableTxRow = memo(function TableTxRow({
             {formatDate(tx.date, 'd MMM')}
           </span>
         )}
-        <TxIcon description={tx.description} />
+        <TxIcon description={tx.description} recipient={recipient} />
         <div className="min-w-0 overflow-hidden">
           <div className="text-xs font-medium text-foreground truncate leading-none">
             {tx.description}
@@ -542,7 +581,7 @@ const CardTxRow = memo(function CardTxRow({
       projected ? 'opacity-60' : '',
     ].join(' ')}>
       {/* Icon — yalnızca açıklamadan */}
-      <TxIcon description={tx.description} />
+      <TxIcon description={tx.description} recipient={recipient} />
 
       {/* Description + meta */}
       <div className="flex-1 min-w-0">

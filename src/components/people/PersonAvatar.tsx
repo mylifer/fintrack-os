@@ -39,6 +39,16 @@ function extractDomain(url: string): string | null {
   }
 }
 
+/** Alıcının favicon domain'i — 2 kademe, isimden ASLA domain tahmin edilmez:
+ *    1. kullanıcının girdiği açık URL
+ *    2. küratörlü genel marka listesi
+ *  Hiçbiri tutmazsa null (çağıran taraf baş harf/monogram'a düşer). Avatar
+ *  dışında da kullanılır: işlem satırındaki ikon, açıklamadan çözülemediğinde
+ *  buraya düşer (bkz. TxIcon). */
+export function recipientIconDomain(person: { name: string; url?: string }): string | null {
+  return (person.url ? extractDomain(person.url) : null) ?? getBrandDomain(person.name)
+}
+
 interface Props {
   person: { name: string; role: 'family_member' | 'recipient'; url?: string }
   size?: 'xs' | 'sm' | 'md'
@@ -79,7 +89,7 @@ function RecipientAvatar({
   //   1. explicit URL the user provided
   //   2. a known public brand domain from the curated allow-list
   //   3. (below) initials fallback
-  const domain = (url ? extractDomain(url) : null) ?? getBrandDomain(name)
+  const domain = recipientIconDomain({ name, url })
 
   if (domain && !failed) {
     return (
