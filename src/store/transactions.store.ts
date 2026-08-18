@@ -118,6 +118,12 @@ interface TransactionState {
     shared: Partial<Transaction> & { date: string },
     amounts: number[],
   ) => Promise<void>
+  /** Var olan tekil işlemi taksitli gruba dönüştürür (satır 1. taksit olur, id korunur). */
+  convertToInstallmentGroup: (
+    id: string,
+    shared: Partial<Transaction> & { date: string },
+    amounts: number[],
+  ) => Promise<void>
   update: (id: string, patch: Partial<Transaction>) => Promise<void>
   updateMany: (
     ids: string[],
@@ -359,6 +365,98 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       for (const t of removedRows) await localPatch('transactions', t.id, { deleted_at: null })
       const reverted = get().transactions.filter(t => t.installGroupId !== groupId)
       reverted.push(...existing)
+      reverted.sort(txSortComparator)
+      set({ transactions: reverted })
+      useAccountStore.getState().recomputeBalances(reverted)
+    })
+  },
+
+  // Var olan TEKİL bir işlemi taksitli gruba DÖNÜŞTÜRÜR ("bunu sonradan
+  // taksitlendir"). Satırın kendisi 1. taksit olur — id KORUNUR, böylece
+  // senkron/geçmiş ve satıra bağlı kayıtlar (iade vb.) bozulmaz; kalan
+  // taksitler yeni satır olarak doğar (+1 ay, onay kapısından geçer →
+  // gelecek tarihliler 'pending'). `amounts` hedef taksit tutarlarıdır
+  // (toplamı satın alma tutarı), `shared.date` ilk taksitin tarihi.
+  // Tek undo ile geri alınır: satır eski haline döner, üretilenler tombstone.
+  // Mutabakat gerektiren satırlar (borç ödemesi, alanlar arası transfer bacağı,
+  // iade, sistem kaydı) ve negatif tutarlar bu yoldan GEÇMEZ — değişmez burada
+  // da uygulanır ki form dışı çağrılar da sızdırmasın.
+  convertToInstallmentGroup: async (id, shared, amounts) => {
+    const count = amounts.length
+    if (count < 2) return
+    const cur = get().transactions.find(t => t.id === id)
+    if (!cur || cur.isInstallment || cur.installGroupId) return
+    if (cur.debtId || cur.workspaceTransferId || cur.systemKind || cur.refundOfId) return
+    if (cur.amount <= 0) return
+    const now = new Date().toISOString()
+    const groupId = crypto.randomUUID()
+
+    const forward: BatchOp[] = []
+    const nextById = new Map<string, Transaction>()
+    const createdIds: string[] = []
+    const headUndo: Record<string, unknown> = {}
+
+    for (let i = 0; i < count; i++) {
+      const date = format(addMonths(parseISO(shared.date), i), 'yyyy-MM-dd')
+      const rowFields: Partial<Transaction> = {
+        ...shared,
+        amount:         amounts[i],
+        date,
+        isInstallment:  true,
+        installTotal:   count,
+        installIndex:   i + 1,
+        installGroupId: groupId,
+        updatedAt:      now,
+      }
+      // Paylar TOPLAM tutara göre gelir → her taksit kendi tutarına ölçeklenir
+      // (bkz. addInstallmentGroup); boş gelirse bölme kaldırılmış demektir.
+      if ('categorySplits' in shared) {
+        const src = shared.categorySplits
+        rowFields.categorySplits = src?.length ? rescaleSplits(src, amounts[i]) : undefined
+      }
+      if (i === 0) {
+        const merged = withSplits(withBase({ ...cur, ...rowFields } as Transaction))
+        const patch: Record<string, unknown> = {
+          ...rowFields,
+          amountTry:      merged.amountTry ?? null,
+          categoryId:     merged.categoryId ?? null,
+          categorySplits: merged.categorySplits ?? null,
+        }
+        for (const k of Object.keys(patch)) headUndo[k] = (cur as unknown as Record<string, unknown>)[k] ?? null
+        forward.push({ kind: 'patch', table: 'transactions', id: cur.id, patch })
+        nextById.set(cur.id, merged)
+      } else {
+        // Yeni taksit: dönüştürülen satır şablon, onay durumu sıfırlanır ki
+        // kapı yeniden karar versin (gelecek tarihli taksit 'pending' doğar).
+        const row = withSplits(withApproval(withBase({
+          ...cur,
+          ...rowFields,
+          id:             crypto.randomUUID(),
+          approvalStatus: undefined,
+          approvedAt:     undefined,
+          createdAt:      now,
+        } as Transaction)))
+        forward.push({ kind: 'upsert', table: 'transactions', entity: row })
+        createdIds.push(row.id)
+        nextById.set(row.id, row)
+      }
+    }
+
+    await localBatch(forward)
+
+    const next = get().transactions.map(t => nextById.get(t.id) ?? t)
+    for (const cid of createdIds) if (!next.some(t => t.id === cid)) next.push(nextById.get(cid)!)
+    next.sort(txSortComparator)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
+
+    useUndoStore.getState().pushUndo('İşlem taksitlendirildi', async () => {
+      await localBatch([{ kind: 'patch', table: 'transactions', id: cur.id, patch: headUndo }])
+      if (createdIds.length) await softDeleteMany('transactions', createdIds)
+      const createdSet = new Set(createdIds)
+      const reverted = get().transactions
+        .filter(t => !createdSet.has(t.id))
+        .map(t => t.id === cur.id ? cur : t)
       reverted.sort(txSortComparator)
       set({ transactions: reverted })
       useAccountStore.getState().recomputeBalances(reverted)

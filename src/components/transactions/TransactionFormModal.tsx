@@ -421,6 +421,7 @@ export function TransactionFormModal() {
   const addTx        = useTransactionStore(s => s.add)
   const addGroup     = useTransactionStore(s => s.addInstallmentGroup)
   const updateGroup  = useTransactionStore(s => s.updateInstallmentGroup)
+  const convertGroup = useTransactionStore(s => s.convertToInstallmentGroup)
   const updateTx     = useTransactionStore(s => s.update)
   const allPeople    = usePeopleStore(s => s.people)
   const activeDebts  = useDebtStore(useShallow(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe')))
@@ -879,6 +880,26 @@ export function TransactionFormModal() {
         recipientId:    formData.recipientId ?? null,
         date:           form.date,
       }, amounts)
+    } else if (editingTx && convertibleTx && form.isInstallment && installments > 1) {
+      // Sonradan taksitlendirme: girilen tutar TOPLAM satın almadır, satırın
+      // kendisi 1. taksit olur, kalan taksitler yeni satır olarak doğar.
+      const total   = parseCurrencyInput(amountStr)
+      const rows    = manualAmounts ?? splitMoney(total, installments).map(toAmountStr)
+      const amounts = rows.map(s => parseCurrencyInput(s))
+      await convertGroup(editingTx.id, {
+        type:           tab as TransactionType,
+        currency,
+        accountId:      form.accountId,
+        // Paylar toplam tutara göre girilir; store her taksite ölçekler.
+        categorySplits: txSplits,
+        categoryId:     splitCategoryId ?? formData.categoryId ?? undefined,
+        description:    form.description.trim(),
+        notes:          formData.notes || undefined,
+        tags:           cleanTags.length ? cleanTags : undefined,
+        familyMemberId: formData.familyMemberId ?? null,
+        recipientId:    formData.recipientId ?? null,
+        date:           form.date,
+      }, amounts)
     } else if (editingTx && isPlannedEdit) {
       // Materialize: recurring approval'la aynı felsefe — bu düzenleme onay
       // anıdır, satır 'approved' doğar (approveRecurring ile tutarlı).
@@ -902,6 +923,9 @@ export function TransactionFormModal() {
     } else if (editingTx) {
       await updateTx(editingTx.id, {
         ...formData, type: tab as TransactionType, amount, currency, updatedAt: now,
+        // Taksit bayrağı bu dalda DEĞİŞMEZ: gruba dönüşüm yukarıdaki dalda
+        // olur, burada `isInstallment: true` yazmak grupsuz sahte taksit üretir.
+        isInstallment:  editingTx.isInstallment,
         categorySplits: txSplits,
         categoryId:     splitCategoryId ?? formData.categoryId ?? undefined,
         toAccountId:    formData.toAccountId    || undefined,
@@ -1092,7 +1116,15 @@ export function TransactionFormModal() {
   // yüzden tek bir segmentte toplanır. Seçenek kümesi duruma göre daralır:
   // taksit yalnızca yeni kayıtta ya da taksitli bir grup düzenlenirken anlamlı.
   const canSubscription = !isRecurring && tab === 'expense'
-  const canInstallment  = canSubscription && !sessionEditId && (!isEdit || installGroup.length > 0)
+  // Var olan tekil bir işlem SONRADAN taksitlendirilebilir: satır 1. taksit
+  // olur (id korunur), kalan taksitler üretilir. Mutabakat gerektiren bağları
+  // olan satırlar dışarıda kalır — borç ödemesi, çalışma alanları arası
+  // transfer bacağı, iade (negatif tutar / refundOfId) ve sistem kayıtları.
+  const convertibleTx = !!editingTx && !isPlannedEdit && !editingTx.isInstallment
+    && !editingTx.installGroupId && !editingTx.debtId && !editingTx.workspaceTransferId
+    && !editingTx.systemKind && !editingTx.refundOfId && editingTx.amount > 0
+  const canInstallment  = canSubscription && !sessionEditId
+    && (!isEdit || installGroup.length > 0 || convertibleTx)
   // Taksitli grup düzenlenirken taksit KAPATILAMAZ: grubu tekil işleme
   // dönüştürme mutabakatı bu modalda yürütülmüyor (eskiden de checkbox
   // yerine sabit başlık gösteriliyordu). Segment kilitli görünür.
@@ -1116,6 +1148,8 @@ export function TransactionFormModal() {
     if (installmentLocked || next === payType) return
     if (next === 'installment') {
       patch({ isInstallment: true })
+      // Taksit anlamlı olsun diye en az 2'ye çekilir (tekil işlemde sayaç 1'dir).
+      setInstallments(n => Math.max(2, n))
     } else if (form.isInstallment) {
       patch({ isInstallment: false })
       setManualAmounts(null)
@@ -1580,11 +1614,15 @@ export function TransactionFormModal() {
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-medium">Ödeme tipi</Label>
-                {installmentLocked && (
+                {installmentLocked ? (
                   <span className="text-xs text-muted-foreground">
                     Değişiklik tüm taksitlere uygulanır
                   </span>
-                )}
+                ) : convertibleTx && form.isInstallment ? (
+                  <span className="text-xs text-muted-foreground">
+                    Bu işlem 1. taksit olur
+                  </span>
+                ) : null}
               </div>
 
               <div className={cn(
