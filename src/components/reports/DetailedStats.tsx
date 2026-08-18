@@ -19,7 +19,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { isInvestmentPrincipalTx, calcNetWorth, excludeFuture } from '@/lib/utils/calculations'
+import { isPrincipalMoveTx, calcNetWorth, excludeFuture } from '@/lib/utils/calculations'
 import { computeHoldings, getAssetPrice } from '@/store/investment.store'
 import { today } from '@/lib/utils/date'
 import { baseAmount } from '@/lib/utils/fx'
@@ -155,8 +155,8 @@ export function DetailedStats({
     )
     // Yatırım anapara satırları (… Alımı/… Satışı) gelir/gider ortalamalarına
     // girmez — dashboard/rapor KPI kartlarıyla aynı kapsam (yalnızca gerçek K/Z).
-    const expenseTotal = sumBy(analyticTxs.filter(t => t.type === 'expense' && !isInvestmentPrincipalTx(t)), baseAmount)
-    const incomeTotal  = sumBy(analyticTxs.filter(t => t.type === 'income'  && !isInvestmentPrincipalTx(t)), baseAmount)
+    const expenseTotal = sumBy(analyticTxs.filter(t => t.type === 'expense' && !isPrincipalMoveTx(t)), baseAmount)
+    const incomeTotal  = sumBy(analyticTxs.filter(t => t.type === 'income'  && !isPrincipalMoveTx(t)), baseAmount)
 
     /* Real averages over the elapsed period — total divided by how many
        months/years the period actually spans (floored at 1 so a short

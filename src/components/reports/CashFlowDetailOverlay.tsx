@@ -7,7 +7,7 @@ import { X, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { formatCurrency } from '@/lib/utils/currency'
 import { isInRange } from '@/lib/utils/date'
-import { isInvestmentPrincipalTx } from '@/lib/utils/calculations'
+import { isPrincipalMoveTx } from '@/lib/utils/calculations'
 import { baseAmount } from '@/lib/utils/fx'
 import { sumBy } from '@/lib/utils/money'
 import type { Transaction } from '@/types'
@@ -73,7 +73,7 @@ export function CashFlowDetailOverlay({ open, from, to, label, transactions, onC
   // barı bunları saymadığından drill-down listesi ve toplamı da saymamalı.
   const inRange = useMemo(
     () => transactions.filter(t =>
-      (t.type === 'income' || t.type === 'expense') && isInRange(t.date, from, to) && !isInvestmentPrincipalTx(t),
+      (t.type === 'income' || t.type === 'expense') && isInRange(t.date, from, to) && !isPrincipalMoveTx(t),
     ),
     [transactions, from, to],
   )

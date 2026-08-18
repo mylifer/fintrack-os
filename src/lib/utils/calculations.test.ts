@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { calcBudgetSpent, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isInvestmentPrincipalTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
+import { calcBudgetSpent, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -25,6 +25,47 @@ describe('calcPeriodFlow (S2/S3)', () => {
     expect(r.income).toBe(2725)
     expect(r.expense).toBe(200)
     expect(r.net).toBe(2525)
+  })
+})
+
+/* Borç anaparası: borç kurulurken paranın hesaba girişi/hesaptan çıkışı. Bakiyeyi
+   oynatır (income/expense satırı) ama gelir/gider DEĞİLDİR — akıştan dışlanır. */
+describe('borç anaparası akıştan hariç', () => {
+  it('isDebtPrincipalTx: yalnız icon\'lu "… borç girişi"/"… verilen borç" satırları', () => {
+    expect(isDebtPrincipalTx(tx({ icon: '🏦', description: 'Araba Kredisi — borç girişi' }))).toBe(true)
+    expect(isDebtPrincipalTx(tx({ icon: '🤝', description: "Ahmet'e Borç — verilen borç" }))).toBe(true)
+    // borç ÖDEMESİ anapara değil — kendi akış kuralı transfer olmasından gelir
+    expect(isDebtPrincipalTx(tx({ icon: '🏦', description: 'Araba Kredisi ödemesi' }))).toBe(false)
+    // icon yoksa (kullanıcının elle yazdığı benzer açıklama) eşleşmez
+    expect(isDebtPrincipalTx(tx({ description: 'Ahmete verilen borç' }))).toBe(false)
+  })
+
+  it('isPrincipalMoveTx: yatırım VE borç anaparasını birlikte kapsar', () => {
+    expect(isPrincipalMoveTx(tx({ icon: 'F', description: '10 AKB Alımı' }))).toBe(true)
+    expect(isPrincipalMoveTx(tx({ icon: '🏦', description: 'Kredi — borç girişi' }))).toBe(true)
+    expect(isPrincipalMoveTx(tx({ description: 'Maaş' }))).toBe(false)
+  })
+
+  it('calcPeriodFlow: anapara girişi gelire, çıkışı gidere YAZILMAZ', () => {
+    const txs = [
+      tx({ type: 'income',  amount: 1000, amountTry: 1000, description: 'Maaş' }),
+      tx({ type: 'expense', amount: 300,  amountTry: 300,  description: 'Market' }),
+      tx({ type: 'income',  amount: 120000, amountTry: 120000, icon: '🏦', description: 'Kredi — borç girişi' }),
+      tx({ type: 'expense', amount: 5000,   amountTry: 5000,   icon: '🤝', description: "Ahmet'e Borç — verilen borç" }),
+    ]
+    const r = calcPeriodFlow(txs, '2026-01-01', '2026-01-31')
+    expect(r.income).toBe(1000)
+    expect(r.expense).toBe(300)
+    expect(r.net).toBe(700)
+  })
+
+  it('bakiyeyi ise GERÇEKTEN oynatır (akış dışı olmak bakiyeyi etkilemez)', () => {
+    const account = { id: 'a', currency: 'TRY' as const }
+    const effect = computeTransactionEffect(account, [
+      tx({ type: 'income',  amount: 120000, icon: '🏦', description: 'Kredi — borç girişi' }),
+      tx({ type: 'expense', amount: 5000,   icon: '🤝', description: "Ahmet'e Borç — verilen borç" }),
+    ])
+    expect(effect).toBe(115000)
   })
 })
 

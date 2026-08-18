@@ -138,6 +138,15 @@ function nextInstallmentAmount(debt: DebtWithRemaining): number {
   return next ? next.amount : Math.max(debt.remainingAmount, 0)
 }
 
+/* Anaparanın işlem tarihi. Borcun "Başlangıç (ilk taksit)" tarihi İLERİDE
+   olabilir (kredide ilk taksit genelde para girişinden ~1 ay sonra); ileri
+   tarihli satır onay kapısına düşüp bakiyeye HİÇ girmez, oysa para bugün
+   hesapta. Geçmiş bir başlangıç ise (eski borç kaydı) o tarih korunur. */
+function principalDate(startDate: string): string {
+  const t = today()
+  return startDate && startDate.slice(0, 10) <= t ? startDate : t
+}
+
 function emptyPayForm() {
   return { amountStr: '', accountId: '', date: today() }
 }
@@ -288,11 +297,15 @@ export default function DebtsPage() {
   /* Borç anaparasının hesaba GİRİŞİ (borç aldım) / hesaptan ÇIKIŞI (borç
      verdim) — opsiyonel, yalnızca borç ilk kez eklenirken yazılır.
 
-     Şekil olarak borç ödemesinin (transfer + yalnız KAYNAK hesap) aynadaki
-     hali: yalnız HEDEF hesabı olan bir transfer, yani para defterin dışından
-     hesaba girer. 'transfer' seçimi bilinçli — alınan borç gelir, verilen borç
-     gider DEĞİLDİR; bu yüzden hiçbir akış toplamına (gelir/gider/net/bütçe)
-     girmez, tıpkı borç ödemesi gibi.
+     income/expense satırıdır: bakiyeyi gerçekten oynatır. Ama gerçek gelir/gider
+     DEĞİLDİR — akış toplamlarından (gelir/gider/net) isDebtPrincipalTx ile
+     dışlanır; yatırım anaparasıyla (… Alımı/… Satışı) aynı konvansiyon: işaret
+     `icon` + açıklama son eki, kullanıcı satırları icon taşımaz. Bu yüzden
+     açıklama son eki ("… borç girişi" / "… verilen borç") KORUNMALI.
+
+     Neden transfer değil: transferin iki bacağı da gerçek bir hesap ister
+     (accountId Supabase'de uuid) — anaparanın karşı tarafı bir hesap değil,
+     borcun kendisidir.
 
      debtId TAŞIMAZ: debtId'li her satır silme/düzenleme akışlarında bir ÖDEME
      sayılır (revertPayment → paidAmount + taksit düşer). Anapara bir ödeme
@@ -304,14 +317,14 @@ export default function DebtsPage() {
     const now = new Date().toISOString()
     await addTx({
       id:            crypto.randomUUID(),
-      type:          'transfer',
+      type:          inbound ? 'income' : 'expense',
       amount,
       currency:      account.currency,
-      accountId:     inbound ? '' : account.id,
-      toAccountId:   inbound ? account.id : undefined,
+      accountId:     account.id,
+      icon:          inbound ? '🏦' : '🤝',
       description:   inbound ? `${debt.name} — borç girişi` : `${debt.name} — verilen borç`,
       isInstallment: false,
-      date:          debt.startDate || today(),
+      date:          principalDate(debt.startDate),
       createdAt:     now,
       updatedAt:     now,
     })
@@ -471,8 +484,8 @@ export default function DebtsPage() {
     const yon = form.direction === 'owe'
       ? `${amount} ${account.name} hesabına giriş`
       : `${amount} ${account.name} hesabından çıkış`
-    const tarih = formatDate(form.startDate || today(), 'd MMM yyyy')
-    return `${yon} olarak ${tarih} tarihiyle yazılır. Transfer olarak işlenir — gelir/gider toplamlarına girmez.`
+    const tarih = formatDate(principalDate(form.startDate), 'd MMM yyyy')
+    return `${yon} olarak ${tarih} tarihiyle yazılır. Gelir/gider toplamlarına girmez — yalnızca hesap bakiyesini değiştirir.`
   })()
 
   return (

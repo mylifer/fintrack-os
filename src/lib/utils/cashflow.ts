@@ -5,7 +5,7 @@ import {
   startOfYear, endOfYear, addYears,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { isInvestmentPrincipalTx } from './calculations'
+import { isPrincipalMoveTx } from './calculations'
 import { baseAmount } from './fx'
 import { sumBy } from './money'
 import type { Transaction, PeriodType } from '@/types'
@@ -28,7 +28,7 @@ export type CashFlowPoint = {
 // yoksa çubuklar KPI'dan az toplar (bar↔KPI tutarsızlığı).
 function flowSum(transactions: Transaction[], type: 'income' | 'expense', pFrom: string, pTo: string): number {
   return sumBy(
-    transactions.filter(t => t.type === type && t.date.slice(0, 10) >= pFrom && t.date.slice(0, 10) <= pTo && !isInvestmentPrincipalTx(t)),
+    transactions.filter(t => t.type === type && t.date.slice(0, 10) >= pFrom && t.date.slice(0, 10) <= pTo && !isPrincipalMoveTx(t)),
     baseAmount,
   )
 }

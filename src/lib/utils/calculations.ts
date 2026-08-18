@@ -246,6 +246,35 @@ export function isInvestmentPrincipalTx(t: Pick<Transaction, 'icon' | 'descripti
   return !!t.icon && (t.description.endsWith('Alımı') || t.description.endsWith('Satışı'))
 }
 
+// Borç ANAPARASI — borç kurulurken paranın hesaba girişi ("… borç girişi") veya
+// hesaptan çıkışı ("… verilen borç"). Bunlar gerçek gelir/gider DEĞİL: alınan
+// borç gelir değildir (karşılığında bir yükümlülük doğar), verilen borç gider
+// değildir (karşılığında bir alacak doğar). Akış (gelir/gider/net) toplamlarından
+// dışlanır; yatırım anaparasıyla AYNI mantık ve aynı işaret konvansiyonu
+// (icon + açıklama son eki — kullanıcı satırları icon taşımaz).
+//
+// DİKKAT: bakiyeyi ve net-varlık HAM yürüyüşünü GERÇEKTEN oynatırlar (para
+// hesaba girer/çıkar) — dışlama yalnızca akış fonksiyonlarında yapılır.
+export const DEBT_PRINCIPAL_IN_SUFFIX  = 'borç girişi'
+export const DEBT_PRINCIPAL_OUT_SUFFIX = 'verilen borç'
+
+export function isDebtPrincipalTx(t: Pick<Transaction, 'icon' | 'description'>): boolean {
+  return !!t.icon && (
+    t.description.endsWith(DEBT_PRINCIPAL_IN_SUFFIX) ||
+    t.description.endsWith(DEBT_PRINCIPAL_OUT_SUFFIX)
+  )
+}
+
+/** Anapara hareketi — yatırım özsermayesi VEYA borç anaparası. Gerçek
+ *  gelir/gider olmayan, yalnızca paranın yer değiştirdiği defter satırları:
+ *  akış (gelir/gider/net) toplamlarından dışlanır, bakiye/net-varlık HAM
+ *  yürüyüşüne dahildir. Akışı isFlowTx üzerinden hesaplamayan yüzeyler
+ *  (nakit akışı, DetailedStats) bu tek yüklemi paylaşır ki dışlama kuralı
+ *  iki yerde ayrışmasın. */
+export function isPrincipalMoveTx(t: Pick<Transaction, 'icon' | 'description'>): boolean {
+  return isInvestmentPrincipalTx(t) || isDebtPrincipalTx(t)
+}
+
 // Gerçekleşen yatırım kâr/zararı — satış anında yazılan "… Satış Kârı" (gelir) ve
 // "… Satış Zararı" (gider) defter satırları. Bunlar GERÇEK nakit gelir/giderdir ve
 // normalde akışa (isFlowTx) dahildir. Ancak dashboard "Fon getirileri dahil"
@@ -267,13 +296,16 @@ function sumFlow(inRange: Transaction[]): { income: number; expense: number; net
 
 // A transaction that counts toward income/expense/net FLOW totals: posted
 // (approved + arrived, isPosted), not a balance-reconciliation ghost, and not
-// an investment principal move (… Alımı/… Satışı). This is the SINGLE flow
+// an investment principal move (… Alımı/… Satışı) and not a debt principal
+// move (… borç girişi/… verilen borç). This is the SINGLE flow
 // predicate — calcPeriodFlow/calcMonthlyFlow AND every surface that sums flow
 // over an already-scoped slice (işlem özet çubuğu, kişi/etiket/kategori detay
 // toplamları) share it, so no two widgets can drift apart on which rows count.
 // GERÇEKLEŞEN K/Z (… Satış Kârı/Zararı) burada DAHİLDİR — gerçek gelir/giderdir.
 export function isFlowTx(t: Transaction, asOf: string = today()): boolean {
-  return isPosted(t, asOf) && !isReconciliation(t) && !isInvestmentPrincipalTx(t)
+  return isPosted(t, asOf)
+    && !isReconciliation(t)
+    && !isPrincipalMoveTx(t)
 }
 
 // Flow metrics (income/expense/net) exclude balance-reconciliation ("ghost")

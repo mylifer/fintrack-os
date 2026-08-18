@@ -1,9 +1,10 @@
 'use client'
 
 import { db } from '@/lib/db'
-import { localBatch, type BatchOp } from './engine'
+import { localBatch, localUpsert, type BatchOp } from './engine'
 import { isLive } from './tombstone'
-import type { Category, OutboxEntry } from '@/types'
+import { today } from '@/lib/utils/date'
+import type { Category, OutboxEntry, Transaction } from '@/types'
 
 /* ── Takılı kategori onarımı ────────────────────────────────────────────────
    Senaryo: yerel Dexie'de, bulutta BAŞKA bir kullanıcıya ait ID taşıyan
@@ -99,6 +100,87 @@ export async function repairStuckCategories(): Promise<RepairResult> {
     await db.categories.delete(e.entityId)
     await db._outbox.delete(e.id)
     if (!idMap.has(e.entityId)) result.cleared++
+  }
+
+  return result
+}
+
+/* ── Geçersiz hesap referanslı işlem onarımı ─────────────────────────────────
+   Senaryo: borç anaparası (borç eklenirken paranın hesaba girişi) bir dönem
+   "yalnız hedef hesabı olan transfer" olarak yazılıyordu — kaynak `accountId`
+   boş string. Supabase'de accountId bir uuid kolonu olduğundan push kalıcı
+   olarak "invalid input syntax for type uuid" ile reddedilir: satır yerelde
+   duruyor, buluta hiç gitmiyor, "Yeniden dene" de çözmüyor (hata deterministik).
+
+   Onarım (veri kaybı YOK): satır bugünkü geçerli şekle çevrilir — hedef hesaba
+   yazılan bir gelir satırı (icon işareti akış toplamlarından dışlanmasını
+   sürdürür, bkz. isDebtPrincipalTx). Böylece kullanıcının kastettiği para
+   girişi korunur ve kuyruk temizlenir. Hedef hesap da yoksa satır tamamen
+   kullanılamazdır (hangi hesaba yazılacağı bilinemez) ve YALNIZCA yerelden
+   kaldırılır — buluta hiç ulaşmadığı için tombstone'lanacak bir şey yok. */
+
+export interface AccountRefRepairResult {
+  fixed: number    // geçerli şekle çevrildi (para girişi korundu)
+  redated: number  // ileri tarihliydi → bugüne çekildi (aşağıdaki nota bakın)
+  dropped: number  // hedefi bilinemeyen satır yerelden kaldırıldı
+  cleared: number  // satır zaten yoktu; yalnızca kuyruk temizlendi
+}
+
+function hasInvalidAccountRef(e: OutboxEntry): boolean {
+  if (e.table !== 'transactions') return false
+  const acc = e.snapshot.accountId
+  return acc === '' || acc === null || acc === undefined
+}
+
+export async function repairInvalidAccountRefs(): Promise<AccountRefRepairResult> {
+  const result: AccountRefRepairResult = { fixed: 0, redated: 0, dropped: 0, cleared: 0 }
+
+  const stuck = (await db._outbox.toArray()).filter(hasInvalidAccountRef)
+  if (stuck.length === 0) return result
+
+  for (const e of stuck) {
+    const row = (await db.transactions.get(e.entityId)) as Transaction | undefined
+    if (!row) {
+      await db._outbox.delete(e.id)
+      result.cleared++
+      continue
+    }
+
+    if (row.toAccountId) {
+      // Gelen bacak neyse o hesabın geliri olur; transfer bacağı düşer.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { toAccountId: _drop, ...rest } = row
+      // Tarih: bu satırlar borcun "ilk taksit" tarihiyle yazılıyordu; kredide o
+      // tarih genelde İLERİDE olur ve ileri tarihli satır onay kapısında bekler,
+      // yani para hesaba HİÇ girmez — oysa satırın tüm amacı "para zaten
+      // hesapta". İleri tarihliyse bugüne çekilir (sonuçta raporlanır: sessiz
+      // veri hareketi yok).
+      const t = today()
+      const redate = row.date.slice(0, 10) > t
+      if (redate) result.redated++
+      const fixedRow: Transaction = {
+        ...rest,
+        type:      'income',
+        accountId: row.toAccountId,
+        // Akış dışı işareti: eski satırlar icon taşımıyordu (o zaman transfer
+        // oldukları için akışa hiç girmiyorlardı) — gelire dönüşürken şart.
+        icon:      row.icon ?? '🏦',
+        date:      redate ? t : row.date,
+        // Onay kapısı: ileri tarihli doğduğu için 'pending' damgalanmış olabilir;
+        // tarih bugüne çekilince beklemesi için bir sebep kalmaz.
+        approvalStatus: redate ? 'approved' : row.approvalStatus,
+        approvedAt:     redate ? new Date().toISOString() : row.approvedAt,
+        updatedAt: new Date().toISOString(),
+      }
+      // localUpsert kuyruk anlık görüntüsünü DEĞİŞTİRİR ve deneme sayacını
+      // sıfırlar → aynı girdi artık geçerli payload ile gider.
+      await localUpsert('transactions', fixedRow)
+      result.fixed++
+    } else {
+      await db.transactions.delete(row.id)
+      await db._outbox.delete(e.id)
+      result.dropped++
+    }
   }
 
   return result

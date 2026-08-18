@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useSyncStatusStore } from '@/store/sync-status.store'
 import { retryDeadLetters } from '@/lib/sync/engine'
-import { repairStuckCategories } from '@/lib/sync/repair'
+import { repairStuckCategories, repairInvalidAccountRefs } from '@/lib/sync/repair'
+import { reloadAllStores } from '@/lib/reload-stores'
 
 /* ── Senkron sağlık bandı ────────────────────────────────────────────────
    Buluta yazılamayan kayıt varken kullanıcıyı SESSİZCE bırakmayız: dead-letter
@@ -20,16 +21,22 @@ export function SyncStatusBanner() {
   const lastError     = useSyncStatusStore(s => s.lastError)
   const pendingSince  = useSyncStatusStore(s => s.pendingSince)
   const notice        = useSyncStatusStore(s => s.notice)
+  const notify        = useSyncStatusStore(s => s.notify)
   const dismissNotice = useSyncStatusStore(s => s.dismissNotice)
 
   const [retrying, setRetrying]   = useState(false)
   const [repairing, setRepairing] = useState(false)
 
-  // RLS'e takılan kayıtlar "Yeniden dene" ile çözülmez (hata deterministik) —
-  // onarım butonu gösterilir (bkz. sync/repair.ts). retryDeadLetters her
-  // açılışta sayaçları sıfırladığı için stuck sayısına DEĞİL, hata mesajına
-  // bakılır; yoksa buton dakikalarca görünmez kalırdı.
-  const repairable = !!lastError?.includes('row-level security')
+  // Kalıcı (deterministik) push hataları "Yeniden dene" ile çözülmez; onarım
+  // butonu gösterilir (bkz. sync/repair.ts). retryDeadLetters her açılışta
+  // sayaçları sıfırladığı için stuck sayısına DEĞİL, hata mesajına bakılır;
+  // yoksa buton dakikalarca görünmez kalırdı.
+  //   • row-level security → başka hesabın kimliğini taşıyan kategori satırı
+  //   • invalid input syntax for type uuid → geçersiz hesap referanslı işlem
+  const repairable = !!lastError && (
+    lastError.includes('row-level security') ||
+    lastError.includes('invalid input syntax for type uuid')
+  )
 
   // Kuyruk dolu→boş/boş→dolu geçişinde overdue'yu render sırasında sıfırla
   // (resmî "derive state during render" kalıbı); eşik aşımını efekt yalnızca
@@ -65,12 +72,30 @@ export function SyncStatusBanner() {
   async function handleRepair() {
     setRepairing(true)
     try {
-      const r = await repairStuckCategories()
-      console.info('[sync:repair]', r)
+      const cats = await repairStuckCategories()
+      const accs = await repairInvalidAccountRefs()
+      console.info('[sync:repair]', { ...cats, ...accs })
       await retryDeadLetters()
-      // Onarım kimlikleri değiştirir (remap/rekey) — bellekteki store'lar
-      // bayatlar; en güvenlisi taze yükleme.
-      window.location.reload()
+
+      // Sessiz veri hareketi yasağı: onarımın ne yaptığını kullanıcı görmeli.
+      const parts: string[] = []
+      const catTotal = cats.remapped + cats.rekeyed + cats.cleared
+      if (catTotal)      parts.push(`${catTotal} kategori kaydı hesabına taşındı`)
+      if (accs.fixed)    parts.push(`${accs.fixed} borç anaparası işlemi doğru hesaba bağlandı`)
+      if (accs.redated)  parts.push(`${accs.redated} tanesinin tarihi bugüne çekildi (ileri tarihliyken bakiyeye girmiyordu)`)
+      if (accs.dropped)  parts.push(`${accs.dropped} kullanılamaz satır yerelden kaldırıldı`)
+      if (parts.length) notify(`Onarım: ${parts.join(', ')}.`)
+
+      // Kategori onarımı KİMLİK değiştirir (remap/rekey) → bellekteki her şey
+      // bayat, en güvenlisi tam yeniden yükleme. Yalnızca işlem satırı
+      // onarıldıysa store'ları tazelemek yeterli; böylece yukarıdaki onarım
+      // özeti de ekranda kalır.
+      if (cats.remapped || cats.rekeyed) {
+        window.location.reload()
+      } else {
+        await reloadAllStores()
+        setRepairing(false)
+      }
     } catch (err) {
       console.error('[sync:repair]', err)
       setRepairing(false)
@@ -145,7 +170,7 @@ export function SyncStatusBanner() {
               onClick={handleRepair}
               disabled={retrying || repairing}
               className="px-2.5 py-1 rounded-lg text-xs font-semibold border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
-              title="Takılan kategorileri hesabına taşır: aynı isimli kategorin varsa işlemler ona bağlanır, yoksa kategori yeni kimlikle kopyalanır. Veri silinmez."
+              title="Buluta gidemeyen kayıtları geçerli hale getirir: takılan kategoriler hesabına taşınır, geçersiz hesap referanslı işlemler doğru hesaba bağlanır. Veri silinmez."
             >
               {repairing ? 'Onarılıyor…' : 'Onar'}
             </button>
