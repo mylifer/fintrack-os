@@ -548,18 +548,29 @@ export function TransactionFormModal() {
   const onSelectOpen = (open: boolean) => { selectOpenRef.current = open }
 
   // Autocomplete suggestions
+  // Aynı açıklamadan birden çok satır varsa "SON" olan kazanır ve son olan,
+  // en son KAYDEDİLEN/DÜZENLENEN satırdır — işlem tarihi en ileri olan değil.
+  // Tarihe bakmak yanlış alan dolduruyordu: geriye tarihlenmiş yeni bir kayıt
+  // (bugün girilip geçen aya yazılan cashback) hep kaybediyor, ileri tarihli
+  // bir satır (taksit/tekrarlayan üretimi, planlanmış kayıt) ise sonsuza kadar
+  // kazanıyordu. Eşitlikte işlem tarihi ayırıcı olur.
   const suggestions = useMemo<Suggestion[]>(() => {
-    const map = new Map<string, { description: string; categoryId: string; date: string; familyMemberId?: string; recipientId?: string; toAccountId?: string; tags?: string[] }>()
+    // updatedAt/createdAt ISO zaman damgası, date ise salt tarih ("2026-06-21");
+    // damgası olmayan eski satırlar bu yüzden damgalı olanlara karşı kaybeder.
+    const stampOf = (tx: Transaction) => tx.updatedAt || tx.createdAt || tx.date
+    const map = new Map<string, { description: string; categoryId: string; date: string; stamp: string; familyMemberId?: string; recipientId?: string; toAccountId?: string; tags?: string[] }>()
     transactions
       .filter(tx => tx.type === tab && tx.description?.trim())
       .forEach(tx => {
-        const key = tx.description.trim().toLowerCase()
-        const ex  = map.get(key)
-        if (!ex || tx.date > ex.date) {
+        const key   = tx.description.trim().toLowerCase()
+        const ex    = map.get(key)
+        const stamp = stampOf(tx)
+        if (!ex || stamp > ex.stamp || (stamp === ex.stamp && tx.date > ex.date)) {
           map.set(key, {
             description:    tx.description.trim(),
             categoryId:     tx.categoryId ?? '',
             date:           tx.date,
+            stamp,
             familyMemberId: tx.familyMemberId ?? undefined,
             recipientId:    tx.recipientId    ?? undefined,
             // Transfer önerileri hedef hesabı da taşır — silinmiş/arşivli hesap seçilemez
