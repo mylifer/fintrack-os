@@ -1,9 +1,11 @@
-import type { Transaction, Category, CurrencyCode, TransactionType } from '@/types'
+import type { Account, Transaction, Category, CurrencyCode, TransactionType } from '@/types'
 import { serializeTagsCell, parseTagsCell } from '@/lib/utils/tags'
 
 // ─── Export ────────────────────────────────────────────────────────────────
 
-const CSV_HEADERS = ['Tarih', 'Açıklama', 'Kategori', 'Tutar', 'Tür', 'Para Birimi', 'Etiketler']
+// Hesap sütunları SONA eklenir: mevcut sütun sırasına göre yazılmış dış
+// betikler/şablonlar bozulmasın.
+const CSV_HEADERS = ['Tarih', 'Açıklama', 'Kategori', 'Tutar', 'Tür', 'Para Birimi', 'Etiketler', 'Hesap', 'Karşı Hesap']
 
 const TYPE_LABELS: Record<TransactionType, string> = {
   expense:  'Gider',
@@ -26,8 +28,10 @@ function escapeCsvCell(value: string): string {
 export function transactionsToCsvString(
   transactions: Transaction[],
   categories: Category[],
+  accounts: Account[] = [],
 ): string {
   const catMap = new Map(categories.map(c => [c.id, c.name]))
+  const accMap = new Map(accounts.map(a => [a.id, a.name]))
   const rows = transactions.map(tx =>
     [
       tx.date,
@@ -37,11 +41,30 @@ export function transactionsToCsvString(
       TYPE_LABELS[tx.type],
       tx.currency,
       serializeTagsCell(tx.tags),
+      accMap.get(tx.accountId) ?? '',
+      // Transferin karşı bacağı: hesap bazlı dışa aktarmada satırın hangi yöne
+      // ait olduğu ancak bu sütunla anlaşılır.
+      tx.toAccountId ? (accMap.get(tx.toAccountId) ?? '') : '',
     ]
       .map(v => escapeCsvCell(String(v)))
       .join(','),
   )
   return [CSV_HEADERS.join(','), ...rows].join('\n')
+}
+
+const TR_CHARS: Record<string, string> = {
+  ç: 'c', ğ: 'g', ı: 'i', İ: 'i', ö: 'o', ş: 's', ü: 'u',
+}
+
+/** Hesap adını dosya adında güvenle kullanılabilir bir parçaya indirger. */
+export function csvFilenameSlug(name: string): string {
+  const slug = name
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[çğıİöşü]/g, ch => TR_CHARS[ch] ?? ch)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+  return slug || 'hesap'
 }
 
 export function downloadCsv(csvString: string, filename: string): void {

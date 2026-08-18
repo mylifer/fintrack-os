@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -10,8 +10,12 @@ import { WorkspaceManager } from '@/components/settings/WorkspaceManager'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
 import { loadDemoData, clearAllData } from '@/lib/seed'
 import { scanDemoData, removeDemoData, type DemoScan } from '@/lib/demo-cleanup'
-import { transactionsToCsvString, downloadCsv } from '@/lib/utils/csv'
-import { useTransactionStore, useCategoryStore } from '@/store'
+import { SelectField } from '@/components/ui/Select'
+import { transactionsToCsvString, downloadCsv, csvFilenameSlug } from '@/lib/utils/csv'
+import { txTouchesAccount } from '@/lib/utils/calculations'
+import { useTransactionStore, useCategoryStore, useAccountStore } from '@/store'
+
+const ALL_ACCOUNTS = ''
 
 export default function SettingsPage() {
   const [demoLoading, setDemoLoading]   = useState(false)
@@ -21,14 +25,63 @@ export default function SettingsPage() {
   const [clearPhrase, setClearPhrase]   = useState('')
   const [clearError, setClearError]     = useState<string | null>(null)
   const [importOpen, setImportOpen]     = useState(false)
+  const [exportAccountId, setExportAccountId] = useState<string>(ALL_ACCOUNTS)
 
   const transactions = useTransactionStore(s => s.transactions)
   const categories   = useCategoryStore(s => s.categories)
+  const accounts     = useAccountStore(s => s.accounts)
 
-  function handleExportAllCsv() {
-    const csv  = transactionsToCsvString(transactions, categories)
+  // Arşiv hesapların işlemleri de dışa aktarılabilir olmalı; listede sona
+  // alınıp etiketlenir.
+  const exportAccounts = useMemo(
+    () => [...accounts].sort((a, b) =>
+      Number(a.isArchived) - Number(b.isArchived) || a.name.localeCompare(b.name, 'tr-TR'),
+    ),
+    [accounts],
+  )
+
+  // Transferin iki bacağı da ilgili hesaba sayılır (txTouchesAccount).
+  const txCountByAccount = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const tx of transactions) {
+      counts.set(tx.accountId, (counts.get(tx.accountId) ?? 0) + 1)
+      if (tx.toAccountId && tx.toAccountId !== tx.accountId) {
+        counts.set(tx.toAccountId, (counts.get(tx.toAccountId) ?? 0) + 1)
+      }
+    }
+    return counts
+  }, [transactions])
+
+  const exportOptions = useMemo(() => [
+    { value: ALL_ACCOUNTS, label: `Tüm hesaplar (${transactions.length} işlem)` },
+    ...exportAccounts.map(a => ({
+      value: a.id,
+      label: `${a.name}${a.isArchived ? ' (arşiv)' : ''} — ${txCountByAccount.get(a.id) ?? 0} işlem`,
+    })),
+  ], [exportAccounts, txCountByAccount, transactions.length])
+
+  const exportCount = exportAccountId === ALL_ACCOUNTS
+    ? transactions.length
+    : txCountByAccount.get(exportAccountId) ?? 0
+
+  function handleExportCsv() {
+    const account = exportAccountId === ALL_ACCOUNTS
+      ? undefined
+      : accounts.find(a => a.id === exportAccountId)
+    // Seçilen hesap silinmiş/değişmişse tüm işlemlere düşmek yerine iptal et.
+    if (exportAccountId !== ALL_ACCOUNTS && !account) return
+
+    const rows = account
+      ? transactions.filter(tx => txTouchesAccount(tx, account.id))
+      : transactions
+    if (rows.length === 0) return
+
+    const csv  = transactionsToCsvString(rows, categories, accounts)
     const date = new Date().toISOString().slice(0, 10)
-    downloadCsv(csv, `tum-islemler-${date}.csv`)
+    downloadCsv(
+      csv,
+      account ? `islemler-${csvFilenameSlug(account.name)}-${date}.csv` : `tum-islemler-${date}.csv`,
+    )
   }
 
   async function handleLoadDemo() {
@@ -266,23 +319,37 @@ export default function SettingsPage() {
             <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-4">Veri Yönetimi</div>
 
             <div className="flex flex-col gap-4">
-              {/* Export all */}
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm font-semibold">İşlemleri Dışa Aktar</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    Tüm işlemlerinizi CSV dosyası olarak indirin. Excel veya başka bir uygulamada açabilirsiniz.
-                  </div>
+              {/* Export — tüm işlemler ya da tek hesap */}
+              <div>
+                <div className="text-sm font-semibold">İşlemleri Dışa Aktar</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Tüm işlemlerinizi ya da tek bir hesabın işlemlerini CSV dosyası olarak indirin.
+                  Excel veya başka bir uygulamada açabilirsiniz.
                 </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleExportAllCsv}
-                  disabled={transactions.length === 0}
-                  className="flex-shrink-0 rounded-xl px-4 h-9"
-                >
-                  ↓ CSV İndir
-                </Button>
+                <div className="mt-3 flex items-center gap-2">
+                  <SelectField
+                    value={exportAccountId}
+                    onChange={e => setExportAccountId(e.target.value)}
+                    options={exportOptions}
+                    className="flex-1 min-w-0"
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleExportCsv}
+                    disabled={exportCount === 0}
+                    className="flex-shrink-0 rounded-xl px-4 h-9"
+                  >
+                    ↓ CSV İndir
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground mt-2">
+                  {exportCount === 0
+                    ? 'Bu seçimde dışa aktarılacak işlem yok.'
+                    : exportAccountId === ALL_ACCOUNTS
+                      ? `${exportCount} işlem indirilecek.`
+                      : `${exportCount} işlem indirilecek — hesaplar arası transferlerin her iki bacağı da dahildir.`}
+                </div>
               </div>
 
               {/* Import */}

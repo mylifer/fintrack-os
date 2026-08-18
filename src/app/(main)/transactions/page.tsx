@@ -189,7 +189,7 @@ export default function TransactionsPage() {
   }
 
   function handleExportCsv() {
-    const csv = transactionsToCsvString(filtered, categories)
+    const csv = transactionsToCsvString(filtered, categories, accounts)
     const date = new Date().toISOString().slice(0, 10)
     downloadCsv(csv, `islemler-${date}.csv`)
   }
