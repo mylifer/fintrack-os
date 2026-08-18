@@ -16,8 +16,8 @@ import { formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { parseCurrencyInput } from '@/lib/utils/currency'
-import { toBaseTry } from '@/lib/utils/fx'
-import type { Debt, DebtType, DebtDirection, DebtWithRemaining, Transaction } from '@/types'
+import { toBaseTry, fromBaseTry } from '@/lib/utils/fx'
+import type { Account, Debt, DebtType, DebtDirection, DebtWithRemaining, Transaction } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -149,6 +149,9 @@ function emptyForm() {
     startDate: new Date().toISOString().slice(0, 10),
     dueDate: '', monthlyStr: '', totalInst: '', counterparty: '',
     accountId: '', notes: '',
+    // Anaparanın gireceği/çıkacağı hesap — OPSİYONEL, yalnızca yeni kayıtta.
+    // Boşsa hiçbir hesap bakiyesi oynamaz (sadece borç kaydı oluşur).
+    depositAccountId: '',
   }
 }
 
@@ -223,6 +226,7 @@ export default function DebtsPage() {
       counterparty: debt.counterparty ?? '',
       accountId:    debt.accountId ?? '',
       notes:        debt.notes ?? '',
+      depositAccountId: '',
     })
     setShowForm(true)
   }
@@ -260,13 +264,18 @@ export default function DebtsPage() {
     if (editingDebt) {
       await update(editingDebt.id, patch)
     } else {
+      const depositAccount = accounts.find(a => a.id === form.depositAccountId)
       const d: Debt = {
         ...patch,
+        // Anapara hesabı seçildiyse borcun hesabı da o olur → "Ödeme Yap"
+        // varsayılan olarak aynı hesabı seçer.
+        accountId:        depositAccount?.id ?? patch.accountId,
         id:               crypto.randomUUID(),
         paidInstallments: 0,
         createdAt:        new Date().toISOString(),
       }
       await add(d)
+      if (depositAccount && totalAmount > 0) await addPrincipalTx(d, depositAccount)
     }
     closeForm()
     } catch (err) {
@@ -274,6 +283,38 @@ export default function DebtsPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  /* Borç anaparasının hesaba GİRİŞİ (borç aldım) / hesaptan ÇIKIŞI (borç
+     verdim) — opsiyonel, yalnızca borç ilk kez eklenirken yazılır.
+
+     Şekil olarak borç ödemesinin (transfer + yalnız KAYNAK hesap) aynadaki
+     hali: yalnız HEDEF hesabı olan bir transfer, yani para defterin dışından
+     hesaba girer. 'transfer' seçimi bilinçli — alınan borç gelir, verilen borç
+     gider DEĞİLDİR; bu yüzden hiçbir akış toplamına (gelir/gider/net/bütçe)
+     girmez, tıpkı borç ödemesi gibi.
+
+     debtId TAŞIMAZ: debtId'li her satır silme/düzenleme akışlarında bir ÖDEME
+     sayılır (revertPayment → paidAmount + taksit düşer). Anapara bir ödeme
+     olmadığı için bağlanmaz; aksi halde girişi silmek borcu ödenmiş gösterirdi. */
+  async function addPrincipalTx(debt: Debt, account: Account) {
+    const inbound = debt.direction === 'owe' // borç aldım → para hesaba girer
+    // Borç tutarları TRY bazlıdır — yabancı para hesaba kendi biriminde yazılır (M4).
+    const amount = fromBaseTry(debt.totalAmount, account.currency)
+    const now = new Date().toISOString()
+    await addTx({
+      id:            crypto.randomUUID(),
+      type:          'transfer',
+      amount,
+      currency:      account.currency,
+      accountId:     inbound ? '' : account.id,
+      toAccountId:   inbound ? account.id : undefined,
+      description:   inbound ? `${debt.name} — borç girişi` : `${debt.name} — verilen borç`,
+      isInstallment: false,
+      date:          debt.startDate || today(),
+      createdAt:     now,
+      updatedAt:     now,
+    })
   }
 
   function openPay(debt: DebtWithRemaining) {
@@ -419,6 +460,20 @@ export default function DebtsPage() {
         .filter(t => t.debtId === selectedDebt.id)
         .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
     : []
+
+  // Anapara seçiminin ne yapacağını açık açık yaz — bakiyeye dokunan tek yer.
+  const depositHint = (() => {
+    const account = accounts.find(a => a.id === form.depositAccountId)
+    if (!account) return 'Seçilmezse yalnızca borç kaydı oluşur, hiçbir hesap bakiyesi değişmez.'
+    const total = parseCurrencyInput(form.totalStr)
+    if (!total) return 'Toplam tutarı girin — hesaba işlenecek tutar buradan alınır.'
+    const amount = formatCurrency(fromBaseTry(total, account.currency), account.currency)
+    const yon = form.direction === 'owe'
+      ? `${amount} ${account.name} hesabına giriş`
+      : `${amount} ${account.name} hesabından çıkış`
+    const tarih = formatDate(form.startDate || today(), 'd MMM yyyy')
+    return `${yon} olarak ${tarih} tarihiyle yazılır. Transfer olarak işlenir — gelir/gider toplamlarına girmez.`
+  })()
 
   return (
     <>
@@ -652,6 +707,26 @@ export default function DebtsPage() {
           </div>
 
           <Input label="Alacaklı / Kişi" value={form.counterparty} onChange={e => setForm(f => ({...f, counterparty: e.target.value}))} placeholder="Garanti BBVA" />
+
+          {/* Anapara — opsiyonel: seçilirse tutar hesaba girer/hesaptan çıkar.
+              Düzenlemede gizli: aynı borç için ikinci kez yazılmasın. */}
+          {!editingDebt && (
+            <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/30 p-3">
+              <Select
+                label={form.direction === 'owe' ? 'Para bu hesaba yatırıldı (opsiyonel)' : 'Para bu hesaptan verildi (opsiyonel)'}
+                value={form.depositAccountId}
+                onChange={e => setForm(f => ({...f, depositAccountId: e.target.value}))}
+                options={[
+                  { value: '', label: 'Hesaba işlenmesin' },
+                  ...accounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` })),
+                ]}
+                placeholder="Hesaba işlenmesin"
+              />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {depositHint}
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2 pt-1">
             <Button onClick={handleSave} loading={loading} fullWidth>{editingDebt ? 'Güncelle' : 'Kaydet'}</Button>
