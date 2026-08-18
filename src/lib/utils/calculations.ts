@@ -411,6 +411,87 @@ export function enrichDebt(debt: Debt): DebtWithRemaining {
   return { ...debt, remainingAmount, progressPercent }
 }
 
+/* ── Borç yükümlülüğü (net değer) ────────────────────────────────────────────
+   Net değer = varlıklar − KENDİ borçlarının KALANI. Yalnızca direction 'owe'
+   sayılır; 'owed' (alacaklar) varlık olarak EKLENMEZ — tahsil edilebilirliği
+   ayrı bir varsayımdır ve "Toplam Varlık" kartı brüt varlığı göstermeye devam
+   eder (yalnız "Net Varlık" borçtan arındırılır).
+
+   GEÇMİŞ DEĞERLER: bugünkü kalan KESİNDİR (totalAmount − paidAmount). Geçmiş bir
+   tarihin yükümlülüğü bugünden GERİYE yürünerek bulunur: o tarihten SONRA yapılan
+   ödemeler geri eklenir (o gün borç daha yüksekti) ve borç kendi startDate'inden
+   önce hiç sayılmaz. Bu, net-varlık grafiklerinin nakdi bugünkü bakiyeden geriye
+   yürütmesiyle AYNI çıpa mantığıdır — böylece grafik ile başlık aynı değeri verir.
+   Sapma kaynağı: işlem karşılığı olmayan elle "Ödenen" düzeltmeleri yalnızca
+   GEÇMİŞ noktaları etkiler; bugünkü değer her koşulda kesindir. */
+
+/** Bir borcun BUGÜNKÜ kalanı. Kapatılmış borç yükümlülük değildir (isSettled
+ *  elle de işaretlenebilir; "Toplam Borç" kartıyla aynı kural olsun diye tek
+ *  yerde kararlaştırılır — geçmiş yürüyüşü ödemeleri geri ekleyerek bunu yine
+ *  doğru şekilde büyütür). */
+function debtRemainingNow(d: Debt): number {
+  return d.isSettled ? 0 : Math.max(0, subMoney(d.totalAmount, d.paidAmount))
+}
+
+/** Bugünkü yükümlülük — kapanmamış 'owe' borçların kalan toplamı (TRY). */
+export function calcDebtBurden(debts: Debt[]): number {
+  let minor = 0
+  for (const d of debts) {
+    if (d.direction !== 'owe') continue
+    minor += toMinor(debtRemainingNow(d))
+  }
+  return toMajor(minor)
+}
+
+/** Verilen tarihlerdeki (ARTAN sıralı olmalı) yükümlülük serisi — grafiklerin
+ *  gün gün / snapshot bazlı geriye yürüyüşü için tek geçişte hesaplanır.
+ *  `transactions` çağıranın kapsamıdır (grafikler posted işlemleri geçirir). */
+export function buildDebtBurdenSeries(
+  debts: Debt[],
+  transactions: Transaction[],
+  dates: string[],
+): number[] {
+  const outMinor = new Array<number>(dates.length).fill(0)
+  const owe = debts.filter(d => d.direction === 'owe')
+  if (owe.length === 0 || dates.length === 0) return outMinor
+
+  // Borç başına ödemeler, tarihe göre AZALAN — geriye yürüyüşle aynı sıra.
+  const oweIds = new Set(owe.map(d => d.id))
+  const paysByDebt = new Map<string, { date: string; amount: number }[]>()
+  for (const t of transactions) {
+    if (!t.debtId || !oweIds.has(t.debtId)) continue
+    const entry = { date: t.date.slice(0, 10), amount: baseAmount(t) }
+    const list = paysByDebt.get(t.debtId)
+    if (list) list.push(entry); else paysByDebt.set(t.debtId, [entry])
+  }
+  for (const list of paysByDebt.values()) list.sort((a, b) => (a.date < b.date ? 1 : -1))
+
+  for (const d of owe) {
+    const pays       = paysByDebt.get(d.id) ?? []
+    const totalMinor = toMinor(d.totalAmount)
+    const start      = d.startDate.slice(0, 10)
+    let remMinor     = toMinor(debtRemainingNow(d))
+    let p = 0
+    for (let i = dates.length - 1; i >= 0; i--) {
+      const day = dates[i]
+      // O günden SONRA yapılmış ödemeleri geri ekle (borç o gün daha yüksekti)
+      while (p < pays.length && pays[p].date > day) { remMinor += toMinor(pays[p].amount); p++ }
+      // Borç o tarihte henüz doğmamışsa hiç sayılmaz
+      if (start <= day) outMinor[i] += Math.min(totalMinor, Math.max(0, remMinor))
+    }
+  }
+  return outMinor.map(toMajor)
+}
+
+/** Tek bir tarihteki yükümlülük (trend karşılaştırmaları için). */
+export function calcDebtBurdenAsOf(
+  debts: Debt[],
+  transactions: Transaction[],
+  asOf: string,
+): number {
+  return buildDebtBurdenSeries(debts, transactions, [asOf])[0]
+}
+
 export function calcCategorySpend(
   transactions: Transaction[],
   categoryId: string,

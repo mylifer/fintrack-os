@@ -8,9 +8,9 @@ import { clearLocalData } from '@/lib/auth'
 import { retryDeadLetters, pendingCount } from '@/lib/sync/engine'
 import {
   useAccountStore, useInvestmentStore, useRecurringStore,
-  useTransactionStore, useBudgetStore, useCategoryStore,
+  useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore,
 } from '@/store'
-import { calcNetWorth, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
+import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
 import { useCountUp } from '@/lib/hooks/useCountUp'
@@ -30,10 +30,13 @@ export function useSidebarData() {
     [investTxs, prices, fundPrices],
   )
   const transactions = useTransactionStore(useShallow(s => s.transactions))
+  const debts        = useDebtStore(useShallow(s => s.debts))
   const getDue       = useRecurringStore(s => s.getDue)
   const dueCount     = getDue(today()).length
 
-  const totalWealth     = calcNetWorth(accounts, prices) + investValue
+  // "Net Varlık" şeridi borçtan arındırılmıştır — dashboard kartıyla aynı değer.
+  const debtBurden      = calcDebtBurden(debts)
+  const totalWealth     = calcNetWorth(accounts, prices) + investValue - debtBurden
   const animTotalWealth = useCountUp(totalWealth)
 
   const trendAmount = useMemo(() => {
@@ -46,8 +49,10 @@ export function useSidebarData() {
     const prevAccountNetWorth = calcNetWorth(prevAccounts, prices)
     const prevInvestTxs = investTxs.filter(t => t.date <= cutoff)
     const prevInvestValue = computeHoldings(prevInvestTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0)
-    return totalWealth - (prevAccountNetWorth + prevInvestValue)
-  }, [accounts, transactions, investTxs, prices, fundPrices, totalWealth])
+    // Geçen ayın yükümlülüğü de o tarihe göre (bkz. calcDebtBurdenAsOf).
+    const prevBurden = calcDebtBurdenAsOf(debts, prevTxs, cutoff)
+    return totalWealth - (prevAccountNetWorth + prevInvestValue - prevBurden)
+  }, [accounts, transactions, investTxs, prices, fundPrices, totalWealth, debts])
 
   // Geçen ay sıfır (veya yoksa) yüzde tanımsız — oran yerine yalnızca tutar gösterilir.
   const prevWealth = totalWealth - trendAmount

@@ -2,9 +2,9 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useState } from 'react'
-import { useTransactionStore, useAccountStore, useInvestmentStore } from '@/store'
+import { useTransactionStore, useAccountStore, useInvestmentStore, useDebtStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import { calcNetWorth, calcNetRaw, excludeFuture } from '@/lib/utils/calculations'
+import { calcNetWorth, calcNetRaw, excludeFuture, calcDebtBurden, buildDebtBurdenSeries } from '@/lib/utils/calculations'
 import { getAssetPrice, computeHoldings, GOLD_GRAMS, assetLabel } from '@/store/investment.store'
 import { isTefasAsset, tefasCode } from '@/lib/tefas'
 import { baseAmount } from '@/lib/utils/fx'
@@ -101,7 +101,12 @@ export function NetWorthChart() {
     [investTxs, prices, fundPrices],
   )
 
-  const currentNW = calcNetWorth(accounts, prices) + investValue
+  // Net Varlık borçtan arındırılmıştır (dashboard kartıyla aynı değer) —
+  // seri de gün gün o günün yükümlülüğünü düşer, yoksa son nokta başlıkla
+  // uyuşmazdı. Ham dizi: kapanmış borçlar geçmişte hâlâ açıktı.
+  const debts       = useDebtStore(useShallow(s => s.debts))
+  const debtBurden  = calcDebtBurden(debts)
+  const currentNW   = calcNetWorth(accounts, prices) + investValue - debtBurden
 
   // ── Geçmiş fiyat serileri ─────────────────────────────────────────
   // Yatırımlar gün gün GÜNÜN fiyatıyla değerlenmeli; bugünkü fiyatla değerleme
@@ -281,6 +286,12 @@ export function NetWorthChart() {
       }
     }
 
+    // Yükümlülük serisi: bugünkü kalan borçtan gün gün geriye (o günden sonra
+    // yapılan ödemeler geri eklenir; borç startDate'inden önce sayılmaz).
+    // Borç ödemesi hem nakdi hem yükümlülüğü aynı tutarda düşürdüğü için net
+    // varlık o gün DEĞİŞMEZ — grafikte sahte düşüş oluşmaz.
+    const burden = buildDebtBurdenSeries(debts, transactions, days)
+
     // Nakit serisi: bugünkü hesap bakiyelerinden gün gün geriye
     const points: DayPoint[] = new Array(days.length)
     let cash = calcNetWorth(accounts, prices)
@@ -308,7 +319,7 @@ export function NetWorthChart() {
       }
 
       // Günün noktası = gün SONU bakiyesi; sonra günün neti çıkarılıp önceki güne geçilir
-      points[i] = { date: key, netWorth: Math.round((cash + investVal[i]) * 100) / 100, delta: 0, items }
+      points[i] = { date: key, netWorth: Math.round((cash + investVal[i] - burden[i]) * 100) / 100, delta: 0, items }
 
       // Ham net (mutabakat DAHİL) — mutabakat kayıtları ham bakiyeyi gerçekten oynattı
       cash -= calcNetRaw(txByDay.get(key) ?? [])
@@ -343,7 +354,7 @@ export function NetWorthChart() {
     let start = 0
     while (start < points.length - 1 && points[start + 1].delta === 0) start++
     return start > 0 && points.length - start >= 2 ? points.slice(start) : points
-  }, [transactions, accounts, investTxs, prices, fundPrices, histories])
+  }, [transactions, accounts, investTxs, prices, fundPrices, histories, debts])
 
   const { data, trendLabel } = useMemo(() => {
     const windowDays = RANGE_DAYS[range]

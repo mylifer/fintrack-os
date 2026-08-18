@@ -9,7 +9,7 @@ import {
   useDebtStore, useRecurringStore, usePeopleStore, useSettingsStore,
 } from '@/store'
 import { format, parseISO, startOfMonth, subDays, differenceInDays } from 'date-fns'
-import { calcNetWorth, calcTotalAssets, calcPeriodFlow, computeTransactionEffect, isPosted, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { calcNetWorth, calcTotalAssets, calcPeriodFlow, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { tefasCodesIn } from '@/lib/tefas'
 import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
@@ -86,6 +86,9 @@ export default function DashboardPage() {
   const investValue  = useMemo(() => holdings.reduce((s, h) => s + h.currentValue, 0), [holdings])
   const getBudgets   = useBudgetStore(s => s.getMonthBudgets)
   const getActive    = useDebtStore(s => s.getActive)
+  // Ham dizi: geçmiş yükümlülük yürüyüşü kapanmış borçları da görmek zorunda
+  // (dün hâlâ ödenmemişlerdi) — getActive() onları filtreliyor.
+  const allDebts     = useDebtStore(s => s.debts)
   const getDue       = useRecurringStore(s => s.getDue)
   const people       = usePeopleStore(s => s.people)
 
@@ -174,7 +177,10 @@ export default function DashboardPage() {
     () => calcPeriodFlow(flowTxs, from, to),
     [flowTxs, from, to],
   )
-  const netWorth    = calcNetWorth(accounts, prices) + investValue
+  // Net Varlık borçtan ARINDIRILMIŞTIR (varlıklar − kalan borç); Toplam Varlık
+  // brüt varlığı göstermeye devam eder — ikisi arasındaki fark budur.
+  const debtBurden  = calcDebtBurden(allDebts)
+  const netWorth    = calcNetWorth(accounts, prices) + investValue - debtBurden
   const totalAssets = calcTotalAssets(accounts, prices) + investValue
   // Gezinilen dönemde "Bu Ay" yanıltıcı olur → gerçek dönem adı ("Temmuz 2026")
   const periodLabel = formatPeriodLabel(periodType, periodOffset)
@@ -223,11 +229,14 @@ export default function DashboardPage() {
     }))
     const prevInvestTxs = investTxs.filter(t => t.date <= prevRange.to)
     const prevInvestValue = computeHoldings(prevInvestTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0)
+    // Önceki dönemin yükümlülüğü de O TARİHE göre: bugünden geriye yürünür,
+    // yoksa trend oku borcu iki kez saymış olur.
+    const prevBurden = calcDebtBurdenAsOf(allDebts, prevTxs, prevRange.to)
     return {
-      netWorth: calcNetWorth(prevAccounts, prices) + prevInvestValue,
+      netWorth: calcNetWorth(prevAccounts, prices) + prevInvestValue - prevBurden,
       totalAssets: calcTotalAssets(prevAccounts, prices) + prevInvestValue,
     }
-  }, [accounts, transactions, investTxs, prices, fundPrices, prevRange])
+  }, [accounts, transactions, investTxs, prices, fundPrices, prevRange, allDebts])
 
   // Son eklenenler: işlem tarihinden bağımsız, ekleme zamanına (createdAt) göre
   const recent  = useMemo(
@@ -316,7 +325,10 @@ export default function DashboardPage() {
             {
               label: 'Net Varlık',
               value: (netWorth < 0 ? '−' : '') + formatCompact(animNetWorth),
-              sub: `${accounts.length} hesap`,
+              // Borç düşüldüğü GÖRÜNSÜN — sessizce küçülen bir sayı bırakmayız.
+              sub: debtBurden > 0
+                ? `${accounts.length} hesap · −${formatCompact(debtBurden)} borç`
+                : `${accounts.length} hesap`,
               ok: netWorth >= 0,
               trendDiff: prevWorth ? netWorth - prevWorth.netWorth : null,
               betterWhenHigher: true,

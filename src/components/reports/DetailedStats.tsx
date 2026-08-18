@@ -19,13 +19,13 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { isPrincipalMoveTx, calcNetWorth, excludeFuture } from '@/lib/utils/calculations'
+import { isPrincipalMoveTx, calcNetWorth, excludeFuture, calcDebtBurden, buildDebtBurdenSeries } from '@/lib/utils/calculations'
 import { computeHoldings, getAssetPrice } from '@/store/investment.store'
 import { today } from '@/lib/utils/date'
 import { baseAmount } from '@/lib/utils/fx'
 import { expandByCategory } from '@/lib/utils/categorySplits'
 import { toMinor, toMajor, sumBy } from '@/lib/utils/money'
-import type { Account, Category, Transaction, InvestmentTransaction, PriceData, TefasFundPrice } from '@/types'
+import type { Account, Category, Debt, Transaction, InvestmentTransaction, PriceData, TefasFundPrice } from '@/types'
 
 /* Percentages: TR formatting with a decimal comma, e.g. 41.58 → "41,58%". */
 const PCT_FMT = new Intl.NumberFormat('tr-TR', {
@@ -92,6 +92,7 @@ interface DetailedStatsProps {
   investTxs:    InvestmentTransaction[]    // net-worth: portfolio market value
   prices:       PriceData | null
   fundPrices:   Record<string, TefasFundPrice>
+  debts:        Debt[]                     // net-worth: kalan borç (yükümlülük)
 }
 
 /* ── Component ────────────────────────────────────────────────────────── */
@@ -106,6 +107,7 @@ export function DetailedStats({
   investTxs,
   prices,
   fundPrices,
+  debts,
 }: DetailedStatsProps) {
   const [open, setOpen] = useState(true)
 
@@ -267,6 +269,9 @@ export function DetailedStats({
     )
     const inScope       = accounts.filter(a => selectedIds.has(a.id))
     const includeInvest = accountId === 'all' && !!prices
+    // Yükümlülük hesap bazlı DEĞİL — yalnız "Tüm Hesaplar" görünümünde düşülür
+    // (tek hesap seçiliyken portföyün eklenmemesiyle aynı gerekçe).
+    const includeDebt   = accountId === 'all'
     const from          = dateRange.from
     const walkEnd       = dateRange.to < todayStr ? dateRange.to : todayStr
 
@@ -274,7 +279,8 @@ export function DetailedStats({
     const investNow = includeInvest
       ? computeHoldings(investTxs, prices!, fundPrices).reduce((s, h) => s + h.currentValue, 0)
       : 0
-    const anchorMinor = toMinor(calcNetWorth(inScope, prices)) + toMinor(investNow)
+    const burdenNow   = includeDebt ? calcDebtBurden(debts) : 0
+    const anchorMinor = toMinor(calcNetWorth(inScope, prices)) + toMinor(investNow) - toMinor(burdenNow)
 
     // Nakit + yatırım hareketlerinin günlük net deltaları (minor birim). Nakit:
     // yalnız posted, seçili hesap kümesine netDelta. Yatırım: işaretli miktar ×
@@ -295,19 +301,41 @@ export function DetailedStats({
       if (d >= from && d <= todayStr) openingMinor -= m
     }
 
+    // Yürüyüş tarihleri: nakit/yatırım deltası olan günler + dönem sınırları +
+    // borç doğum tarihleri (nakit hareketi olmayan yükümlülük değişimi de
+    // örneklensin). Yükümlülük serisi bu tarihler için bir kez hesaplanır.
+    const walkDates = [...new Set([
+      from,
+      ...[...deltaByDate.keys()].filter(d => d >= from && d <= walkEnd),
+      ...(includeDebt
+        ? debts
+            .filter(d => d.direction === 'owe')
+            .map(d => d.startDate.slice(0, 10))
+            .filter(d => d >= from && d <= walkEnd)
+        : []),
+      walkEnd,
+    ])].sort()
+    const burdens = includeDebt
+      ? buildDebtBurdenSeries(debts, excludeFuture(transactions), walkDates)
+      : walkDates.map(() => 0)
+
     // Dönem içinde ileri yürüyüş (bugünle sınırlı), en yüksek/en düşüğü izle.
+    // openingMinor/runningMinor VARLIK tarafıdır; o günün yükümlülüğü noktada
+    // düşülür — anchor bugünün borcunu içerdiği için sabit bir kaydırma değil.
     let runningMinor = openingMinor
-    let max = { value: toMajor(runningMinor), date: from }
-    let min = { value: toMajor(runningMinor), date: from }
-    for (const d of [...deltaByDate.keys()].filter(d => d >= from && d <= walkEnd).sort()) {
-      runningMinor += deltaByDate.get(d)!
-      const value = toMajor(runningMinor)
+    const netAt = (i: number) => toMajor(runningMinor - toMinor(burdens[i] ?? 0))
+    let max = { value: netAt(0), date: from }
+    let min = { value: netAt(0), date: from }
+    for (let i = 0; i < walkDates.length; i++) {
+      const d = walkDates[i]
+      runningMinor += deltaByDate.get(d) ?? 0
+      const value = netAt(i)
       if (value > max.value) max = { value, date: d }
       if (value < min.value) min = { value, date: d }
     }
 
-    return { current: toMajor(runningMinor), max, min }
-  }, [transactions, accounts, accountId, dateRange, investTxs, prices, fundPrices])
+    return { current: netAt(walkDates.length - 1), max, min }
+  }, [transactions, accounts, accountId, dateRange, investTxs, prices, fundPrices, debts])
 
   const hasExpense = period.expense.total > 0
   const hasIncome  = period.income.total > 0

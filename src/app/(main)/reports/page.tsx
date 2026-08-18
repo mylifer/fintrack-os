@@ -12,14 +12,14 @@ import {
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { Header }           from '@/components/layout/Header'
-import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useSettingsStore } from '@/store'
+import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useSettingsStore, useDebtStore } from '@/store'
 import { getAssetPrice, computeHoldings } from '@/store/investment.store'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, sumExpenseByKey, sumIncomeByKey, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, buildDebtBurdenSeries, sumExpenseByKey, sumIncomeByKey, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { expandByCategory, txHasCategory } from '@/lib/utils/categorySplits'
 import { buildCashFlowData } from '@/lib/utils/cashflow'
@@ -37,7 +37,7 @@ import { ListFilter, BarChart3, LineChart as LineChartIcon } from 'lucide-react'
 import type { CategorySlice }       from '@/components/reports/_CategoryDonutChart'
 import type { TrendPoint }          from '@/components/reports/_BalanceTrendChart'
 import type { CategoryTrendPoint }  from '@/components/reports/_CategoryTrendChart'
-import type { Account, Transaction, PriceData, InvestmentTransaction, TefasFundPrice } from '@/types'
+import type { Account, Transaction, PriceData, InvestmentTransaction, TefasFundPrice, Debt } from '@/types'
 
 /* ── Types ────────────────────────────────────────────────────────── */
 
@@ -266,6 +266,7 @@ function buildTrendData(
   prices: PriceData | null,
   investTxs: InvestmentTransaction[],
   fundPrices: Record<string, TefasFundPrice>,
+  debts: Debt[],
 ): TrendPoint[] {
   const from = parseISO(dateRange.from)
   const to   = parseISO(dateRange.to)
@@ -313,6 +314,9 @@ function buildTrendData(
       ? computeHoldings(investTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0)
       : 0
     let nw = calcNetWorth(accounts, prices) + investValue
+    // Yükümlülük: "Net Varlık" başlık/kartlarıyla aynı kural — her snapshot
+    // O TARİHTEKİ kalan borçla arındırılır (bkz. buildDebtBurdenSeries).
+    const burden = buildDebtBurdenSeries(debts, postedTxs, snaps.map(sn => sn.snap))
     let upper: string | null = null  // bir sonraki (daha yeni) snapshot — pencere üst sınırı
     for (let i = snaps.length - 1; i >= 0; i--) {
       const { label, snap } = snaps[i]
@@ -322,7 +326,7 @@ function buildTrendData(
           .filter(t => { const d = t.date.slice(0, 10); return d > snap && (upper === null || d <= upper) })
           .reduce((s, t) => s + (t.type === 'buy' ? 1 : -1) * t.quantity * getAssetPrice(t.asset, prices, fundPrices), 0)
       }
-      pts[i] = { label, balance: nw }
+      pts[i] = { label, balance: nw - burden[i] }
       upper = snap
     }
     return pts
@@ -447,6 +451,7 @@ export default function ReportsPage() {
   const accountsReady = useAccountStore(s => s.ready)
   const accounts      = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories    = useCategoryStore(s => s.categories)
+  const debts         = useDebtStore(useShallow(s => s.debts))
   const prices        = useInvestmentStore(s => s.prices)
   const fundPrices    = useInvestmentStore(s => s.fundPrices)
   const investTxs     = useInvestmentStore(s => s.transactions)
@@ -647,8 +652,8 @@ export default function ReportsPage() {
   const tagData         = useMemo(() => buildTagExpenseData(filteredTxs),                             [filteredTxs])
   const topTags         = useMemo(() => tagData.slice(0, 8),                                          [tagData])
   const trendData       = useMemo(
-    () => buildTrendData(accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices),
-    [accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices],
+    () => buildTrendData(accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices, debts),
+    [accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices, debts],
   )
   const comparisonData  = useMemo(() => buildPeriodComparison(postedTxs, categories, dateRange, accountId), [postedTxs, categories, dateRange, accountId])
 

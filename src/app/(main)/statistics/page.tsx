@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear } from 'date-fns'
 import { Header } from '@/components/layout/Header'
 import { SelectField } from '@/components/ui/Select'
-import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore } from '@/store'
+import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useDebtStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { excludeFuture } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
@@ -59,6 +59,7 @@ export default function StatisticsPage() {
   const accountsReady = useAccountStore(s => s.ready)
   const accounts      = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories    = useCategoryStore(s => s.categories)
+  const debts         = useDebtStore(useShallow(s => s.debts))
   const investTxs     = useInvestmentStore(s => s.transactions)
   const prices        = useInvestmentStore(s => s.prices)
   const fundPrices    = useInvestmentStore(s => s.fundPrices)
@@ -193,6 +194,7 @@ export default function StatisticsPage() {
             investTxs={investTxs}
             prices={prices}
             fundPrices={fundPrices}
+            debts={debts}
           />
         )}
       </div>

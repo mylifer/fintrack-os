@@ -3,10 +3,10 @@
 import { useState, useMemo } from 'react'
 import { Header }        from '@/components/layout/Header'
 import { PeriodTabs }    from '@/components/ui/PeriodTabs'
-import { useAccountStore, useUIStore, useTransactionStore, useInvestmentStore } from '@/store'
+import { useAccountStore, useUIStore, useTransactionStore, useInvestmentStore, useDebtStore } from '@/store'
 import { useShallow }    from 'zustand/react/shallow'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
-import { calcNetWorth } from '@/lib/utils/calculations'
+import { calcNetWorth, calcDebtBurden } from '@/lib/utils/calculations'
 import { getPeriodRange } from '@/lib/utils/date'
 import { AccountFormModal } from '@/components/accounts/AccountFormModal'
 import { EmptyState }    from '@/components/ui/EmptyState'
@@ -31,13 +31,19 @@ export default function AccountsPage() {
   const periodType    = useUIStore(s => s.periodType)
   const investValue   = useInvestmentStore(s => s.getPortfolioValue())
   const prices        = useInvestmentStore(s => s.prices)
+  const debts         = useDebtStore(useShallow(s => s.debts))
 
   const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
 
-  const netWorth = calcNetWorth(accounts, prices)
+  // "toplam net varlık" başlığı borçtan arındırılmıştır (dashboard'daki Net
+  // Varlık kartıyla aynı değer olsun diye — bkz. calcDebtBurden).
+  const debtBurden = calcDebtBurden(debts)
+  const netWorth   = calcNetWorth(accounts, prices)
+  const netTotal   = netWorth + investValue - debtBurden
 
-  const animTotal = useCountUp(netWorth + investValue)
+  const animTotal = useCountUp(netTotal)
   const animInvest = useCountUp(investValue)
+  const animBurden = useCountUp(debtBurden)
 
   const [view, setView] = useState<ViewId>('grid')
   const [showForm, setShowForm]             = useState(false)
@@ -58,15 +64,22 @@ export default function AccountsPage() {
 
       {/* Net worth summary */}
       <div className="px-6 lg:px-8 py-5 border-b border-border bg-card flex items-baseline gap-3 flex-shrink-0">
-        <span className={`text-3xl font-normal tabular-nums ${(netWorth + investValue) >= 0 ? 'text-foreground' : 'text-destructive'}`}>
+        <span className={`text-3xl font-normal tabular-nums ${netTotal >= 0 ? 'text-foreground' : 'text-destructive'}`}>
           {formatCurrency(animTotal)}
         </span>
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">toplam net varlık</span>
-        {investValue > 0 && (
-          <span className="text-xs text-muted-foreground ml-auto">
-            Yatırım: {formatCompact(animInvest)}
-          </span>
-        )}
+        <span className="ml-auto flex items-baseline gap-3">
+          {investValue > 0 && (
+            <span className="text-xs text-muted-foreground">
+              Yatırım: {formatCompact(animInvest)}
+            </span>
+          )}
+          {debtBurden > 0 && (
+            <span className="text-xs text-muted-foreground" title="Kalan borçlar net varlıktan düşüldü">
+              Borç: −{formatCompact(animBurden)}
+            </span>
+          )}
+        </span>
       </div>
 
       <div className="p-6 overflow-auto flex-1">

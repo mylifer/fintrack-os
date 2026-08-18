@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { calcBudgetSpent, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
+import { buildDebtBurdenSeries, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -295,6 +295,70 @@ describe('enrich helpers', () => {
     const d = enrichDebt({ totalAmount: 1000, paidAmount: 1200 } as Debt)
     expect(d.remainingAmount).toBe(0)
     expect(d.progressPercent).toBe(100)
+  })
+})
+
+/* Net değer = varlıklar − KALAN BORÇ. Bugünkü kalan kesin; geçmiş noktalar
+   bugünden geriye yürünerek bulunur (o tarihten sonraki ödemeler geri eklenir,
+   borç startDate'inden önce sayılmaz). */
+describe('borç yükümlülüğü (net değer)', () => {
+  const debt = (o: Partial<Debt>): Debt => ({
+    id: 'd1', name: 'Kredi', type: 'bank_loan', direction: 'owe',
+    totalAmount: 1000, paidAmount: 0, startDate: '2026-01-10',
+    isSettled: false, createdAt: '2026-01-10', ...o,
+  })
+
+  it('kapatılmış borç yükümlülük değildir, ama geçmişte açıktı', () => {
+    // isSettled elle de işaretlenebilir (paid < total): bugün 0 sayılır…
+    const debts = [debt({ id: 'd1', totalAmount: 1000, paidAmount: 400, isSettled: true })]
+    expect(calcDebtBurden(debts)).toBe(0)
+    // …ama 400'lük ödemenin YAPILMADIĞI bir tarihte 400 borç vardı.
+    const txs = [tx({ id: 'p1', type: 'transfer', amount: 400, amountTry: 400, date: '2026-01-20', debtId: 'd1' })]
+    expect(buildDebtBurdenSeries(debts, txs, ['2026-01-15', '2026-01-25'])).toEqual([400, 0])
+  })
+
+  it('calcDebtBurden: yalnız "owe" borçların kalanı; alacaklar sayılmaz', () => {
+    expect(calcDebtBurden([
+      debt({ id: 'a', totalAmount: 1000, paidAmount: 300 }),           // 700
+      debt({ id: 'b', totalAmount: 500,  paidAmount: 500, isSettled: true }), // 0
+      debt({ id: 'c', totalAmount: 900,  paidAmount: 1200 }),          // taban 0
+      debt({ id: 'd', direction: 'owed', totalAmount: 400 }),          // alacak → hariç
+    ])).toBe(700)
+  })
+
+  it('buildDebtBurdenSeries: ödemeler geri eklenir, doğum öncesi sıfır', () => {
+    const debts = [debt({ id: 'd1', totalAmount: 1000, paidAmount: 300, startDate: '2026-01-10' })]
+    const txs = [tx({ id: 'p1', type: 'transfer', amount: 300, amountTry: 300, date: '2026-01-20', debtId: 'd1' })]
+    // 05 Oca: borç henüz doğmamış · 15 Oca: ödeme yapılmamıştı → 1000 · 25 Oca: 700
+    expect(buildDebtBurdenSeries(debts, txs, ['2026-01-05', '2026-01-15', '2026-01-25']))
+      .toEqual([0, 1000, 700])
+  })
+
+  it('buildDebtBurdenSeries: totalAmount üstünü aşmaz (elle "Ödenen" düzeltmesi)', () => {
+    // paidAmount 800 ama karşılığında yalnız 300'lük işlem var → geriye yürüyüşte
+    // 200 + 300 = 500 çıkar; tavan totalAmount olduğundan aşım yaşanmaz.
+    const debts = [debt({ id: 'd1', totalAmount: 1000, paidAmount: 800 })]
+    const txs = [tx({ id: 'p1', type: 'transfer', amount: 900, amountTry: 900, date: '2026-01-20', debtId: 'd1' })]
+    expect(buildDebtBurdenSeries(debts, txs, ['2026-01-15'])).toEqual([1000])
+  })
+
+  it('calcDebtBurdenAsOf: tek tarih için aynı kuralı verir', () => {
+    const debts = [debt({ id: 'd1', totalAmount: 1000, paidAmount: 300 })]
+    const txs = [tx({ id: 'p1', type: 'transfer', amount: 300, amountTry: 300, date: '2026-01-20', debtId: 'd1' })]
+    expect(calcDebtBurdenAsOf(debts, txs, '2026-01-15')).toBe(1000)
+    expect(calcDebtBurdenAsOf(debts, txs, '2026-01-25')).toBe(700)
+  })
+
+  it('borç ödemesi net değeri OYNATMAZ: nakit ve yükümlülük aynı tutarda düşer', () => {
+    const debts = [debt({ id: 'd1', totalAmount: 1000, paidAmount: 300 })]
+    const pay = tx({ id: 'p1', type: 'transfer', amount: 300, amountTry: 300, date: '2026-01-20', debtId: 'd1', accountId: 'a' })
+    const account = { id: 'a', currency: 'TRY' as const, initialBalance: 5000 }
+    const series = buildDebtBurdenSeries(debts, [pay], ['2026-01-15', '2026-01-25'])
+    // 15 Oca: nakit 5000 (ödeme henüz yok) − borç 1000 = 4000
+    // 25 Oca: nakit 4700 (ödeme çıktı)     − borç  700 = 4000
+    const cashBefore = account.initialBalance
+    const cashAfter  = account.initialBalance + computeTransactionEffect(account, [pay])
+    expect(cashBefore - series[0]).toBe(cashAfter - series[1])
   })
 })
 
