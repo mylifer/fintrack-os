@@ -13,6 +13,12 @@ interface ModalProps {
   title?:   string
   children: ReactNode
   size?:    'sm' | 'md' | 'lg'
+  /**
+   * false → modal YALNIZCA X (ya da modalin kendi butonları) ile kapanır;
+   * dışına tıklamak ve Esc kapatmaz. Yarım kalmış bir form kazayla tıklamayla
+   * kaybolmasın diye veri girilen modallerde kullanılır. Varsayılan: true.
+   */
+  dismissible?: boolean
 }
 
 const sizeClass = {
@@ -21,12 +27,15 @@ const sizeClass = {
   lg: 'sm:max-w-lg',
 }
 
-export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = 'md', dismissible = true }: ModalProps) {
+  const block = dismissible ? undefined : (e: Event) => e.preventDefault()
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
       <DialogContent
         showCloseButton={false}
         className={cn('gap-0 p-0 max-h-[90vh] flex flex-col', sizeClass[size])}
+        onInteractOutside={block}
+        onEscapeKeyDown={block}
       >
         {title && (
           <DialogHeader className="flex-row items-center justify-between px-6 py-5 border-b border-border/30 flex-shrink-0">

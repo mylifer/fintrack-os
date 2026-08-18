@@ -679,7 +679,9 @@ export default function DebtsPage() {
       </Modal>
 
       {/* Add / Edit debt form modal */}
-      <Modal open={showForm} onClose={closeForm} title={editingDebt ? 'Borcu Düzenle' : 'Borç / Alacak Ekle'} size="md">
+      {/* Dışına tıklamak/Esc kapatmaz: form yarım kalmışken kazayla kaybolmasın
+          (kapanış yalnızca X ya da İptal ile). */}
+      <Modal open={showForm} onClose={closeForm} title={editingDebt ? 'Borcu Düzenle' : 'Borç / Alacak Ekle'} size="md" dismissible={false}>
         <div className="flex flex-col gap-3">
           <Input label="Açıklama" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} placeholder="Araba Kredisi" />
 
