@@ -33,9 +33,14 @@ export function SyncStatusBanner() {
   // yoksa buton dakikalarca görünmez kalırdı.
   //   • row-level security → başka hesabın kimliğini taşıyan kategori satırı
   //   • invalid input syntax for type uuid → geçersiz hesap referanslı işlem
+  //   • not-null constraint → yukarıdakinin push sınırında '' → null'a çevrilmiş
+  //     hâli (bkz. sync/sanitize.ts): kolon ZORUNLUysa satır hâlâ geçmez ve
+  //     gerçekten onarım ister. Bu şartı düşürmek "Onar" butonunu görünmez
+  //     kılardı — kullanıcı elinde çözümü olmayan bir hatayla kalırdı.
   const repairable = !!lastError && (
     lastError.includes('row-level security') ||
-    lastError.includes('invalid input syntax for type uuid')
+    lastError.includes('invalid input syntax for type uuid') ||
+    lastError.includes('violates not-null constraint')
   )
 
   // Kuyruk dolu→boş/boş→dolu geçişinde overdue'yu render sırasında sıfırla

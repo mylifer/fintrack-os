@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import { isLive } from './tombstone'
+import { sanitizeIdRefs } from './sanitize'
 import { useSyncStatusStore } from '@/store/sync-status.store'
 import type { OutboxEntry } from '@/types'
 import { getActiveWorkspaceId, rowInActiveWorkspace } from '@/lib/workspace-context'
@@ -302,7 +303,11 @@ export async function flushOutbox(): Promise<void> {
         // (for inspection/manual fix) but stop auto-retrying it.
         if (e.attempts >= MAX_ATTEMPTS) continue
 
-        const payload = { ...e.snapshot, user_id: userId }
+        // Boş string kimlik referansları ('' → null) push sınırında temizlenir:
+        // '' geçerli bir uuid değildir ve satırı kalıcı olarak dead-letter'a
+        // düşürür. Burada (enqueue'da değil) yapılır ki kuyrukta ZATEN takılı
+        // olan eski satırlar da kendiliğinden düzelsin — bkz. sync/sanitize.ts.
+        const payload = sanitizeIdRefs({ ...e.snapshot, user_id: userId })
         const { error } = await supabase.from(e.table).upsert(payload, { onConflict: 'id' })
         if (error) {
           failed++
