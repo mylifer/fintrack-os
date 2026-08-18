@@ -19,6 +19,7 @@ import { parseCurrencyInput } from '@/lib/utils/currency'
 import { toBaseTry, fromBaseTry } from '@/lib/utils/fx'
 import type { Account, Debt, DebtType, DebtDirection, DebtWithRemaining, Transaction } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
+import { debtPrincipalDescription, findDebtPrincipalTx } from '@/lib/utils/debt-links'
 import { useShallow } from 'zustand/react/shallow'
 
 const PencilIcon = () => (
@@ -138,13 +139,15 @@ function nextInstallmentAmount(debt: DebtWithRemaining): number {
   return next ? next.amount : Math.max(debt.remainingAmount, 0)
 }
 
-/* Anaparanın işlem tarihi. Borcun "Başlangıç (ilk taksit)" tarihi İLERİDE
-   olabilir (kredide ilk taksit genelde para girişinden ~1 ay sonra); ileri
-   tarihli satır onay kapısına düşüp bakiyeye HİÇ girmez, oysa para bugün
-   hesapta. Geçmiş bir başlangıç ise (eski borç kaydı) o tarih korunur. */
-function principalDate(startDate: string): string {
-  const t = today()
-  return startDate && startDate.slice(0, 10) <= t ? startDate : t
+/* Anaparanın işlem tarihi = BORÇ ALIM TARİHİ, paranın gerçekten el değiştirdiği
+   gün. Eskiden "Başlangıç (ilk taksit)" tarihinden türetiliyordu; kredide ilk
+   taksit genelde para girişinden ~1 ay sonra olduğundan ileri tarihli bir satır
+   doğuyor, o da onay kapısında bekleyip bakiyeye hiç girmiyordu — bu yüzden
+   tarih bugüne çekiliyordu ve gerçek giriş günü kaybediliyordu. Artık tarih
+   kullanıcıdan ayrı bir alan olarak alınır: geçmiş de girilebilir (geriye dönük
+   kayıt), ileri de (para henüz gelmedi → satır onay kapısında bekler, doğrusu). */
+function principalDate(borrowDate: string): string {
+  return borrowDate ? borrowDate.slice(0, 10) : today()
 }
 
 function emptyPayForm() {
@@ -156,6 +159,8 @@ function emptyForm() {
     name: '', type: 'personal' as DebtType, direction: 'owe' as DebtDirection,
     totalStr: '', paidStr: '0', interestStr: '',
     startDate: new Date().toISOString().slice(0, 10),
+    // Paranın hesaba girdiği/hesaptan çıktığı gün — anapara işleminin tarihi.
+    borrowDate: today(),
     dueDate: '', monthlyStr: '', totalInst: '', counterparty: '',
     accountId: '', notes: '',
     // Anaparanın gireceği/çıkacağı hesap — OPSİYONEL, yalnızca yeni kayıtta.
@@ -189,6 +194,7 @@ export default function DebtsPage() {
   const openModal    = useUIStore(s => s.openModal)
   const removeTx     = useTransactionStore(s => s.remove)
   const addTx         = useTransactionStore(s => s.add)
+  const updateTx      = useTransactionStore(s => s.update)
   const recordPayment = useDebtStore(s => s.recordPayment)
 
   const [showForm, setShowForm]         = useState(false)
@@ -221,6 +227,10 @@ export default function DebtsPage() {
 
   function startEdit(debt: Debt) {
     setEditingDebt(debt)
+    // Alan eklenmeden önceki borçlarda borrowDate yoktur; o kayıtlarda tek
+    // gerçek anapara satırının KENDİ tarihidir — form onu gösterir ki geriye
+    // dönük düzenleme mevcut tarihin üzerine çalışsın.
+    const principalTx = findDebtPrincipalTx(debt, transactions)
     setForm({
       name:         debt.name,
       type:         debt.type,
@@ -229,6 +239,7 @@ export default function DebtsPage() {
       paidStr:      fmt(debt.paidAmount),
       interestStr:  debt.interestRate ? String(debt.interestRate) : '',
       startDate:    debt.startDate,
+      borrowDate:   debt.borrowDate ?? principalTx?.date.slice(0, 10) ?? '',
       dueDate:      debt.dueDate ?? '',
       monthlyStr:   debt.monthlyPayment ? fmt(debt.monthlyPayment) : '',
       totalInst:    debt.totalInstallments ? String(debt.totalInstallments) : '',
@@ -262,6 +273,7 @@ export default function DebtsPage() {
       isSettled:         paidAmount >= totalAmount,
       interestRate:      parseCurrencyInput(form.interestStr) || undefined,
       startDate:         form.startDate,
+      borrowDate:        form.borrowDate || undefined,
       dueDate:           form.dueDate || undefined,
       monthlyPayment:    parseCurrencyInput(form.monthlyStr) || undefined,
       totalInstallments: form.totalInst ? Number(form.totalInst) : undefined,
@@ -272,6 +284,10 @@ export default function DebtsPage() {
 
     if (editingDebt) {
       await update(editingDebt.id, patch)
+      // Geriye dönük düzenleme: alım tarihi değiştiyse anaparanın hesaba
+      // giriş/çıkış tarihi de birlikte taşınır (eski borcu ARAYARAK — satır
+      // eski ad/yön ile yazılmıştı).
+      await syncPrincipalDate(editingDebt, form.borrowDate)
     } else {
       const depositAccount = accounts.find(a => a.id === form.depositAccountId)
       const d: Debt = {
@@ -309,7 +325,9 @@ export default function DebtsPage() {
 
      debtId TAŞIMAZ: debtId'li her satır silme/düzenleme akışlarında bir ÖDEME
      sayılır (revertPayment → paidAmount + taksit düşer). Anapara bir ödeme
-     olmadığı için bağlanmaz; aksi halde girişi silmek borcu ödenmiş gösterirdi. */
+     olmadığı için bağlanmaz; aksi halde girişi silmek borcu ödenmiş gösterirdi.
+     Bağ için AYRI bir alan (`debtPrincipalId`) kullanılır: borç alım tarihi
+     geriye dönük düzenlenince satır bu bağdan bulunur. */
   async function addPrincipalTx(debt: Debt, account: Account) {
     const inbound = debt.direction === 'owe' // borç aldım → para hesaba girer
     // Borç tutarları TRY bazlıdır — yabancı para hesaba kendi biriminde yazılır (M4).
@@ -322,12 +340,40 @@ export default function DebtsPage() {
       currency:      account.currency,
       accountId:     account.id,
       icon:          inbound ? '🏦' : '🤝',
-      description:   inbound ? `${debt.name} — borç girişi` : `${debt.name} — verilen borç`,
+      description:   debtPrincipalDescription(debt),
       isInstallment: false,
-      date:          principalDate(debt.startDate),
+      debtPrincipalId: debt.id,
+      date:          principalDate(debt.borrowDate ?? ''),
       createdAt:     now,
       updatedAt:     now,
     })
+  }
+
+  /* Borç alım tarihinin geriye (ya da ileriye) dönük düzenlenmesi: anaparanın
+     hesap giriş/çıkış tarihi borçla birlikte taşınır — "borcun tutarının hesaba
+     giriş tarihi" ile "borç alım tarihi" tek bir gerçektir.
+
+     `debt` GÜNCELLENMEDEN önceki hâlidir: eski satır eski ad/yön ile yazıldığı
+     için açıklama fallback'i ancak onunla eşleşir. Satır bulunamazsa (anapara
+     hiç yazılmamış ya da birden fazla aday var) hiçbir şey yapılmaz. */
+  async function syncPrincipalDate(debt: Debt, borrowDate: string) {
+    const date = borrowDate.slice(0, 10)
+    if (!date) return
+    const tx = findDebtPrincipalTx(debt, transactions)
+    if (!tx || tx.date.slice(0, 10) === date) return
+
+    const patch: Partial<Transaction> = { date }
+    // Eski satırda ID bağı yok → bulduğumuz anda damgala; bir dahaki düzenleme
+    // (borç adı değişmiş olsa bile) açıklama eşleşmesine muhtaç kalmasın.
+    if (!tx.debtPrincipalId) patch.debtPrincipalId = debt.id
+    // İleri tarihli doğan satır onay kapısında 'pending' bekler; tarih bugüne
+    // ya da geçmişe çekilince beklemesi için sebep kalmaz — aksi halde para
+    // bakiyeye HİÇ girmezdi (repair.ts'teki re-date kuralıyla aynı).
+    if (tx.approvalStatus === 'pending' && date <= today()) {
+      patch.approvalStatus = 'approved'
+      patch.approvedAt     = new Date().toISOString()
+    }
+    await updateTx(tx.id, patch)
   }
 
   function openPay(debt: DebtWithRemaining) {
@@ -474,6 +520,21 @@ export default function DebtsPage() {
         .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
     : []
 
+  /* Alım tarihi alanının altındaki açıklama. Düzenlemede kritik: tarihi
+     değiştirmenin anapara satırını da taşıyacağını (ya da taşınacak bir satır
+     bulunmadığını) kullanıcı kaydetmeden önce görmeli. */
+  const borrowDateHint = (() => {
+    if (!editingDebt) return 'Paranın hesaba girdiği/hesaptan çıktığı gün.'
+    const tx = findDebtPrincipalTx(editingDebt, transactions)
+    if (!tx) return 'Bu borcun bağlı bir anapara işlemi yok — tarih yalnızca kayıtta güncellenir.'
+    // Boş tarih hiçbir şeyi taşımaz (formatDate de geçersiz girdiyle patlar).
+    if (!form.borrowDate) return `Anapara işlemi ("${tx.description}") ${formatDate(tx.date, 'd MMM yyyy')} tarihinde — boş bırakılırsa taşınmaz.`
+    const changed = form.borrowDate.slice(0, 10) !== tx.date.slice(0, 10)
+    return changed
+      ? `Kaydedince "${tx.description}" işleminin tarihi de ${formatDate(form.borrowDate, 'd MMM yyyy')} olur.`
+      : `Anapara işlemi ("${tx.description}") bu tarihle kayıtlı.`
+  })()
+
   // Anapara seçiminin ne yapacağını açık açık yaz — bakiyeye dokunan tek yer.
   const depositHint = (() => {
     const account = accounts.find(a => a.id === form.depositAccountId)
@@ -484,8 +545,13 @@ export default function DebtsPage() {
     const yon = form.direction === 'owe'
       ? `${amount} ${account.name} hesabına giriş`
       : `${amount} ${account.name} hesabından çıkış`
-    const tarih = formatDate(principalDate(form.startDate), 'd MMM yyyy')
-    return `${yon} olarak ${tarih} tarihiyle yazılır. Gelir/gider toplamlarına girmez — yalnızca hesap bakiyesini değiştirir.`
+    const iso   = principalDate(form.borrowDate)
+    const tarih = formatDate(iso, 'd MMM yyyy')
+    // İleri tarihli satır onay kapısında bekler — bakiyeye o gün gelince girer.
+    const kapi = iso > today()
+      ? ' Tarih ileride olduğu için bildirim merkezinde onay bekler.'
+      : ''
+    return `${yon} olarak ${tarih} (borç alım tarihi) ile yazılır. Gelir/gider toplamlarına girmez — yalnızca hesap bakiyesini değiştirir.${kapi}`
   })()
 
   return (
@@ -710,6 +776,16 @@ export default function DebtsPage() {
             <CurrencyInput label="Toplam Tutar" value={form.totalStr} onChange={v => setForm(f => ({...f, totalStr: v}))} />
             <CurrencyInput label="Ödenen" value={form.paidStr} onChange={v => setForm(f => ({...f, paidStr: v}))} />
           </div>
+
+          {/* Borç alım tarihi — paranın el değiştirdiği gün. Anapara işleminin
+              tarihi budur ve düzenlenince o işlem de birlikte taşınır. */}
+          <Input
+            label="Borç Alım Tarihi"
+            type="date"
+            value={form.borrowDate}
+            onChange={e => setForm(f => ({...f, borrowDate: e.target.value}))}
+            hint={borrowDateHint}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <Input label="Başlangıç (ilk taksit)" type="date" value={form.startDate} onChange={e => setForm(f => ({...f, startDate: e.target.value}))} />

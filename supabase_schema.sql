@@ -191,6 +191,7 @@ alter table public.transactions add column if not exists "installTotal" double p
 alter table public.transactions add column if not exists "installIndex" double precision;
 alter table public.transactions add column if not exists "installGroupId" text;
 alter table public.transactions add column if not exists "debtId" text;
+alter table public.transactions add column if not exists "debtPrincipalId" text;
 alter table public.transactions add column if not exists "createdAt" text;
 alter table public.transactions add column if not exists "updatedAt" text;
 
@@ -236,6 +237,7 @@ alter table public.debts add column if not exists "totalAmount" double precision
 alter table public.debts add column if not exists "paidAmount" double precision;
 alter table public.debts add column if not exists "interestRate" double precision;
 alter table public.debts add column if not exists "startDate" text;
+alter table public.debts add column if not exists "borrowDate" text;
 alter table public.debts add column if not exists "dueDate" text;
 alter table public.debts add column if not exists "monthlyPayment" double precision;
 alter table public.debts add column if not exists "totalInstallments" double precision;

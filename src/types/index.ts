@@ -108,6 +108,14 @@ export interface Transaction {
   installGroupId?: string   // Groups all installments of one purchase
 
   debtId?: string           // Links to a tracked Debt
+  // Borç ANAPARASI satırının borcuna ID bağı ("… borç girişi"/"… verilen borç").
+  // debtId'den AYRI tutulur bilerek: debtId'li satır her akışta bir ÖDEME sayılır
+  // (silinince revertPayment çalışır), anapara ise ödeme değildir. Bu alan yalnız
+  // "bu satır şu borcun anaparasıdır" der — borç alım tarihi geriye dönük
+  // düzenlenince satırın tarihi bu bağdan bulunup taşınır. Alan eklenmeden önce
+  // yazılmış satırlarda yoktur; açıklama eşleşmesi fallback olarak korunur
+  // (bkz. lib/utils/debt-links.ts — 0006'daki P&L bağıyla aynı desen).
+  debtPrincipalId?: string
   refundOfId?: string       // Set on refund entries → the original transaction they offset (S4)
   systemKind?: 'reconciliation' // First-class marker for system ghost entries (S7); see reconciliation.ts
 
@@ -194,6 +202,12 @@ export interface Debt {
   paidAmount: number        // Running total of payments
   interestRate?: number     // Annual % (e.g., 3.5)
   startDate: string         // First installment date (vade yoksa plan buradan başlar)
+  // Borcun ALINDIĞI/VERİLDİĞİ tarih — paranın gerçekten el değiştirdiği gün.
+  // startDate'ten AYRIDIR: kredide ilk taksit genelde para girişinden ~1 ay
+  // sonradır. Anapara işleminin tarihi budur (bkz. debts/page.tsx). Alan
+  // eklenmeden önceki kayıtlarda yoktur → o borçlarda anapara satırının kendi
+  // tarihi tek gerçektir.
+  borrowDate?: string
   dueDate?: string          // Hatırlatma (gecikme rozeti) — ödeme planını kaydırmaz
   monthlyPayment?: number
   totalInstallments?: number
