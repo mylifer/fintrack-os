@@ -295,8 +295,10 @@ export default function InvestmentsPage() {
         {/* Summary cards */}
         {(holdings.length > 0 || totalCost > 0) && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-            <SumCard label="Toplam Değer"  value={formatCompact(animTotalValue)} />
-            <SumCard label="Toplam Maliyet" value={formatCompact(animTotalCost)} />
+            {/* Değer/maliyet TAM gösterilir: formatCompact ≥1 Mn'yi "₺1,2 Mn"ye
+                yuvarlıyordu ve portföyün gerçek tutarı okunamıyordu. */}
+            <SumCard label="Toplam Değer"  value={formatCurrency(animTotalValue)} />
+            <SumCard label="Toplam Maliyet" value={formatCurrency(animTotalCost)} />
             <SumCard
               label="Kar / Zarar"
               value={(totalPnl >= 0 ? '+' : '−') + formatCompact(animTotalPnl)}
