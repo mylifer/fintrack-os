@@ -255,6 +255,29 @@ export function computeHoldings(
   return holdings
 }
 
+/* ── TEFAS fon fiyatı isteği (modül seviyesi kuyruk) ─────────────────
+   Eşzamanlı çağrılar SESSİZCE DÜŞÜRÜLMEMELİ: eskiden `fundPricesLoading`
+   açıkken gelen çağrı atılıyordu ve çalışma alanı değişiminin hemen
+   ardından gelen istek (yeni alanın fon kodlarıyla) uçuştaki eski isteğe
+   takılıp kayboluyor, yeni alanın fonları bir sonraki 60 sn'lik polling'e
+   kadar fiyatsız kalıyordu. Aynı kod kümesi uçuştaysa ona bağlanılır,
+   FARKLI bir küme istendiyse isteğin arkasına zincirlenir. */
+let fundFetchTail: Promise<void> | null = null
+let fundFetchPending = 0
+const fundFetchCodes = new Set<string>()
+
+// Route'un MAX_CODES sınırı (30) — daha fazla fonu olan bir portföyde tek
+// istek eskiden 400 alıp tüm fiyat akışını kesiyordu; artık parçalanır ve
+// parçalardan biri düşse diğerleri yine güncellenir.
+const FUND_CHUNK = 25
+
+async function fetchFundChunk(codes: string[]): Promise<Record<string, TefasFundPrice | null>> {
+  const res = await fetch(`/api/prices/tefas?codes=${codes.join(',')}`, { cache: 'no-store' })
+  if (!res.ok) throw new Error(`${res.status}`)
+  const data: { funds?: Record<string, TefasFundPrice | null> } = await res.json()
+  return data.funds ?? {}
+}
+
 /* ── Store ───────────────────────────────────────────────────────── */
 
 interface InvestmentState {
@@ -264,6 +287,7 @@ interface InvestmentState {
   pricesError:       string | null
   fundPrices:        Record<string, TefasFundPrice>
   fundPricesLoading: boolean
+  fundPricesError:   string | null
   loading:           boolean
 
   load:                    () => Promise<void>
@@ -284,6 +308,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
   pricesError:       null,
   fundPrices:        {},
   fundPricesLoading: false,
+  fundPricesError:   null,
   loading:           false,
 
   load: async () => {
@@ -455,28 +480,60 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
   },
 
   fetchFundPrices: async (extraCodes = []) => {
-    const codes = new Set([
+    const codes = [...new Set([
       ...tefasCodesIn(get().transactions.map(t => t.asset)),
       ...extraCodes.map(c => c.trim().toUpperCase()).filter(Boolean),
-    ])
-    if (!codes.size || get().fundPricesLoading) return
-    set({ fundPricesLoading: true })
-    try {
-      const res = await fetch(`/api/prices/tefas?codes=${[...codes].join(',')}`, { cache: 'no-store' })
-      if (!res.ok) throw new Error(`${res.status}`)
-      const data: { funds: Record<string, TefasFundPrice | null> } = await res.json()
-      const merged = { ...get().fundPrices }
-      for (const [code, fp] of Object.entries(data.funds ?? {})) {
-        if (fp) merged[code] = fp
-      }
-      set({ fundPrices: merged })
-    } catch {
-      // FX fiyatlarından bağımsız, sessizce geç — eldeki son fon fiyatı kullanılmaya devam eder
-    } finally {
-      set({ fundPricesLoading: false })
-    }
-  },
+    ])].sort()
+    if (!codes.length) return
 
+    // Uçuşta/kuyrukta olan istek bu kodların tamamını kapsıyorsa ona bağlan
+    if (fundFetchTail && codes.every(c => fundFetchCodes.has(c))) return fundFetchTail
+
+    codes.forEach(c => fundFetchCodes.add(c))
+    const prev = fundFetchTail
+    fundFetchPending++
+    set({ fundPricesLoading: true })
+
+    const task = (async () => {
+      if (prev) await prev
+      const chunks: string[][] = []
+      for (let i = 0; i < codes.length; i += FUND_CHUNK) chunks.push(codes.slice(i, i + FUND_CHUNK))
+
+      const results = await Promise.allSettled(chunks.map(fetchFundChunk))
+      const merged  = { ...get().fundPrices }
+      const missing: string[] = []
+      let failed = 0
+
+      for (const r of results) {
+        if (r.status !== 'fulfilled') { failed++; continue }
+        for (const [code, fp] of Object.entries(r.value)) {
+          if (fp) merged[code] = fp
+          // Eldeki son fiyat korunur; hiç fiyatı olmayan kod raporlanır —
+          // eskiden bu tamamen sessizdi ve "fiyat akmıyor" teşhis edilemiyordu.
+          else if (!merged[code]) missing.push(code)
+        }
+      }
+
+      set({
+        fundPrices: merged,
+        fundPricesError:
+          failed === chunks.length ? 'Fon fiyatları alınamadı'
+          : missing.length         ? `TEFAS verisi yok: ${[...new Set(missing)].sort().join(', ')}`
+          : null,
+      })
+    })()
+
+    // Hata istemciye sızmasın (fiyat akışı FX'ten bağımsız, best-effort)
+    fundFetchTail = task.catch(() => { /* durum fundPricesError'da */ })
+    void fundFetchTail.finally(() => {
+      if (--fundFetchPending === 0) {
+        fundFetchTail = null
+        fundFetchCodes.clear()
+        set({ fundPricesLoading: false })
+      }
+    })
+    return fundFetchTail
+  },
   getHoldings:       () => computeHoldings(get().transactions, get().prices, get().fundPrices),
   getPortfolioValue: () =>
     computeHoldings(get().transactions, get().prices, get().fundPrices)

@@ -9,14 +9,17 @@ const MAX_CODES = 30
 
 // Fon fiyatı günlük veri — 60 sn'lik istemci polling'i TEFAS'a birebir yansımasın
 // diye kod başına kısa süreli bellek içi cache (instance ömrüyle sınırlı, yeterli).
-const CACHE_TTL_MS = 10 * 60 * 1000
+// Bulunamayan kod DAHA KISA cache'lenir: TEFAS'ın anlık bir hatası/zaman aşımı
+// yüzünden fon 10 dk boyunca "fiyatsız" kalmasın (yalnızca modal doğrulamasının
+// tekrarlı sorgusunu yumuşatacak kadar).
+const CACHE_TTL_MS      = 10 * 60 * 1000
+const MISS_CACHE_TTL_MS = 60 * 1000
 const cache = new Map<string, { at: number; series: TefasSeries | null }>()
 
 async function getSeries(code: string): Promise<TefasSeries | null> {
   const hit = cache.get(code)
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.series
+  if (hit && Date.now() - hit.at < (hit.series ? CACHE_TTL_MS : MISS_CACHE_TTL_MS)) return hit.series
   const series = await fetchTefasSeries(code, 1)
-  // Bulunamayan kodu da (kısa süreli) cache'le — modal doğrulaması tekrarlı sorar
   cache.set(code, { at: Date.now(), series })
   return series
 }
@@ -39,18 +42,25 @@ function toFundPrice(series: TefasSeries): TefasFundPrice {
 // Bilinmeyen/bulunamayan kod null döner — modal "fon bulunamadı" gösterir.
 export async function GET(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get('codes') ?? ''
-  const codes = [...new Set(raw.split(',').map(c => c.trim().toUpperCase()).filter(Boolean))]
+  const requested = [...new Set(raw.split(',').map(c => c.trim().toUpperCase()).filter(Boolean))]
 
-  if (!codes.length || codes.length > MAX_CODES || codes.some(c => !CODE_RE.test(c))) {
+  if (!requested.length) {
     return NextResponse.json({ error: 'Geçersiz fon kodu' }, { status: 400 })
   }
 
-  const results = await Promise.all(codes.map(getSeries))
+  // Tek bozuk kod (ya da MAX_CODES'u aşan bir portföy) TÜM isteği düşürmemeli:
+  // eskiden bu durumda 400 dönüyor ve o çalışma alanındaki HİÇBİR fonun fiyatı
+  // akmıyordu (istemci hatayı sessizce yutuyor). Artık yalnızca ilgili kodlar
+  // null döner, geçerli olanlar normal şekilde fiyatlanır.
+  const valid = requested.filter(c => CODE_RE.test(c)).slice(0, MAX_CODES)
 
   const funds: Record<string, TefasFundPrice | null> = {}
-  codes.forEach((code, i) => {
+  for (const code of requested) funds[code] = null
+
+  const results = await Promise.all(valid.map(getSeries))
+  valid.forEach((code, i) => {
     const series = results[i]
-    funds[code] = series ? toFundPrice(series) : null
+    if (series) funds[code] = toFundPrice(series)
   })
 
   return NextResponse.json(

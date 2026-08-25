@@ -72,6 +72,7 @@ export default function InvestmentsPage() {
   const pricesError       = useInvestmentStore(s => s.pricesError)
   const fetchPrices       = useInvestmentStore(s => s.fetchPrices)
   const fundPrices        = useInvestmentStore(s => s.fundPrices)
+  const fundPricesError   = useInvestmentStore(s => s.fundPricesError)
   const getHoldings       = useInvestmentStore(s => s.getHoldings)
   const removeTransaction = useInvestmentStore(s => s.removeTransaction)
   const accounts = useAccountStore(useShallow(s => s.accounts))
@@ -89,6 +90,13 @@ export default function InvestmentsPage() {
   }, [])
 
   const holdings = getHoldings()
+  // Fon ticker'ı yalnızca AKTİF çalışma alanının fonlarını göstersin: fundPrices
+  // kod bazlı tek bir sözlük ve alan değiştikçe birikiyor (başka alanın fonları
+  // sızıyordu).
+  const wsFundCodes = useMemo(
+    () => new Set(tefasCodesIn(transactions.map(t => t.asset))),
+    [transactions],
+  )
   const totalValue = holdings.reduce((s, h) => s + h.currentValue, 0)
   const totalCost  = holdings.reduce((s, h) => s + h.totalCost, 0)
   const totalPnl   = totalValue - totalCost
@@ -238,6 +246,7 @@ export default function InvestmentsPage() {
               <Ticker label="Bilezik/gr" value={`₺${prices.bilezikGramTry.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`} current={prices.bilezikGramTry} previous={prices.prevBilezikGramTry} />
             ) : null}
             {Object.values(fundPrices)
+              .filter(fp => wsFundCodes.has(fp.code))
               .sort((a, b) => a.code.localeCompare(b.code))
               .map(fp => (
                 <Ticker
@@ -249,8 +258,8 @@ export default function InvestmentsPage() {
                 />
               ))}
             <div className="ml-auto flex items-center gap-3 flex-shrink-0">
-              {pricesError && (
-                <span className="text-xs text-destructive font-medium">{pricesError}</span>
+              {(pricesError || fundPricesError) && (
+                <span className="text-xs text-destructive font-medium">{pricesError ?? fundPricesError}</span>
               )}
               <span className="text-xs text-muted-foreground">
                 {pricesLoading ? 'Güncelleniyor...' : updatedAt ? `Son: ${updatedAt}` : ''}
