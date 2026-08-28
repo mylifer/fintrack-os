@@ -204,7 +204,10 @@ export function CategoryBoard() {
                   toplam {SCOPE_LABELS[scope].toLocaleLowerCase('tr-TR')} {formatCurrency(scopeTotal)}
                 </span>
               )}
-              {sort !== 'name' && (
+              {/* Tablo görünümü kırılımı ağaç olarak gösterir; düz listede
+                  (arama ya da Dizin) alt kategoriler ayrı satır olduğu için
+                  toplamların üst üste bindiğini yazmak gerekiyor. */}
+              {(query.trim() !== '' || view === 'index') && (
                 <span className="hidden sm:inline">
                   alt kategoriler ayrı satır — tutarları üstlerinin içinde de sayılır
                 </span>

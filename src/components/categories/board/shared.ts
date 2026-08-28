@@ -26,6 +26,8 @@ export type CategoryLevel = 0 | 1 | 2
 export interface CategoryRow {
   category: Category
   level: CategoryLevel
+  /** Aktif ağaçtaki üst kategori (arşivli üst varsa köke bağlanır). */
+  parentId: string | undefined
   /** Üst zincir, ör. "Yeme İçme › Market"; kök kategoride ''. */
   path: string
   /** Doğrudan (arşivsiz) alt kategori sayısı. */
@@ -41,10 +43,19 @@ export interface CategoryRow {
   net: number
   /** |net| — sıralama, ortalama ve pay hesabının tabanı. */
   magnitude: number
+  /** Yalnız DOĞRUDAN bu kategoriye işlenmiş tutar (alt kategoriler hariç).
+   *  Kırılımda "Doğrudan …" satırı olarak görünür; alt kategori payları + bu,
+   *  üstün toplamını verir. */
+  ownMagnitude: number
+  /** Doğrudan bu kategoriye işlenmiş akış işlemi sayısı. */
+  ownCount: number
   /** Alt ağaçtaki en son akış işleminin günü. */
   lastDate: string | null
   /** Kök kategorilerin toplam büyüklüğü içindeki pay, 0..1. */
   share: number
+  /** Üst kategorisinin toplamı içindeki pay, 0..1 (kökte 0). Kırılımın
+   *  okunması gereken oranı budur. */
+  shareOfParent: number
 }
 
 /** Bir kategoriden köke uzanan zincir (kendisi dahil), en fazla 3 halka. */
@@ -100,11 +111,18 @@ export function enrichCategories(
     pendingIds: Set<string>
     incomeMinor: number
     expenseMinor: number
+    /** Yalnız doğrudan bu kategoriye işlenmiş olanlar (alt ağaç hariç). */
+    ownIds: Set<string>
+    ownIncomeMinor: number
+    ownExpenseMinor: number
     lastDate: string | null
   }
   const acc = new Map<string, Acc>()
   for (const c of active) {
-    acc.set(c.id, { flowIds: new Set(), pendingIds: new Set(), incomeMinor: 0, expenseMinor: 0, lastDate: null })
+    acc.set(c.id, {
+      flowIds: new Set(), pendingIds: new Set(), incomeMinor: 0, expenseMinor: 0,
+      ownIds: new Set(), ownIncomeMinor: 0, ownExpenseMinor: 0, lastDate: null,
+    })
   }
 
   // Tek geçişte hem kendisine hem üstlerine yazılır: zincir en fazla 3 halka
@@ -118,13 +136,21 @@ export function enrichCategories(
     for (const id of ancestorChain(cid, parentOf)) {
       const a = acc.get(id)
       if (!a) continue
+      const own = id === cid
       if (!flow) { a.pendingIds.add(t.id); continue }
       a.flowIds.add(t.id)
+      if (own) a.ownIds.add(t.id)
       if (!a.lastDate || date > a.lastDate) a.lastDate = date
       // Transfer satırları hiçbir toplama girmez (yalnız sayıma) — akış
       // metriklerinin her yerdeki kuralı.
-      if (t.type === 'expense')     a.expenseMinor += toMinor(baseAmount(t))
-      else if (t.type === 'income') a.incomeMinor  += toMinor(baseAmount(t))
+      const minor = toMinor(baseAmount(t))
+      if (t.type === 'expense') {
+        a.expenseMinor += minor
+        if (own) a.ownExpenseMinor += minor
+      } else if (t.type === 'income') {
+        a.incomeMinor += minor
+        if (own) a.ownIncomeMinor += minor
+      }
     }
   }
 
@@ -138,10 +164,13 @@ export function enrichCategories(
     const a = acc.get(category.id)!
     const net = toMajor(a.incomeMinor - a.expenseMinor)
     const magnitude = Math.abs(net)
+    const parentId = parentOf.get(category.id)
+    const parentMagnitude = parentId ? magnitudeOf(acc.get(parentId)!) : 0
     const chain = ancestorChain(category.id, parentOf).slice(1).reverse()
     return {
       category,
       level:        levelOf(category.id),
+      parentId,
       path:         chain.map(id => byId.get(id)!.name).join(' › '),
       childCount:   (childrenOf.get(category.id) ?? []).length,
       flowCount:    a.flowIds.size,
@@ -150,8 +179,11 @@ export function enrichCategories(
       expense:      toMajor(a.expenseMinor),
       net,
       magnitude,
+      ownMagnitude: Math.abs(toMajor(a.ownIncomeMinor - a.ownExpenseMinor)),
+      ownCount:     a.ownIds.size,
       lastDate:     a.lastDate,
       share:        rootTotal > 0 ? magnitude / rootTotal : 0,
+      shareOfParent: parentMagnitude > 0 ? magnitude / parentMagnitude : 0,
     }
   })
 
@@ -210,6 +242,58 @@ export function sortCategories(rows: CategoryRow[], sort: SortId): CategoryRow[]
       (b.lastDate ?? '').localeCompare(a.lastDate ?? '') || byName(a, b)); break
   }
   return sorted
+}
+
+/* ── Kırılım ağacı ─────────────────────────────────────────────────────────── */
+
+export interface CategoryNode {
+  row: CategoryRow
+  children: CategoryNode[]
+}
+
+/** Kardeşleri aktif sıralamaya göre dizer (ağacın HER seviyesinde ayrı ayrı). */
+export function sortSiblings(rows: CategoryRow[], sort: SortId): CategoryRow[] {
+  const byName = (a: CategoryRow, b: CategoryRow) =>
+    a.category.name.localeCompare(b.category.name, 'tr')
+
+  const sorted = [...rows]
+  switch (sort) {
+    case 'total':  sorted.sort((a, b) => b.magnitude - a.magnitude || byName(a, b)); break
+    case 'count':  sorted.sort((a, b) => b.flowCount - a.flowCount || byName(a, b)); break
+    case 'recent': sorted.sort((a, b) =>
+      (b.lastDate ?? '').localeCompare(a.lastDate ?? '') || byName(a, b)); break
+    case 'name':   sorted.sort(byName); break
+  }
+  return sorted
+}
+
+/**
+ * Satırları kırılım ağacına dizer: kökler sıralanır, her kökün altında kendi
+ * alt kategorileri AYNI ölçüte göre sıralanır. Üstü listede olmayan bir satır
+ * (arama sonucu) öksüz kalmasın diye kök seviyesine çıkarılır — yolu zaten
+ * satırda yazıyor.
+ */
+export function buildTree(rows: CategoryRow[], sort: SortId): CategoryNode[] {
+  const present = new Set(rows.map(r => r.category.id))
+  const childrenOf = new Map<string, CategoryRow[]>()
+  const roots: CategoryRow[] = []
+
+  for (const row of rows) {
+    const pid = row.parentId
+    if (pid && present.has(pid)) {
+      const list = childrenOf.get(pid)
+      if (list) list.push(row)
+      else childrenOf.set(pid, [row])
+    } else {
+      roots.push(row)
+    }
+  }
+
+  const build = (row: CategoryRow): CategoryNode => ({
+    row,
+    children: sortSiblings(childrenOf.get(row.category.id) ?? [], sort).map(build),
+  })
+  return sortSiblings(roots, sort).map(build)
 }
 
 /* ── Etiketler ─────────────────────────────────────────────────────────────── */
