@@ -10,22 +10,25 @@ import { Modal } from '@/components/ui/Modal'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import {
-  enrichRecipients, makeRecipientMatcher, sortRecipients, SORTS,
-  type SortId,
+  BOARDS, enrichPeople, makePersonMatcher, sortPeople, SORT_LABELS,
+  type BoardVariant, type SortId,
 } from './shared'
-import { RecipientEditModal } from './RecipientEditModal'
+import { PersonEditModal } from './PersonEditModal'
 import { TableView } from './views/TableView'
 import { IndexView } from './views/IndexView'
 import type { Person } from '@/types'
 
-/* ── Alıcılar ────────────────────────────────────────────────────────────────
+/* ── Kişi tahtası (Alıcılar / Aile Üyeleri) ──────────────────────────────────
  * Kabuk her şeyi tutar: arama, sıralama, ekleme/düzenleme/arşivleme ve
  * toplamların hesabı. Görünümler yalnız basar. Dolayısıyla görünüm değiştirmek
  * satır kümesini ya da tutarları DEĞİŞTİRMEZ — ikisi aynı veriyi gösterir.
  *
- * Toplamlar isFlowTx ile süzülür (Dashboard/Raporlar/alıcı detayı ile aynı akış
+ * Toplamlar isFlowTx ile süzülür (Dashboard/Raporlar/kişi detayı ile aynı akış
  * kuralı) ve TRY-normalize + kuruş-exact toplanır; akış dışı bağlı satırlar
  * "+N bekleyen" olarak ayrıca görünür, sessizce yok sayılmaz.
+ *
+ * İki sayfanın tek farkı `variant` (bkz. BOARDS): hangi işlem alanına
+ * bağlandığı, para kolonları ve etiketler.
  * ------------------------------------------------------------------------- */
 const VIEWS = [
   { id: 'table', label: 'Tablo', Comp: TableView, hint: 'Yoğun, kıyaslamalı tablo' },
@@ -34,7 +37,9 @@ const VIEWS = [
 
 type ViewId = typeof VIEWS[number]['id']
 
-export function RecipientsBoard() {
+export function PeopleBoard({ variant }: { variant: BoardVariant }) {
+  const config = BOARDS[variant]
+
   const allPeople     = usePeopleStore(s => s.people)
   const loadPeople    = usePeopleStore(s => s.load)
   const removePerson  = usePeopleStore(s => s.remove)
@@ -45,39 +50,40 @@ export function RecipientsBoard() {
 
   const [view,   setView]   = useState<ViewId>('table')
   const [query,  setQuery]  = useState('')
-  const [sort,   setSort]   = useState<SortId>('spend')
+  const [sort,   setSort]   = useState<SortId>(config.sorts[0])
   const [adding, setAdding] = useState(false)
   const [editing,  setEditing]  = useState<Person | null>(null)
   const [archiving, setArchiving] = useState<Person | null>(null)
   const [showArchived, setShowArchived] = useState(false)
 
   const active   = useMemo(
-    () => allPeople.filter(p => p.role === 'recipient' && !p.isArchived),
-    [allPeople],
+    () => allPeople.filter(p => p.role === config.role && !p.isArchived),
+    [allPeople, config.role],
   )
   const archived = useMemo(
-    () => allPeople.filter(p => p.role === 'recipient' && p.isArchived),
-    [allPeople],
+    () => allPeople.filter(p => p.role === config.role && p.isArchived),
+    [allPeople, config.role],
   )
 
-  // Paylar (share) TÜM aktif alıcılar üzerinden hesaplanır; arama sonradan
+  // Paylar (share) TÜM aktif kişiler üzerinden hesaplanır; arama sonradan
   // süzer. Böylece arama yapmak "%pay" değerlerini oynatmaz.
   const allRows = useMemo(
-    () => enrichRecipients(active, transactions),
-    [active, transactions],
+    () => enrichPeople(active, transactions, config.link),
+    [active, transactions, config.link],
   )
 
   const rows = useMemo(() => {
-    const matches = allRows.filter(makeRecipientMatcher(query))
-    return sortRecipients(matches, sort)
+    const matches = allRows.filter(makePersonMatcher(query))
+    return sortPeople(matches, sort)
   }, [allRows, query, sort])
 
   const shownExpense = rows.reduce((s, r) => s + r.expense, 0)
+  const shownIncome  = rows.reduce((s, r) => s + r.income, 0)
   const Active = (VIEWS.find(v => v.id === view) ?? VIEWS[0]).Comp
 
   async function confirmArchive() {
     if (!archiving) return
-    await removePerson(archiving.id)   // arşivler (silmez) + geri alma kuydu bırakır
+    await removePerson(archiving.id)   // arşivler (silmez) + geri alma kaydı bırakır
     setArchiving(null)
   }
 
@@ -102,8 +108,8 @@ export function RecipientsBoard() {
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Escape') setQuery('') }}
-                placeholder="Alıcı ara…"
-                aria-label="Alıcı ara"
+                placeholder={config.labels.searchPlaceholder}
+                aria-label={config.labels.searchAria}
                 className="w-full h-9 pl-9 pr-9 rounded-xl border border-input bg-background dark:bg-muted text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-search-cancel-button]:hidden"
               />
               {query && (
@@ -121,7 +127,7 @@ export function RecipientsBoard() {
             <SelectField
               value={sort}
               onChange={e => setSort(e.target.value as SortId)}
-              options={SORTS.map(s => ({ value: s.id, label: `Sırala: ${s.label}` }))}
+              options={config.sorts.map(id => ({ value: id, label: `Sırala: ${SORT_LABELS[id]}` }))}
               className="w-fit bg-card text-xs"
             />
 
@@ -144,15 +150,21 @@ export function RecipientsBoard() {
               ))}
             </div>
 
-            <Button size="sm" onClick={() => setAdding(true)}>+ Yeni Alıcı</Button>
+            <Button size="sm" onClick={() => setAdding(true)}>{config.labels.addButton}</Button>
           </div>
 
           {/* ── Sayaç şeridi ──────────────────────────────────────────────── */}
           {active.length > 0 && (
             <div className="flex items-baseline gap-3 mb-3 px-1 text-xs text-muted-foreground">
               <span className="tabular-nums">
-                {query ? `${rows.length} / ${active.length}` : active.length} alıcı
+                {query ? `${rows.length} / ${active.length}` : active.length} {config.labels.countNoun}
               </span>
+              {/* Aile üyesinde gelir de anlamlı; alıcıda yalnız gider yönü var. */}
+              {config.role === 'family_member' && shownIncome > 0 && (
+                <span className="tabular-nums">
+                  toplam gelir {formatCurrency(shownIncome)}
+                </span>
+              )}
               {shownExpense > 0 && (
                 <span className="tabular-nums">
                   toplam gider {formatCurrency(shownExpense)}
@@ -165,20 +177,21 @@ export function RecipientsBoard() {
           {active.length === 0 ? (
             <EmptyState
               icon="👤"
-              title="Henüz alıcı eklenmedi"
-              description="Alıcı ekleyerek harcamalarınızı markaya/kişiye göre takip edebilirsiniz."
-              action={<Button size="sm" onClick={() => setAdding(true)}>Alıcı Ekle</Button>}
+              title={config.labels.emptyTitle}
+              description={config.labels.emptyDescription}
+              action={<Button size="sm" onClick={() => setAdding(true)}>{config.labels.emptyAction}</Button>}
             />
           ) : rows.length === 0 ? (
             <EmptyState
               icon="🔍"
-              title="Eşleşen alıcı yok"
-              description={`"${query}" aramasıyla eşleşen bir alıcı bulunamadı.`}
+              title={config.labels.noMatchTitle}
+              description={`"${query}" aramasıyla eşleşen bir kayıt bulunamadı.`}
               action={<Button variant="ghost" size="sm" onClick={() => setQuery('')}>Aramayı temizle</Button>}
             />
           ) : (
             <Active
               rows={rows}
+              config={config}
               query={query}
               sort={sort}
               onSort={setSort}
@@ -208,7 +221,7 @@ export function RecipientsBoard() {
                     >
                       <PersonAvatar person={person} size="sm" />
                       <Link
-                        href={`/alicilar/${person.id}`}
+                        href={`${config.basePath}/${person.id}`}
                         className="flex-1 min-w-0 text-sm font-medium text-foreground/70 truncate hover:text-primary transition-colors"
                       >
                         {person.name}
@@ -225,17 +238,18 @@ export function RecipientsBoard() {
         </div>
       </div>
 
-      {adding && <RecipientEditModal onClose={() => setAdding(false)} />}
+      {adding && <PersonEditModal config={config} onClose={() => setAdding(false)} />}
       {editing && (
-        <RecipientEditModal
+        <PersonEditModal
           key={editing.id}
+          config={config}
           person={editing}
           onClose={() => setEditing(null)}
         />
       )}
 
       {archiving && (
-        <Modal open onClose={() => setArchiving(null)} title="Alıcıyı arşivle" size="sm">
+        <Modal open onClose={() => setArchiving(null)} title={config.labels.archiveTitle} size="sm">
           <p className="text-sm text-foreground">
             <span className="font-semibold">{archiving.name}</span> listeden kaldırılsın mı?
           </p>

@@ -1,13 +1,13 @@
 'use client'
 
 import { Header } from '@/components/layout/Header'
-import { PeopleManager } from '@/components/people/PeopleManager'
+import { PeopleBoard } from '@/components/people/board/PeopleBoard'
 
 export default function AileUyeleriPage() {
   return (
     <>
       <Header title="Aile Üyeleri" />
-      <PeopleManager role="family_member" emptyText="Henüz aile üyesi eklenmedi." />
+      <PeopleBoard variant="member" />
     </>
   )
 }

@@ -1,13 +1,13 @@
 'use client'
 
 import { Header } from '@/components/layout/Header'
-import { RecipientsBoard } from '@/components/people/recipients/RecipientsBoard'
+import { PeopleBoard } from '@/components/people/board/PeopleBoard'
 
 export default function AlicilarPage() {
   return (
     <>
       <Header title="Alıcılar" />
-      <RecipientsBoard />
+      <PeopleBoard variant="recipient" />
     </>
   )
 }

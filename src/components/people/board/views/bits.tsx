@@ -1,14 +1,16 @@
 'use client'
 
-import { matchRange, type RecipientRow, type SortId } from '../shared'
+import { matchRange, type BoardConfig, type PersonRow, type SortId } from '../shared'
 import type { Person } from '@/types'
 
-/* İki alıcı görünümünün paylaştığı küçük parçalar. Görünümler arasında
-   tutarlılığı bunlar sağlıyor: aynı vurgulama, aynı aksiyon ikonları, aynı
-   "bekleyen" rozeti. */
+/* İki görünümün paylaştığı küçük parçalar. Görünümler arasında tutarlılığı
+   bunlar sağlıyor: aynı vurgulama, aynı aksiyon ikonları, aynı "bekleyen"
+   rozeti. */
 
-export interface RecipientViewProps {
-  rows: RecipientRow[]
+export interface PersonViewProps {
+  rows: PersonRow[]
+  /** Aktif varyant (alıcı / aile üyesi) — para kolonlarını ve linkleri belirler. */
+  config: BoardConfig
   /** Aktif arama sorgusu — yalnız eşleşen harfleri vurgulamak için. */
   query: string
   onEdit: (person: Person) => void
@@ -86,4 +88,11 @@ export function PendingBadge({ count }: { count: number }) {
       +{count} bekleyen
     </span>
   )
+}
+
+/** Net tutarın işaret rengi. Sıfır nötr kalır — "±0" bir kazanç/kayıp değil. */
+export function netTone(net: number): string {
+  if (net > 0) return 'text-green-600'
+  if (net < 0) return 'text-destructive'
+  return 'text-muted-foreground'
 }
