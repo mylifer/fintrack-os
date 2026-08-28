@@ -1,20 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { PersonAvatar } from '@/components/people/PersonAvatar'
-import { formatCurrency, formatSigned } from '@/lib/utils/currency'
-import { shortDate, type PersonRow } from '../shared'
-import { Highlight, netTone, PendingBadge, RowActions } from '@/components/ui/BoardBits'
-import type { PersonViewProps } from './bits'
+import { formatCurrency } from '@/lib/utils/currency'
+import { PendingBadge, RowActions } from '@/components/ui/BoardBits'
+import { shortDate, type CategoryRow } from '../shared'
+import { CategoryLabel, amountTone, type CategoryViewProps } from './bits'
 
 /**
  * Görünüm — Dizin
- * Uzun listeler için: A–Z harf grupları (yapışkan başlık), 32px satır
- * yüksekliği ve sağda harf rayı. Ada göre BULMAK için — gruplar her zaman
- * alfabetik, grubun İÇİ ise araç çubuğundaki aktif sıralamayı izler.
- *
- * 32px satır tek para kolonu taşır: alıcıda toplam gider, aile üyesinde net
- * (iki yönü de olan bir üye için tek anlamlı özet odur).
+ * A–Z harf grupları (yapışkan başlık), 32px satır yüksekliği ve sağda harf
+ * rayı. Ada göre BULMAK için — gruplar her zaman alfabetik, grubun İÇİ ise
+ * araç çubuğundaki aktif sıralamayı izler. Hiyerarşi burada da ağaç girintisi
+ * değil "üst › alt" yolu ile gösterilir; kategori adı hangi harfte aranıyorsa
+ * orada durur.
  */
 const GRID = 'grid grid-cols-[minmax(0,1fr)_3rem_7.5rem_4.5rem_3.75rem] items-center gap-3'
 
@@ -26,15 +24,13 @@ function initial(name: string): string {
 
 function groupId(letter: string): string {
   // '#' ve Türkçe harfler id'de güvenli olsun diye kod noktasına çevrilir.
-  return `kisi-harf-${letter.codePointAt(0)}`
+  return `kategori-harf-${letter.codePointAt(0)}`
 }
 
-export function IndexView({ rows, config, query, onEdit, onArchive }: PersonViewProps) {
-  const isMember = config.role === 'family_member'
-
-  const groups = new Map<string, PersonRow[]>()
+export function IndexView({ rows, query, onEdit, onArchive }: CategoryViewProps) {
+  const groups = new Map<string, CategoryRow[]>()
   for (const row of rows) {
-    const letter = initial(row.person.name)
+    const letter = initial(row.category.name)
     const bucket = groups.get(letter)
     if (bucket) bucket.push(row)
     else groups.set(letter, [row])
@@ -56,45 +52,35 @@ export function IndexView({ rows, config, query, onEdit, onArchive }: PersonView
               </span>
             </div>
 
-            {groups.get(letter)!.map(({ person, flowCount, pendingCount, income, expense, net, lastDate }) => {
-              const hasFlow = income > 0 || expense > 0
+            {groups.get(letter)!.map(row => {
+              const { category, flowCount, pendingCount, net, magnitude, lastDate } = row
               return (
                 <div
-                  key={person.id}
+                  key={category.id}
                   className={`${GRID} group h-8 px-4 border-b border-border/40 last:border-0 hover:bg-secondary/40 transition-colors`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <PersonAvatar person={person} size="xs" />
                     <Link
-                      href={`${config.basePath}/${person.id}`}
-                      className="text-[13px] font-medium text-foreground truncate hover:text-primary transition-colors"
+                      href={`/categories/${category.id}`}
+                      className="flex items-center gap-2 min-w-0 hover:[&_span]:text-primary transition-colors"
                     >
-                      <Highlight text={person.name} query={query} />
+                      <CategoryLabel row={row} query={query} compact />
                     </Link>
                     <PendingBadge count={pendingCount} />
                   </div>
                   <span className="text-right text-[11px] tabular-nums text-muted-foreground">
                     {flowCount || '—'}
                   </span>
-                  {isMember ? (
-                    <span
-                      title={`Gelir ${formatCurrency(income)} · Gider ${formatCurrency(expense)}`}
-                      className={`text-right text-[13px] font-medium tabular-nums ${netTone(net)}`}
-                    >
-                      {hasFlow ? formatSigned(net) : '—'}
-                    </span>
-                  ) : (
-                    <span className="text-right text-[13px] font-medium tabular-nums text-foreground">
-                      {expense > 0 ? formatCurrency(expense) : '—'}
-                    </span>
-                  )}
+                  <span className={`text-right text-[13px] font-medium tabular-nums ${amountTone(net)}`}>
+                    {magnitude > 0 ? formatCurrency(magnitude) : '—'}
+                  </span>
                   <span className="text-right text-[11px] tabular-nums text-muted-foreground whitespace-nowrap">
                     {shortDate(lastDate)}
                   </span>
                   <RowActions
-                    name={person.name}
-                    onEdit={() => onEdit(person)}
-                    onArchive={() => onArchive(person)}
+                    name={category.name}
+                    onEdit={() => onEdit(category)}
+                    onArchive={category.isSystem ? undefined : () => onArchive(category)}
                     className="justify-end opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
                   />
                 </div>

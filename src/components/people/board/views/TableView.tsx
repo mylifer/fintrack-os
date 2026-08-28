@@ -3,8 +3,9 @@
 import Link from 'next/link'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { formatCurrency, formatSigned } from '@/lib/utils/currency'
-import { shortDate, type SortId } from '../shared'
-import { Highlight, netTone, PendingBadge, RowActions, type PersonViewProps } from './bits'
+import { shortDate } from '../shared'
+import { Highlight, netTone, PendingBadge, RowActions, SortTh } from '@/components/ui/BoardBits'
+import type { PersonViewProps } from './bits'
 
 /**
  * Görünüm — Tablo
@@ -102,9 +103,9 @@ export function TableView({ rows, config, query, sort, onSort, onEdit, onArchive
                 </td>
                 <td className="py-2 pr-2">
                   <RowActions
-                    person={person}
-                    onEdit={onEdit}
-                    onArchive={onArchive}
+                    name={person.name}
+                    onEdit={() => onEdit(person)}
+                    onArchive={() => onArchive(person)}
                     className="justify-end opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
                   />
                 </td>
@@ -118,29 +119,3 @@ export function TableView({ rows, config, query, sort, onSort, onEdit, onArchive
   )
 }
 
-function SortTh({
-  id, sort, onSort, className, children,
-}: {
-  id: SortId
-  sort: SortId
-  onSort: (s: SortId) => void
-  className?: string
-  children: React.ReactNode
-}) {
-  const on = sort === id
-  return (
-    <th className={`py-2 font-semibold ${className ?? ''}`}>
-      <button
-        type="button"
-        onClick={() => onSort(id)}
-        aria-pressed={on}
-        className={`inline-flex items-center gap-1 uppercase tracking-wide transition-colors ${
-          on ? 'text-foreground' : 'hover:text-foreground'
-        }`}
-      >
-        {children}
-        <span className={`text-[8px] leading-none ${on ? 'opacity-100' : 'opacity-0'}`}>▼</span>
-      </button>
-    </th>
-  )
-}

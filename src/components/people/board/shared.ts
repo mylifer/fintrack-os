@@ -3,6 +3,7 @@ import { baseAmount } from '@/lib/utils/fx'
 import { toMinor, toMajor } from '@/lib/utils/money'
 import { today } from '@/lib/utils/date'
 import { getBrandDomain } from '@/lib/people/brands'
+import { matchesTokens, tokenize } from '@/lib/utils/boardText'
 import type { Person, PersonRole, Transaction } from '@/types'
 
 /* ── Kişi tahtasının (Alıcılar / Aile Üyeleri) paylaşılan sözleşmesi ─────────
@@ -99,30 +100,13 @@ export function enrichPeople(
 
 /* ── Arama ─────────────────────────────────────────────────────────────────── */
 
-// Türkçe İ/ı için locale-duyarlı küçük harf ("İkea" ↔ "ikea").
-const lc = (s: string) => s.toLocaleLowerCase('tr-TR')
-
 /** Ad + (varsa) favicon domain'i üzerinde arar; boşlukla ayrılan parçalar
  *  VE'lenir, böylece "mig ist" → "Migros İstanbul" bulur. */
 export function makePersonMatcher(query: string): (row: PersonRow) => boolean {
-  const tokens = lc(query).trim().split(/\s+/).filter(Boolean)
+  const tokens = tokenize(query)
   if (!tokens.length) return () => true
-  return ({ person }) => {
-    const hay = lc(`${person.name} ${person.url ?? ''} ${getBrandDomain(person.name) ?? ''}`)
-    return tokens.every(t => hay.includes(t))
-  }
-}
-
-/** Vurgulama için: adın içinde eşleşen ilk parçanın [başlangıç, bitiş] aralığı. */
-export function matchRange(name: string, query: string): [number, number] | null {
-  const tokens = lc(query).trim().split(/\s+/).filter(Boolean)
-  if (!tokens.length) return null
-  const hay = lc(name)
-  for (const t of tokens) {
-    const i = hay.indexOf(t)
-    if (i >= 0) return [i, i + t.length]
-  }
-  return null
+  return ({ person }) =>
+    matchesTokens(`${person.name} ${person.url ?? ''} ${getBrandDomain(person.name) ?? ''}`, tokens)
 }
 
 /* ── Sıralama ──────────────────────────────────────────────────────────────── */
@@ -240,12 +224,4 @@ export const BOARDS: Record<BoardVariant, BoardConfig> = {
 
 /* ── Gösterim yardımcıları ─────────────────────────────────────────────────── */
 
-const MONTHS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
-
-/** '2026-08-14' → '14 Ağu'; aynı yıl değilse '14 Ağu 25'. */
-export function shortDate(iso: string | null, asOf: string = today()): string {
-  if (!iso) return '—'
-  const [y, m, d] = iso.split('-')
-  const label = `${Number(d)} ${MONTHS_TR[Number(m) - 1]}`
-  return y === asOf.slice(0, 4) ? label : `${label} ${y.slice(2)}`
-}
+export { shortDate } from '@/lib/utils/boardText'
