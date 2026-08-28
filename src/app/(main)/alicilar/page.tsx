@@ -1,13 +1,13 @@
 'use client'
 
 import { Header } from '@/components/layout/Header'
-import { PeopleManager } from '@/components/people/PeopleManager'
+import { RecipientsBoard } from '@/components/people/recipients/RecipientsBoard'
 
 export default function AlicilarPage() {
   return (
     <>
       <Header title="Alıcılar" />
-      <PeopleManager role="recipient" emptyText="Henüz alıcı eklenmedi." />
+      <RecipientsBoard />
     </>
   )
 }
