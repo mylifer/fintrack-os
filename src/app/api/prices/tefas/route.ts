@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { fetchTefasSeries, type TefasSeries } from '@/lib/server/tefas-api'
+import { BoundedCache } from '@/lib/server/bounded-cache'
 import type { TefasFundPrice } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -12,9 +13,14 @@ const MAX_CODES = 30
 // Bulunamayan kod DAHA KISA cache'lenir: TEFAS'ın anlık bir hatası/zaman aşımı
 // yüzünden fon 10 dk boyunca "fiyatsız" kalmasın (yalnızca modal doğrulamasının
 // tekrarlı sorgusunu yumuşatacak kadar).
+// Boyut tavanı: kod deseni `[A-Z0-9]{2,6}` olduğu için anahtar uzayı teoride
+// milyarlarca — geçerli fon sayısı birkaç yüz, dolayısıyla 500'lük tavan gerçek
+// kullanımı hiç ısırmaz ama enumerasyonla bellek şişirmeyi keser
+// (bkz. src/lib/server/bounded-cache.ts, güvenlik denetimi 2026-08-29 / F5).
 const CACHE_TTL_MS      = 10 * 60 * 1000
 const MISS_CACHE_TTL_MS = 60 * 1000
-const cache = new Map<string, { at: number; series: TefasSeries | null }>()
+const MAX_CACHE_ENTRIES = 500
+const cache = new BoundedCache<{ at: number; series: TefasSeries | null }>(MAX_CACHE_ENTRIES)
 
 async function getSeries(code: string): Promise<TefasSeries | null> {
   const hit = cache.get(code)

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchTefasSeries, snapPeriod } from '@/lib/server/tefas-api'
+import { BoundedCache } from '@/lib/server/bounded-cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,16 +66,44 @@ async function fetchUsd(date: string): Promise<Record<string, number> | null> {
 // eşzamanlı istekleri de birleştirir (4 varlık grubu aynı günleri ister).
 // Başarısız ya da henüz kesinleşmemiş (dünden yeni, 'latest' fallback riski
 // taşıyan) günler kalıcı tutulmaz.
-const usdCache = new Map<string, Promise<Record<string, number> | null>>()
+//
+// Tavan: tek istek en çok 4000 gün örnekler (aşağıdaki slice), 8000 iki tam
+// aralığa yer bırakır ve sınırsız büyümeyi keser.
+const MAX_USD_ENTRIES = 8000
+const usdCache = new BoundedCache<Promise<Record<string, number> | null>>(MAX_USD_ENTRIES)
+
+// Başarısız günün KISA ÖMÜRLÜ notu.
+//
+// Neden: başarısız gün kalıcı önbelleğe alınmıyor (geçici bir CDN hatası o günü
+// sonsuza dek "veri yok" damgalamasın) — ama hiç not edilmediğinde aynı istek
+// her tekrarında aynı yüzlerce boş günü (hafta sonları, CDN'de olmayan tarihler)
+// baştan çekiyordu. `from` geçmişe alındıkça istek başına binlerce dış çağrı
+// çıkıyor ve tekrar hiç ucuzlamıyordu. 60 sn'lik not bu tekrarı keser; süre
+// /api/prices/tefas'taki MISS_CACHE_TTL_MS ile aynı, yani geçici bir hata en
+// fazla bir dakika iz bırakır ve grafik kendiliğinden dolar.
+// (Güvenlik denetimi 2026-08-29, bulgu F4.)
+const MISS_TTL_MS = 60_000
+const usdMiss = new BoundedCache<number>(MAX_USD_ENTRIES)
 
 function cachedUsd(date: string): Promise<Record<string, number> | null> {
   const hit = usdCache.get(date)
   if (hit) return hit
+
+  const missAt = usdMiss.get(date)
+  if (missAt !== undefined && Date.now() - missAt < MISS_TTL_MS) return Promise.resolve(null)
+
   const cutoff = new Date()
   cutoff.setUTCDate(cutoff.getUTCDate() - 1)
   const cutoffStr = cutoff.toISOString().split('T')[0]
   const p = fetchUsd(date).then(res => {
-    if (!res || date >= cutoffStr) usdCache.delete(date)
+    if (!res) {
+      usdCache.delete(date)
+      usdMiss.set(date, Date.now())
+    } else if (date >= cutoffStr) {
+      // Kesinleşmemiş gün: 'latest' fallback'inin bugünkü kuru eski bir tarihe
+      // kalıcı mühürlemesini engelle (bkz. fetchUsd).
+      usdCache.delete(date)
+    }
     return res
   })
   usdCache.set(date, p)

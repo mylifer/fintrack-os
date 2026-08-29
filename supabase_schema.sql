@@ -18,6 +18,19 @@
 -- DEPLOY ORDER: apply this migration BEFORE shipping the Phase-1 client build.
 -- The client now issues `.is('deleted_at', null)` on every load; without the
 -- column those queries error and the app silently falls back to local Dexie.
+--
+-- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
+-- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
+-- çalıştırdıktan SONRA supabase/migrations/0001..0010'u da sırayla uygulayın.
+-- Yalnızca burada olmayan, migration'lara bağlı parçalar:
+--   • user_backups tablosu + RLS'i            → 0005
+--   • restore_user_backup() RPC'si            → 0004, 0009 (0009 önce F1 için
+--                                                düzeltilmiş olmalı)
+--   • investment_transactions.asset CHECK'i   → 0003
+--   • rls_auto_enable() + ensure_rls trigger  → 0010
+-- Sütunlar aşağıda tutulmaya çalışılıyor ama geçmişte kaydı: `categorySplits`
+-- (0007) uzun süre yalnızca migration'da kaldı. Yeni bir sütun eklerken HEM
+-- migration'a HEM buraya yazın. (Güvenlik denetimi 2026-08-29 → H2.)
 -- ============================================================================
 
 -- Tables covered (Supabase/Postgres names). Keep this list in sync with the
@@ -194,6 +207,13 @@ alter table public.transactions add column if not exists "debtId" text;
 alter table public.transactions add column if not exists "debtPrincipalId" text;
 alter table public.transactions add column if not exists "createdAt" text;
 alter table public.transactions add column if not exists "updatedAt" text;
+
+-- Çoklu kategori (0007): [{ "categoryId": "...", "amount": 123.45 }, ...].
+-- null = bölünmemiş işlem. Bu dosyada EKSİKTİ — yalnızca migration'da vardı;
+-- sıfırdan kurulan bir projede sütun olmadığı için sync engine'in tam satır
+-- upsert'i PGRST204 alır ve HER işlem dead-letter'a düşerdi
+-- (güvenlik denetimi 2026-08-29 → H2).
+alter table public.transactions add column if not exists "categorySplits" jsonb;
 
 -- ── Onay kapısı (bildirim merkezi) ───────────────────────────────────────────
 -- "approvalStatus": null = legacy satır (tarihi gelince otomatik post — mevcut

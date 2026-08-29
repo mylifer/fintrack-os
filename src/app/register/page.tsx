@@ -4,8 +4,14 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { clearLocalData } from '@/lib/auth'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/button'
+
+// Shared-device: son giriş yapan kullanıcının id'sini tutar. login/page.tsx ile
+// AYNI anahtar — iki sayfa tek bir işaretçiyi paylaşmak zorunda, yoksa kayıt
+// yolundan gelen kullanıcı giriş yolunun kontrolüne görünmez olur.
+const LAST_UID_KEY = 'ft_last_uid'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -36,11 +42,41 @@ export default function RegisterPage() {
       return
     }
 
-    // session null ise mail onayı bekleniyor
-    if (data.session) {
-      router.push('/dashboard')
-    } else {
+    // session null ise mail onayı bekleniyor — kullanıcı bu cihazda HENÜZ aktif
+    // değil, dolayısıyla işaretçiye de dokunmuyoruz (bkz. aşağıdaki not).
+    if (!data.session) {
       setEmailSent(true)
+      return
+    }
+
+    // Paylaşılan cihaz: giriş sayfasıyla AYNI koruma (bkz. login/page.tsx).
+    // Eskiden burası eksikti — /register üzerinden gelen ilk kullanıcı
+    // `ft_last_uid`'i hiç yazmıyordu, bu yüzden ondan sonra giriş yapan ikinci
+    // kullanıcıda login sayfasının `switched` kontrolü sessizce false kalıyor ve
+    // clearLocalData hiç çağrılmıyordu. (Güvenlik denetimi 2026-08-29, bulgu F3.)
+    // İşaretçi yalnızca session VARKEN yazılır: onay bekleyen bir kayıtta
+    // kullanıcı henüz oturum açmış değildir ve işaretçiyi şimdiden ona
+    // devretmek, gerçek girişte birinci savunma katmanını kör ederdi.
+    const newUid  = data.user?.id
+    const prevUid = localStorage.getItem(LAST_UID_KEY)
+    const switched = !!newUid && !!prevUid && prevUid !== newUid
+
+    if (switched) {
+      try {
+        await clearLocalData()
+      } catch (err) {
+        console.error('[register:clearLocalData]', err)
+      }
+    }
+
+    if (newUid) localStorage.setItem(LAST_UID_KEY, newUid)
+
+    if (switched) {
+      // HARD navigation: bellekteki Zustand store'larını ve DataProvider'ın
+      // modül-seviyesi init kilidini sıfırlar (bkz. login/page.tsx).
+      window.location.assign('/dashboard')
+    } else {
+      router.push('/dashboard')
     }
   }
 

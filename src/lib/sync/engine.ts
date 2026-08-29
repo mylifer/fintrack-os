@@ -3,7 +3,7 @@
 import type { EntityTable } from 'dexie'
 import { db } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
-import { getUserId } from '@/lib/auth'
+import { getUserId, clearBrowserStorage } from '@/lib/auth'
 import { isLive } from './tombstone'
 import { sanitizeIdRefs } from './sanitize'
 import { useSyncStatusStore } from '@/store/sync-status.store'
@@ -400,6 +400,16 @@ export async function guardUserSwitch(): Promise<void> {
     for (const e of entries) {
       if (e.ownerId !== uid) await db._outbox.delete(e.id)
     }
+    // Dexie yetmez: kullanıcı verisi localStorage'da da yaşıyor. En kötüsü
+    // `fintrack.brandDomain.v1` — anahtarları önceki kullanıcının İŞLEM
+    // AÇIKLAMALARI (alıcı/kişi/klinik adları). Bu katman eskiden temizliği
+    // clearLocalData'ya devrediyordu, ama o yalnızca açık çıkışta ve
+    // login sayfasının `ft_last_uid` işaretçisi varken çalışıyor — /register
+    // üzerinden gelen ilk kullanıcı o işaretçiyi hiç yazmadığı için akış
+    // buraya "temiz Dexie + kirli localStorage" olarak düşüyordu.
+    // (Güvenlik denetimi 2026-08-29, bulgu F3.)
+    // LAST_UID_KEY aşağıda YENİDEN yazılıyor — sıra korunmalı.
+    clearBrowserStorage()
   }
 
   try { localStorage.setItem(LAST_UID_KEY, uid) } catch { /* storage kapalı */ }

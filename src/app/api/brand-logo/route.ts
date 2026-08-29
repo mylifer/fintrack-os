@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { BoundedCache } from '@/lib/server/bounded-cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,8 +8,15 @@ const FETCH_TIMEOUT_MS = 5000
 
 // İsim → domain çözümü nadiren değişir; bulunamayan isimler de cache'lenir ki
 // her sayfa yüklemesinde dış servislere tekrar sorulmasın (instance ömrü yeter).
+//
+// Boyut TAVANI şart: anahtar, istek sahibinin gönderdiği serbest metin
+// (64 karaktere kadar). Sınırsız bir Map'te benzersiz isimler göndererek
+// instance belleğini şişirmek mümkündü; TTL bunu çözmez çünkü süresi dolan
+// girdi yalnızca okunurken göz ardı edilir, yerinde durur.
+// (Güvenlik denetimi 2026-08-29, bulgu F5.)
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000
-const cache = new Map<string, { at: number; domain: string | null }>()
+const MAX_CACHE_ENTRIES = 2000
+const cache = new BoundedCache<{ at: number; domain: string | null }>(MAX_CACHE_ENTRIES)
 
 // Birebir eşleşme karşılaştırması: Türkçe'ye duyarlı küçük harf + boşluk normalize.
 function normalize(name: string): string {
