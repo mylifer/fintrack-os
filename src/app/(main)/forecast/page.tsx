@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
 import { useShallow } from 'zustand/react/shallow'
 import { Header } from '@/components/layout/Header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,13 +14,7 @@ import { buildBalanceHistory, type InvestEvent } from '@/lib/utils/balance-histo
 import { sumBy } from '@/lib/utils/money'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
-
-const Chart = dynamic(() => import('@/components/forecast/_ForecastChart'), {
-  ssr: false,
-  loading: () => (
-    <div className="h-[260px] flex items-center justify-center text-sm text-muted-foreground">Yükleniyor…</div>
-  ),
-})
+import { FORECAST_VIEWS, type ForecastViewId } from '@/components/forecast/board/views'
 
 type Horizon = number | 'all'
 
@@ -36,12 +29,12 @@ const HORIZONS: { key: Horizon; label: string }[] = [
 // standart ufukla (12 ay) devam eder.
 const ALL_TIME_FORWARD_MONTHS = 12
 
-const INITIAL_EVENT_COUNT = 15
-
 const MODES: { mode: ForecastMode; label: string }[] = [
   { mode: 'total', label: 'Tüm Varlıklar' },
   { mode: 'cash',  label: 'Sadece Nakit' },
 ]
+
+const VIEW_STORAGE_KEY = 'forecast.viewMode'
 
 export default function ForecastPage() {
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
@@ -67,8 +60,18 @@ export default function ForecastPage() {
 
   const [horizon, setHorizon] = useState<Horizon>(6)
   const [mode, setMode] = useState<ForecastMode>('total')
-  const [showAllEvents, setShowAllEvents] = useState(false)
+  // Düzen tercihi kalıcı (SSR'da 'projection'a düşer).
+  const [view, setView] = useState<ForecastViewId>(() => {
+    if (typeof window === 'undefined') return 'projection'
+    const saved = window.localStorage.getItem(VIEW_STORAGE_KEY)
+    return FORECAST_VIEWS.some(v => v.id === saved) ? (saved as ForecastViewId) : 'projection'
+  })
   const todayStr = today()
+
+  function pickView(id: ForecastViewId) {
+    setView(id)
+    try { window.localStorage.setItem(VIEW_STORAGE_KEY, id) } catch { /* özel pencere: yoksay */ }
+  }
 
   const allTime = horizon === 'all'
   const horizonMonths = allTime ? ALL_TIME_FORWARD_MONTHS : horizon
@@ -111,15 +114,13 @@ export default function ForecastPage() {
   const chartPoints = history ? [...history.points.slice(0, -1), ...points] : points
   const chartEvents = history ? [...history.events, ...events] : events
 
-  const visibleEvents = showAllEvents ? events : events.slice(0, INITIAL_EVENT_COUNT)
-
   const startBalance = points[0]?.balance ?? 0
   const endBalance   = points.at(-1)?.balance ?? startBalance
   const delta        = endBalance - startBalance
   const up           = delta >= 0
 
   const horizonLabel = `${horizonMonths} Ay`
-  const maxDriver    = drivers[0]?.monthlyEquivTry ?? 0
+  const ActiveView   = (FORECAST_VIEWS.find(v => v.id === view) ?? FORECAST_VIEWS[0]).Comp
 
   return (
     <>
@@ -127,7 +128,7 @@ export default function ForecastPage() {
 
       <div className="p-6 flex flex-col gap-6">
 
-        {/* ── Horizon + mode selectors ──────────────────────────────── */}
+        {/* ── Süre + kapsam + düzen seçicileri ──────────────────────── */}
         <div className="flex items-center gap-x-6 gap-y-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Süre</span>
@@ -135,7 +136,7 @@ export default function ForecastPage() {
               {HORIZONS.map(h => (
                 <button
                   key={h.key}
-                  onClick={() => { setHorizon(h.key); setShowAllEvents(false) }}
+                  onClick={() => setHorizon(h.key)}
                   className={[
                     'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap',
                     horizon === h.key
@@ -149,12 +150,12 @@ export default function ForecastPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Görünüm</span>
+            <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Kapsam</span>
             <div className="flex items-center gap-1">
               {MODES.map(m => (
                 <button
                   key={m.mode}
-                  onClick={() => { setMode(m.mode); setShowAllEvents(false) }}
+                  onClick={() => setMode(m.mode)}
                   className={[
                     'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap',
                     mode === m.mode
@@ -163,6 +164,27 @@ export default function ForecastPage() {
                   ].join(' ')}
                 >
                   {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Görünüm</span>
+            <div className="flex items-center gap-1">
+              {FORECAST_VIEWS.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => pickView(v.id)}
+                  title={v.hint}
+                  aria-pressed={view === v.id}
+                  className={[
+                    'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap',
+                    view === v.id
+                      ? 'bg-secondary text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
+                  ].join(' ')}
+                >
+                  {v.label}
                 </button>
               ))}
             </div>
@@ -231,121 +253,33 @@ export default function ForecastPage() {
               </div>
             )}
 
-            {/* ── Forecast chart ────────────────────────────────────── */}
-            <Card className="overflow-hidden gap-0 py-0">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                <span className="text-sm font-semibold text-foreground/90">Bakiye Projeksiyonu</span>
-                <span className="text-xs text-muted-foreground">
-                  {mode === 'cash' ? 'Nakit hesaplar + TEFAS fonları (₺)' : 'Tahmini bakiye, yatırımlar dahil (₺)'}
-                </span>
+            {/* ── Ufuk toplamları ────────────────────────────────────── */}
+            {/* Kokpit kendi ölçü şeridini taşır — üç kartı orada tekrarlamıyoruz. */}
+            {view !== 'cockpit' && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                <SummaryCard label="Toplam Gelir"  value={formatCurrency(totalIncome)}  color="ok" />
+                <SummaryCard label="Toplam Gider"  value={formatCurrency(totalExpense)} color="danger" prefix={totalExpense > 0 ? '−' : ''} />
+                <SummaryCard
+                  label="Net"
+                  value={formatCurrency(Math.abs(net))}
+                  color={net >= 0 ? 'ok' : 'danger'}
+                  prefix={net >= 0 ? '+' : '−'}
+                />
               </div>
-              <CardContent className="p-0 py-4">
-                <Chart points={chartPoints} shortfallDate={shortfallDate} events={chartEvents} horizonEnd={horizonEnd} todayStr={todayStr} />
-              </CardContent>
-            </Card>
-
-            {/* ── Upcoming transactions ─────────────────────────────── */}
-            {events.length > 0 && (
-              <Card className="overflow-hidden gap-0 py-0">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                  <span className="text-sm font-semibold text-foreground/90">Yaklaşan İşlemler</span>
-                  <span className="text-xs text-muted-foreground">{events.length} işlem</span>
-                </div>
-                <CardContent className="p-5 pt-3 flex flex-col">
-                  {visibleEvents.map((e, i) => {
-                    const income = e.type === 'income'
-                    const monthKey = e.date.slice(0, 7)
-                    const newMonth = i === 0 || visibleEvents[i - 1].date.slice(0, 7) !== monthKey
-                    return (
-                      <div key={i}>
-                        {newMonth && (
-                          <div className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground mt-3 mb-1.5 first:mt-0">
-                            {formatDate(e.date, 'MMMM yyyy')}
-                          </div>
-                        )}
-                        <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-accent transition-colors">
-                          <span
-                            className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                            style={{ background: income ? '#00C853' : '#FF1744' }}
-                          />
-                          <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-[13px] text-foreground/80 truncate">{e.name}</div>
-                              <div className="text-[11px] text-muted-foreground tabular-nums">{formatDate(e.date)}</div>
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                              <div className={`text-[13px] tabular-nums font-medium ${income ? 'text-green-600' : 'text-destructive'}`}>
-                                {income ? '+' : '−'}{formatCompact(e.amountTry)}
-                              </div>
-                              <div className={`text-[11px] tabular-nums ${e.balanceAfter < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                                {formatCompact(e.balanceAfter)}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {events.length > INITIAL_EVENT_COUNT && (
-                    <button
-                      onClick={() => setShowAllEvents(v => !v)}
-                      className="mt-3 self-center px-4 py-1.5 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-                    >
-                      {showAllEvents ? 'Daha az göster' : `Tümünü göster (${events.length})`}
-                    </button>
-                  )}
-                  <p className="text-[11px] text-muted-foreground mt-2">
-                    Sağdaki ikinci satır, işlem sonrası tahmini bakiyeyi gösterir.
-                  </p>
-                </CardContent>
-              </Card>
             )}
 
-            {/* ── Horizon summary ───────────────────────────────────── */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <SummaryCard label="Toplam Gelir"  value={formatCurrency(totalIncome)}  color="ok" />
-              <SummaryCard label="Toplam Gider"  value={formatCurrency(totalExpense)} color="danger" prefix={totalExpense > 0 ? '−' : ''} />
-              <SummaryCard
-                label="Net"
-                value={formatCurrency(Math.abs(net))}
-                color={net >= 0 ? 'ok' : 'danger'}
-                prefix={net >= 0 ? '+' : '−'}
-              />
-            </div>
-
-            {/* ── Drivers ───────────────────────────────────────────── */}
-            <Card className="overflow-hidden gap-0 py-0">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                <span className="text-sm font-semibold text-foreground/90">Aylık Etki</span>
-                <span className="text-xs text-muted-foreground">{drivers.length} kalem</span>
-              </div>
-              <CardContent className="p-5 flex flex-col gap-0.5">
-                {drivers.map(d => {
-                  const width  = maxDriver > 0 ? (d.monthlyEquivTry / maxDriver) * 100 : 0
-                  const income = d.type === 'income'
-                  const barColor = income ? '#00C853' : '#FF1744'
-                  return (
-                    <div key={d.id} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-accent transition-colors">
-                      <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: barColor }} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[13px] text-foreground/80 truncate">{d.name}</span>
-                          <span className={`text-[13px] tabular-nums font-medium flex-shrink-0 ${income ? 'text-green-600' : 'text-destructive'}`}>
-                            {income ? '+' : '−'}{formatCompact(d.monthlyEquivTry)}
-                          </span>
-                        </div>
-                        <div className="mt-1.5 h-1 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${width}%`, background: barColor }} />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-                <p className="text-[11px] text-muted-foreground mt-2">
-                  Her işlemin aylığa çevrilmiş ortalama tutarı. Tahmin, işlemlerin gerçek tekrar tarihlerine göre hesaplanır.
-                </p>
-              </CardContent>
-            </Card>
+            {/* ── Seçili düzen ───────────────────────────────────────── */}
+            <ActiveView
+              points={points}
+              chartPoints={chartPoints}
+              chartEvents={chartEvents}
+              events={events}
+              drivers={drivers}
+              shortfallDate={shortfallDate}
+              horizonEnd={horizonEnd}
+              todayStr={todayStr}
+              mode={mode}
+            />
           </>
         )}
       </div>
