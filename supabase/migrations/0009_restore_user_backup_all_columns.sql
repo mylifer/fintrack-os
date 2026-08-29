@@ -209,41 +209,86 @@ $$;
 grant execute on function public.restore_user_backup(jsonb, uuid) to authenticated;
 
 -- ============================================================================
--- DOĞRULAMA (üretime almadan ÖNCE, boş bir test projesinde)
+-- DOĞRULAMA — geri yüklemeyi ÖNCE bir TEST HESABIYLA deneyin
 -- ============================================================================
--- 1. supabase_schema.sql + 0001..0008 migration'larını test projesine uygulayın,
---    sonra bu dosyayı çalıştırın.
--- 2. Üretimden alınmış GERÇEK bir yedek dosyasını içe aktarın (test hesabına).
--- 3. ÖNCE F1 kontrolü — bu sorgu 0'DAN BÜYÜK dönmeli (çalışma alanları hayatta):
+-- ⚠️ SQL Editor'de `auth.uid()` DAİMA NULL DÖNER (editör `postgres` rolüyle
+--    çalışır, ortada JWT yoktur). Bu yüzden aşağıdaki sorgular test hesabının
+--    UUID'sini AÇIKÇA alır. UUID'yi bulmak için:
 --
---    select count(*) from public.workspaces
---     where user_id = auth.uid() and deleted_at is null;
+--      select id, email from auth.users order by created_at desc;
 --
---    0 dönerse geri yükleme çalışma alanlarını yok etmiştir: ÜRETİME ALMAYIN.
---    Ardından uygulamayı test hesabıyla açın — işlem listesi BOŞ görünüyorsa
---    aynı sorunun istemci tarafındaki belirtisidir.
+--    Sonra her sorguda :uid yerine o UUID'yi yazın, ya da tek seferde:
 --
--- 4. Aşağıdaki sorgular 0 satır döndürmeli — yani hiçbir alan boş kalmamalı:
+--      \set uid '00000000-0000-0000-0000-000000000000'
 --
---    -- Çalışma alanı ayrımı korundu mu?
---    select count(*) from public.transactions
---     where user_id = auth.uid() and deleted_at is null and "workspaceId" is null;
+--    (Aynı sebeple restore_user_backup RPC'si SQL Editor'den ÇAĞRILAMAZ —
+--     `unauthorized` fırlatır. Geri yükleme yalnızca uygulama üzerinden yapılır;
+--     bu kasıtlı bir korumadır, hata değil.)
 --
---    -- Kategori payları korundu mu? (yedekte payı olan satırlar için)
---    select count(*) from public.transactions
---     where user_id = auth.uid() and deleted_at is null and "categorySplits" is null
---       and id in ( /* yedekteki bölünmüş işlem id'leri */ );
+-- YÖNTEM — iki seçenek
+--   A) Aynı projede İKİNCİ BİR TEST HESABI (önerilen, ucuz ve yeterli):
+--      RPC zaten `target_user_id = auth.uid()` ile kendi hesabına kilitli ve
+--      tablolarda FORCE RLS var, dolayısıyla test hesabının geri yüklemesi
+--      gerçek hesabın satırlarına DOKUNAMAZ. Test hesabında hiç satır olmadığı
+--      için içe aktarma düz INSERT yolundan geçer — yani 0009'un düzelttiği
+--      sütun kaymasının GÖRÜLDÜĞÜ yoldan. Aradığımız test tam olarak budur.
+--   B) Ayrı, boş bir Supabase projesi: şema farklılıklarını da yakalar ama
+--      supabase_schema.sql + 0001..0010'u baştan uygulamayı gerektirir.
 --
---    -- Onay durumu korundu mu?
---    select "approvalStatus", count(*) from public.transactions
---     where user_id = auth.uid() and deleted_at is null group by 1;
+-- ADIMLAR
+-- 1. Üretimde bu dosyayı çalıştırın. Bu adım VERİYE DOKUNMAZ — yalnızca
+--    `create or replace function`. Geri yükleme yapmadığınız sürece davranış
+--    değişmez.
+-- 2. Uygulamada gerçek hesabınızla: Ayarlar → Yedekler → "Bulut yedeği oluştur",
+--    sonra "Yedeği indir" ile JSON'u diske alın.
+-- 3. İkinci bir hesap açın (ör. siz+test@...) ve GİZLİ PENCEREDE giriş yapın.
+-- 4. Test hesabında: Ayarlar → Yedekler → indirdiğiniz JSON'u içe aktarın.
+-- 5. F1 kontrolü — bu sorgu 0'DAN BÜYÜK dönmeli (çalışma alanları hayatta):
 --
--- 5. Kayıt sayılarını yedek dosyasıyla karşılaştırın:
---    select 'transactions' t, count(*) from public.transactions
---      where user_id = auth.uid() and deleted_at is null
---    union all select 'accounts', count(*) from public.accounts
---      where user_id = auth.uid() and deleted_at is null;
+--      select count(*) from public.workspaces
+--       where user_id = :uid and deleted_at is null;
 --
--- 6. Uygulamayı test hesabıyla açın: çalışma alanları, bölünmüş işlemler,
+--    0 dönerse geri yükleme çalışma alanlarını yok etmiştir: DURUN.
+--    Uygulamada işlem listesinin BOŞ görünmesi aynı sorunun belirtisidir.
+--
+-- 6. Sütun kayması gitti mi — hepsi 0 dönmeli:
+--
+--      -- Çalışma alanı ayrımı korundu mu?
+--      select count(*) from public.transactions
+--       where user_id = :uid and deleted_at is null and "workspaceId" is null;
+--
+--      -- Kategori payları korundu mu? (yedekte payı olan satırlar için)
+--      select count(*) from public.transactions
+--       where user_id = :uid and deleted_at is null and "categorySplits" is null
+--         and id in ( /* yedekteki bölünmüş işlem id'leri */ );
+--
+--    Onay durumu dağılımı yedekle uyuşmalı (0 beklenmiyor, KARŞILAŞTIRIN):
+--      select "approvalStatus", count(*) from public.transactions
+--       where user_id = :uid and deleted_at is null group by 1;
+--
+-- 7. Kayıt sayıları yedek dosyasıyla eşleşmeli:
+--      select 'transactions' t, count(*) from public.transactions
+--        where user_id = :uid and deleted_at is null
+--      union all select 'accounts', count(*) from public.accounts
+--        where user_id = :uid and deleted_at is null
+--      union all select 'workspaces', count(*) from public.workspaces
+--        where user_id = :uid and deleted_at is null;
+--
+-- 8. Uygulamayı test hesabıyla gezin: çalışma alanı geçişi, bölünmüş işlemler,
 --    onay bekleyenler ve yatırım K/Z bağları yerinde mi?
+--
+-- 9. TEMİZLİK — test hesabının verisini bırakmayın:
+--      delete from public.transactions            where user_id = :uid;
+--      delete from public.investment_transactions where user_id = :uid;
+--      delete from public.budgets                 where user_id = :uid;
+--      delete from public.recurring_transactions  where user_id = :uid;
+--      delete from public.debts                   where user_id = :uid;
+--      delete from public.people                  where user_id = :uid;
+--      delete from public.accounts                where user_id = :uid;
+--      delete from public.categories              where user_id = :uid;
+--      delete from public.workspaces              where user_id = :uid;
+--      delete from public.user_backups            where user_id = :uid;
+--    Ardından Authentication → Users'tan test hesabını silin
+--    (auth.users silinince user_backups zaten cascade ile gider).
+--    ⚠️ :uid'in TEST hesabının UUID'si olduğunu iki kez kontrol edin.
 -- ============================================================================
