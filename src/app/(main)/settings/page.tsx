@@ -8,6 +8,7 @@ import { BackupManager }  from '@/components/backup/BackupManager'
 import { TransactionImportModal } from '@/components/settings/TransactionImportModal'
 import { WorkspaceManager } from '@/components/settings/WorkspaceManager'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
+import { InvestmentsViewSettings } from '@/components/settings/InvestmentsViewSettings'
 import { loadDemoData, clearAllData } from '@/lib/seed'
 import { scanDemoData, removeDemoData, type DemoScan } from '@/lib/demo-cleanup'
 import { SelectField } from '@/components/ui/Select'
@@ -159,6 +160,9 @@ export default function SettingsPage() {
 
         {/* Görünüm — kenar çubuğu varyantı */}
         <AppearanceSettings />
+
+        {/* Görünüm — Yatırımlar sayfası düzeni */}
+        <InvestmentsViewSettings />
 
         {/* Çalışma Alanları */}
         <WorkspaceManager />

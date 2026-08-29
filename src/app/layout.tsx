@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { ServiceWorkerRegistrar } from '@/components/pwa/ServiceWorkerRegistrar'
 import { SidebarVariantProvider } from '@/components/layout/SidebarVariantProvider'
 import { SIDEBAR_VARIANT_COOKIE, parseSidebarVariant } from '@/lib/sidebar-variant'
+import { InvestmentsViewProvider } from '@/components/layout/InvestmentsViewProvider'
+import { INVESTMENTS_VIEW_COOKIE, parseInvestmentsView } from '@/lib/investments-view'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
 
@@ -43,7 +45,11 @@ export default async function RootLayout({
 
   // Kenar çubuğu görünümü çerezden okunur, böylece sunucu doğru varyantı basar;
   // istemcide düzeltme (ve görünür sıçrama) gerekmez.
-  const sidebarVariant = parseSidebarVariant((await cookies()).get(SIDEBAR_VARIANT_COOKIE)?.value)
+  // Aynı gerekçeyle Yatırımlar görünümü de çerezden okunur (Ayarlar'dan ya da
+  // sayfadaki seçiciden değiştirilebiliyor).
+  const cookieStore = await cookies()
+  const sidebarVariant  = parseSidebarVariant(cookieStore.get(SIDEBAR_VARIANT_COOKIE)?.value)
+  const investmentsView = parseInvestmentsView(cookieStore.get(INVESTMENTS_VIEW_COOKIE)?.value)
 
   return (
     <html lang="tr" className={cn("h-full", geist.variable, "font-sans")} suppressHydrationWarning>
@@ -56,7 +62,9 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem('fintrack-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}` }}
         />
         <SidebarVariantProvider initial={sidebarVariant}>
-          {children}
+          <InvestmentsViewProvider initial={investmentsView}>
+            {children}
+          </InvestmentsViewProvider>
         </SidebarVariantProvider>
         <ServiceWorkerRegistrar />
         <SpeedInsights />
