@@ -42,9 +42,11 @@
 --
 -- KORUNAN DAVRANIŞLAR (0004'ten devralınan, bilinçli kararlar)
 -- -----------------------------------------------------------
---   • Hard delete YOK: önce tüm satırlar tombstone'lanır, yedektekiler
---     `deleted_at = null` ile diriltilir. Yedekte olmayanlar tombstone kalır →
---     diğer cihazlar silmeyi POZİTİF kanıtla öğrenir (GOLD_BRACELET vakası).
+--   • Hard delete YOK: önce tüm satırlar tombstone'lanır, yedekteki CANLI
+--     satırlar diriltilir. Yedekte olmayanlar tombstone kalır → diğer cihazlar
+--     silmeyi POZİTİF kanıtla öğrenir (GOLD_BRACELET vakası).
+--     (2026-08-29 düzeltmesi: "yedektekiler koşulsuz diriltilir" değil —
+--      yedekteki tombstone'lu satır ölü kalır; bkz. aşağıdaki deleted_at notu.)
 --   • user_id her satırda çağırana zorlanır; başka hesaba geri yükleme yasak.
 --   • Tek transaction: herhangi bir adım patlarsa tamamı geri alınır.
 --   • security invoker + RLS: fonksiyon çağıranın yetkisiyle çalışır.
@@ -194,11 +196,29 @@ begin
       continue;
     end if;
 
+    -- `deleted_at` yükten KORUNUR, null'a zorlanmaz.
+    --
+    -- Eskiden her satır `deleted_at = null` ile yazılıyordu ("yedekte varsa
+    -- canlıdır" varsayımı). Ama yedek dosyaları tombstone'lu satırları da
+    -- içeriyordu (Dexie silinmiş satırın mezar taşını tutar), dolayısıyla
+    -- geri yükleme kullanıcının SİLDİĞİ kayıtları diriltiyor ve bakiyeleri
+    -- şişiriyordu — 785 satırlık gerçek bir yedekte 57 tombstone ölçüldü
+    -- (2026-08-29 güvenlik denetimi).
+    --
+    -- İstemci artık tombstone'ları dışa aktarmıyor (src/lib/auto-backup.ts →
+    -- readSnapshot), ama ELDEKİ eski yedek dosyaları ve `user_backups`
+    -- tablosundaki mevcut snapshot'lar hâlâ tombstone taşıyor; bu satır onları
+    -- da güvenli hâle getirir. Yeni yedeklerde `r.deleted_at` zaten null olduğu
+    -- için davranış birebir eskisiyle aynıdır.
+    --
+    -- Silmenin yayılması BOZULMAZ: adım 1 kullanıcının tüm satırlarını
+    -- tombstone'lar; yükte olmayan satır tombstone kalır, yükteki canlı satır
+    -- null ile canlanır, yükteki tombstone'lu satır ölü kalır. Üçü de doğru.
     execute format(
       'insert into public.%I (%s, user_id, deleted_at)
-       select %s, $1, null
+       select %s, $1, r.deleted_at
        from jsonb_populate_recordset(null::public.%I, $2 -> %L) as r
-       on conflict (id) do update set %s, user_id = excluded.user_id, deleted_at = null',
+       on conflict (id) do update set %s, user_id = excluded.user_id, deleted_at = excluded.deleted_at',
       tbl, col_list, sel_list, tbl, key, coalesce(upd_list, 'id = excluded.id')
     ) using target_user_id, payload;
   end loop;

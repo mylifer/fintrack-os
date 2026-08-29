@@ -9,9 +9,9 @@
 
 ## 1. Yönetici özeti
 
-Altı bulgu var; hiçbiri "başka bir kullanıcının bulut verisini okuma/yazma" sınıfında değil — RLS katmanı gerçekten sıkı ve yeniden doğrulandı. En kötüsü **F1**: henüz çalıştırılmamış `0009` migration'ı geri yüklemede `workspaces` tablosunu tombstone'layıp asla diriltmiyor; üretime alınırsa ilk yedek geri yüklemesinden sonra kullanıcının TÜM verisi arayüzde görünmez hale gelir. İkinci sırada **F2**: tanınmayan her işlem açıklaması (serbest metin — kişi adları, sağlık harcamaları, borç notları) otomatik olarak Clearbit ve Wikidata'ya gönderiliyor; bu, kullanıcı onayı olmadan gerçekleşen bir üçüncü taraf finansal veri ifşasıdır. Kalanlar paylaşılan cihazda localStorage kalıntısı, kimliği doğrulanmış kullanıcının tetikleyebildiği kaynak tüketimi ve kötü niyetli yedek dosyasıyla beacon yükleme.
+Yedi bulgu var (F7 düzeltme turunda ortaya çıktı); hiçbiri "başka bir kullanıcının bulut verisini okuma/yazma" sınıfında değil — RLS katmanı gerçekten sıkı ve yeniden doğrulandı. En kötüsü **F1**: henüz çalıştırılmamış `0009` migration'ı geri yüklemede `workspaces` tablosunu tombstone'layıp asla diriltmiyor; üretime alınırsa ilk yedek geri yüklemesinden sonra kullanıcının TÜM verisi arayüzde görünmez hale gelir. İkinci sırada **F2**: tanınmayan her işlem açıklaması (serbest metin — kişi adları, sağlık harcamaları, borç notları) otomatik olarak Clearbit ve Wikidata'ya gönderiliyor; bu, kullanıcı onayı olmadan gerçekleşen bir üçüncü taraf finansal veri ifşasıdır. Kalanlar paylaşılan cihazda localStorage kalıntısı, kimliği doğrulanmış kullanıcının tetikleyebildiği kaynak tüketimi ve kötü niyetli yedek dosyasıyla beacon yükleme.
 
-**Düzeltme durumu (2026-08-29 akşamı):** F1, F3, F5 kapatıldı; F4 kısmen kapatıldı. F2 ve F6 açık — ikisinin de düzeltmesi ürün kararı gerektiriyor (ayrıntı 7. bölümde). Ayrıca H2 ve H11 (canlı DB ↔ depo ayrışması) giderildi.
+**Düzeltme durumu (2026-08-29 akşamı):** F1, F3, F5, F7 kapatıldı; F4 kısmen kapatıldı. F1 gerçek veriyle üretimde doğrulandı (12/12 kontrol). F2 ve F6 açık — ikisinin de düzeltmesi ürün kararı gerektiriyor (ayrıntı 7. bölümde). Ayrıca H2 ve H11 (canlı DB ↔ depo ayrışması) giderildi.
 
 Genel duruş: mimariye göre **iyi**. Tek sunucu tarafı auth kapısı fail-closed, RLS `FORCE` ile 9 tabloda owner-only, restore RPC `security invoker` ve `target_user_id <> auth.uid()` ile kapılı, ham SQL yok, sunucuda dosya sistemi/komut sink'i yok, istemci bundle'ında sır yok, git geçmişinde sır yok.
 
@@ -283,6 +283,38 @@ Aynı desen `src/app/api/prices/tefas/route.ts:17`'deki `cache` için de geçerl
 
 ---
 
+### F7 — Yedek geri yükleme, SİLİNMİŞ kayıtları diriltiyor
+**Ciddiyet: Orta (bütünlük) · Güven: Doğrulandı (gerçek veriyle ölçüldü) · Durum: ✅ DÜZELTİLDİ (2026-08-29)**
+
+> Denetimin ilk turunda kaçmıştı; F1'in test altyapısı hazırlanırken ortaya çıktı. Kullanıcının GERÇEK yedeğinde ölçüldü: **785 satırın 57'si tombstone** (47 işlem, 5 yatırım, 2 hesap, 2 borç, 1 tekrarlayan).
+
+**Konum**
+- `src/lib/auto-backup.ts:45-53` — `readSnapshot()`, `db.X.toArray()` ile OKUYOR, `isLive` filtresi YOK
+- `src/components/backup/BackupManager.tsx:182-192` — manuel dışa aktarma da aynı şekilde filtresiz
+- `supabase/migrations/0009_...sql` — `insert ... select %s, $1, null` ve `on conflict do update set ..., deleted_at = null`
+- `supabase/migrations/0004_...sql` — aynı davranış (bu yüzden bugün CANLI bir hata)
+
+**Senaryo (saldırgan gerekmez — kullanıcının kendi eylemi)**
+1. Kullanıcı bir işlemi siler. Silme, `deleted_at` taşıyan bir UPDATE olarak yayılır (`sync/tombstone.ts`); satır hem bulutta hem Dexie'de KALIR, arayüzde `isLive` ile gizlenir.
+2. Yedek alınır (otomatik günlük, manuel, ya da geri yükleme öncesi). `readSnapshot()` Dexie'yi filtresiz okuduğu için **tombstone'lu satırlar yedeğe girer**.
+3. Kullanıcı bu yedeği geri yükler.
+4. RPC yükteki HER satırı `deleted_at = null` ile yazar → **silinmiş kayıtların tamamı canlanır**.
+5. Sonuç: silinen harcamalar listeye geri döner, hesap bakiyeleri ve bütçe kullanımları sessizce şişer. Kullanıcı bunu "geri yükleme çalıştı" sanır; sayılar yanlıştır ve hangi satırların dirildiğini ayırt etmesinin bir yolu yoktur.
+
+**Neden mevcut savunmalar durdurmuyor**
+- `validateBackup` yalnızca tip kontrolü yapar; `deleted_at`'e hiç bakmaz.
+- Arayüzün `isLive` filtresi yalnızca GÖRÜNTÜLEMEYİ etkiler; yedeğin içeriğini değil.
+- Tombstone mimarisi bilinçli ve doğru (silmenin cihazlar arası yayılması için gerekli) — hata, yedeğin bu iç mekanizmayı "kullanıcı verisi" sanmasında.
+- Geri yükleme öncesi otomatik `pre-restore` yedeği de aynı kusuru taşıdığı için geri dönüş de temiz değildi.
+
+**Uygulanan düzeltme (iki katman)**
+1. **Kaynakta:** `readSnapshot()` artık sekiz tablonun hepsini `isLive` ile filtreliyor; `handleExport` de tabloları tek tek okumak yerine `readSnapshot()` çağırıyor (iki yolun ayrışması imkânsız hâle geldi). `src/lib/auto-backup.test.ts` ile 5 regresyon testi.
+2. **RPC'de:** `deleted_at` artık yükten KORUNUYOR (`r.deleted_at` / `excluded.deleted_at`), null'a zorlanmıyor. Bu, ELDEKİ eski yedek dosyalarını ve `user_backups` tablosundaki mevcut snapshot'ları da güvenli hâle getirir — yalnızca istemci düzeltmesi onları kapsamazdı.
+
+Silmenin yayılması bozulmaz: adım 1 tüm satırları tombstone'lar; yükte olmayan ölü kalır, yükteki canlı satır canlanır, yükteki tombstone'lu satır ölü kalır.
+
+---
+
 ## 3. Sertleştirme notları (sömürülebilir bulgu değil)
 
 **H1 — CSP hâlâ Report-Only ve raporlama uçları yok.** `src/proxy.ts:110`. Politika tarayıcıda hiçbir şey engellemiyor; `report-uri`/`report-to` direktifi de olmadığı için ihlaller yalnızca kullanıcının konsoluna düşüyor ve kimse görmüyor. Enforce'a geçişi engelleyen SOMUT şeyler:
@@ -394,7 +426,7 @@ Buna göre **veriye dokunmayan ve ürün davranışını değiştirmeyen** düze
 
 | Bulgu | Dosya | Değişiklik |
 |---|---|---|
-| **F1** | `supabase/migrations/0009_...sql` | `workspaces` tombstone'u + upsert'i `has_workspaces` koşuluna bağlandı. Yedekte çalışma alanı yoksa tabloya HİÇ dokunulmuyor (canlı 0004 davranışıyla aynı). Başlığa ve doğrulama listesine F1 kontrolü eklendi. **Migration çalıştırılmadı.** |
+| **F1** | `supabase/migrations/0009_...sql` | `workspaces` tombstone'u + upsert'i `has_workspaces` koşuluna bağlandı. Yedekte çalışma alanı yoksa tabloya HİÇ dokunulmuyor (canlı 0004 davranışıyla aynı). Başlığa ve doğrulama listesine F1 kontrolü eklendi. **Migration üretimde uygulandı ve doğrulandı** (aşağıya bak). |
 | **F3** | `src/lib/auth.ts` | `clearBrowserStorage()` ayrı fonksiyona çıkarıldı; `clearLocalData()` içinde storage temizliği Dexie'den **önce**ye alındı — Dexie hatası artık storage temizliğini iptal etmiyor. |
 | **F3** | `src/lib/sync/engine.ts` | `guardUserSwitch()` artık `clearBrowserStorage()` de çağırıyor. İkinci savunma katmanı kendi kendine yeter hâle geldi; `fintrack.brandDomain.v1` (anahtarları önceki kullanıcının işlem açıklamaları) kullanıcı değişiminde siliniyor. |
 | **F3** | `src/app/register/page.tsx` | Kayıt akışı giriş akışıyla simetrik hâle getirildi: `ft_last_uid` yazılıyor + kullanıcı değişiminde `clearLocalData()` ve hard navigation. İşaretçi yalnızca `data.session` varken yazılıyor. |
@@ -404,10 +436,16 @@ Buna göre **veriye dokunmayan ve ürün davranışını değiştirmeyen** düze
 | **F4** | `api/prices/history/route.ts` | Başarısız gün için 60 sn'lik negatif not (`usdMiss`) — aynı isteğin tekrarı artık yüzlerce boş günü baştan çekmiyor. Süre `/api/prices/tefas`'taki `MISS_CACHE_TTL_MS` ile aynı. `usdCache` de tavanlandı (8000). |
 | **H2** | `supabase_schema.sql` | Eksik `transactions."categorySplits"` eklendi + başa "bu dosya tek başına yeterli değildir, 0001..0010 da uygulanmalı" uyarısı (hangi parçanın hangi migration'da olduğu listelendi). |
 | **H11** | `supabase/migrations/0010_rls_auto_enable.sql` *(yeni)* | Canlı DB'de var olan ama depoda olmayan `rls_auto_enable()` + `ensure_rls` event trigger'ı kayda geçirildi. Tek davranış farkı: sessiz `raise log` → görünür `raise warning` (RLS açma başarısız olursa artık fark edilir). Üretimde çalıştırmak idempotent. |
+| **F7** | `src/lib/auto-backup.ts` | `readSnapshot()` sekiz tabloyu `isLive` ile filtreliyor — tombstone'lar artık yedeğe girmiyor. |
+| **F7** | `src/components/backup/BackupManager.tsx` | `handleExport` tabloları tek tek okumak yerine `readSnapshot()` çağırıyor; manuel dosya ile bulut snapshot'ı artık ayrışamaz. |
+| **F7** | `src/lib/auto-backup.test.ts` *(yeni)* | 5 regresyon testi (her tabloda filtre, `deleted_at: null` canlı sayılır, hepsi ölüyse boş snapshot). |
+| **F7** | `supabase/migrations/0009_...sql` | `deleted_at` yükten korunuyor (`r.deleted_at` / `excluded.deleted_at`), null'a zorlanmıyor — eldeki ESKİ yedek dosyalarını ve mevcut bulut snapshot'larını da kapsar. |
 
-**Doğrulama:** `vitest` 372 passed / 2 expected-fail (öncesi 364 — fark yeni `BoundedCache` testleri), `tsc --noEmit` temiz, `eslint` temiz, `next build` başarılı.
+**Doğrulama:** `vitest` 377 passed / 2 expected-fail (öncesi 364 — fark yeni `BoundedCache` + `readSnapshot` testleri), `tsc --noEmit` temiz, `eslint` temiz, `next build` başarılı.
 
-**Dokunulmayanlar:** Kullanıcı verisi, canlı Supabase (hiçbir sorgu/migration çalıştırılmadı), ve önceki bug-audit turundan çalışma ağacında bekleyen commit'lenmemiş değişiklikler (`seq` sürüm kapısı ve arkadaşları) — onlar ayrı tutuldu.
+**F1 üretimde doğrulandı (2026-08-29):** düzeltilmiş `0009` canlıya alındı, ikinci bir test hesabına kimlikleri yeniden yazılmış gerçek bir yedek (785 satır) geri yüklendi ve **12/12 kontrol geçti** — `categorySplits` 3, `workspaceId` 496, `debtPrincipalId` 1, `refundOfId` 5, `approvalStatus` 35/9, `borrowDate` 1, `pnlLinked` 11, canlı çalışma alanı 1. `0004` ile bu sütunların hepsi 0 çıkardı. Not: aynı projede ikinci hesapla test etmek için yedeğin kimlikleri yeniden yazılmalıdır — `id` kullanıcı bazlı değil tablo genelinde primary key'dir, aksi hâlde her satır gerçek hesabın satırına çakışır ve RLS'e takılır (bkz. H4).
+
+**Dokunulmayanlar:** Kullanıcı verisi ve önceki bug-audit turundan çalışma ağacında bekleyen commit'lenmemiş değişiklikler (`seq` sürüm kapısı ve arkadaşları) — onlar ayrı tutuldu.
 
 ### Bilinçli olarak YAPILMAYANLAR (karar sende)
 

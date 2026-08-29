@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { db } from './db'
 import { getUserId } from './auth'
+import { isLive } from './sync/tombstone'
 import type { BackupData } from './backup-sync'
 
 /**
@@ -41,7 +42,23 @@ const KEEP: Record<BackupKind, number> = { auto: 14, manual: 10, 'pre-restore': 
 // Otomatik yedekler arasındaki asgari süre
 const AUTO_INTERVAL_MS = 24 * 60 * 60 * 1000
 
-/** Tüm Dexie tablolarının anlık kopyası (manuel export ile aynı kapsam). */
+/* Tüm Dexie tablolarının anlık kopyası (manuel export ile aynı kapsam).
+ *
+ * TOMBSTONE'LAR HARİÇ. Dexie yalnızca canlı satırları değil, silinmiş satırların
+ * mezar taşlarını da tutar (silme, `deleted_at` taşıyan sıradan bir UPDATE olarak
+ * yayılır — bkz. sync/tombstone.ts). Bunlar yedeğe girdiğinde geri yükleme RPC'si
+ * yükteki HER satırı canlandırdığı için kullanıcının sildiği kayıtlar geri
+ * DİRİLİYOR ve bakiyeler sessizce şişiyordu. (2026-08-29 güvenlik denetimi
+ * sırasında bulundu: 785 satırlık gerçek bir yedekte 57 tombstone.)
+ *
+ * Silinmişlik yine de doğru şekilde korunur: RPC önce kullanıcının tüm
+ * satırlarını tombstone'lar, sonra yalnızca YÜKTEKİLERİ canlandırır — yükte
+ * olmayan satır tombstone kalır ve diğer cihazlar silmeyi pozitif kanıtla
+ * öğrenmeye devam eder. Yani filtre, silmeyi kaybetmez; sadece dirilmeyi
+ * engeller.
+ *
+ * Eski yedek dosyalarında tombstone'lar duruyor; RPC tarafında da ikinci bir
+ * savunma var (0009: `deleted_at` artık yükten korunur, null'a zorlanmaz). */
 export async function readSnapshot(): Promise<BackupData> {
   const [accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions] =
     await Promise.all([
@@ -49,7 +66,16 @@ export async function readSnapshot(): Promise<BackupData> {
       db.budgets.toArray(), db.debts.toArray(), db.investmentTransactions.toArray(),
       db.people.toArray(), db.recurringTransactions.toArray(),
     ])
-  return { accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions }
+  return {
+    accounts:               accounts.filter(isLive),
+    transactions:           transactions.filter(isLive),
+    categories:             categories.filter(isLive),
+    budgets:                budgets.filter(isLive),
+    debts:                  debts.filter(isLive),
+    investmentTransactions: investmentTransactions.filter(isLive),
+    people:                 people.filter(isLive),
+    recurringTransactions:  recurringTransactions.filter(isLive),
+  }
 }
 
 function computeCounts(data: BackupData): Record<string, number> {

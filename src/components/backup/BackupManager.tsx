@@ -179,22 +179,15 @@ export function BackupManager() {
     setExporting(true)
     setError('')
     try {
-      const [accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions] =
-        await Promise.all([
-          db.accounts.toArray(),
-          db.transactions.toArray(),
-          db.categories.toArray(),
-          db.budgets.toArray(),
-          db.debts.toArray(),
-          db.investmentTransactions.toArray(),
-          db.people.toArray(),
-          db.recurringTransactions.toArray(),
-        ])
+      // readSnapshot ile AYNI kaynak: manuel dosya ile bulut snapshot'ı birebir
+      // aynı kapsamı taşımalı. Eskiden burada tablolar tek tek okunuyordu ve
+      // tombstone filtresi yalnızca bir tarafa eklenseydi ikisi ayrışırdı.
+      const data = await readSnapshot()
 
       const backup: BackupFile = {
         version:    2,
         exportedAt: new Date().toISOString(),
-        data:       { accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions },
+        data,
       }
 
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
