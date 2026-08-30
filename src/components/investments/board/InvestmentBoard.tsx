@@ -17,6 +17,7 @@ import {
   SORT_LABELS, assetMeta, buildRows, fmtPct, pnlColor,
   type SortId,
 } from './shared'
+import { ClassicView }    from './views/ClassicView'
 import { ConsoleView }    from './views/ConsoleView'
 import { GroupedView }    from './views/GroupedView'
 import { AllocationView } from './views/AllocationView'
@@ -32,7 +33,8 @@ import type { InvestmentTransaction } from '@/types'
  * Görünüm tercihi ÇEREZDE (lib/investments-view.ts) ve sunucudan gelir; buradaki
  * segment seçici ile Ayarlar > Yatırım Görünümü kartı aynı değeri yazar.
  *
- * Dört alternatif:
+ * Beş görünüm (varsayılan Klasik):
+ *   Klasik   — eski düzen: özet kartları + varlık başına grafik ızgarası + tablo
  *   Konsol   — tek yoğun tablo, satır içi eğri, satır açılınca grafik
  *   Sınıf    — birleşik portföy grafiği + sınıfa göre gruplu tablo, ara toplamlar
  *   Dağılım  — kompozisyon (yığılı çubuk) ana kahraman, sınıfa inilebilir
@@ -145,7 +147,7 @@ export function InvestmentBoard() {
         {/* ── Özet şeridi ───────────────────────────────────────────
             Dört kart yerine tek şerit: aynı sayılar, dört kat az dikey alan —
             grafik/tablo ekranın üstünde kalsın. */}
-        {hasPortfolio && (
+        {hasPortfolio && view !== 'classic' && (
           <div className="rounded-xl border border-border/60 bg-card px-5 py-3.5 flex flex-wrap items-center gap-x-8 gap-y-3">
             <SumItem label="Toplam Değer" value={formatCurrency(totalValue)} strong />
             <SumItem label="Maliyet"      value={formatCurrency(totalCost)} />
@@ -238,6 +240,13 @@ export function InvestmentBoard() {
           <div className="rounded-xl border border-border/60 bg-card px-5 py-12 text-center text-sm text-muted-foreground">
             {query ? 'Aramaya uyan varlık yok.' : 'Portföyde varlık yok. Yatırım işlemi ekleyin.'}
           </div>
+        ) : view === 'classic' ? (
+          <ClassicView
+            rows={rows} transactions={transactions}
+            prices={prices} fundPrices={fundPrices} sort={sort}
+            totalValue={totalValue} totalCost={totalCost}
+            onBuy={openBuy} onSell={openSell}
+          />
         ) : view === 'console' ? (
           <ConsoleView rows={rows} transactions={transactions} query={query} sort={sort} onSort={setSort} />
         ) : view === 'grouped' ? (

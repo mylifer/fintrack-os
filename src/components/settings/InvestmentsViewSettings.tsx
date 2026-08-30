@@ -56,6 +56,39 @@ function Spark() {
 }
 
 function Preview({ view }: { view: InvestmentsView }) {
+  if (view === 'classic') {
+    return (
+      <Frame>
+        {/* dört özet kartı */}
+        <div className="grid grid-cols-4 gap-[2px] flex-shrink-0">
+          {[0, 1, 2, 3].map(i => (
+            <span key={i} className="h-2.5 rounded-[2px] border border-border bg-secondary/70" />
+          ))}
+        </div>
+        {/* varlık başına grafik ızgarası (2×2) */}
+        <div className="grid grid-cols-2 gap-[2px] flex-shrink-0">
+          {[HUES[0], HUES[1], HUES[1], HUES[2]].map((h, i) => (
+            <svg key={i} width="100%" height="11" viewBox="0 0 36 11" preserveAspectRatio="none"
+                 className="rounded-[2px] border border-border">
+              <path d="M0,8 L9,6 L18,7 L27,3 L36,4 L36,11 L0,11 Z" fill={h} fillOpacity="0.15" />
+              <path d="M0,8 L9,6 L18,7 L27,3 L36,4" fill="none" stroke={h} strokeWidth="1" />
+            </svg>
+          ))}
+        </div>
+        {/* portföy tablosu */}
+        <div className="flex flex-col gap-[3px] border-t border-border pt-[3px]">
+          {[0, 1].map(i => (
+            <div key={i} className="flex items-center gap-1">
+              <Bar w={i ? '16px' : '20px'} />
+              <span className="flex-1" />
+              <Bar w="12px" tone="ink" />
+            </div>
+          ))}
+        </div>
+      </Frame>
+    )
+  }
+
   if (view === 'console') {
     return (
       <Frame>
@@ -175,7 +208,7 @@ export function InvestmentsViewSettings() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-semibold">{option.label}</span>
-                    {option.key === 'console' && (
+                    {option.key === 'classic' && (
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Varsayılan
                       </span>

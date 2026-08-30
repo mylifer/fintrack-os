@@ -8,12 +8,12 @@
    Bu dosya sunucu bileşenlerinden de import edildiği için 'use client' YOK ve
    tarayıcıya özgü API kullanmaz. */
 
-export type InvestmentsView = 'console' | 'grouped' | 'alloc' | 'focus'
+export type InvestmentsView = 'classic' | 'console' | 'grouped' | 'alloc' | 'focus'
 
 export const INVESTMENTS_VIEW_COOKIE = 'fintrack-investments-view'
-export const DEFAULT_INVESTMENTS_VIEW: InvestmentsView = 'console'
+export const DEFAULT_INVESTMENTS_VIEW: InvestmentsView = 'classic'
 
-const KEYS: InvestmentsView[] = ['console', 'grouped', 'alloc', 'focus']
+const KEYS: InvestmentsView[] = ['classic', 'console', 'grouped', 'alloc', 'focus']
 
 /** Çerez değeri bozuk/eksikse varsayılana düşer. */
 export function parseInvestmentsView(value: string | undefined | null): InvestmentsView {
@@ -31,6 +31,14 @@ export interface InvestmentsViewMeta {
 }
 
 export const INVESTMENTS_VIEWS: InvestmentsViewMeta[] = [
+  {
+    key: 'classic',
+    label: 'Klasik',
+    hint: 'Özet kartları + varlık başına grafik ızgarası + portföy tablosu',
+    description:
+      'Alışılmış düzen: dört özet kartı, her varlık ailesi için ayrı fiyat grafiği ve '
+      + 'portföy tablosu. Diğer dördü bunun alternatifi.',
+  },
   {
     key: 'console',
     label: 'Konsol',
