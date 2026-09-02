@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear } from 'date-fns'
 import { Header } from '@/components/layout/Header'
 import { SelectField } from '@/components/ui/Select'
-import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useDebtStore } from '@/store'
+import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useDebtStore, useSettingsStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { excludeFuture } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
@@ -63,6 +63,9 @@ export default function StatisticsPage() {
   const investTxs     = useInvestmentStore(s => s.transactions)
   const prices        = useInvestmentStore(s => s.prices)
   const fundPrices    = useInvestmentStore(s => s.fundPrices)
+  // Dashboard/Raporlar ile paylaşılan kalıcı ayar — "Dönem Toplamı" üçünde de
+  // aynı gelir/gideri göstersin (bkz. DetailedStats.period).
+  const includeFundGain = useSettingsStore(s => s.includeFundGain)
 
   const [preset,     setPreset]     = useState<Preset>('this-month')
   const [customFrom, setCustomFrom] = useState('')
@@ -195,6 +198,7 @@ export default function StatisticsPage() {
             prices={prices}
             fundPrices={fundPrices}
             debts={debts}
+            includeFundGain={includeFundGain}
           />
         )}
       </div>

@@ -19,7 +19,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { isPrincipalMoveTx, calcNetWorth, excludeFuture, calcDebtBurden, buildDebtBurdenSeries } from '@/lib/utils/calculations'
+import { isPrincipalMoveTx, isRealizedInvestmentPnlTx, calcNetWorth, excludeFuture, calcDebtBurden, buildDebtBurdenSeries } from '@/lib/utils/calculations'
 import { computeHoldings, getAssetPrice } from '@/store/investment.store'
 import { today } from '@/lib/utils/date'
 import { baseAmount } from '@/lib/utils/fx'
@@ -93,6 +93,7 @@ interface DetailedStatsProps {
   prices:       PriceData | null
   fundPrices:   Record<string, TefasFundPrice>
   debts:        Debt[]                     // net-worth: kalan borç (yükümlülük)
+  includeFundGain: boolean                 // Dashboard/Raporlar ile paylaşılan "Fon getirileri dahil" ayarı
 }
 
 /* ── Component ────────────────────────────────────────────────────────── */
@@ -108,6 +109,7 @@ export function DetailedStats({
   prices,
   fundPrices,
   debts,
+  includeFundGain,
 }: DetailedStatsProps) {
   const [open, setOpen] = useState(true)
 
@@ -157,8 +159,12 @@ export function DetailedStats({
     )
     // Yatırım anapara satırları (… Alımı/… Satışı) gelir/gider ortalamalarına
     // girmez — dashboard/rapor KPI kartlarıyla aynı kapsam (yalnızca gerçek K/Z).
-    const expenseTotal = sumBy(analyticTxs.filter(t => t.type === 'expense' && !isPrincipalMoveTx(t)), baseAmount)
-    const incomeTotal  = sumBy(analyticTxs.filter(t => t.type === 'income'  && !isPrincipalMoveTx(t)), baseAmount)
+    // "Fon getirileri dahil" anahtarı KAPALIYKEN gerçekleşen K/Z satırları da
+    // (dashboard/Raporlar'daki gibi) hariç tutulur — aksi halde bu sayfanın
+    // "Dönem Toplamı" anahtar kapalıyken bile diğer iki sayfadan yüksek çıkardı.
+    const flowGate = (t: Transaction) => !isPrincipalMoveTx(t) && (includeFundGain || !isRealizedInvestmentPnlTx(t))
+    const expenseTotal = sumBy(analyticTxs.filter(t => t.type === 'expense' && flowGate(t)), baseAmount)
+    const incomeTotal  = sumBy(analyticTxs.filter(t => t.type === 'income'  && flowGate(t)), baseAmount)
 
     /* Real averages over the elapsed period — total divided by how many
        months/years the period actually spans (floored at 1 so a short
@@ -171,7 +177,7 @@ export function DetailedStats({
     })
 
     return { days, expense: avg(expenseTotal), income: avg(incomeTotal) }
-  }, [analyticTxs, dateRange])
+  }, [analyticTxs, dateRange, includeFundGain])
 
   /* Dağılım (top-kategori/satıcı) tabanı: Raporlar kategori donut'uyla (sumExpenseByKey)
      BİREBİR aynı kapsam — TÜM yatırım-ikonlu satırlar (anapara + gerçekleşen K/Z)

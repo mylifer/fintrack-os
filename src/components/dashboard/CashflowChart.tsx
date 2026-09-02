@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { useTransactionStore } from '@/store'
-import { excludeFuture } from '@/lib/utils/calculations'
+import { useTransactionStore, useSettingsStore } from '@/store'
+import { excludeFuture, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
 import { isReconciliation } from '@/lib/utils/reconciliation'
 import { buildDashboardCashFlowData } from '@/lib/utils/cashflow'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -27,6 +27,7 @@ interface Props {
 
 export function CashflowChart({ periodType, customRange, periodLabel }: Props) {
   const transactions = useTransactionStore(s => s.transactions)
+  const includeFundGain = useSettingsStore(s => s.includeFundGain)
   const [chartType, setChartType] = useState<CashFlowChartType>('bar')
   const [detail, setDetail]         = useState<{ from: string; to: string; label: string } | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -39,10 +40,15 @@ export function CashflowChart({ periodType, customRange, periodLabel }: Props) {
   // Drill-down overlay'in kendi toplamları bar verisiyle tutarlı olsun diye
   // aynı kapsam: onaylanmış (pending/gelecek hariç) + mutabakat ayıklanmış.
   // buildDashboardCashFlowData bunun üzerine yalnız tip (gelir/gider) + yatırım
-  // anapara filtresi uygular.
+  // anapara filtresi uygular. "Fon getirileri dahil" anahtarı KAPALIYKEN KPI
+  // kartlarıyla (bkz. dashboard/page.tsx flowTxs) BİREBİR aynı kapsam için
+  // gerçekleşen yatırım K/Z satırları da burada dışlanır — aksi halde bu
+  // grafiğin "Net:" değeri anahtar kapalıyken KPI Net'ten farklı çıkıyordu.
   const flowTxs = useMemo(
-    () => excludeFuture(transactions).filter(tx => !isReconciliation(tx)),
-    [transactions],
+    () => excludeFuture(transactions).filter(tx =>
+      !isReconciliation(tx) && (includeFundGain || !isRealizedInvestmentPnlTx(tx)),
+    ),
+    [transactions, includeFundGain],
   )
 
   const data = useMemo<CashFlowPoint[]>(
