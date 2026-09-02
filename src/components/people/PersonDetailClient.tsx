@@ -10,6 +10,7 @@ import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import type { PersonRole } from '@/types'
 
 interface Props {
@@ -54,7 +55,14 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
   // Raporlar kapsamıyla tutarlı ve toplam↔sayaç aynı kümeden. Kapsam tüm-zaman
   // (arama/tür kutusu yalnız alttaki listeyi süzer, başlık toplamlarını değil).
   // ₺ (baz PB) TRY-normalize (baseAmount) + kuruş-exact.
-  const flowTxs = useMemo(() => allTxs.filter(t => isFlowTx(t)), [allTxs])
+  // collapseInstallments: taksitli alışverişler Raporlar ile aynı "satın alma
+  // ayına toplu yaz" kuralıyla sayılır — LİSTE (`allTxs`/`filteredTxs`, ham)
+  // buna dahil değil.
+  const flowTxs = useMemo(
+    () => collapseInstallments(transactions)
+      .filter(t => (role === 'family_member' ? t.familyMemberId === id : t.recipientId === id) && isFlowTx(t)),
+    [transactions, id, role],
+  )
   const { income: totalIncome, expense: totalExpense } = sumByType(flowTxs)
 
   if (!peopleReady || !txsReady) return null

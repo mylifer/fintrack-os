@@ -10,6 +10,7 @@ import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { tagKey, tagColor, normalizeTag } from '@/lib/utils/tags'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 
 interface Props { tag: string }
 
@@ -61,7 +62,14 @@ export default function TagDetailClient({ tag }: Props) {
   // onay bekleyen/gelecek, mutabakat ghost'u ve yatırım anaparası hariç — böylece
   // etiket LİSTESİ (aggregateTags, mutabakatı zaten dışlar) ile detay sayfası aynı
   // gelir/gideri verir, ve sayaç toplamla aynı kümeden gelir. ₺ (baz PB) TRY-normalize.
-  const flowTagTxs = useMemo(() => tagTxs.filter(t => isFlowTx(t)), [tagTxs])
+  // collapseInstallments: taksitli alışverişler Raporlar ile aynı "satın alma
+  // ayına toplu yaz" kuralıyla sayılır — LİSTE (`tagTxs`/`filteredTxs`, ham)
+  // buna dahil değil, kullanıcı gerçek defter satırlarını görmeye devam eder.
+  const flowTagTxs = useMemo(
+    () => collapseInstallments(transactions)
+      .filter(t => t.tags?.some(x => tagKey(x) === key) && isFlowTx(t)),
+    [transactions, key],
+  )
   const { income: totalIncome, expense: totalExpense } = sumByType(flowTagTxs)
 
   const color = tagColor(key)

@@ -11,6 +11,7 @@ import { compareCategoriesByName } from '@/lib/utils/categories'
 import { useShallow }         from 'zustand/react/shallow'
 import { formatCurrency }     from '@/lib/utils/currency'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
@@ -156,9 +157,15 @@ export default function AccountDetailClient({
     }
   }
 
+  // collapseInstallments: dönem Gelir/Gider Raporlar ile aynı "satın alma ayına
+  // toplu yaz" kuralıyla sayılır. calcAvailableCredit (aşağıda) HAM accountTxs
+  // okumaya devam eder — kredi limiti taksitlerin gerçek posting tarihine göre
+  // bloke olur.
+  const reportAccountTxs = useMemo(() => collapseInstallments(accountTxs), [accountTxs])
+
   // These must be called unconditionally before any early return (Rules of Hooks)
   const { income: periodIncome, expense: periodExpense } =
-    account ? calcPeriodFlow(accountTxs, from, to) : { income: 0, expense: 0 }
+    account ? calcPeriodFlow(reportAccountTxs, from, to) : { income: 0, expense: 0 }
   const available   = account?.type === 'credit_card' ? calcAvailableCredit(account, accountTxs) : null
   const animBalance = useCountUp(account ? Math.abs(account.balance) : 0)
   const animAvail   = useCountUp(available ?? 0)

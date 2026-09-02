@@ -1,4 +1,5 @@
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { toBaseTry } from '@/lib/utils/fx'
 import type { Account, Transaction, AccountType } from '@/types'
 
@@ -58,6 +59,11 @@ export function enrichAccounts(
   from: string,
   to: string,
 ): AccountRow[] {
+  // collapseInstallments: dönem gelir/gideri Raporlar ile aynı "satın alma
+  // ayına toplu yaz" kuralıyla sayılır. calcAvailableCredit HAM `transactions`
+  // okumaya devam eder — kredi limiti taksitlerin gerçek posting tarihine göre
+  // bloke olur (kendi yorumunda açıklandığı gibi).
+  const reportTxs = collapseInstallments(transactions)
   return accounts.map((account) => {
     const available = account.type === 'credit_card'
       ? calcAvailableCredit(account, transactions)
@@ -66,7 +72,7 @@ export function enrichAccounts(
       ? ((account.creditLimit - available) / account.creditLimit) * 100
       : 0
 
-    const acctTxs = transactions.filter(t => t.accountId === account.id || t.toAccountId === account.id)
+    const acctTxs = reportTxs.filter(t => t.accountId === account.id || t.toAccountId === account.id)
     const { income, expense } = calcPeriodFlow(acctTxs, from, to)
 
     return {

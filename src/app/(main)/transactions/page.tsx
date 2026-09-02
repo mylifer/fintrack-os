@@ -9,6 +9,7 @@ import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore } from '@/store'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { sumByType, isFlowTx, txTouchesAccount } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { isFutureDate } from '@/components/transactions/views/shared'
 import { formatCurrency }  from '@/lib/utils/currency'
@@ -131,6 +132,14 @@ export default function TransactionsPage() {
     [filtered, projectedTxs, showFuture],
   )
 
+  // Özet çubuğu, taksitli alışverişleri Raporlar/İstatistikler ile AYNI şekilde
+  // satın alma ayına toplu yazar (collapseInstallments) — liste (`filtered`) hâlâ
+  // ham defter satırlarını (her taksit kendi ayında) gösterir, yalnız özet
+  // toplamı bu indirgemeyi uygular. getFiltered'a aynı filtreler, ikinci
+  // parametre olarak indirgenmiş dizi verilerek tekrar uygulanır.
+  const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
+  const reportFiltered = useMemo(() => getFiltered(filters, reportTxs), [reportTxs, search, typeFilter, categoryFilter, accountFilter, from, to, familyFilter, recipientFilter, people, categories, accounts])
+
   // Özet çubuğu ₺ (baz PB) gösterir → TRY-normalize (baseAmount, S2/S3) + kuruş-exact
   // (S8) topla; ham `amount` USD'yi ₺ gibi sayardı. Kapsam Dashboard/Raporlar KPI
   // ile BİREBİR aynı olsun diye tek akış kuralı (isFlowTx) uygulanır: onay bekleyen/
@@ -138,8 +147,8 @@ export default function TransactionsPage() {
   // Satışı) toplama girmez. Bu satırlar listede hâlâ görünür — özet "gerçek akışı"
   // yansıtır, ham liste toplamını değil (aynı ay her sayfada aynı gelir/gideri verir).
   const { expense: totalExpense, income: totalIncome, transfer: totalTransfer } = useMemo(
-    () => sumByType(filtered.filter(t => isFlowTx(t))),
-    [filtered],
+    () => sumByType(reportFiltered.filter(t => isFlowTx(t))),
+    [reportFiltered],
   )
   // Özet çubuğundaki oran çubuğu yalnızca akışı (gelir vs gider) resmeder;
   // transfer akış değil (hesaplar arası taşıma) → çubuğa girmez, sadece sayıda durur.

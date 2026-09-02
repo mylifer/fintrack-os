@@ -12,6 +12,7 @@ import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { subMoney } from '@/lib/utils/money'
 import { expandByCategory, txCategoryIds } from '@/lib/utils/categorySplits'
 
@@ -85,8 +86,10 @@ export default function CategoryDetailClient({ id }: Props) {
   // kapsamıyla hesaplanır: onay bekleyen/gelecek, mutabakat ghost'u ve yatırım
   // anaparası hariç, arama/tür kutusundan bağımsız (o yalnız listeyi süzer) →
   // Dashboard/Raporlar akış kapsamıyla tutarlı, toplam↔sayaç aynı kümeden.
+  // collapseInstallments: taksitli alışverişler Raporlar ile aynı "satın alma
+  // ayına toplu yaz" kuralıyla sayılır — LİSTE (`catTxs`, ham) buna dahil değil.
   const flowCatTxs = useMemo(
-    () => expandByCategory(transactions)
+    () => expandByCategory(collapseInstallments(transactions))
       .filter(t => t.categoryId && descendantIds.has(t.categoryId) && isFlowTx(t)),
     [transactions, descendantIds],
   )

@@ -16,6 +16,7 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import { formatMonthYear, prevMonth, nextMonth } from '@/lib/utils/date'
 import { getBudgetCategoryIds, enrichBudget, resolveBudgetCategories } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import type { Budget, BudgetWithSpent } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -138,13 +139,17 @@ export default function BudgetsPage() {
     useShallow(s => ({ budgets: s.budgets, add: s.add, update: s.update, remove: s.remove }))
   )
 
+  // collapseInstallments: taksitli alışverişler Raporlar/İstatistikler ile aynı
+  // "satın alma ayına toplu yaz" kuralıyla sayılır (bkz. installments.ts) — aksi
+  // halde bu kart Raporlar'daki aynı ayın gideriyle uyuşmuyordu.
+  const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
   const budgets = useMemo(
     () =>
       rawBudgets
         .filter(b => b.period === 'monthly')
-        .map(b => enrichBudget(b, transactions, selectedPeriod, allCategories))
+        .map(b => enrichBudget(b, reportTxs, selectedPeriod, allCategories))
         .sort((a, b) => b.percentUsed - a.percentUsed),
-    [rawBudgets, transactions, selectedPeriod, allCategories],
+    [rawBudgets, reportTxs, selectedPeriod, allCategories],
   )
 
   // ── Form modal ────────────────────────────────────────────────────────────

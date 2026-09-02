@@ -13,6 +13,7 @@ import {
   BOARDS, enrichPeople, makePersonMatcher, sortPeople, SORT_LABELS,
   type BoardVariant, type SortId,
 } from './shared'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { PersonEditModal } from './PersonEditModal'
 import { TableView } from './views/TableView'
 import { IndexView } from './views/IndexView'
@@ -65,11 +66,15 @@ export function PeopleBoard({ variant }: { variant: BoardVariant }) {
     [allPeople, config.role],
   )
 
+  // collapseInstallments: taksitli alışverişler Raporlar/detay sayfası ile aynı
+  // "satın alma ayına toplu yaz" kuralıyla sayılır.
+  const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
+
   // Paylar (share) TÜM aktif kişiler üzerinden hesaplanır; arama sonradan
   // süzer. Böylece arama yapmak "%pay" değerlerini oynatmaz.
   const allRows = useMemo(
-    () => enrichPeople(active, transactions, config.link),
-    [active, transactions, config.link],
+    () => enrichPeople(active, reportTxs, config.link),
+    [active, reportTxs, config.link],
   )
 
   const rows = useMemo(() => {

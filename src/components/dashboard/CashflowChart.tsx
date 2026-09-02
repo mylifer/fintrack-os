@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTransactionStore, useSettingsStore } from '@/store'
 import { excludeFuture, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { isReconciliation } from '@/lib/utils/reconciliation'
 import { buildDashboardCashFlowData } from '@/lib/utils/cashflow'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -44,8 +45,11 @@ export function CashflowChart({ periodType, customRange, periodLabel }: Props) {
   // kartlarıyla (bkz. dashboard/page.tsx flowTxs) BİREBİR aynı kapsam için
   // gerçekleşen yatırım K/Z satırları da burada dışlanır — aksi halde bu
   // grafiğin "Net:" değeri anahtar kapalıyken KPI Net'ten farklı çıkıyordu.
+  // collapseInstallments: KPI kartlarıyla aynı "satın alma ayına toplu yaz"
+  // kuralı — bu bileşen dashboard/page.tsx'ten prop almadan kendi store'unu
+  // okuduğundan (bkz. Props), indirgeme burada AYRICA uygulanmalı.
   const flowTxs = useMemo(
-    () => excludeFuture(transactions).filter(tx =>
+    () => excludeFuture(collapseInstallments(transactions)).filter(tx =>
       !isReconciliation(tx) && (includeFundGain || !isRealizedInvestmentPnlTx(tx)),
     ),
     [transactions, includeFundGain],

@@ -133,7 +133,7 @@ interface TransactionState {
   renameTag: (oldTag: string, newTag: string) => Promise<void>
   remove: (id: string, opts?: RemoveOptions) => Promise<void>
   removeMany: (ids: string[]) => Promise<void>
-  getFiltered: (filters: TransactionFilters) => Transaction[]
+  getFiltered: (filters: TransactionFilters, transactions?: Transaction[]) => Transaction[]
 }
 
 export const useTransactionStore = create<TransactionState>()((set, get) => ({
@@ -725,8 +725,11 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     })
   },
 
-  getFiltered: (filters) => {
-    let txs = get().transactions
+  getFiltered: (filters, transactions) => {
+    // İkinci parametre isteğe bağlı: özet toplamlar taksit-indirgenmiş bir dizi
+    // üzerinde aynı filtreleri uygulamak isteyebilir (bkz. transactions/page.tsx
+    // özet çubuğu) — verilmezse her zamanki gibi ham store dizisi kullanılır.
+    let txs = transactions ?? get().transactions
     // txTouchesAccount: transferin HEDEF bacağı da bu hesabın işlemidir —
     // yalnız accountId'ye bakmak gelen transferleri listeden gizliyordu.
     if (filters.accountIds?.length) txs = txs.filter(t => filters.accountIds!.some(id => txTouchesAccount(t, id)))

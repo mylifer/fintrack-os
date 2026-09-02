@@ -10,6 +10,7 @@ import {
 } from '@/store'
 import { format, parseISO, startOfMonth, subDays, differenceInDays } from 'date-fns'
 import { calcNetWorth, calcTotalAssets, calcPeriodFlow, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { computeHoldings } from '@/store/investment.store'
 import { tefasCodesIn } from '@/lib/tefas'
 import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
@@ -169,9 +170,13 @@ export default function DashboardPage() {
   // Anahtar KAPALIYKEN gelir/net "fon-sız" olmalı: gerçekleşmemiş fon getirisi
   // (fundGain=0) YANINDA gerçekleşen "… Satış Kârı/Zararı" satırları da akıştan
   // düşülür. Açıkken mevcut davranış (hepsi dahil) korunur.
+  // collapseInstallments: taksitli alışverişler Raporlar/İstatistikler ile AYNI
+  // "satın alma ayına toplu yaz" mantığıyla sayılır — aksi halde bu KPI kartları
+  // ile Raporlar aynı ay için farklı gider/gelir gösteriyordu.
+  const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
   const flowTxs = useMemo(
-    () => includeFundGain ? transactions : transactions.filter(t => !isRealizedInvestmentPnlTx(t)),
-    [transactions, includeFundGain],
+    () => includeFundGain ? reportTxs : reportTxs.filter(t => !isRealizedInvestmentPnlTx(t)),
+    [reportTxs, includeFundGain],
   )
   const { income, expense, net } = useMemo(
     () => calcPeriodFlow(flowTxs, from, to),
@@ -243,7 +248,7 @@ export default function DashboardPage() {
     () => [...transactions].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 8),
     [transactions],
   )
-  const budgets = useMemo(() => getBudgets(selectedPeriod, transactions).slice(0, 5), [selectedPeriod, transactions, getBudgets])
+  const budgets = useMemo(() => getBudgets(selectedPeriod, reportTxs).slice(0, 5), [selectedPeriod, reportTxs, getBudgets])
   // Vadesi yakın olan üstte; vadesiz borçlar listenin sonunda
   const activeDebts = getActive()
     .sort((a, b) => (a.dueDate ?? '9999-12-31').localeCompare(b.dueDate ?? '9999-12-31'))

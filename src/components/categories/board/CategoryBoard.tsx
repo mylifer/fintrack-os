@@ -15,6 +15,7 @@ import {
   enrichCategories, makeCategoryMatcher, sortCategories,
   SCOPE_LABELS, SORTS, SORT_LABELS, type SortId,
 } from './shared'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { CategoryEditModal } from './CategoryEditModal'
 import { TableView } from './views/TableView'
 import { IndexView } from './views/IndexView'
@@ -62,11 +63,15 @@ export function CategoryBoard() {
     try { window.localStorage.setItem(STORAGE_KEY, id) } catch { /* özel pencere: yoksay */ }
   }
 
+  // collapseInstallments: taksitli alışverişler Raporlar/detay sayfası ile aynı
+  // "satın alma ayına toplu yaz" kuralıyla sayılır.
+  const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
+
   // Paylar TÜM aktif kategoriler üzerinden hesaplanır; arama sonradan süzer.
   // Böylece arama yapmak "%pay" değerlerini oynatmaz.
   const allRows = useMemo(
-    () => enrichCategories(categories, transactions, scope),
-    [categories, transactions, scope],
+    () => enrichCategories(categories, reportTxs, scope),
+    [categories, reportTxs, scope],
   )
 
   const rows = useMemo(() => {

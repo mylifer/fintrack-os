@@ -20,6 +20,7 @@ import {
   getBudgetCategoryIds, enrichBudget, calcBudgetSpent, resolveBudgetCategories,
   expandCategoryIds, isFlowTx,
 } from '@/lib/utils/calculations'
+import { collapseInstallments } from '@/lib/utils/installments'
 import { baseAmount } from '@/lib/utils/fx'
 import { sumBy } from '@/lib/utils/money'
 import { useShallow } from 'zustand/react/shallow'
@@ -112,15 +113,21 @@ export default function BudgetDetailClient({ id }: { id: string }) {
 
   const { from, to } = monthRange(selectedMonth)
 
+  // collapseInstallments: taksitli alışverişler Raporlar/İstatistikler ile aynı
+  // "satın alma ayına toplu yaz" kuralıyla sayılır — başlıktaki tutar (enriched/
+  // history/totalSpent) bu tabandan gelir. İşlem LİSTESİ (`filtered`, aşağıda)
+  // ise ham defteri gösterir: her taksit kendi ayında gerçek bir satırdır.
+  const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
+
   const enriched = useMemo(
-    () => budget ? enrichBudget(budget, transactions, selectedMonth, categories) : null,
-    [budget, transactions, selectedMonth, categories],
+    () => budget ? enrichBudget(budget, reportTxs, selectedMonth, categories) : null,
+    [budget, reportTxs, selectedMonth, categories],
   )
 
   const history = useMemo(() => {
     if (!budget) return []
     return lastNMonths(6).map(my => {
-      const spent = calcBudgetSpent(budget, transactions, my, categories)
+      const spent = calcBudgetSpent(budget, reportTxs, my, categories)
       const pct   = budget.amount > 0 ? Math.min(100, (spent / budget.amount) * 100) : 0
       const status =
         pct >= 100                    ? 'exceeded' as const
@@ -132,8 +139,10 @@ export default function BudgetDetailClient({ id }: { id: string }) {
         my.year  === selectedMonth.year
       return { my, label: shortLabel(my), spent, pct, status, isSelected }
     })
-  }, [budget, transactions, selectedMonth, allTime, categories])
+  }, [budget, reportTxs, selectedMonth, allTime, categories])
 
+  // İşlem listesi: ham defter satırları (her taksit kendi ayında gerçek bir
+  // satır) — kullanıcı burada gerçek satırları görüp düzenleyebilmeli.
   const filtered = useMemo(() => {
     if (!budget) return []
     return transactions.filter(tx => {
@@ -151,6 +160,22 @@ export default function BudgetDetailClient({ id }: { id: string }) {
       return true
     })
   }, [budget, transactions, activeCatIds, allTime, from, to, search])
+
+  // totalSpent tabanı: aynı filtre, ama collapseInstallments uygulanmış dizi
+  // üzerinde — "Tüm Zamanlar" görünümünde bile devam eden bir taksit planının
+  // henüz gelmemiş taksitleri anında tam tutarıyla sayılsın (aynı budget başlığı
+  // = enriched.spent ile birebir aynı kural).
+  const collapsedFiltered = useMemo(() => {
+    if (!budget) return []
+    return reportTxs.filter(tx => {
+      if (tx.type !== 'expense') return false
+      if (!tx.categoryId || !activeCatIds.has(tx.categoryId)) return false
+      if (!isFlowTx(tx)) return false
+      if (!allTime && !isInRange(tx.date, from, to)) return false
+      if (search && !tx.description.toLowerCase().includes(search.toLowerCase())) return false
+      return true
+    })
+  }, [budget, reportTxs, activeCatIds, allTime, from, to, search])
 
   // ── Conditional returns (after all hooks) ─────────────────────────────────
   // İlk render'da store henüz yüklenmemişken "Bütçe bulunamadı" yanıp sönmesin
@@ -178,7 +203,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   // Bütçe TRY bazlı → calcBudgetSpent/enrichBudget ile aynı kural: TRY-normalize
   // (baseAmount) + kuruş-exact. Ham `amount` aylık spent ile "Tüm Zamanlar"/özet
   // arasında (yabancı PB gider varsa) uyumsuzluk yaratıyordu.
-  const totalSpent = sumBy(filtered, baseAmount)
+  const totalSpent = sumBy(collapsedFiltered, baseAmount)
 
   function navigatePrev() { setAllTime(false); setSelectedMonth(m => prevMonth(m)) }
   function navigateNext() { setAllTime(false); setSelectedMonth(m => nextMonth(m)) }
