@@ -18,15 +18,17 @@ export function WorkspaceSwitcher() {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
+    // pointerdown: iOS Safari tıklanamaz alana dokunuşta mousedown üretmiyor,
+    // mobilde dışarı dokununca menü kapanmıyordu.
+    function onClickOutside(e: PointerEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false)
         setCreating(false)
         setName('')
       }
     }
-    if (open) document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
+    if (open) document.addEventListener('pointerdown', onClickOutside)
+    return () => document.removeEventListener('pointerdown', onClickOutside)
   }, [open])
 
   if (!ready) return null
