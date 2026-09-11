@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { parseCurrencyInput, getCurrencySymbol, formatCurrency } from '@/lib/utils/currency'
 import { splitMoney, sumMoney } from '@/lib/utils/money'
+import { rebalanceInstallmentsBelow } from '@/lib/utils/installments'
 import { toBaseTry } from '@/lib/utils/fx'
 import { today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
@@ -1704,7 +1705,7 @@ export function TransactionFormModal() {
                       <div className="flex flex-col gap-2 border-t border-dashed pt-3">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-medium text-muted-foreground">
-                            Aylık taksitler {manualAmounts ? '(elle düzenlendi)' : '(otomatik bölündü — düzenlenebilir)'}
+                            Aylık taksitler {manualAmounts ? '(elle düzenlendi — alttakiler kalana göre eşitlenir)' : '(otomatik bölündü — düzenlenebilir)'}
                           </span>
                           {manualAmounts && (
                             <button
@@ -1730,9 +1731,12 @@ export function TransactionFormModal() {
                                   let raw = e.target.value.replace(/[^0-9,]/g, '')
                                   const fc = raw.indexOf(',')
                                   if (fc !== -1) raw = raw.slice(0, fc + 1) + raw.slice(fc + 1).replace(/,/g, '')
-                                  const next = [...rows]
-                                  next[i] = raw
-                                  setManualAmounts(next)
+                                  // Düzenlenen taksit ve üstündekiler aynen kalır;
+                                  // toplamdan kalan alttaki taksitlere eşit bölünür.
+                                  const balanced = rebalanceInstallmentsBelow(
+                                    total, rows.map((s, j) => parseCurrencyInput(j === i ? raw : s) || 0), i)
+                                  setManualAmounts(rows.map((s, j) =>
+                                    j < i ? s : j === i ? raw : toAmountStr(balanced[j])))
                                   if (errors.installments) setErrors(prev => ({ ...prev, installments: '' }))
                                 }}
                                 aria-label={`${i + 1}. taksit tutarı`}

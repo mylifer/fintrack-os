@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { collapseInstallments } from './installments'
+import { collapseInstallments, rebalanceInstallmentsBelow } from './installments'
 import { calcPeriodFlow, excludeFuture } from './calculations'
 import type { Transaction } from '@/types'
 
@@ -113,5 +113,35 @@ describe('collapseInstallments', () => {
       installGroupId: 'g-3',
     })]
     expect(collapseInstallments(rows)[0].amount).toBe(1600)
+  })
+})
+
+describe('rebalanceInstallmentsBelow', () => {
+  it('düzenlenen taksitin altındakileri kalan tutara eşit böler, üsttekilere dokunmaz', () => {
+    // 12.000 / 4 taksit; 2. taksit 3.000 → 6.000 yapıldı
+    const out = rebalanceInstallmentsBelow(12000, [3000, 6000, 3000, 3000], 1)
+    expect(out).toEqual([3000, 6000, 1500, 1500])
+  })
+
+  it('üstte elle girilmiş farklı tutarları korur', () => {
+    const out = rebalanceInstallmentsBelow(10000, [1000, 4000, 2000, 1000, 2000], 2)
+    expect(out).toEqual([1000, 4000, 2000, 1500, 1500])
+  })
+
+  it('kuruş kalanını ilk alt taksitlere verir, toplam korunur', () => {
+    const out = rebalanceInstallmentsBelow(1000, [100, 0, 0, 0], 0)
+    expect(out).toEqual([100, 300, 300, 300])
+    const odd = rebalanceInstallmentsBelow(1000, [0.01, 0, 0, 0], 0)
+    expect(odd).toEqual([0.01, 333.33, 333.33, 333.33])
+    expect(Math.round(odd.reduce((a, b) => a + b, 0) * 100)).toBe(100000)
+  })
+
+  it('son taksit düzenlenirse diziyi aynen döner', () => {
+    const rows = [500, 500, 700]
+    expect(rebalanceInstallmentsBelow(1500, rows, 2)).toBe(rows)
+  })
+
+  it('üsttekiler toplamı aşarsa alttakiler 0 olur (negatif taksit yok)', () => {
+    expect(rebalanceInstallmentsBelow(1000, [800, 400, 100], 1)).toEqual([800, 400, 0])
   })
 })

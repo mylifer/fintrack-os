@@ -1,6 +1,30 @@
 import type { Transaction } from '@/types'
-import { toMinor, toMajor } from './money'
+import { toMinor, toMajor, splitMoney } from './money'
 import { baseAmount } from './fx'
+
+/* ────────────────────────────────────────────────────────────────────────
+   Taksit editöründe tekil değişiklik → ALTTAKİ taksitlerin yeniden bölüşümü
+
+   Kullanıcı `index`. taksiti değiştirdiğinde o taksit ve ÜSTÜNDEKİLER olduğu
+   gibi kalır; toplamdan geriye kalan tutar alttaki taksitlere eşit bölünür
+   (splitMoney: kuruş kalanı ilk alt taksitlere). Böylece toplam korunur.
+
+   • Son taksit düzenlenirse altta satır yoktur → dizi aynen döner; toplam
+     farkı editördeki uyarıyla görünür.
+   • Üstteki taksitler toplamı aşarsa kalan negatiftir → alttakiler 0 olur
+     (negatif taksit üretilmez; kayıt doğrulaması 0'ı zaten reddeder).
+──────────────────────────────────────────────────────────────────────── */
+export function rebalanceInstallmentsBelow(total: number, amounts: number[], index: number): number[] {
+  const below = amounts.length - index - 1
+  if (below <= 0) return amounts
+  let aboveMinor = 0
+  for (let i = 0; i <= index; i++) aboveMinor += toMinor(amounts[i])
+  const remainderMinor = toMinor(total) - aboveMinor
+  const tail = remainderMinor > 0
+    ? splitMoney(toMajor(remainderMinor), below)
+    : Array.from({ length: below }, () => 0)
+  return [...amounts.slice(0, index + 1), ...tail]
+}
 
 /* ────────────────────────────────────────────────────────────────────────
    Taksitli satın almaların RAPOR görünümü
