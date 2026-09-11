@@ -110,10 +110,16 @@ export function calcAvailableCredit(account: Account, transactions: Transaction[
   // limitten ayrıca düşeriz. Böylece satın almanın toplam taahhüdü ilk günden
   // itibaren bloke olur; taksitler geldikçe bakiyeye kayar ama toplam bloke tutar
   // değişmez (net etki sıfır). Borç ödendikçe limit normal şekilde geri açılır.
+  //
+  // Taksit satırı `installGroupId` ile tanınır — silme, toplu silme ve rapor
+  // indirgemesi (remove / removeMany / collapseInstallments) grubu hep bu
+  // kimlikle bulur. Yalnız `isInstallment` bayrağına bakmak, bayrağı taşımayan
+  // grup satırlarında gelecek taksitleri limitten HİÇ düşürmüyordu (12.000 ₺ /
+  // 6 taksitte kullanılabilir 48.000 yerine 58.000 görünüyordu).
   let blockedMinor = 0
   for (const t of transactions) {
     if (
-      t.isInstallment &&
+      (t.isInstallment || !!t.installGroupId) &&
       t.type === 'expense' &&
       t.accountId === account.id &&
       !isPosted(t)

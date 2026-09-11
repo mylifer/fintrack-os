@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
+import { addMonths, format } from 'date-fns'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { buildDebtBurdenSeries, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
+import { buildDebtBurdenSeries, calcAvailableCredit, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -10,6 +11,39 @@ const tx = (o: Partial<Transaction>): Transaction => ({
 
 beforeAll(() => {
   setBaseRates({ usdTry: 34.5, eurTry: 37, gbpTry: 43, goldGramTry: 0, updatedAt: 0 } as PriceData)
+})
+
+/* Kart limiti: taksitli alım satın alma günü TÜM tutarıyla limitten düşer. Bakiye
+   yalnız işlenmiş taksitleri içerir; kalanlar calcAvailableCredit'te bloke edilir.
+   calcAvailableCredit bugüne göre çalıştığı için tarihler bugünden türetilir. */
+describe('calcAvailableCredit — taksitli alım', () => {
+  const card = { id: 'cc', type: 'credit_card', currency: 'TRY', creditLimit: 60000, initialBalance: 0, balance: 0 } as Account
+  const day = (months: number) => format(addMonths(new Date(), months), 'yyyy-MM-dd')
+  // 12.000 ₺ / 6 taksit, bugün başlıyor — addInstallmentGroup'un ürettiği şekil
+  const group = (o: Partial<Transaction> = {}) => Array.from({ length: 6 }, (_, i) => tx({
+    id: `i${i}`, accountId: 'cc', amount: 2000, amountTry: 2000, date: day(i),
+    isInstallment: true, installTotal: 6, installIndex: i + 1, installGroupId: 'G',
+    approvalStatus: i > 0 ? 'pending' : undefined, ...o,
+  }))
+  const available = (txs: Transaction[]) => {
+    const balance = computeTransactionEffect(card, excludeFuture(txs))
+    return calcAvailableCredit({ ...card, balance }, txs)
+  }
+
+  it('toplam tutar ilk gün bloke olur; karta ödeme limiti açar', () => {
+    expect(available(group())).toBe(48000)
+    const pay = tx({ id: 'p', type: 'transfer', amount: 2000, date: day(0), accountId: 'bank', toAccountId: 'cc' })
+    expect(available([...group(), pay])).toBe(50000)
+  })
+
+  it('vadesi gelip onay bekleyen taksit de bloke kalır (bakiyeye girmeden)', () => {
+    const txs = group().map((t, i) => i === 1 ? { ...t, date: day(0) } : t)
+    expect(available(txs)).toBe(48000)
+  })
+
+  it('isInstallment bayrağı olmayan grup satırları installGroupId ile yine bloke edilir', () => {
+    expect(available(group({ isInstallment: undefined as unknown as boolean }))).toBe(48000)
+  })
 })
 
 describe('calcPeriodFlow (S2/S3)', () => {
