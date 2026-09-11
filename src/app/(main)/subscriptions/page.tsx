@@ -7,6 +7,7 @@ import { Header }            from '@/components/layout/Header'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState }        from '@/components/ui/EmptyState'
 import { BrandLogo }         from '@/components/subscriptions/BrandLogo'
+import { SubscriptionHistory } from '@/components/subscriptions/SubscriptionHistory'
 import { useTransactionStore, useInvestmentStore } from '@/store'
 import { summarize }         from '@/lib/utils/subscriptions'
 import { formatCurrency }    from '@/lib/utils/currency'
@@ -34,13 +35,16 @@ export default function SubscriptionsPage() {
   const transactions = useTransactionStore(useShallow(s => s.transactions))
   // Subscribe to prices so TRY estimates recompute once live FX rates load
   // (toBaseTry reads module-level rates published by the investment store).
-  useInvestmentStore(s => s.prices)
+  // `prices` memo bağımlılığında olmalı — yoksa abonelik render'ı tetiklenir ama
+  // memo eski kurla hesaplanmış sonucu döndürür.
+  const prices = useInvestmentStore(s => s.prices)
 
   const [sort, setSort] = useState<SortKey>('cost')
 
   const { groups, serviceCount, monthTotalTry, monthlyEstimateTry } = useMemo(
     () => summarize(transactions),
-    [transactions],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [transactions, prices],
   )
 
   const sorted = useMemo(() => {
@@ -78,6 +82,9 @@ export default function SubscriptionsPage() {
               <StatCard label="Aylık tahmini" value={formatCurrency(monthlyEstimateTry)} />
               <StatCard label="Abonelik sayısı" value={String(serviceCount)} />
             </div>
+
+            {/* ── Geçmiş aylar ──────────────────────────────────────── */}
+            <SubscriptionHistory transactions={transactions} />
 
             {/* ── Sort control ──────────────────────────────────────── */}
             <div className="flex items-center justify-between">

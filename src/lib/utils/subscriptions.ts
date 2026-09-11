@@ -127,3 +127,84 @@ export function summarize(
     monthlyEstimateTry: sumBy(groups, g => g.monthlyEstimateTry),
   }
 }
+
+/* ── Monthly history ─────────────────────────────────────────────────── */
+
+export interface SubscriptionMonthService {
+  key: string                // same key as the SubscriptionGroup (detail link)
+  brand: Brand | null
+  name: string
+  count: number              // charges to this service in the month
+  totalTry: number
+}
+
+export interface SubscriptionMonth {
+  month: string                        // YYYY-MM
+  totalTry: number
+  count: number
+  services: SubscriptionMonthService[] // highest spend first
+}
+
+/** Shift a YYYY-MM month string by `delta` months. */
+function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split('-').map(Number)
+  const idx = y * 12 + (m - 1) + delta
+  return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`
+}
+
+/** Subscription spend per calendar month, oldest first, ending at `endMonth`
+ *  (YYYY-MM, defaults to the current month). `months` is the window length
+ *  (zero-filled) or 'all' to start at the earliest charge. Charges dated after
+ *  `endMonth` are left out. Month buckets use the same `date.slice(0, 7)` rule
+ *  as `summarize`, so the current month's total equals `monthTotalTry`; services
+ *  carry the group key/name from `groupSubscriptions` so they link to details. */
+export function subscriptionMonthlyHistory(
+  transactions: readonly Transaction[],
+  opts?: { months?: number | 'all'; endMonth?: string },
+): SubscriptionMonth[] {
+  const endMonth = opts?.endMonth ?? today().slice(0, 7)
+  const range = opts?.months ?? 12
+  const groups = groupSubscriptions(transactions)
+
+  // month → group key → charges
+  const buckets = new Map<string, Map<string, Transaction[]>>()
+  let earliest: string | null = null
+  for (const g of groups) {
+    for (const tx of g.txs) {
+      const month = tx.date.slice(0, 7)
+      if (month > endMonth) continue
+      if (!earliest || month < earliest) earliest = month
+      let byGroup = buckets.get(month)
+      if (!byGroup) buckets.set(month, byGroup = new Map())
+      const list = byGroup.get(g.key)
+      if (list) list.push(tx)
+      else byGroup.set(g.key, [tx])
+    }
+  }
+
+  let startMonth: string
+  if (range === 'all') {
+    if (!earliest) return []
+    startMonth = earliest
+  } else {
+    startMonth = shiftMonth(endMonth, -(Math.max(1, range) - 1))
+  }
+
+  const groupByKey = new Map(groups.map(g => [g.key, g]))
+  const history: SubscriptionMonth[] = []
+  for (let month = startMonth; month <= endMonth; month = shiftMonth(month, 1)) {
+    const services: SubscriptionMonthService[] = []
+    for (const [key, txs] of buckets.get(month) ?? []) {
+      const g = groupByKey.get(key)!
+      services.push({ key, brand: g.brand, name: g.name, count: txs.length, totalTry: sumBy(txs, baseAmount) })
+    }
+    services.sort((a, b) => b.totalTry - a.totalTry || a.name.localeCompare(b.name, 'tr'))
+    history.push({
+      month,
+      totalTry: sumBy(services, s => s.totalTry),
+      count: services.reduce((n, s) => n + s.count, 0),
+      services,
+    })
+  }
+  return history
+}

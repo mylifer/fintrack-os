@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { PriceData, Transaction } from '@/types'
 import { setBaseRates } from './fx'
-import { isSubscriptionTx, groupSubscriptions, summarize, findSubscriptionGroup } from './subscriptions'
+import {
+  isSubscriptionTx, groupSubscriptions, summarize, findSubscriptionGroup, subscriptionMonthlyHistory,
+} from './subscriptions'
 import { detectBrand, SUBSCRIPTION_TAG } from '@/lib/subscriptions/brands'
 
 beforeAll(() => {
@@ -146,5 +148,70 @@ describe('subscriptions — summarize', () => {
     expect(s.serviceCount).toBe(0)
     expect(s.monthTotalTry).toBe(0)
     expect(s.monthlyEstimateTry).toBe(0)
+  })
+})
+
+describe('subscriptions — subscriptionMonthlyHistory', () => {
+  const data = [
+    tx({ id: '1', description: 'Netflix', amount: 199.99, date: '2026-07-05' }),
+    tx({ id: '2', description: 'Spotify', amount: 59.99,  date: '2026-07-10' }),
+    tx({ id: '3', description: 'Netflix', amount: 149.99, date: '2026-05-05' }),
+    tx({ id: '4', description: 'OpenAI',  amount: 20, currency: 'USD', date: '2026-05-20' }),
+    tx({ id: '5', description: 'Migros',  amount: 500,    date: '2026-07-08', tags: [] }), // not a subscription
+    tx({ id: '6', description: 'Netflix', amount: 199.99, date: '2026-08-05' }),           // after endMonth
+    tx({ id: '7', description: 'Netflix', amount: 99,     date: '2025-12-05' }),           // before a short window
+  ]
+
+  it('zero-fills a fixed window, oldest first', () => {
+    const h = subscriptionMonthlyHistory(data, { months: 3, endMonth: '2026-07' })
+    expect(h.map(m => m.month)).toEqual(['2026-05', '2026-06', '2026-07'])
+    expect(h[1]).toEqual({ month: '2026-06', totalTry: 0, count: 0, services: [] })
+  })
+
+  it('sums each month in TRY and sorts services by spend', () => {
+    const [may, , jul] = subscriptionMonthlyHistory(data, { months: 3, endMonth: '2026-07' })
+    expect(may.totalTry).toBe(839.99) // 149.99 + 20 USD × 34.5
+    expect(may.count).toBe(2)
+    expect(may.services.map(s => s.key)).toEqual(['brand:openai', 'brand:netflix'])
+    expect(jul.totalTry).toBe(259.98) // Migros excluded
+    expect(jul.services.map(s => s.name)).toEqual(['Netflix', 'Spotify'])
+  })
+
+  it('current month matches summarize().monthTotalTry', () => {
+    const h = subscriptionMonthlyHistory(data, { months: 12, endMonth: '2026-07' })
+    expect(h.at(-1)!.totalTry).toBe(summarize(data, { monthStr: '2026-07' }).monthTotalTry)
+  })
+
+  it('service keys link to the subscription groups', () => {
+    const keys = new Set(groupSubscriptions(data).map(g => g.key))
+    for (const m of subscriptionMonthlyHistory(data, { months: 'all', endMonth: '2026-07' })) {
+      for (const s of m.services) expect(keys.has(s.key)).toBe(true)
+    }
+  })
+
+  it('crosses the year boundary', () => {
+    const h = subscriptionMonthlyHistory(data, { months: 3, endMonth: '2026-01' })
+    expect(h.map(m => m.month)).toEqual(['2025-11', '2025-12', '2026-01'])
+    expect(h[1].totalTry).toBe(99)
+  })
+
+  it("'all' starts at the earliest charge and excludes later months", () => {
+    const h = subscriptionMonthlyHistory(data, { months: 'all', endMonth: '2026-07' })
+    expect(h[0].month).toBe('2025-12')
+    expect(h.at(-1)!.month).toBe('2026-07')
+    expect(h).toHaveLength(8)
+    expect(h.some(m => m.month === '2026-08')).toBe(false)
+  })
+
+  it('buckets legacy full ISO datetimes by their month', () => {
+    const [m] = subscriptionMonthlyHistory(
+      [tx({ date: '2026-07-31T23:30:00.000Z', amount: 50 })],
+      { months: 1, endMonth: '2026-07' },
+    )
+    expect(m.totalTry).toBe(50)
+  })
+
+  it("'all' with no charges → empty", () => {
+    expect(subscriptionMonthlyHistory([], { months: 'all', endMonth: '2026-07' })).toEqual([])
   })
 })
