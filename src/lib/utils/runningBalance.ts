@@ -1,4 +1,6 @@
 import { toMinor, toMajor } from './money'
+import { baseAmount, fromBaseTry } from './fx'
+import { awaitsApproval } from './calculations'
 import type { Account, Transaction } from '@/types'
 
 /* İşlem-sonrası ("güncel") bakiye haritası — tx.id → o işlem işlendikten SONRAKİ
@@ -34,9 +36,9 @@ export function computeRunningBalances(
   )
 
   for (const tx of sorted) {
-    // Onay kapısı: pending satır bakiyeye hiç işlenmez (isPosted ile tutarlı) —
-    // satırın bakiye alanı boş kalır.
-    if (tx.approvalStatus === 'pending') continue
+    // Onay kapısı: onay bekleyen satır bakiyeye hiç işlenmez (isPosted ile
+    // tutarlı) — satırın bakiye alanı boş kalır. Taksitler kapıda beklemez.
+    if (awaitsApproval(tx)) continue
     let winner: string | undefined
     let winnerRank = -1
     const consider = (id: string) => {
@@ -56,7 +58,17 @@ export function computeRunningBalances(
         consider(tx.accountId)
       }
       if (tx.toAccountId && balances.has(tx.toAccountId)) {
-        balances.set(tx.toAccountId, balances.get(tx.toAccountId)! + toMinor(tx.amount))
+        // Gelen bacak HEDEF hesabın para biriminde işlenmeli — computeTransactionEffect
+        // (calculations.ts) ile birebir aynı kural. Aksi halde çapraz kur
+        // transferinde ham ₺ tutar USD defterine eklenip listedeki bakiye
+        // kolonu hesap başlığındaki bakiyeden kalıcı olarak sapıyordu.
+        // (`balances.has` ancak accountIds'ten çözülmüş hesaplar için true'dur,
+        //  dolayısıyla accById.get burada her zaman tanımlıdır.)
+        const target   = accById.get(tx.toAccountId)!
+        const incoming = tx.currency === target.currency
+          ? tx.amount
+          : fromBaseTry(baseAmount(tx), target.currency)
+        balances.set(tx.toAccountId, balances.get(tx.toAccountId)! + toMinor(incoming))
         consider(tx.toAccountId)
       }
     }

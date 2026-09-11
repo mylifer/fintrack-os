@@ -256,14 +256,15 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const perInstallment = amounts?.length === count ? amounts : splitMoney(base.amount, count)
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
-      // Gelecek aylara düşen taksitler de onay kapısından geçer (pending doğar).
+      // Taksitler onay kapısında BEKLEMEZ: gelecek aylara düşenler dahil hepsi
+      // 'approved' doğar ve günü gelince kendiliğinden işlenir (bkz. awaitsApproval).
       // Kategori payları toplam satın alma tutarına göre girilir; her taksit
       // satırı kendi tutarına ölçeklenmiş payları taşır (toplamları o satırın
       // tutarına eşit) — böylece kategori bazlı raporlar taksit taksit doğrudur.
       const splits = base.categorySplits?.length
         ? rescaleSplits(base.categorySplits, perInstallment[i])
         : undefined
-      txs.push(withSplits(withApproval(withBase({ ...base, amount: perInstallment[i], categorySplits: splits, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, createdAt: now, updatedAt: now }))))
+      txs.push(withSplits(withBase({ ...base, amount: perInstallment[i], categorySplits: splits, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, approvalStatus: 'approved', approvedAt: now, createdAt: now, updatedAt: now })))
     }
     await localBulkUpsert('transactions', txs)
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
@@ -330,14 +331,15 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         undoOps.push({ kind: 'patch', table: 'transactions', id: cur.id, patch: rev })
         nextById.set(cur.id, merged)
       } else {
-        // Yeni satır: ilk taksiti şablon al, onay kapısından yeniden geçir.
-        const row = withSplits(withApproval(withBase({
+        // Yeni satır: ilk taksiti şablon al; taksit onay beklemez → 'approved'.
+        const row = withSplits(withBase({
           ...existing[0],
           ...rowFields,
           id:             crypto.randomUUID(),
-          approvalStatus: undefined,
+          approvalStatus: 'approved',
+          approvedAt:     now,
           createdAt:      now,
-        } as Transaction)))
+        } as Transaction))
         forward.push({ kind: 'upsert', table: 'transactions', entity: row })
         createdIds.push(row.id)
         nextById.set(row.id, row)
@@ -374,8 +376,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   // Var olan TEKİL bir işlemi taksitli gruba DÖNÜŞTÜRÜR ("bunu sonradan
   // taksitlendir"). Satırın kendisi 1. taksit olur — id KORUNUR, böylece
   // senkron/geçmiş ve satıra bağlı kayıtlar (iade vb.) bozulmaz; kalan
-  // taksitler yeni satır olarak doğar (+1 ay, onay kapısından geçer →
-  // gelecek tarihliler 'pending'). `amounts` hedef taksit tutarlarıdır
+  // taksitler yeni satır olarak doğar (+1 ay, onay beklemez → 'approved').
+  // `amounts` hedef taksit tutarlarıdır
   // (toplamı satın alma tutarı), `shared.date` ilk taksitin tarihi.
   // Tek undo ile geri alınır: satır eski haline döner, üretilenler tombstone.
   // Mutabakat gerektiren satırlar (borç ödemesi, alanlar arası transfer bacağı,
@@ -426,16 +428,16 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         forward.push({ kind: 'patch', table: 'transactions', id: cur.id, patch })
         nextById.set(cur.id, merged)
       } else {
-        // Yeni taksit: dönüştürülen satır şablon, onay durumu sıfırlanır ki
-        // kapı yeniden karar versin (gelecek tarihli taksit 'pending' doğar).
-        const row = withSplits(withApproval(withBase({
+        // Yeni taksit: dönüştürülen satır şablon; taksit onay beklemez →
+        // gelecek tarihliler de 'approved' doğar (bkz. awaitsApproval).
+        const row = withSplits(withBase({
           ...cur,
           ...rowFields,
           id:             crypto.randomUUID(),
-          approvalStatus: undefined,
-          approvedAt:     undefined,
+          approvalStatus: 'approved',
+          approvedAt:     now,
           createdAt:      now,
-        } as Transaction)))
+        } as Transaction))
         forward.push({ kind: 'upsert', table: 'transactions', entity: row })
         createdIds.push(row.id)
         nextById.set(row.id, row)

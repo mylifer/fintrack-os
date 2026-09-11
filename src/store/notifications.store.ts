@@ -9,11 +9,12 @@ import { useRecurringStore } from './recurring.store'
 import { useTransactionStore } from './transactions.store'
 import { recurringOccurrences } from '@/lib/utils/recurrence'
 import { today } from '@/lib/utils/date'
+import { awaitsApproval } from '@/lib/utils/calculations'
 
 /* ── Bildirim merkezi ─────────────────────────────────────────────────────
    Bildirimler TÜRETİLMİŞ veridir — ayrı tablo/entity yok. Kaynaklar:
      • vadesi gelmiş tekrarlayanlar (recurring store getDue),
-     • onay bekleyen gelecek işlemler (approvalStatus === 'pending'),
+     • onay bekleyen gelecek işlemler (awaitsApproval — taksitler hariç),
      • yaklaşan (7 gün) pending işlemler + tekrarlayanlar (salt bilgi).
    Persist edilen TEK şey lastSeenAt. planned.ts projeksiyonları (kaydedilmemiş
    satırlar) burada GÖRÜNMEZ — kaynak şablon zaten recurring-due olarak listede,
@@ -73,7 +74,7 @@ export function getNotifications(): AppNotification[] {
   }
 
   for (const t of useTransactionStore.getState().transactions) {
-    if (t.approvalStatus !== 'pending') continue
+    if (!awaitsApproval(t)) continue   // taksitler onay beklemez
     const d = t.date.slice(0, 10)
     if (d <= todayStr) out.push({ kind: 'future-tx-due', tx: t })
     else if (d <= horizon) out.push({ kind: 'future-tx-upcoming', tx: t })

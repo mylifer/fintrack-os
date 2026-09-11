@@ -6,7 +6,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAccountStore, useCategoryStore, usePeopleStore, useTransactionStore, useUIStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
-import { groupByDate } from '@/lib/utils/calculations'
+import { awaitsApproval, groupByDate } from '@/lib/utils/calculations'
 import { computeRunningBalances } from '@/lib/utils/runningBalance'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -261,7 +261,7 @@ const DateColumnRow = memo(function DateColumnRow({
   const isXfer    = tx.type === 'transfer'
   const isRefund  = tx.type === 'expense' && tx.amount < 0
   const positive  = isIncome || isRefund
-  const isPending = tx.approvalStatus === 'pending'
+  const isPending = awaitsApproval(tx)
   const isToday   = tx.date.slice(0, 10) === today()
 
   return (

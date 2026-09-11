@@ -11,14 +11,24 @@ import { expandByCategory } from './categorySplits'
 // gate: even a due/past date must NOT affect any balance until the user
 // approves it in the notification center. 'approved' = normal post rule.
 // This is the SINGLE source of truth for "does this row count toward balances".
-export function isPosted(
-  t: Pick<Transaction, 'date' | 'approvalStatus'>,
-  asOf: string = today(),
-): boolean {
-  return t.date.slice(0, 10) <= asOf && t.approvalStatus !== 'pending'
+type ApprovalGated = Pick<Transaction, 'approvalStatus'> & Partial<Pick<Transaction, 'isInstallment' | 'installGroupId'>>
+
+// Satır onay kapısında mı bekliyor? Taksit satırları BEKLEMEZ: satın alma
+// taahhüdü ilk gün verilmiştir, taksitler günü gelince kendiliğinden işlenir.
+// Eski kayıtlarda 'pending' damgalı taksitler de bu kuralla veri yazılmadan
+// kapıdan çıkar. Taksit satırı `installGroupId` ile tanınır (bkz. calcAvailableCredit).
+export function awaitsApproval(t: ApprovalGated): boolean {
+  return t.approvalStatus === 'pending' && !t.isInstallment && !t.installGroupId
 }
 
-export function excludeFuture<T extends Pick<Transaction, 'date' | 'approvalStatus'>>(
+export function isPosted(
+  t: Pick<Transaction, 'date'> & ApprovalGated,
+  asOf: string = today(),
+): boolean {
+  return t.date.slice(0, 10) <= asOf && !awaitsApproval(t)
+}
+
+export function excludeFuture<T extends Pick<Transaction, 'date'> & ApprovalGated>(
   transactions: T[],
   asOf: string = today(),
 ): T[] {
@@ -105,8 +115,8 @@ export function calcAvailableCredit(account: Account, transactions: Transaction[
   //
   // Taksitli işlemler, taksit sayısından bağımsız olarak satın alma tarihinde
   // TÜM tutarıyla limitten düşer (gerçek kredi kartı davranışı). Bakiye yalnızca
-  // tarihi gelmiş taksit satırlarını içerdiğinden, henüz bakiyeye işlenmemiş
-  // (gelecek tarihli VEYA onay bekleyen) taksit satırlarının tutarını available
+  // tarihi gelmiş taksit satırlarını içerdiğinden (taksitler onay beklemez, bkz.
+  // awaitsApproval), henüz bakiyeye işlenmemiş gelecek tarihli taksit satırlarının tutarını available
   // limitten ayrıca düşeriz. Böylece satın almanın toplam taahhüdü ilk günden
   // itibaren bloke olur; taksitler geldikçe bakiyeye kayar ama toplam bloke tutar
   // değişmez (net etki sıfır). Borç ödendikçe limit normal şekilde geri açılır.

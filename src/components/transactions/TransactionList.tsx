@@ -8,7 +8,7 @@ import { useCategoryStore, useAccountStore, useUIStore, usePeopleStore, useTrans
 import { assetLabel } from '@/store/investment.store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
-import { groupByDate } from '@/lib/utils/calculations'
+import { awaitsApproval, groupByDate } from '@/lib/utils/calculations'
 import { computeRunningBalances } from '@/lib/utils/runningBalance'
 import { splitFuture } from '@/components/transactions/views/shared'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -66,6 +66,27 @@ export function findLinkedInvestSell(
   })
 }
 
+// Defter işlemi bir yatırım ALIMININ bacağı mı? Alım kaydedilirken hesaptan
+// parayı çıkaran gider satırı yaratılır ve id'si invest tx'in
+// linkedTransactionId'sine yazılır (investment.store.ts — createLinkedTx).
+//
+// Neden ayrı bir fonksiyon: findLinkedInvestSell yalnızca SATIŞLARA bakıyor ve
+// bulduğunda silme eylemini "tüm yatırım işlemini sil" haline çeviriyor. Alımlar
+// için aynı kaskadı uygulamak yıkıcı bir davranış değişikliği olurdu (kullanıcı
+// bugüne dek yalnız defter satırını siliyordu). Bu yüzden alım bacağı sadece
+// TESPİT edilir: kullanıcı uyarılır ve toplu silmeden dışlanır, silme eylemi
+// değişmez.
+//
+// Korunan hata: alım bacağı uyarısız silinince hesap bakiyesi alım tutarı kadar
+// ARTAR ama varlık portföyde kalır — aynı para hem nakitte hem yatırımda sayılır
+// ve Net Varlık şişer; yatırım kaydının linkedTransactionId'si de boşa düşer.
+export function findLinkedInvestBuy(
+  tx: Transaction,
+  investTxs: InvestmentTransaction[],
+): InvestmentTransaction | undefined {
+  return investTxs.find(it => it.type === 'buy' && it.linkedTransactionId === tx.id)
+}
+
 export function DeleteConfirmDialog({
   tx,
   onDelete,
@@ -78,6 +99,7 @@ export function DeleteConfirmDialog({
   const investTxs = useInvestmentStore(s => s.transactions)
   const removeInvestTx = useInvestmentStore(s => s.removeTransaction)
   const investSell = useMemo(() => findLinkedInvestSell(tx, investTxs), [tx, investTxs])
+  const investBuy  = useMemo(() => investSell ? undefined : findLinkedInvestBuy(tx, investTxs), [investSell, tx, investTxs])
 
   const btnCls = compact
     ? 'w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors'
@@ -98,7 +120,9 @@ export function DeleteConfirmDialog({
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
         ].join(' ')}>
           <AlertDialog.Title className="text-base font-semibold text-foreground mb-1">
-            {investSell ? 'Yatırım satışına bağlı işlemi sil' : tx.isInstallment ? 'Taksitli işlemi sil' : 'İşlemi sil'}
+            {investSell ? 'Yatırım satışına bağlı işlemi sil'
+              : investBuy ? 'Yatırım alımına bağlı işlemi sil'
+              : tx.isInstallment ? 'Taksitli işlemi sil' : 'İşlemi sil'}
           </AlertDialog.Title>
           <AlertDialog.Description className="text-sm text-muted-foreground mb-5">
             {investSell ? (
@@ -106,6 +130,15 @@ export function DeleteConfirmDialog({
                 <span className="font-medium text-foreground">&ldquo;{tx.description}&rdquo;</span> bir yatırım satışının parçası — yatırım hesabındaki{' '}
                 <span className="font-medium text-foreground">satış kaydı</span> ve bu satışla hesaba yazılan{' '}
                 <span className="font-medium text-foreground">tüm bağlı işlemler (satış tutarı + kâr/zarar)</span> birlikte kalıcı olarak silinecek. Bu işlem geri alınamaz.
+              </>
+            ) : investBuy ? (
+              <>
+                <span className="font-medium text-foreground">&ldquo;{tx.description}&rdquo;</span> bir yatırım alımının
+                hesap bacağı — <span className="font-medium text-foreground">{assetLabel(investBuy.asset)}</span> alımında
+                paranın hesaptan çıkışını temsil ediyor. Yalnızca bu satırı silerseniz{' '}
+                <span className="font-medium text-foreground">varlık portföyde kalır ama para hesaba geri döner</span>;
+                Net Varlık alım tutarı kadar fazla görünür. Alımı tamamen kaldırmak için{' '}
+                <span className="font-medium text-foreground">Yatırımlar</span> sayfasından yatırım kaydını silin.
               </>
             ) : tx.isInstallment && tx.installGroupId ? (
               <>
@@ -408,7 +441,7 @@ const TableTxRow = memo(function TableTxRow({
                 Planlandı
               </span>
             )}
-            {tx.approvalStatus === 'pending' && (
+            {awaitsApproval(tx) && (
               <span className="ml-1.5 align-middle rounded-sm bg-orange-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-orange-500">
                 Onay bekliyor
               </span>
@@ -603,7 +636,7 @@ const CardTxRow = memo(function CardTxRow({
               Planlandı
             </span>
           )}
-          {tx.approvalStatus === 'pending' && (
+          {awaitsApproval(tx) && (
             <span className="ml-1.5 align-middle rounded-sm bg-orange-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-orange-500">
               Onay bekliyor
             </span>

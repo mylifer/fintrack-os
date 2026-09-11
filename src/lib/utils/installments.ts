@@ -14,8 +14,8 @@ import { baseAmount } from './fx'
    collapseInstallments aynı `installGroupId`'ye sahip satırları tek bir
    türev satıra indirger:
      • tarih  = ilk taksitin (satın almanın) tarihi
-     • tutar  = grubun TAMAMININ toplamı — gelecek tarihli ve onay bekleyen
-                taksitler DAHİL; taahhüt ilk gün verilmiştir (aynı mantık
+     • tutar  = grubun TAMAMININ toplamı — gelecek tarihli taksitler DAHİL
+                (taksitler onay beklemez); taahhüt ilk gün verilmiştir (aynı mantık
                 calcAvailableCredit'te de var: taksitli alım limitten ilk gün
                 tam tutarıyla düşer)
 

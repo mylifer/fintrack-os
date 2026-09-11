@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { addMonths, format } from 'date-fns'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { buildDebtBurdenSeries, calcAvailableCredit, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
+import { awaitsApproval, buildDebtBurdenSeries, calcAvailableCredit, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -36,8 +36,9 @@ describe('calcAvailableCredit — taksitli alım', () => {
     expect(available([...group(), pay])).toBe(50000)
   })
 
-  it('vadesi gelip onay bekleyen taksit de bloke kalır (bakiyeye girmeden)', () => {
+  it("vadesi gelen taksit 'pending' damgalı olsa da onay beklemeden bakiyeye işlenir; toplam bloke değişmez", () => {
     const txs = group().map((t, i) => i === 1 ? { ...t, date: day(0) } : t)
+    expect(computeTransactionEffect(card, excludeFuture(txs))).toBe(-4000)
     expect(available(txs)).toBe(48000)
   })
 
@@ -174,6 +175,16 @@ describe('isPosted / excludeFuture (pending transactions)', () => {
     expect(isPosted(tx({ date: '2026-01-10', approvalStatus: 'approved' }), '2026-01-15')).toBe(true)
     expect(isPosted(tx({ date: '2026-01-10', approvalStatus: null }), '2026-01-15')).toBe(true)
     expect(isPosted(tx({ date: '2026-01-16', approvalStatus: 'approved' }), '2026-01-15')).toBe(false)
+  })
+
+  it("taksit satırları onay kapısında beklemez: 'pending' damgalı taksit günü gelince işlenir", () => {
+    const inst = { approvalStatus: 'pending' as const, isInstallment: true, installGroupId: 'G' }
+    expect(awaitsApproval(tx(inst))).toBe(false)
+    expect(awaitsApproval(tx({ approvalStatus: 'pending' }))).toBe(true)
+    expect(isPosted(tx({ ...inst, date: '2026-01-10' }), '2026-01-15')).toBe(true)
+    expect(isPosted(tx({ ...inst, date: '2026-01-16' }), '2026-01-15')).toBe(false)   // tarih kuralı sürer
+    // bayrağı düşmüş grup satırı da installGroupId ile tanınır
+    expect(isPosted(tx({ ...inst, isInstallment: false, date: '2026-01-10' }), '2026-01-15')).toBe(true)
   })
 
   it('excludeFuture drops pending rows regardless of date, legacy rows only when future', () => {
