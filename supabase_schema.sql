@@ -62,6 +62,50 @@ create table if not exists public.workspaces (
 -- violates row-level security policy" verir, bu ise tablo-seviyesi izin).
 grant select, insert, update, delete on public.workspaces to authenticated;
 
+-- ── Ödeme Takibi (0011) ─────────────────────────────────────────────────────
+-- Kredi kartı + borç aylık ödemeleri. Ayrıntılı açıklama ve deploy sırası:
+-- supabase/migrations/0011_payment_tracking.sql. workspaces ile aynı nedenle
+-- ham DDL + açık GRANT.
+create table if not exists public.payment_plans (
+  id text primary key,
+  user_id uuid not null,
+  "targetKind" text not null,
+  "targetId" text not null,
+  "amount" double precision,
+  "fromAccountId" text,
+  "dayOfMonth" double precision,
+  "startMonth" text,
+  "isActive" boolean,
+  "notes" text,
+  "createdAt" text,
+  "updatedAt" text,
+  "workspaceId" text,
+  deleted_at timestamptz
+);
+
+create table if not exists public.payment_occurrences (
+  id text primary key,
+  user_id uuid not null,
+  "targetKind" text not null,
+  "targetId" text not null,
+  "month" text not null,
+  "amount" double precision,
+  "fromAccountId" text,
+  "dueDate" text,
+  "status" text,
+  "paidAmount" double precision,
+  "paidDate" text,
+  "transactionId" text,
+  "note" text,
+  "createdAt" text,
+  "updatedAt" text,
+  "workspaceId" text,
+  deleted_at timestamptz
+);
+
+grant select, insert, update, delete on public.payment_plans to authenticated;
+grant select, insert, update, delete on public.payment_occurrences to authenticated;
+
 -- ── Reusable installer ──────────────────────────────────────────────────────
 -- A DO block applies the identical hardening to each table so no table can be
 -- accidentally left without a policy (the classic RLS foot-gun).
@@ -78,7 +122,9 @@ declare
     'investment_transactions',
     'people',
     'recurring_transactions',
-    'workspaces'
+    'workspaces',
+    'payment_plans',
+    'payment_occurrences'
   ];
 begin
   foreach t in array tables loop

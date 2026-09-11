@@ -8,8 +8,9 @@ import { clearLocalData } from '@/lib/auth'
 import { retryDeadLetters, pendingCount } from '@/lib/sync/engine'
 import {
   useAccountStore, useInvestmentStore, useRecurringStore,
-  useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore,
+  useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore, usePaymentsStore,
 } from '@/store'
+import { buildSchedule, buildTargets, monthOf } from '@/lib/payments/schedule'
 import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
@@ -33,6 +34,22 @@ export function useSidebarData() {
   const debts        = useDebtStore(useShallow(s => s.debts))
   const getDue       = useRecurringStore(s => s.getDue)
   const dueCount     = getDue(today()).length
+
+  // Ödeme Takibi rozeti: gecikmiş ya da son günü bugün olan kart/borç ödemesi.
+  // Sayfadaki "Gecikmiş" ile aynı kaynak (buildSchedule), takip başlangıcından
+  // bugünün ayına kadar.
+  const paymentPlans       = usePaymentsStore(s => s.plans)
+  const paymentOccurrences = usePaymentsStore(s => s.occurrences)
+  const paymentAlertCount  = useMemo(() => {
+    const todayStr = today()
+    const current = monthOf(todayStr)
+    const targets = buildTargets({ accounts, debts, plans: paymentPlans })
+    if (targets.length === 0) return 0
+    const from = targets.reduce((m, t) => (t.startMonth < m ? t.startMonth : m), current)
+    return buildSchedule({ targets, occurrences: paymentOccurrences, transactions, from, to: current, todayStr })
+      .filter(r => r.timing === 'overdue' || r.timing === 'today')
+      .length
+  }, [accounts, debts, paymentPlans, paymentOccurrences, transactions])
 
   // "Net Varlık" şeridi borçtan arındırılmıştır — dashboard kartıyla aynı değer.
   const debtBurden      = calcDebtBurden(debts)
@@ -79,6 +96,7 @@ export function useSidebarData() {
     budgets,
     allCategories,
     dueCount,
+    paymentAlertCount,
     totalWealth,
     animTotalWealth,
     trendAmount,

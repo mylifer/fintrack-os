@@ -3,7 +3,7 @@
 import {
   useAccountStore, useTransactionStore, useCategoryStore,
   useBudgetStore, useDebtStore, useInvestmentStore, usePeopleStore,
-  useRecurringStore,
+  useRecurringStore, usePaymentsStore,
 } from '@/store'
 
 /* Tüm veri store'larını (fiyat feed'i / sync altyapısı HARİÇ — bunlar
@@ -21,6 +21,7 @@ export async function reloadAllStores(): Promise<void> {
   const { load: loadBudgets } = useBudgetStore.getState()
   const { load: loadInvestments } = useInvestmentStore.getState()
   const { load: loadRecurring } = useRecurringStore.getState()
+  const { load: loadPayments } = usePaymentsStore.getState()
 
   // Phase 1: FK parent tabloları — child'lar yüklenmeden önce hazır olmalı.
   // Yeni/boş bir çalışma alanı için initCategories() varsayılan kategorileri
@@ -38,6 +39,7 @@ export async function reloadAllStores(): Promise<void> {
     loadBudgets(),
     loadInvestments(),
     loadRecurring(),
+    loadPayments(),   // ödeme takibi: hesaplara/borçlara/işlemlere referans verir
   ])
 
   const { transactions } = useTransactionStore.getState()

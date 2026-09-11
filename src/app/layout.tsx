@@ -10,6 +10,8 @@ import { SidebarVariantProvider } from '@/components/layout/SidebarVariantProvid
 import { SIDEBAR_VARIANT_COOKIE, parseSidebarVariant } from '@/lib/sidebar-variant'
 import { InvestmentsViewProvider } from '@/components/layout/InvestmentsViewProvider'
 import { INVESTMENTS_VIEW_COOKIE, parseInvestmentsView } from '@/lib/investments-view'
+import { PaymentsViewProvider } from '@/components/layout/PaymentsViewProvider'
+import { PAYMENTS_VIEW_COOKIE, parsePaymentsView } from '@/lib/payments-view'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
 
@@ -50,6 +52,7 @@ export default async function RootLayout({
   const cookieStore = await cookies()
   const sidebarVariant  = parseSidebarVariant(cookieStore.get(SIDEBAR_VARIANT_COOKIE)?.value)
   const investmentsView = parseInvestmentsView(cookieStore.get(INVESTMENTS_VIEW_COOKIE)?.value)
+  const paymentsView    = parsePaymentsView(cookieStore.get(PAYMENTS_VIEW_COOKIE)?.value)
 
   return (
     <html lang="tr" className={cn("h-full", geist.variable, "font-sans")} suppressHydrationWarning>
@@ -63,7 +66,9 @@ export default async function RootLayout({
         />
         <SidebarVariantProvider initial={sidebarVariant}>
           <InvestmentsViewProvider initial={investmentsView}>
-            {children}
+            <PaymentsViewProvider initial={paymentsView}>
+              {children}
+            </PaymentsViewProvider>
           </InvestmentsViewProvider>
         </SidebarVariantProvider>
         <ServiceWorkerRegistrar />

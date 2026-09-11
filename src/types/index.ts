@@ -382,6 +382,58 @@ export interface RecurringTransaction {
   workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
+// ─── Ödeme Takibi (kredi kartı + borç aylık ödemeleri) ─────────────────────
+// Takip hedefi bir kredi kartı HESABI ya da bir borçtur. Hedef başına plan ve
+// ay başına kayıt İSTEĞE BAĞLIDIR: hiçbiri yoksa değerler hedefin kendi
+// alanlarından türetilir (kartın dueDay'i, borcun monthlyPayment/accountId'si).
+// Kullanıcı bir şeyi değiştirmedikçe hiçbir satır yazılmaz. Mantık:
+// src/lib/payments/schedule.ts.
+
+export type PaymentTargetKind = 'card' | 'debt'
+
+/** Hedef başına varsayılanlar. id = deterministicUuid(`payplan:<kind>:<targetId>`)
+ *  — iki cihaz aynı hedefe ayrı plan açamaz. */
+export interface PaymentPlan {
+  id: string
+  targetKind: PaymentTargetKind
+  targetId: string              // credit_card Account.id ya da Debt.id
+  amount?: number | null        // aylık varsayılan tutar (hedefin para biriminde); null = türet
+  fromAccountId?: string | null // varsayılan ödeme hesabı; null = türet
+  dayOfMonth?: number | null    // 1–31, kısa aylarda ay sonuna sıkıştırılır; null = türet
+  startMonth?: string | null    // 'YYYY-MM' — bu aydan önce gecikme uyarısı üretilmez
+  isActive: boolean             // false = takipten çıkarıldı
+  notes?: string | null
+  createdAt: string
+  updatedAt: string
+  deleted_at?: string | null    // Tombstone (C3)
+  workspaceId?: string          // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
+}
+
+export type PaymentStatus = 'paid' | 'skipped'
+
+/** Tek bir ayın düzenlemesi / ödeme kaydı. id =
+ *  deterministicUuid(`payocc:<kind>:<targetId>:<YYYY-MM>`). null alan = o ay için
+ *  plandaki değer geçerli. Ödendi işaretlenince tutar ve tarih DONDURULUR —
+ *  plan sonradan değişse de geçmiş ay yeniden yazılmaz. */
+export interface PaymentOccurrence {
+  id: string
+  targetKind: PaymentTargetKind
+  targetId: string
+  month: string                 // 'YYYY-MM'
+  amount?: number | null
+  fromAccountId?: string | null
+  dueDate?: string | null       // ISO tarih
+  status?: PaymentStatus | null // null = bekliyor
+  paidAmount?: number | null
+  paidDate?: string | null
+  transactionId?: string | null // ödeme işleminin id'si (varsa)
+  note?: string | null
+  createdAt: string
+  updatedAt: string
+  deleted_at?: string | null    // Tombstone (C3)
+  workspaceId?: string          // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
+}
+
 // ─── Sync outbox (C1 — durable offline writes) ──────────────────────────────
 
 /** A pending mutation awaiting push to Supabase. One entry per (table, entity):

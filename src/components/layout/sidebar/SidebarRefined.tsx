@@ -41,7 +41,7 @@ function subItemCls(active: boolean, withIcon = false) {
 
 export function SidebarRefined() {
   const {
-    pathname, accounts, budgets, allCategories, dueCount,
+    pathname, accounts, budgets, allCategories, dueCount, paymentAlertCount,
     totalWealth, animTotalWealth, trendAmount,
     isOnAccounts, accountsOpen, setAccountsOpen,
     isOnBudgets, budgetsOpen, setBudgetsOpen,
@@ -176,6 +176,14 @@ export function SidebarRefined() {
                   {item.badge === 'due' && dueCount > 0 && (
                     <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-500 leading-none flex-shrink-0">
                       {dueCount}
+                    </span>
+                  )}
+                  {item.badge === 'payments' && paymentAlertCount > 0 && (
+                    <span
+                      title="Gecikmiş ya da son günü bugün olan ödeme"
+                      className="text-[10.5px] font-bold px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive leading-none flex-shrink-0"
+                    >
+                      {paymentAlertCount}
                     </span>
                   )}
                 </Link>
