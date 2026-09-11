@@ -12,8 +12,9 @@ import { PAYMENTS_VIEWS } from '@/lib/payments-view'
 import { formatCurrency } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
 import { addMoney } from '@/lib/utils/money'
+import { isPosted } from '@/lib/utils/calculations'
 import {
-  buildSchedule, buildTargets, monthKeys, monthOf, shiftMonth, summarizeRows,
+  assignCardPayments, buildSchedule, buildTargets, monthKeys, monthOf, shiftMonth, summarizeRows,
   type MonthKey, type PaymentRow, type PaymentTarget,
 } from '@/lib/payments/schedule'
 import { EmptyBox, MonthNav, Segmented, SumItem, TargetMark, dayMonth, fmtAmount, monthTitle } from './bits'
@@ -88,6 +89,18 @@ export function PaymentBoard() {
   )
   const setupTargets = useMemo(() => shown.filter(t => t.needsSetup), [shown])
 
+  // Kart ödemesi tespiti TÜM hesaplardan yapılır: kapsam filtresi "tek kart"
+  // kuralını bozmasın (bkz. assignCardPayments).
+  const cardPayments = useMemo(() => assignCardPayments(accounts, transactions), [accounts, transactions])
+  // Günü girilmemiş kartlarda bulunan geçmiş ödeme sayısı — kurulum çağrısında gösterilir.
+  const detectedCounts = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const t of targets) {
+      if (t.needsSetup) out[t.key] = (cardPayments.get(t.id) ?? []).filter(x => isPosted(x, todayStr)).length
+    }
+    return out
+  }, [targets, cardPayments, todayStr])
+
   const matrixMonths = useMemo(
     () => monthKeys(shiftMonth(month, -MATRIX_BEFORE), shiftMonth(month, MATRIX_AFTER)),
     [month],
@@ -102,9 +115,9 @@ export function PaymentBoard() {
   const to = view === 'matrix' ? matrixMonths[matrixMonths.length - 1] : month
 
   const rows = useMemo(
-    () => buildSchedule({ targets: shown, occurrences, transactions, from, to, todayStr }),
+    () => buildSchedule({ targets: shown, occurrences, transactions, from, to, todayStr, cardPayments }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shown, occurrences, transactions, from, to, todayStr, prices],
+    [shown, occurrences, transactions, from, to, todayStr, cardPayments, prices],
   )
   const monthRows = useMemo(() => rows.filter(r => r.month === month), [rows, month])
   const carryRows = useMemo(() => rows.filter(r => r.month < month && r.timing === 'overdue'), [rows, month])
@@ -210,22 +223,27 @@ export function PaymentBoard() {
                     {setupTargets.length} kartın son ödeme günü girilmedi.
                   </span>{' '}
                   <span className="text-muted-foreground">
-                    Gün girilene kadar bu kartlar listeye, gecikme uyarılarına ve toplamlara katılmaz.
+                    Gün girilene kadar bu kartlar listeye, gecikme uyarılarına ve toplamlara katılmaz; bulunan geçmiş
+                    ödemeler de aylara işlenemez.
                   </span>
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {setupTargets.map(t => (
-                    <button
-                      key={t.key}
-                      type="button"
-                      onClick={() => openSettings(t)}
-                      className="inline-flex items-center gap-2 h-8 pl-1.5 pr-3 rounded-lg border border-border bg-background text-[12.5px] font-medium hover:bg-secondary transition-colors"
-                    >
-                      <TargetMark target={t} size="xs" />
-                      {t.name}
-                      <span className="text-amber-600">· ödeme gününü gir</span>
-                    </button>
-                  ))}
+                  {setupTargets.map(t => {
+                    const found = detectedCounts[t.key] ?? 0
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => openSettings(t)}
+                        className="inline-flex items-center gap-2 h-8 pl-1.5 pr-3 rounded-lg border border-border bg-background text-[12.5px] font-medium hover:bg-secondary transition-colors"
+                      >
+                        <TargetMark target={t} size="xs" />
+                        {t.name}
+                        {found > 0 && <span className="text-muted-foreground">· {found} ödeme bulundu</span>}
+                        <span className="text-amber-600">· ödeme gününü gir</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -240,7 +258,7 @@ export function PaymentBoard() {
             ) : view === 'matrix' ? (
               <MatrixView
                 months={matrixMonths} selectedMonth={month} currentMonth={currentMonth}
-                targets={shown} rows={rows} accounts={accounts}
+                targets={shown} rows={rows} accounts={accounts} detectedCounts={detectedCounts}
                 onEdit={openEdit} onSelectMonth={setMonth} onSettings={openSettings}
               />
             ) : (

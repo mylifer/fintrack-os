@@ -13,7 +13,9 @@ import { TargetMark, monthShort, monthTitle, rowTone } from '../bits'
    Hücre o ayın tutarını, vade gününü ve durumunu gösterir; tıklanınca o ayın
    düzenleme penceresi açılır. "Her ay istediğim gibi" düzenleme işinin ana
    yüzeyi budur: bir bakışta hangi aylara özel değer girildiği (turkuaz nokta)
-   görünür. Satır adına tıklamak kartın/borcun varsayılanlarını açar. */
+   görünür. Satır adına tıklamak kartın/borcun varsayılanlarını açar.
+   Geçmiş aylarda bulunan ödemeler (karta transfer, "Kredi Kartı Ödemesi") ödenen
+   tutarla işlenir — tutar girilmemiş olsa bile. */
 
 interface Props {
   months: MonthKey[]
@@ -22,6 +24,8 @@ interface Props {
   targets: PaymentTarget[]
   rows: PaymentRow[]
   accounts: Account[]
+  /** Ödeme günü girilmemiş kartlarda bulunan geçmiş ödeme sayısı (target.key). */
+  detectedCounts: Record<string, number>
   onEdit: (row: PaymentRow) => void
   onSelectMonth: (month: MonthKey) => void
   onSettings: (target: PaymentTarget) => void
@@ -31,7 +35,7 @@ const cellWorth = (r: PaymentRow) =>
   r.state === 'skipped' ? 0 : toBaseTry(Math.max(r.amount ?? 0, r.paidAmount), r.target.currency)
 
 export function MatrixView({
-  months, selectedMonth, currentMonth, targets, rows, accounts, onEdit, onSelectMonth, onSettings,
+  months, selectedMonth, currentMonth, targets, rows, accounts, detectedCounts, onEdit, onSelectMonth, onSettings,
 }: Props) {
   const byKey = useMemo(() => new Map(rows.map(r => [`${r.target.key}|${r.month}`, r])), [rows])
   const monthTotals = useMemo(
@@ -84,6 +88,7 @@ export function MatrixView({
               const cells = months.map(m => byKey.get(`${t.key}|${m}`) ?? null)
               const total = sumBy(cells.filter((r): r is PaymentRow => r !== null), cellWorth)
               const from = accounts.find(a => a.id === t.defaultFromAccountId)?.name
+              const found = detectedCounts[t.key] ?? 0
               return (
                 <tr key={t.key}>
                   <td className="sticky left-0 z-10 bg-card pl-4 pr-3 py-2 border-b border-border/40">
@@ -108,13 +113,16 @@ export function MatrixView({
                   </td>
                   {t.needsSetup ? (
                     // Kartta gün varsayılmaz: gün girilene kadar aylar boş, tek kurulum düğmesi.
+                    // Bulunan geçmiş ödemeler sayılır — gün girilince aylara işlenir.
                     <td colSpan={months.length} className="p-1 border-b border-border/40">
                       <button
                         type="button"
                         onClick={() => onSettings(t)}
                         className="w-full h-[54px] rounded-lg border border-dashed border-amber-500/50 text-[12.5px] font-semibold text-amber-600 hover:bg-amber-500/10 transition-colors"
                       >
-                        Son ödeme gününü gir — aylar görünsün
+                        {found > 0
+                          ? `${found} geçmiş kart ödemesi bulundu — son ödeme gününü gir, aylara işlensin`
+                          : 'Son ödeme gününü gir — aylar görünsün'}
                       </button>
                     </td>
                   ) : cells.map((r, i) => (
@@ -179,21 +187,31 @@ function shortState(row: PaymentRow): string {
   }
 }
 
+/** Hücre tutarı: girilen tutar; tutar girilmemiş ama ödeme bulunmuşsa ödenen. */
+function cellAmount(row: PaymentRow): string {
+  if (row.state === 'clear') return '—'
+  if (row.amount !== null) return formatWhole(row.amount, row.target.currency)
+  if (row.paidAmount > 0) return formatWhole(row.paidAmount, row.target.currency)
+  return 'Tutar gir'
+}
+
 function Cell({ row, onClick }: { row: PaymentRow; onClick: () => void }) {
   const tone = rowTone(row)
   const custom = row.custom.amount || row.custom.dueDate || row.custom.fromAccount
   const quiet = row.state === 'skipped' || row.state === 'clear'
   const dueMonth = monthOf(row.dueDate)
+  const detail = row.paidVia === 'detected'
+    ? ` · ${formatWhole(row.paidAmount, row.target.currency)} ödeme bulundu`
+    : ''
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`${row.target.name} · ${monthTitle(row.month)} — ${tone.label}`}
+      title={`${row.target.name} · ${monthTitle(row.month)} — ${tone.label}${detail}`}
       className="relative w-full min-w-[96px] h-[54px] rounded-lg bg-secondary/40 hover:bg-secondary px-2 pt-1.5 pb-2 text-left overflow-hidden transition-colors"
     >
       <span className={`block tabular-nums text-[12.5px] font-semibold truncate ${quiet ? 'text-muted-foreground' : ''}`}>
-        {/* Boş ekstre (çoğunlukla henüz kesilmemiş gelecek dönem) ₺0 gürültüsü yapmasın */}
-        {row.state === 'clear' ? '—' : row.amount === null ? 'Tutar gir' : formatWhole(row.amount, row.target.currency)}
+        {cellAmount(row)}
       </span>
       <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground">
         <span className="tabular-nums">

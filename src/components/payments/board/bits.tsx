@@ -110,8 +110,11 @@ export function TargetMark({ target, size = 'sm' }: { target: PaymentTarget; siz
   )
 }
 
+/** Girilen tutar; tutar girilmemiş ama ödeme bulunmuşsa (geçmiş aylar) ödenen tutar. */
 export function fmtAmount(row: PaymentRow): string {
-  return row.amount === null ? 'Tutar girilmedi' : formatCurrency(row.amount, row.target.currency)
+  if (row.amount !== null) return formatCurrency(row.amount, row.target.currency)
+  if (row.paidAmount > 0) return formatCurrency(row.paidAmount, row.target.currency)
+  return 'Tutar girilmedi'
 }
 
 /** Tutarın altındaki küçük not: kısmi ödeme, tutar kaynağı, fazla ödeme. */

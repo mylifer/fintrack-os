@@ -13,7 +13,7 @@ import { usePaymentsStore } from './payments.store'
 import { recurringOccurrences } from '@/lib/utils/recurrence'
 import { today } from '@/lib/utils/date'
 import { awaitsApproval } from '@/lib/utils/calculations'
-import { buildSchedule, buildTargets, monthOf, type PaymentRow } from '@/lib/payments/schedule'
+import { assignCardPayments, buildSchedule, buildTargets, monthOf, type PaymentRow } from '@/lib/payments/schedule'
 
 /* ── Bildirim merkezi ─────────────────────────────────────────────────────
    Bildirimler TÜRETİLMİŞ veridir — ayrı tablo/entity yok. Kaynaklar:
@@ -93,16 +93,16 @@ export function getNotifications(): AppNotification[] {
   }
 
   // Ödeme takibi — ödeme günü girilmemiş kartlar satır üretmez (varsayım yok).
+  const accounts = useAccountStore.getState().accounts
   const { plans, occurrences } = usePaymentsStore.getState()
-  const targets = buildTargets({
-    accounts: useAccountStore.getState().accounts,
-    debts: useDebtStore.getState().debts,
-    plans,
-  })
+  const targets = buildTargets({ accounts, debts: useDebtStore.getState().debts, plans })
   if (targets.length > 0) {
     const current = monthOf(todayStr)
     const from = targets.reduce((m, t) => (t.startMonth < m ? t.startMonth : m), current)
-    const rows = buildSchedule({ targets, occurrences, transactions, from, to: monthOf(horizon), todayStr })
+    const rows = buildSchedule({
+      targets, occurrences, transactions, from, to: monthOf(horizon), todayStr,
+      cardPayments: assignCardPayments(accounts, transactions),
+    })
     for (const row of rows) {
       if (row.timing === 'overdue' || row.timing === 'today') out.push({ kind: 'payment-due', row })
       else if (row.timing === 'soon') out.push({ kind: 'payment-upcoming', row })

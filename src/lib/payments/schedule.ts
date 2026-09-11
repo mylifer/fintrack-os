@@ -19,13 +19,15 @@
    penceresinde etiketli bir KISAYOL olarak kullanılır, satır tutarı olmaz.
 
    "Ödendi" iki kaynaktan gelir: elle işaret (occurrence.status) ya da OTOMATİK
-   TESPİT — o ayın ödeme penceresine düşen, karta yapılmış transferler ve borca
-   bağlı (debtId) işlemler. Tespit hiçbir şey yazmaz.
+   TESPİT — o ayın ödeme penceresine düşen ödeme işlemleri. Borçta: debtId'li
+   işlemler. Kartta: assignCardPayments (karta transfer + "Kredi Kartı Ödemesi"
+   açıklamalı kayıtlar, belirsizse atlanır). Tespit hiçbir şey yazmaz. Takip
+   başlangıcından önceki aylarda bulunan ödemeler de geçmiş kaydı olarak görünür
+   (kullanıcı isteği: geçmiş ödemeler Yıllık Plan'a işlensin).
 
    Takip başlangıcından (startMonth) önceki ve borcun son taksitinden sonraki
    aylar AÇIK satır üretmez: modül ilk açıldığında geçmiş aylar için yığınla
-   yanlış "gecikti" alarmı çıkmasın. Ödenmiş/atlanmış olanlar geçmiş kaydı
-   olarak yine görünür.
+   yanlış "gecikti" alarmı çıkmasın.
 ──────────────────────────────────────────────────────────────────────── */
 
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
@@ -196,6 +198,84 @@ export function buildTargets(input: {
   return [...cards.sort(byName), ...debts.sort(byName)]
 }
 
+/* ── Kart ödemesi tespiti ────────────────────────────────────────────────── */
+
+/** Türkçe duyarsız karşılaştırma: küçük harf + aksan düşürme + boşluk sadeleştirme. */
+function trFold(text: string): string {
+  return text
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ü/g, 'u')
+    .replace(/ş/g, 's').replace(/ç/g, 'c').replace(/ğ/g, 'g')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** "Kredi Kartı Ödemesi" (büyük/küçük harf ve Türkçe karakterden bağımsız;
+ *  "kredi karti odeme", "Kredi Kartı Ödemesi - Bonus" gibi varyantlar dahil). */
+export function isCardPaymentText(text: string | null | undefined): boolean {
+  return !!text && /kredi ?karti? ?odeme/.test(trFold(text))
+}
+
+/** Hangi işlemin hangi KARTIN ödemesi olduğunu belirler (kart id → işlemler).
+ *  Kurallar — belirsizse işlem hiçbir karta yazılmaz (varsayım yok):
+ *   1. Karta yapılan transfer (toAccountId = aktif kart): açıklamadan bağımsız
+ *      o kartın ödemesi. Başka bir hesaba giden transfer kart ödemesi değildir.
+ *   2. Açıklaması/notu "Kredi Kartı Ödemesi" olan kayıtlar:
+ *      • kartın KENDİ hesabına gelir olarak işlenmişse → o kart;
+ *      • kart dışı bir hesaptan gider/transfer ise → açıklamada ya da notta
+ *        tek bir kartın adı geçiyorsa o kart; hiç ad geçmiyor ve tek aktif kart
+ *        varsa o kart; aksi halde atlanır. Kart uygulamaya eklenmeden önceki
+ *        tarihli kayıt o karta yazılmaz.
+ *  Borç ödemeleri (debtId) ve mutabakat satırları hiçbir zaman kart ödemesi değildir.
+ *  Ad eşleşmesi arşivli kartları da kapsar (eski kartın ödemesi yeni karta kaymasın). */
+export function assignCardPayments(
+  accounts: readonly Account[],
+  transactions: readonly Transaction[],
+): Map<string, Transaction[]> {
+  const allCards = accounts.filter(a => a.type === 'credit_card')
+  const active = allCards.filter(a => !a.isArchived)
+  const activeById = new Map(active.map(a => [a.id, a]))
+  const allIds = new Set(allCards.map(a => a.id))
+  const names = allCards
+    .map(a => ({ id: a.id, name: trFold(a.name) }))
+    .filter(c => c.name.length >= 3)
+
+  const out = new Map<string, Transaction[]>()
+  const push = (id: string, t: Transaction) => {
+    const list = out.get(id)
+    if (list) list.push(t)
+    else out.set(id, [t])
+  }
+
+  for (const t of transactions) {
+    if (t.debtId || t.systemKind) continue
+
+    if (t.type === 'transfer' && t.toAccountId) {
+      if (activeById.has(t.toAccountId)) push(t.toAccountId, t)
+      continue
+    }
+
+    if (!isCardPaymentText(t.description) && !isCardPaymentText(t.notes)) continue
+
+    if (allIds.has(t.accountId)) {
+      if (t.type === 'income' && activeById.has(t.accountId)) push(t.accountId, t)
+      continue
+    }
+    if (t.type === 'income') continue   // nakit hesaba giren para kart ödemesi değildir
+
+    const hay = trFold(`${t.description} ${t.notes ?? ''}`)
+    const named = names.filter(c => hay.includes(c.name))
+    let owner: Account | undefined
+    if (named.length === 1) owner = activeById.get(named[0].id)
+    else if (named.length === 0 && active.length === 1) owner = active[0]
+    if (!owner) continue
+    if (owner.createdAt && t.date.slice(0, 10) < owner.createdAt.slice(0, 10)) continue
+    push(owner.id, t)
+  }
+
+  return out
+}
+
 /* ── Uygulamadaki kart harcamaları (yalnız kısayol önerisi) ─────────────── */
 
 function inCurrency(t: Transaction, currency: CurrencyCode): number {
@@ -289,12 +369,6 @@ export function paymentDescription(target: Pick<PaymentTarget, 'kind' | 'name'>)
   return /ödeme(si)?$/iu.test(name) ? name : `${name} Ödemesi`
 }
 
-function isPaymentFor(target: PaymentTarget, t: Transaction): boolean {
-  return target.kind === 'card'
-    ? t.type === 'transfer' && t.toAccountId === target.id
-    : t.debtId === target.id
-}
-
 function paymentValue(target: PaymentTarget, t: Transaction): number {
   return target.kind === 'card' ? inCurrency(t, target.currency) : baseAmount(t)
 }
@@ -308,6 +382,10 @@ export interface ScheduleInput {
   from: MonthKey
   to: MonthKey
   todayStr: string
+  /** assignCardPayments(TÜM hesaplar, işlemler). Hedef listesi filtrelenmişse
+   *  (kapsam, tek hedef) mutlaka verilmeli — yoksa "tek kart" kuralı yalnız
+   *  verilen hedeflere bakar ve belirsiz ödemeyi yanlış karta yazabilir. */
+  cardPayments?: ReadonlyMap<string, readonly Transaction[]>
 }
 
 /** [from, to] aylarındaki ödeme satırları, vade tarihine göre sıralı.
@@ -315,6 +393,9 @@ export interface ScheduleInput {
 export function buildSchedule(input: ScheduleInput): PaymentRow[] {
   const { targets, occurrences, transactions, from, to, todayStr } = input
   if (monthDiff(from, to) < 0) return []
+
+  const cardPayments = input.cardPayments
+    ?? assignCardPayments(targets.flatMap(t => (t.account ? [t.account] : [])), transactions)
 
   const occBy = new Map<string, PaymentOccurrence>()
   const linked = new Set<string>()
@@ -330,7 +411,10 @@ export function buildSchedule(input: ScheduleInput): PaymentRow[] {
     if (!target.isActive || day === null) continue
     // Yalnız işlenmiş ödemeler "ödendi" sayılır — ileri tarihli planlı transfer
     // henüz ödeme değildir.
-    const payments = transactions.filter(t => isPaymentFor(target, t) && isPosted(t, todayStr))
+    const candidates = target.kind === 'card'
+      ? (cardPayments.get(target.id) ?? [])
+      : transactions.filter(t => t.debtId === target.id)
+    const payments = candidates.filter(t => isPosted(t, todayStr))
     // Borç: kalan tutarın, sıradaki açık aylara zaten ayrılmış kısmı. Takip
     // başlangıcından yürümek için gezinti aralığın başından ÖNCE başlayabilir.
     let consumed = 0
