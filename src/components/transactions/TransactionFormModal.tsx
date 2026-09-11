@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/Input'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
+import { DateStepperInput } from '@/components/ui/DateStepperInput'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
@@ -1609,10 +1610,9 @@ export function TransactionFormModal() {
             </>
           ) : (
             <Field label="Tarih" error={errors.date}>
-              <Input
-                type="date"
+              <DateStepperInput
                 value={form.date}
-                onChange={e => patch({ date: e.target.value })}
+                onValueChange={date => patch({ date })}
                 error={errors.date}
               />
             </Field>
