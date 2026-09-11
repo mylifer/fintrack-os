@@ -14,3 +14,10 @@ export function planIdFor(kind: PaymentTargetKind, targetId: string): string {
 export function occurrenceIdFor(kind: PaymentTargetKind, targetId: string, month: string): string {
   return deterministicUuid(`payocc:${kind}:${targetId}:${month}`)
 }
+
+/** Bildirim merkezinden onaylanan ödeme işleminin kimliği — (hedef, ay) başına
+ *  tek. Çift tık ya da aynı anda iki yüzeyden onay ikinci transfer üretemez
+ *  (tekrarlayanlardaki `recur:<şablon>:<tarih>` deseniyle aynı). */
+export function paymentTxIdFor(kind: PaymentTargetKind, targetId: string, month: string): string {
+  return deterministicUuid(`paytx:${kind}:${targetId}:${month}`)
+}

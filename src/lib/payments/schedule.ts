@@ -280,6 +280,15 @@ export function isActionable(row: Pick<PaymentRow, 'state'>): boolean {
   return row.state === 'open' || row.state === 'partial'
 }
 
+/** Ödeme işleminin açıklaması (kullanıcı isteği, 2026-09-11): kartta
+ *  "Kredi Kartı Ödemesi", borçta "<borç adı> Ödemesi" — ör. "İhtiyaç Kredisi
+ *  Ödemesi". Ad zaten "ödeme(si)" ile bitiyorsa tekrar eklenmez. */
+export function paymentDescription(target: Pick<PaymentTarget, 'kind' | 'name'>): string {
+  if (target.kind === 'card') return 'Kredi Kartı Ödemesi'
+  const name = target.name.trim()
+  return /ödeme(si)?$/iu.test(name) ? name : `${name} Ödemesi`
+}
+
 function isPaymentFor(target: PaymentTarget, t: Transaction): boolean {
   return target.kind === 'card'
     ? t.type === 'transfer' && t.toAccountId === target.id

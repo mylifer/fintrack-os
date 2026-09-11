@@ -8,14 +8,19 @@ import { usePaymentsStore, type OccurrencePatch, type OccurrenceWrite } from '@/
 import { fromBaseTry, toBaseTry } from '@/lib/utils/fx'
 import { roundMoney } from '@/lib/utils/money'
 import { today } from '@/lib/utils/date'
-import { buildSchedule, dueDateFor, monthOf, shiftMonth, type PaymentRow, type PaymentTarget } from './schedule'
+import { paymentTxIdFor } from './ids'
+import {
+  buildSchedule, dueDateFor, monthOf, paymentDescription, shiftMonth,
+  type PaymentRow, type PaymentTarget,
+} from './schedule'
 
 /* ── Ödeme takibi eylemleri ──────────────────────────────────────────────────
-   Görünümler ve modallar yazma işini buradan yapar. Kurallar:
+   Görünümler, modallar ve bildirim merkezi yazma işini buradan yapar. Kurallar:
    • Ödeme işlemi, uygulamanın mevcut akışlarıyla BİREBİR aynı biçimde yazılır:
      kart → kaynak hesaptan karta transfer; borç → debtId'li transfer +
      recordPayment (debts/page.tsx "Ödeme Yap" ile aynı). Böylece bakiye, limit,
      borç ilerlemesi ve silme/geri alma mevcut kodla tutarlı kalır.
+   • Açıklama paymentDescription: "Kredi Kartı Ödemesi" / "<borç> Ödemesi".
    • Ödendi işaretlenen ayın tutarı ve tarihi DONDURULUR.
    • Varsayılanlar ileriye dönük değişince geçmiş aylar eski değerleriyle
      sabitlenir (freezeBefore) — "bu ve sonraki aylar" geçmişi yeniden yazmaz. */
@@ -28,6 +33,8 @@ export interface PayInput {
   /** false → yalnız "ödendi" işareti; hiçbir bakiye değişmez. */
   createTransaction: boolean
   note?: string | null
+  /** Deterministik işlem kimliği (bildirim onayı). Verilmezse rastgele. */
+  transactionId?: string
 }
 
 export async function payRow(row: PaymentRow, input: PayInput): Promise<void> {
@@ -37,30 +44,36 @@ export async function payRow(row: PaymentRow, input: PayInput): Promise<void> {
   if (input.createTransaction) {
     const from = useAccountStore.getState().accounts.find(a => a.id === input.fromAccountId)
     if (!from) throw new Error('Ödeme hesabı seçilmedi')
-    const amountFrom = from.currency === target.currency
-      ? input.amount
-      : roundMoney(fromBaseTry(toBaseTry(input.amount, target.currency), from.currency))
-    const now = new Date().toISOString()
-    const tx: Transaction = {
-      id: crypto.randomUUID(),
-      type: 'transfer',
-      amount: amountFrom,
-      currency: from.currency,
-      accountId: from.id,
-      date: input.date,
-      description: `${target.name} ödemesi`,
-      isInstallment: false,
-      createdAt: now,
-      updatedAt: now,
-      ...(target.kind === 'card' ? { toAccountId: target.id } : { debtId: target.id }),
-      ...(input.note ? { notes: input.note } : {}),
+    const txStore = useTransactionStore.getState()
+    const id = input.transactionId ?? crypto.randomUUID()
+    // Deterministik kimlik zaten kayıtlıysa (çift tık, ikinci sekme) ikinci
+    // transfer ve ikinci borç mutabakatı YAPILMAZ; yalnız ay işaretlenir.
+    if (!txStore.transactions.some(t => t.id === id)) {
+      const amountFrom = from.currency === target.currency
+        ? input.amount
+        : roundMoney(fromBaseTry(toBaseTry(input.amount, target.currency), from.currency))
+      const now = new Date().toISOString()
+      const tx: Transaction = {
+        id,
+        type: 'transfer',
+        amount: amountFrom,
+        currency: from.currency,
+        accountId: from.id,
+        date: input.date,
+        description: paymentDescription(target),
+        isInstallment: false,
+        createdAt: now,
+        updatedAt: now,
+        ...(target.kind === 'card' ? { toAccountId: target.id } : { debtId: target.id }),
+        ...(input.note ? { notes: input.note } : {}),
+      }
+      await txStore.add(tx)
+      if (target.kind === 'debt') {
+        // Borçlar TRY bazlı — yabancı para hesaptan ödemede dönüştür (M4).
+        await useDebtStore.getState().recordPayment(target.id, toBaseTry(amountFrom, from.currency))
+      }
     }
-    await useTransactionStore.getState().add(tx)
-    if (target.kind === 'debt') {
-      // Borçlar TRY bazlı — yabancı para hesaptan ödemede dönüştür (M4).
-      await useDebtStore.getState().recordPayment(target.id, toBaseTry(amountFrom, from.currency))
-    }
-    transactionId = tx.id
+    transactionId = id
   }
 
   // Kısmi tespit edilmiş ayda kalan ödenirse daha önce bulunan tutar da sayılır.
@@ -74,6 +87,31 @@ export async function payRow(row: PaymentRow, input: PayInput): Promise<void> {
     paidDate: input.date,
     transactionId,
     note: input.note?.trim() || row.note,
+  })
+}
+
+/** Bildirim merkezinde tek dokunuşla onaylanabilir mi? Değilse nedeni. */
+export function quickApproveBlocker(row: PaymentRow): string | null {
+  if (row.amount === null) return 'Tutar girilmedi'
+  if (row.remaining <= 0) return 'Ödenecek tutar yok'
+  const from = useAccountStore.getState().accounts.find(a => a.id === row.fromAccountId && !a.isArchived)
+  if (!from) return 'Ödeme hesabı seçilmedi'
+  return null
+}
+
+/** Bildirim merkezinden onay: vadesi gelen ödeme için BUGÜNÜN tarihiyle, kalan
+ *  tutar kadar, satırın ödeme hesabından işlem yazar ve ayı ödendi işaretler.
+ *  Onaya kadar hiçbir işlem yazılmaz (tekrarlayanlarla aynı model) — kullanıcı
+ *  transferi elle girerse ay tespitle ödendi olur ve bildirim kendiliğinden düşer. */
+export async function approvePaymentRow(row: PaymentRow): Promise<void> {
+  const blocker = quickApproveBlocker(row)
+  if (blocker) throw new Error(blocker)
+  await payRow(row, {
+    amount: row.remaining,
+    fromAccountId: row.fromAccountId,
+    date: today(),
+    createTransaction: true,
+    transactionId: paymentTxIdFor(row.target.kind, row.target.id, row.month),
   })
 }
 
@@ -145,7 +183,7 @@ async function freezeBefore(target: PaymentTarget, beforeMonth: string, changes:
 }
 
 export interface RowEditValues {
-  /** null = varsayılan (plan ya da ekstre tahmini). */
+  /** null = varsayılan (plan tutarı; yoksa tutar girilmemiş). */
   amount: number | null
   fromAccountId: string | null
   dueDate: string
