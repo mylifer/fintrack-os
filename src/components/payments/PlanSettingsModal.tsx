@@ -14,9 +14,11 @@ import type { Account } from '@/types'
 import { TargetMark, Toggle, kindLabel, monthTitle } from './board/bits'
 
 /* ── Kart / borç takip ayarları ──────────────────────────────────────────────
-   Hedefin varsayılanları: aylık tutar, ödeme günü, ödeme hesabı, takip
-   başlangıcı. Ay bazındaki özel değerler ve ödenmiş aylar korunur; bu aydan
-   önceki aylar eski değerleriyle sabitlenir (bkz. actions.freezeBefore). */
+   Hedefin varsayılanları: ödeme günü, ödeme hesabı, aylık tutar, takip
+   başlangıcı. Kartta ödeme günü ZORUNLU — girilene kadar kart takvime ve
+   toplamlara katılmaz (varsayım yapılmaz). Ay bazındaki özel değerler ve
+   ödenmiş aylar korunur; bu aydan önceki aylar eski değerleriyle sabitlenir
+   (bkz. actions.freezeBefore). */
 
 interface Props {
   target: PaymentTarget | null
@@ -35,29 +37,33 @@ export function PlanSettingsModal({ target, accounts, onClose }: Props) {
 function PlanForm({ target, accounts, onClose }: { target: PaymentTarget; accounts: Account[]; onClose: () => void }) {
   const plan = target.plan
   const cur = target.currency
+  const isCard = target.kind === 'card'
   const payable = accounts.filter(a => !a.isArchived && a.id !== target.id)
 
-  const [amountStr, setAmountStr] = useState(plan?.amount != null ? formatNumberForInput(plan.amount) : '')
+  const [dayStr, setDayStr] = useState(target.dayOfMonth !== null ? String(target.dayOfMonth) : '')
   const [fromAccountId, setFromAccountId] = useState(target.defaultFromAccountId ?? '')
-  const [dayStr, setDayStr] = useState(String(target.dayOfMonth))
+  const [amountStr, setAmountStr] = useState(plan?.amount != null ? formatNumberForInput(plan.amount) : '')
   const [startMonth, setStartMonth] = useState(target.startMonth)
   const [isActive, setIsActive] = useState(target.isActive)
   const [notes, setNotes] = useState(plan?.notes ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  const amountHint = target.kind === 'card'
-    ? `Boş bırakırsan her ay ekstre tahmini kullanılır${target.account?.statementDay ? ` (hesap kesim günü: ayın ${target.account.statementDay}'i)` : ''}.`
+  const amountHint = isCard
+    ? 'Boş bırakırsan her ay ekstre gelince tutarı sen girersin. Kartta her ay aynı tutar ödeniyorsa (ör. sabit taksit) buraya yaz.'
     : target.debt?.monthlyPayment
       ? `Boş bırakırsan borcun aylık taksiti kullanılır (${formatCurrency(target.debt.monthlyPayment)}).`
-      : 'Borçta aylık taksit tanımlı değil; tutar girmezsen aylar "tutar yok" görünür.'
+      : 'Borçta aylık taksit tanımlı değil; tutar girmezsen aylar "tutar girilmedi" görünür.'
 
   async function save() {
     const raw = amountStr.trim()
     const amount = raw ? parseCurrencyInput(raw) : null
     const day = Number(dayStr)
+    if (!dayStr.trim() || !Number.isInteger(day) || day < 1 || day > 31) {
+      setError(isCard ? 'Kartın son ödeme gününü 1 ile 31 arasında girin.' : 'Ödeme günü 1 ile 31 arasında olmalı.')
+      return
+    }
     if (amount !== null && (!Number.isFinite(amount) || amount < 0)) { setError('Geçerli bir tutar girin.'); return }
-    if (!Number.isInteger(day) || day < 1 || day > 31) { setError('Ödeme günü 1 ile 31 arasında olmalı.'); return }
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) { setError('Takip başlangıcını YYYY-AA biçiminde girin.'); return }
     setBusy(true)
     setError('')
@@ -86,7 +92,7 @@ function PlanForm({ target, accounts, onClose }: { target: PaymentTarget; accoun
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium truncate">{target.name}</div>
           <div className="text-[11px] text-muted-foreground">
-            {kindLabel(target)} · {target.kind === 'card' ? 'güncel borç' : 'kalan'} {formatCurrency(target.outstanding, cur)}
+            {kindLabel(target)} · {isCard ? 'uygulamadaki bakiye' : 'kalan'} {formatCurrency(target.outstanding, cur)}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -95,28 +101,35 @@ function PlanForm({ target, accounts, onClose }: { target: PaymentTarget; accoun
         </div>
       </div>
 
-      {!isActive && (
-        <p className="text-[12px] text-amber-600">
-          Takipten çıkarılınca bu {target.kind === 'card' ? 'kart' : 'borç'} hiçbir görünümde çıkmaz. Girdiğin aylık kayıtlar silinmez.
+      {target.needsSetup && (
+        <p className="text-[12px] rounded-lg border border-dashed border-amber-500/50 px-3 py-2">
+          <span className="font-semibold text-amber-600">Ödeme günü girilmedi.</span>{' '}
+          <span className="text-muted-foreground">
+            Ekstrendeki son ödeme gününü gir. Gün girilene kadar bu kart listeye, gecikme uyarılarına ve toplamlara katılmaz.
+          </span>
         </p>
       )}
 
-      <div className="flex flex-col gap-1.5">
-        <CurrencyInput label="Aylık varsayılan tutar" value={amountStr} currency={cur} onChange={setAmountStr} placeholder="Boş = otomatik" />
-        <p className="text-[11px] text-muted-foreground">{amountHint}</p>
-      </div>
+      {!isActive && (
+        <p className="text-[12px] text-amber-600">
+          Takipten çıkarılınca bu {isCard ? 'kart' : 'borç'} hiçbir görünümde çıkmaz. Girdiğin aylık kayıtlar silinmez.
+        </p>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Input
-          label="Ödeme günü"
+          label={isCard ? 'Son ödeme günü' : 'Ödeme günü'}
           type="number"
           inputMode="numeric"
           min={1}
           max={31}
           value={dayStr}
-          onChange={e => setDayStr(e.target.value)}
+          onChange={e => { setDayStr(e.target.value); if (error) setError('') }}
+          placeholder="Örn. 15"
           hint="Kısa aylarda ayın son günü kullanılır."
+          autoFocus={target.needsSetup}
         />
+        {/* '' seçeneği şart: Radix değer eşleşmeyince placeholder yerine boş çizer. */}
         <Select
           label="Varsayılan ödeme hesabı"
           value={fromAccountId}
@@ -126,6 +139,11 @@ function PlanForm({ target, accounts, onClose }: { target: PaymentTarget; accoun
             ...payable.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` })),
           ]}
         />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <CurrencyInput label="Aylık sabit tutar (isteğe bağlı)" value={amountStr} currency={cur} onChange={setAmountStr} placeholder="Boş = her ay girilir" />
+        <p className="text-[11px] text-muted-foreground">{amountHint}</p>
       </div>
 
       <Input

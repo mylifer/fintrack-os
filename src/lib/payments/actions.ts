@@ -157,7 +157,8 @@ export interface RowEditValues {
 export async function saveRowEdit(row: PaymentRow, values: RowEditValues, scope: 'month' | 'forward'): Promise<void> {
   const { target } = row
   const store = usePaymentsStore.getState()
-  const defaultDue = dueDateFor(row.month, target.dayOfMonth)
+  // Satırı olan hedefin günü hep vardır (günsüz kart satır üretmez); tip için yedek.
+  const defaultDue = dueDateFor(row.month, target.dayOfMonth ?? Number(row.dueDate.slice(8, 10)))
 
   if (scope === 'month') {
     const patch: OccurrencePatch = {

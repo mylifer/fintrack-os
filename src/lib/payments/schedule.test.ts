@@ -8,10 +8,11 @@ import {
 /* ────────────────────────────────────────────────────────────────────────
    Ödeme takibi çizelgesi
 
-   Kritik değişmezler: (1) hiçbir kayıt yokken bile her kart/borç için doğru
-   vade ve tutarla satır üretilir, (2) ödeme penceresine düşen işlem o ayı
-   ödendi sayar ama başka ayı saymaz, (3) takip başlangıcından önce yanlış
-   "gecikti" alarmı çıkmaz, (4) borç kalan tutarı tükenince aylar biter.
+   Kritik değişmezler: (1) kartta kullanıcının vermediği gün/tutar VARSAYILMAZ —
+   ödeme günü girilmemiş kart satır üretmez, tutarı girilmemiş ay "tutar yok"
+   olur; (2) ödeme penceresine düşen işlem o ayı ödendi sayar ama başka ayı
+   saymaz; (3) takip başlangıcından önce yanlış "gecikti" alarmı çıkmaz;
+   (4) borç kalan tutarı tükenince aylar biter.
 ──────────────────────────────────────────────────────────────────────── */
 
 const TODAY = '2026-10-05'
@@ -49,6 +50,9 @@ function occ(p: Partial<PaymentOccurrence> & Pick<PaymentOccurrence, 'targetKind
 function plan(p: Partial<PaymentPlan> & Pick<PaymentPlan, 'targetKind' | 'targetId'>): PaymentPlan {
   return { id: planIdFor(p.targetKind, p.targetId), isActive: true, createdAt: '2026-10-01', updatedAt: '2026-10-01', ...p }
 }
+
+/** Ödeme günü 10 olarak kurulmuş kart planı (kartın varsayılan kurulumu). */
+const cardPlan = (p: Partial<PaymentPlan> = {}) => plan({ targetKind: 'card', targetId: 'card1', dayOfMonth: 10, ...p })
 
 function schedule(opts: {
   accounts?: Account[]
@@ -100,9 +104,10 @@ describe('buildTargets', () => {
     expect(targets.map(t => t.key)).toEqual(['card:card1', 'debt:debt1'])
   })
 
-  it('kartta günü dueDay\'den alır, tutarı boş bırakır (ekstre tahmini)', () => {
-    const [t] = buildTargets({ accounts: [card()], debts: [], plans: [] })
-    expect(t.dayOfMonth).toBe(10)
+  it('kartta dueDay\'i KULLANMAZ: plan günü yoksa kurulum bekler, tutar boştur', () => {
+    const [t] = buildTargets({ accounts: [card({ dueDay: 10 })], debts: [], plans: [] })
+    expect(t.dayOfMonth).toBeNull()
+    expect(t.needsSetup).toBe(true)
     expect(t.defaultAmount).toBeNull()
     expect(t.outstanding).toBe(12_000)
     expect(t.startMonth).toBe('2026-09') // TRACKING_EPOCH, kart daha eski
@@ -114,25 +119,27 @@ describe('buildTargets', () => {
     expect(t.defaultAmountSource).toBe('derived')
     expect(t.defaultFromAccountId).toBe('chk')
     expect(t.dayOfMonth).toBe(15)
+    expect(t.needsSetup).toBe(false)
     expect(t.endMonth).toBe('2027-02')
   })
 
-  it('plan varsayılanları türetmeyi ezer', () => {
+  it('plan varsayılanları uygular', () => {
     const [t] = buildTargets({
       accounts: [card()],
       debts: [],
-      plans: [plan({ targetKind: 'card', targetId: 'card1', amount: 7_500, dayOfMonth: 3, fromAccountId: 'sav', startMonth: '2026-06', isActive: false })],
+      plans: [cardPlan({ amount: 7_500, dayOfMonth: 3, fromAccountId: 'sav', startMonth: '2026-06', isActive: false })],
     })
     expect(t.defaultAmount).toBe(7_500)
     expect(t.defaultAmountSource).toBe('plan')
     expect(t.dayOfMonth).toBe(3)
+    expect(t.needsSetup).toBe(false)
     expect(t.defaultFromAccountId).toBe('sav')
     expect(t.startMonth).toBe('2026-06')
     expect(t.isActive).toBe(false)
   })
 })
 
-describe('kart ekstresi', () => {
+describe('uygulamadaki kart harcamaları (kısayol)', () => {
   it('vadeden önceki son kesimde kapanan dönemi seçer', () => {
     expect(statementWindow({ statementDay: 28 }, '2026-10-10')).toEqual({ from: '2026-08-29', to: '2026-09-28' })
     expect(statementWindow({ statementDay: 5 }, '2026-10-10')).toEqual({ from: '2026-09-06', to: '2026-10-05' })
@@ -155,28 +162,32 @@ describe('kart ekstresi', () => {
 describe('buildSchedule — kart', () => {
   const charge = tx({ id: 'ch', date: '2026-09-05', amount: 3_000, accountId: 'card1' })
 
-  it('kayıt yokken ekstre tahminiyle açık satır üretir', () => {
-    const [row] = schedule({ accounts: [card()], transactions: [charge], from: '2026-10' })
+  it('ödeme günü girilmemiş kart hiç satır üretmez (gecikme/toplam yok)', () => {
+    expect(schedule({ accounts: [card()], transactions: [charge], from: '2026-09', to: '2026-12' })).toEqual([])
+  })
+
+  it('günü girilmiş, tutarı girilmemiş kart "tutar yok" açık satır üretir — harcamalardan tahmin YAPMAZ', () => {
+    const [row] = schedule({ accounts: [card()], plans: [cardPlan()], transactions: [charge], from: '2026-10' })
     expect(row.dueDate).toBe('2026-10-10')
-    expect(row.amount).toBe(3_000)
-    expect(row.amountSource).toBe('estimate')
+    expect(row.amount).toBeNull()
+    expect(row.amountSource).toBeNull()
     expect(row.state).toBe('open')
     expect(row.timing).toBe('soon')
     expect(row.daysLeft).toBe(5)
-    expect(row.remaining).toBe(3_000)
+    expect(row.remaining).toBe(0)
     expect(row.occurrence).toBeNull()
   })
 
   it('pencereye düşen karta transferi ödendi sayar', () => {
-    const [row] = schedule({ accounts: [card()], transactions: [charge, cardPayment('p1', '2026-10-03', 3_000)], from: '2026-10' })
+    const [row] = schedule({ accounts: [card()], plans: [cardPlan()], transactions: [charge, cardPayment('p1', '2026-10-03', 3_000)], from: '2026-10' })
     expect(row.state).toBe('paid')
     expect(row.paidVia).toBe('detected')
     expect(row.transactionIds).toEqual(['p1'])
     expect(row.timing).toBe('done')
   })
 
-  it('eksik ödemeyi kısmi sayar ve kalanı hesaplar', () => {
-    const [row] = schedule({ accounts: [card()], transactions: [charge, cardPayment('p1', '2026-10-01', 1_000)], from: '2026-10' })
+  it('girilen tutardan eksik ödemeyi kısmi sayar ve kalanı hesaplar', () => {
+    const [row] = schedule({ accounts: [card()], plans: [cardPlan({ amount: 3_000 })], transactions: [cardPayment('p1', '2026-10-01', 1_000)], from: '2026-10' })
     expect(row.state).toBe('partial')
     expect(row.remaining).toBe(2_000)
   })
@@ -185,7 +196,7 @@ describe('buildSchedule — kart', () => {
     // Eylül penceresi (17 Ağu, 17 Eyl]; 16 Eylül'deki ödeme Ekim'i ödemez.
     const rows = schedule({
       accounts: [card()],
-      plans: [plan({ targetKind: 'card', targetId: 'card1', amount: 2_000 })],
+      plans: [cardPlan({ amount: 2_000 })],
       transactions: [cardPayment('p1', '2026-09-16', 2_000)],
       from: '2026-09',
       to: '2026-10',
@@ -195,14 +206,14 @@ describe('buildSchedule — kart', () => {
 
   it('onay bekleyen ileri tarihli transferi ödeme saymaz', () => {
     const pending = { ...cardPayment('p1', '2026-10-08', 3_000), approvalStatus: 'pending' as const }
-    const [row] = schedule({ accounts: [card()], transactions: [charge, pending], from: '2026-10' })
+    const [row] = schedule({ accounts: [card()], plans: [cardPlan({ amount: 3_000 })], transactions: [pending], from: '2026-10' })
     expect(row.state).toBe('open')
   })
 
   it('elle bağlanmış işlem başka ayda tespit edilmez', () => {
     const rows = schedule({
       accounts: [card()],
-      plans: [plan({ targetKind: 'card', targetId: 'card1', amount: 2_000 })],
+      plans: [cardPlan({ amount: 2_000 })],
       transactions: [cardPayment('p1', '2026-11-12', 2_000)],
       occurrences: [occ({ targetKind: 'card', targetId: 'card1', month: '2026-10', status: 'paid', paidAmount: 2_000, transactionId: 'p1' })],
       from: '2026-10',
@@ -215,7 +226,7 @@ describe('buildSchedule — kart', () => {
   it('ay kaydı tutarı, tarihi ve hesabı o ay için ezer', () => {
     const [row] = schedule({
       accounts: [card()],
-      transactions: [charge],
+      plans: [cardPlan()],
       occurrences: [occ({ targetKind: 'card', targetId: 'card1', month: '2026-10', amount: 4_500, dueDate: '2026-10-20', fromAccountId: 'sav' })],
       from: '2026-10',
     })
@@ -224,13 +235,14 @@ describe('buildSchedule — kart', () => {
     expect(row.dueDate).toBe('2026-10-20')
     expect(row.fromAccountId).toBe('sav')
     expect(row.custom).toEqual({ amount: true, dueDate: true, fromAccount: true })
+    expect(row.remaining).toBe(4_500)
     expect(row.timing).toBe('later')
   })
 
   it('atlanan ay kalan ve gecikme üretmez', () => {
     const [row] = schedule({
       accounts: [card()],
-      transactions: [charge],
+      plans: [cardPlan({ amount: 3_000 })],
       occurrences: [occ({ targetKind: 'card', targetId: 'card1', month: '2026-10', status: 'skipped' })],
       from: '2026-10',
     })
@@ -240,33 +252,34 @@ describe('buildSchedule — kart', () => {
   })
 
   it('geçmiş vadeli ödenmemiş ayı gecikmiş sayar', () => {
-    const [row] = schedule({
-      accounts: [card()],
-      plans: [plan({ targetKind: 'card', targetId: 'card1', amount: 1_500 })],
-      from: '2026-09',
-    })
+    const [row] = schedule({ accounts: [card()], plans: [cardPlan({ amount: 1_500 })], from: '2026-09' })
     expect(row.dueDate).toBe('2026-09-10')
     expect(row.timing).toBe('overdue')
     expect(row.daysLeft).toBe(-25)
   })
 
   it('takip başlangıcından önce açık satır üretmez, ödenmişi geçmiş olarak gösterir', () => {
-    const p = plan({ targetKind: 'card', targetId: 'card1', amount: 1_000 })
+    const p = cardPlan({ amount: 1_000 })
     expect(schedule({ accounts: [card()], plans: [p], from: '2026-07' })).toEqual([])
     const [row] = schedule({ accounts: [card()], plans: [p], transactions: [cardPayment('old', '2026-07-09', 1_000)], from: '2026-07' })
     expect(row.state).toBe('paid')
     expect(row.outOfRange).toBe(true)
   })
 
-  it('boş ekstre "borç yok" satırı olur', () => {
-    const [row] = schedule({ accounts: [card()], from: '2026-10' })
+  it('kullanıcının 0 girdiği ay "borç yok" satırı olur', () => {
+    const [row] = schedule({
+      accounts: [card()],
+      plans: [cardPlan()],
+      occurrences: [occ({ targetKind: 'card', targetId: 'card1', month: '2026-10', amount: 0 })],
+      from: '2026-10',
+    })
     expect(row.amount).toBe(0)
     expect(row.state).toBe('clear')
     expect(row.timing).toBe('done')
   })
 
   it('takipten çıkarılmış hedef satır üretmez', () => {
-    expect(schedule({ accounts: [card()], plans: [plan({ targetKind: 'card', targetId: 'card1', isActive: false })], from: '2026-10' })).toEqual([])
+    expect(schedule({ accounts: [card()], plans: [cardPlan({ isActive: false })], from: '2026-10' })).toEqual([])
   })
 })
 
@@ -308,24 +321,26 @@ describe('buildSchedule — borç', () => {
 })
 
 describe('summarizeRows', () => {
-  it('ödenen, kalan, gecikmiş ve sıradakini toplar', () => {
+  it('ödenen, kalan, gecikmiş ve sıradakini toplar; tutarı girilmemişi ayrı sayar', () => {
     const rows = schedule({
-      accounts: [card(), card({ id: 'card2', name: 'Axess', dueDay: 20 })],
+      accounts: [card(), card({ id: 'card2', name: 'Axess' }), card({ id: 'card3', name: 'World' })],
       debts: [debt()],
       plans: [
         plan({ targetKind: 'card', targetId: 'card1', amount: 2_000, dayOfMonth: 1 }),
-        plan({ targetKind: 'card', targetId: 'card2', amount: 1_000 }),
+        plan({ targetKind: 'card', targetId: 'card2', amount: 1_000, dayOfMonth: 20 }),
+        plan({ targetKind: 'card', targetId: 'card3', dayOfMonth: 25 }),
       ],
       transactions: [tx({ id: 'dp', date: '2026-10-02', amount: 5_000, type: 'transfer', debtId: 'debt1' })],
       from: '2026-10',
     })
     const s = summarizeRows(rows)
-    expect(s.count).toBe(3)
+    expect(s.count).toBe(4)
     expect(s.totalTry).toBe(8_000)
     expect(s.paidTry).toBe(5_000)
     expect(s.remainingTry).toBe(3_000)
     expect(s.overdueCount).toBe(1)   // card1 — 1 Ekim
     expect(s.overdueTry).toBe(2_000)
+    expect(s.unknownCount).toBe(1)   // card3 — tutar girilmedi
     expect(s.next?.target.id).toBe('card2')
   })
 })

@@ -96,13 +96,28 @@ export function MatrixView({
                       <TargetMark target={t} size="sm" />
                       <span className="min-w-0">
                         <span className="block font-medium truncate group-hover:underline underline-offset-2">{t.name}</span>
-                        <span className="block text-[11px] text-muted-foreground truncate">
-                          Ayın {t.dayOfMonth}. günü · {from ?? 'hesap seçilmedi'}
-                        </span>
+                        {t.dayOfMonth !== null ? (
+                          <span className="block text-[11px] text-muted-foreground truncate">
+                            Ayın {t.dayOfMonth}. günü · {from ?? 'hesap seçilmedi'}
+                          </span>
+                        ) : (
+                          <span className="block text-[11px] text-amber-600 truncate">Ödeme günü girilmedi</span>
+                        )}
                       </span>
                     </button>
                   </td>
-                  {cells.map((r, i) => (
+                  {t.needsSetup ? (
+                    // Kartta gün varsayılmaz: gün girilene kadar aylar boş, tek kurulum düğmesi.
+                    <td colSpan={months.length} className="p-1 border-b border-border/40">
+                      <button
+                        type="button"
+                        onClick={() => onSettings(t)}
+                        className="w-full h-[54px] rounded-lg border border-dashed border-amber-500/50 text-[12.5px] font-semibold text-amber-600 hover:bg-amber-500/10 transition-colors"
+                      >
+                        Son ödeme gününü gir — aylar görünsün
+                      </button>
+                    </td>
+                  ) : cells.map((r, i) => (
                     <td key={months[i]} className={`p-1 border-b border-border/40 ${months[i] === selectedMonth ? 'bg-primary/5' : ''}`}>
                       {r ? (
                         <Cell row={r} onClick={() => onEdit(r)} />
@@ -178,7 +193,7 @@ function Cell({ row, onClick }: { row: PaymentRow; onClick: () => void }) {
     >
       <span className={`block tabular-nums text-[12.5px] font-semibold truncate ${quiet ? 'text-muted-foreground' : ''}`}>
         {/* Boş ekstre (çoğunlukla henüz kesilmemiş gelecek dönem) ₺0 gürültüsü yapmasın */}
-        {row.state === 'clear' ? '—' : row.amount === null ? 'Tutar yok' : formatWhole(row.amount, row.target.currency)}
+        {row.state === 'clear' ? '—' : row.amount === null ? 'Tutar gir' : formatWhole(row.amount, row.target.currency)}
       </span>
       <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground">
         <span className="tabular-nums">

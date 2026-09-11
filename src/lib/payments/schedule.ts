@@ -3,13 +3,20 @@
 
    SAF modül (store/DB yok). Bir "hedef" ya bir kredi kartı hesabıdır ya da bir
    borç (direction 'owe'). Her hedef için her ay tek bir ödeme satırı üretilir;
-   satırın değerleri üç katmandan çözülür (üstteki kazanır):
+   satırın değerleri katmanlardan çözülür (üstteki kazanır):
      1. PaymentOccurrence — kullanıcının O AY için girdiği tutar/tarih/hesap
      2. PaymentPlan       — hedefin varsayılanları
-     3. Türetme           — kartın dueDay'i + ekstre tahmini; borcun
-                            monthlyPayment / accountId / startDate'i
-   Hiçbir kayıt yoksa bile satır üretilir: kullanıcı modülü açtığı an, tek bir
-   satır yazılmadan tüm kart ve borçlarını görür.
+     3. Borç alanları     — yalnız BORÇTA: monthlyPayment / accountId /
+                            startDate günü (bunları kullanıcı borç formunda girer)
+
+   KARTLARDA VARSAYIM YOK (2026-09-11 kararı): kart formu son ödeme gününü ve
+   ekstre tutarını SORMUYOR (dueDay her karta 10 yazılıyor), dolayısıyla onlardan
+   türetilen gün/tutar kullanıcıya yanlış bilgi gösteriyordu. Kartın ödeme günü
+   yalnızca plandan gelir; plan günü yoksa kart "kurulum bekliyor" (needsSetup)
+   olur ve HİÇ satır üretmez — gecikme, rozet ve toplamlara girmez. Tutar yalnızca
+   plan ya da ay kaydından gelir; yoksa null ("tutar girilmedi"). Uygulamadaki
+   harcamalardan hesaplanan dönem toplamı (estimateStatement) sadece düzenleme
+   penceresinde etiketli bir KISAYOL olarak kullanılır, satır tutarı olmaz.
 
    "Ödendi" iki kaynaktan gelir: elle işaret (occurrence.status) ya da OTOMATİK
    TESPİT — o ayın ödeme penceresine düşen, karta yapılmış transferler ve borca
@@ -90,7 +97,7 @@ const maxMonth = (a: MonthKey, b: MonthKey) => (a > b ? a : b)
 
 /* ── Hedefler ────────────────────────────────────────────────────────────── */
 
-export type AmountSource = 'custom' | 'plan' | 'derived' | 'estimate' | null
+export type AmountSource = 'custom' | 'plan' | 'derived' | null
 
 export interface PaymentTarget {
   key: string                      // `${kind}:${id}`
@@ -102,15 +109,19 @@ export interface PaymentTarget {
   currency: CurrencyCode
   plan: PaymentPlan | null
   isActive: boolean
-  /** Plandaki ya da borçtan türetilen aylık tutar. Kartta plan yoksa null —
-   *  o zaman her ay ekstre tahmini kullanılır. */
+  /** Plandaki ya da borçtan türetilen aylık tutar. Kartta plan tutarı yoksa
+   *  null — o zaman tutar her ay ayrıca girilir. */
   defaultAmount: number | null
   defaultAmountSource: AmountSource
   defaultFromAccountId: string | null
-  dayOfMonth: number
+  /** Kartta yalnız plandan gelir; null = ödeme günü girilmedi. */
+  dayOfMonth: number | null
+  /** Kart ödeme günü girilmedi → satır üretilmez, kurulum istenir. */
+  needsSetup: boolean
   startMonth: MonthKey
   endMonth: MonthKey | null
-  /** Kart: güncel borç (−bakiye, ≥ 0). Borç: kalan tutar. */
+  /** Kart: uygulamadaki bakiyeye göre borç (−bakiye, ≥ 0) — bankadaki gerçek
+   *  borç DEĞİL. Borç: kalan tutar. */
   outstanding: number
   account?: Account
   debt?: Debt
@@ -129,6 +140,8 @@ export function buildTargets(input: {
     if (a.type !== 'credit_card' || a.isArchived) continue
     const plan = planBy.get(`card:${a.id}`) ?? null
     const created = a.createdAt ? monthOf(a.createdAt) : TRACKING_EPOCH
+    // account.dueDay KULLANILMAZ: formda alanı yok, her karta 10 yazılıyor.
+    const day = plan?.dayOfMonth != null ? clampDay(plan.dayOfMonth) : null
     cards.push({
       key: `card:${a.id}`,
       kind: 'card',
@@ -142,7 +155,8 @@ export function buildTargets(input: {
       defaultAmount: plan?.amount ?? null,
       defaultAmountSource: plan?.amount != null ? 'plan' : null,
       defaultFromAccountId: plan?.fromAccountId ?? null,
-      dayOfMonth: clampDay(plan?.dayOfMonth ?? a.dueDay ?? 10),
+      dayOfMonth: day,
+      needsSetup: day === null,
       startMonth: plan?.startMonth ?? maxMonth(TRACKING_EPOCH, created),
       endMonth: null,
       outstanding: Math.max(0, roundMoney(-(a.balance ?? 0))),
@@ -170,6 +184,7 @@ export function buildTargets(input: {
       defaultAmountSource: plan?.amount != null ? 'plan' : derived != null ? 'derived' : null,
       defaultFromAccountId: plan?.fromAccountId ?? d.accountId ?? null,
       dayOfMonth: clampDay(plan?.dayOfMonth ?? (startDay > 0 ? startDay : 1)),
+      needsSetup: false,
       startMonth: plan?.startMonth ?? maxMonth(TRACKING_EPOCH, first),
       endMonth: d.totalInstallments ? shiftMonth(first, d.totalInstallments - 1) : null,
       outstanding: Math.max(0, roundMoney(d.totalAmount - d.paidAmount)),
@@ -181,7 +196,7 @@ export function buildTargets(input: {
   return [...cards.sort(byName), ...debts.sort(byName)]
 }
 
-/* ── Kart ekstresi tahmini ───────────────────────────────────────────────── */
+/* ── Uygulamadaki kart harcamaları (yalnız kısayol önerisi) ─────────────── */
 
 function inCurrency(t: Transaction, currency: CurrencyCode): number {
   return t.currency === currency ? t.amount : fromBaseTry(baseAmount(t), currency)
@@ -204,10 +219,10 @@ export function statementWindow(
   return { from: addDaysIso(prevClosing, 1), to: closing }
 }
 
-/** Dönemin net kart harcaması: gider + karttan çıkan transfer − karta işlenen
- *  gelir/iade. Karta YAPILAN ödemeler (toAccountId = kart) sayılmaz. İleri
- *  dönemlerde yalnız ileri tarihli satırlar (taksitler) vardır; tahmin de onları
- *  gösterir. Mutabakat satırları (systemKind) harcama değildir. */
+/** Dönemde UYGULAMAYA GİRİLMİŞ net kart harcaması: gider + karttan çıkan
+ *  transfer − karta işlenen gelir/iade. Karta YAPILAN ödemeler (toAccountId =
+ *  kart) ve mutabakat satırları sayılmaz. Bankanın ekstre tutarı değildir —
+ *  yalnız düzenleme penceresinde etiketli kısayol olarak gösterilir. */
 export function estimateStatement(
   account: Account,
   dueDate: string,
@@ -230,7 +245,7 @@ export type PaymentState =
   | 'partial'  // bir kısmı ödendi (tespit)
   | 'paid'
   | 'skipped'  // bu ay ödeme yok (kullanıcı atladı)
-  | 'clear'    // ödenecek tutar yok (boş ekstre)
+  | 'clear'    // ödenecek tutar yok (kullanıcı 0 girdi)
 
 export type PaymentTiming = 'overdue' | 'today' | 'soon' | 'later' | 'done'
 
@@ -241,7 +256,7 @@ export interface PaymentRow {
   dueDate: string
   /** Bugünden vadeye takvim günü (negatif = geçti). */
   daysLeft: number
-  /** Hedefin para biriminde. null = tutar bilinmiyor (tutarı olmayan borç). */
+  /** Hedefin para biriminde. null = tutar girilmedi. */
   amount: number | null
   amountSource: AmountSource
   fromAccountId: string | null
@@ -287,7 +302,7 @@ export interface ScheduleInput {
 }
 
 /** [from, to] aylarındaki ödeme satırları, vade tarihine göre sıralı.
- *  Pasif (takipten çıkarılmış) hedefler satır üretmez. */
+ *  Pasif (takipten çıkarılmış) ve ödeme günü girilmemiş hedefler satır üretmez. */
 export function buildSchedule(input: ScheduleInput): PaymentRow[] {
   const { targets, occurrences, transactions, from, to, todayStr } = input
   if (monthDiff(from, to) < 0) return []
@@ -302,7 +317,8 @@ export function buildSchedule(input: ScheduleInput): PaymentRow[] {
   const rows: PaymentRow[] = []
 
   for (const target of targets) {
-    if (!target.isActive) continue
+    const day = target.dayOfMonth
+    if (!target.isActive || day === null) continue
     // Yalnız işlenmiş ödemeler "ödendi" sayılır — ileri tarihli planlı transfer
     // henüz ödeme değildir.
     const payments = transactions.filter(t => isPaymentFor(target, t) && isPosted(t, todayStr))
@@ -314,9 +330,9 @@ export function buildSchedule(input: ScheduleInput): PaymentRow[] {
     for (const month of monthKeys(walkFrom, to)) {
       const occ = occBy.get(occKey(target.kind, target.id, month)) ?? null
       const prev = shiftMonth(month, -1)
-      const dueDate = occ?.dueDate ?? dueDateFor(month, target.dayOfMonth)
+      const dueDate = occ?.dueDate ?? dueDateFor(month, day)
       const prevDue = occBy.get(occKey(target.kind, target.id, prev))?.dueDate
-        ?? dueDateFor(prev, target.dayOfMonth)
+        ?? dueDateFor(prev, day)
       const tracked = month >= target.startMonth
         && (target.endMonth === null || month <= target.endMonth)
 
@@ -340,9 +356,6 @@ export function buildSchedule(input: ScheduleInput): PaymentRow[] {
       } else if (target.defaultAmount !== null) {
         amount = target.defaultAmount
         amountSource = target.defaultAmountSource
-      } else if (target.kind === 'card' && target.account) {
-        amount = estimateStatement(target.account, dueDate, transactions)
-        amountSource = 'estimate'
       }
 
       let state: PaymentState
@@ -443,7 +456,7 @@ export interface PaymentSummary {
   remainingTry: number
   overdueCount: number
   overdueTry: number
-  /** Tutarı bilinmeyen açık satır sayısı — toplamlara girmez. */
+  /** Tutarı girilmemiş açık satır sayısı — toplamlara girmez. */
   unknownCount: number
   /** Vadesi geçmemiş en yakın açık ödeme. */
   next: PaymentRow | null

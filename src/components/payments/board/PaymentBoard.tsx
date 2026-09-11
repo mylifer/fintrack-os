@@ -16,7 +16,7 @@ import {
   buildSchedule, buildTargets, monthKeys, monthOf, shiftMonth, summarizeRows,
   type MonthKey, type PaymentRow, type PaymentTarget,
 } from '@/lib/payments/schedule'
-import { EmptyBox, MonthNav, Segmented, SumItem, dayMonth, fmtAmount, monthTitle } from './bits'
+import { EmptyBox, MonthNav, Segmented, SumItem, TargetMark, dayMonth, fmtAmount, monthTitle } from './bits'
 import { ListView } from './views/ListView'
 import { MatrixView } from './views/MatrixView'
 import { PaymentEditModal } from '../PaymentEditModal'
@@ -34,6 +34,9 @@ import { TrackingManagerModal } from '../TrackingManagerModal'
  *   Liste       — seçili ay, aciliyete göre bölümlü tablo
  *   Yıllık Plan — kart/borç × 12 ay matrisi, hücreden aylık düzenleme
  * Takvim ve Hesap Akışı alternatifleri kullanıcı seçiminde elendi (2026-09-11).
+ *
+ * Ödeme günü girilmemiş kartlar satır üretmez (varsayım yok); Liste'de üstte
+ * kurulum şeridiyle, Yıllık Plan'da kendi satırında kurulum düğmesiyle görünür.
  * ------------------------------------------------------------------------- */
 
 type KindFilter = 'all' | 'card' | 'debt'
@@ -83,6 +86,7 @@ export function PaymentBoard() {
     () => targets.filter(t => t.isActive && (kind === 'all' || t.kind === kind)),
     [targets, kind],
   )
+  const setupTargets = useMemo(() => shown.filter(t => t.needsSetup), [shown])
 
   const matrixMonths = useMemo(
     () => monthKeys(shiftMonth(month, -MATRIX_BEFORE), shiftMonth(month, MATRIX_AFTER)),
@@ -154,11 +158,13 @@ export function PaymentBoard() {
                 <SumItem
                   label="Kalan"
                   value={formatCurrency(summary.remainingTry)}
-                  note={summary.unknownCount ? `${summary.unknownCount} ödemenin tutarı yok` : undefined}
+                  note={summary.unknownCount ? `${summary.unknownCount} ödemenin tutarı girilmedi` : undefined}
                 />
                 <SumItem
                   label="Gecikmiş"
-                  value={overdueCount ? `${overdueCount} · ${formatCurrency(overdueTry)}` : 'Yok'}
+                  value={overdueCount
+                    ? overdueTry > 0 ? `${overdueCount} · ${formatCurrency(overdueTry)}` : `${overdueCount} ödeme`
+                    : 'Yok'}
                   className={overdueCount ? 'text-destructive' : 'text-muted-foreground'}
                 />
                 <SumItem
@@ -195,6 +201,34 @@ export function PaymentBoard() {
             </div>
 
             <p className="text-[11px] text-muted-foreground -mt-2 px-1">{activeView.hint}</p>
+
+            {/* ── Kurulum bekleyen kartlar (Liste) ────────────────────── */}
+            {view === 'list' && setupTargets.length > 0 && (
+              <div className="rounded-xl border border-dashed border-amber-500/50 bg-card px-4 py-3 flex flex-col gap-2.5">
+                <p className="text-[12.5px]">
+                  <span className="font-semibold text-amber-600">
+                    {setupTargets.length} kartın son ödeme günü girilmedi.
+                  </span>{' '}
+                  <span className="text-muted-foreground">
+                    Gün girilene kadar bu kartlar listeye, gecikme uyarılarına ve toplamlara katılmaz.
+                  </span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {setupTargets.map(t => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => openSettings(t)}
+                      className="inline-flex items-center gap-2 h-8 pl-1.5 pr-3 rounded-lg border border-border bg-background text-[12.5px] font-medium hover:bg-secondary transition-colors"
+                    >
+                      <TargetMark target={t} size="xs" />
+                      {t.name}
+                      <span className="text-amber-600">· ödeme gününü gir</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* ── Görünüm ─────────────────────────────────────────────── */}
             {shown.length === 0 ? (

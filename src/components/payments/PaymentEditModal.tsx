@@ -21,7 +21,10 @@ import { StatusPill, TargetMark, dayMonth, dueLabel, kindLabel, monthTitle, rowT
 /* ── Tek bir ayın ödemesini düzenleme ────────────────────────────────────────
    Tutar, ödeme tarihi ve ödeme hesabı bu ay için (ya da bu ve sonraki aylar
    için) değiştirilir. Durum eylemleri — öde, atla, ödendi işaretini kaldır,
-   varsayılana dön — da buradan. */
+   varsayılana dön — da buradan.
+
+   Kartta tutar VARSAYILMAZ: kısayollar yalnız uygulamaya girilmiş kayıtlardan
+   hesaplanır ve öyle etiketlenir; kullanıcı seçmedikçe tutar olmaz. */
 
 interface Props {
   row: PaymentRow | null
@@ -48,19 +51,19 @@ export function PaymentEditModal({ row, ...rest }: Props) {
 
 type Scope = 'month' | 'forward'
 
-function quickAmounts(target: PaymentTarget, estimate: number | null): { label: string; value: number }[] {
-  const all: { label: string; value: number }[] = []
+interface Shortcut { label: string; value: number }
+
+function shortcuts(target: PaymentTarget, spent: number | null, spentWindow: string | null): Shortcut[] {
+  const all: Shortcut[] = []
   if (target.kind === 'card') {
-    if (estimate) all.push({ label: 'Ekstre tahmini', value: estimate })
-    all.push({ label: 'Güncel borç', value: target.outstanding })
-    const pct = target.account?.minPayPct ?? 3
-    all.push({ label: `Asgari %${pct}`, value: roundMoney((target.outstanding * pct) / 100) })
+    if (spent && spentWindow) all.push({ label: `Uygulamaya girilen harcamalar ${spentWindow}`, value: spent })
+    all.push({ label: 'Uygulamadaki bakiye', value: target.outstanding })
   } else {
     if (target.debt?.monthlyPayment) all.push({ label: 'Aylık taksit', value: target.debt.monthlyPayment })
     all.push({ label: 'Kalan borç', value: target.outstanding })
   }
   const seen = new Set<number>()
-  const out: { label: string; value: number }[] = []
+  const out: Shortcut[] = []
   for (const c of all) {
     if (c.value <= 0 || seen.has(c.value)) continue
     seen.add(c.value)
@@ -84,11 +87,13 @@ function EditForm({ row, accounts, transactions, onClose, onPay, onSettings }: O
   const [confirmUnpay, setConfirmUnpay] = useState(false)
   const [error, setError] = useState('')
 
-  const estimate = target.account && dueDate ? estimateStatement(target.account, dueDate, transactions) : null
-  const defaultAmount = target.defaultAmount ?? estimate
-  const defaultDue = dueDateFor(row.month, target.dayOfMonth)
+  const validDue = /^\d{4}-\d{2}-\d{2}$/.test(dueDate)
+  const window_ = target.account && validDue ? statementWindow(target.account, dueDate) : null
+  const spent = target.account && validDue ? estimateStatement(target.account, dueDate, transactions) : null
+  const spentWindow = window_ ? `(${dayMonth(window_.from)} – ${dayMonth(window_.to)})` : null
+  const defaultDue = dueDateFor(row.month, target.dayOfMonth ?? Number(row.dueDate.slice(8, 10)))
   const payable = accounts.filter(a => !a.isArchived && a.id !== target.id)
-  const chips = quickAmounts(target, estimate)
+  const chips = shortcuts(target, spent, spentWindow)
   const tone = rowTone(row)
   const linkedTxId = row.occurrence?.transactionId ?? null
   const linkedTxExists = !!linkedTxId && transactions.some(t => t.id === linkedTxId)
@@ -99,9 +104,8 @@ function EditForm({ row, accounts, transactions, onClose, onPay, onSettings }: O
     amountHint = target.defaultAmountSource === 'derived'
       ? `Boş bırakırsan borcun aylık taksiti kullanılır: ${formatCurrency(target.defaultAmount, cur)}.`
       : `Boş bırakırsan varsayılan tutar kullanılır: ${formatCurrency(target.defaultAmount, cur)}.`
-  } else if (target.account && dueDate) {
-    const w = statementWindow(target.account, dueDate)
-    amountHint = `Boş bırakırsan ekstre tahmini kullanılır: ${formatCurrency(estimate ?? 0, cur)} (${dayMonth(w.from)} – ${dayMonth(w.to)} kart harcaması).`
+  } else if (target.kind === 'card') {
+    amountHint = 'Bu ayın ekstre tutarını gir. Aşağıdaki kısayollar yalnızca uygulamaya girdiğin kayıtlardan hesaplanır; bankadaki tutarla aynı olmayabilir.'
   } else {
     amountHint = 'Bu borç için aylık tutar tanımlı değil. Tutarı gir ya da borç ayarlarından varsayılan belirle.'
   }
@@ -127,7 +131,7 @@ function EditForm({ row, accounts, transactions, onClose, onPay, onSettings }: O
       setError('Geçerli bir tutar girin.')
       return
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    if (!validDue) {
       setError('Ödeme tarihini seçin.')
       return
     }
@@ -171,11 +175,11 @@ function EditForm({ row, accounts, transactions, onClose, onPay, onSettings }: O
       {/* Tutar */}
       <div className="flex flex-col gap-1.5">
         <CurrencyInput
-          label="Ödenecek tutar"
+          label={target.kind === 'card' ? 'Ekstre tutarı' : 'Ödenecek tutar'}
           value={amountStr}
           currency={cur}
           onChange={v => { setAmountStr(v); if (error) setError('') }}
-          placeholder={defaultAmount !== null ? formatNumberForInput(defaultAmount) : 'Tutar girin'}
+          placeholder={target.defaultAmount !== null ? formatNumberForInput(target.defaultAmount) : 'Tutar girin'}
         />
         <p className="text-[11px] text-muted-foreground">{amountHint}</p>
         {chips.length > 0 && (
@@ -297,7 +301,7 @@ function EditForm({ row, accounts, transactions, onClose, onPay, onSettings }: O
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 flex flex-col gap-2">
           <p className="text-[12.5px]">Bu ödeme kaydedilirken hesaptan bir işlem de oluşturulmuştu. İşlem de silinsin mi?</p>
           <p className="text-[11px] text-muted-foreground">
-            Silersen hesap bakiyesi{target.kind === 'debt' ? ' ve borcun ödenen tutarı' : ' ve kart borcu'} eski haline döner;
+            Silersen hesap bakiyesi{target.kind === 'debt' ? ' ve borcun ödenen tutarı' : ' ve kart bakiyesi'} eski haline döner;
             silme bildiriminden geri alabilirsin. Silmezsen işlem kalır, yalnız bu ayın işareti kalkar.
           </p>
           <div className="flex flex-wrap gap-2">

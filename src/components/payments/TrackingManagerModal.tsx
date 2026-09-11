@@ -56,14 +56,16 @@ export function TrackingManagerModal({ open, targets, accounts, onClose, onSetti
                 const from = accounts.find(a => a.id === t.defaultFromAccountId)?.name ?? 'hesap seçilmedi'
                 const amount = t.defaultAmount !== null
                   ? formatCurrency(t.defaultAmount, t.currency)
-                  : t.kind === 'card' ? 'ekstre tahmini' : 'tutar yok'
+                  : t.kind === 'card' ? 'tutar her ay girilir' : 'tutar yok'
                 return (
                   <li key={t.key} className="flex items-center gap-3 px-3 py-2.5">
                     <TargetMark target={t} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className={`text-sm font-medium truncate ${t.isActive ? '' : 'text-muted-foreground line-through'}`}>{t.name}</div>
                       <div className="text-[11px] text-muted-foreground truncate">
-                        Ayın {t.dayOfMonth}. günü · {amount} · {from}
+                        {t.dayOfMonth !== null
+                          ? <>Ayın {t.dayOfMonth}. günü · {amount} · {from}</>
+                          : <span className="text-amber-600">Ödeme günü girilmedi — Ayarlar&apos;dan gir</span>}
                       </div>
                     </div>
                     <Button size="sm" variant="ghost" onClick={() => onSettings(t)}>Ayarlar</Button>

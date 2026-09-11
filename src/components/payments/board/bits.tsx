@@ -111,7 +111,7 @@ export function TargetMark({ target, size = 'sm' }: { target: PaymentTarget; siz
 }
 
 export function fmtAmount(row: PaymentRow): string {
-  return row.amount === null ? 'Tutar yok' : formatCurrency(row.amount, row.target.currency)
+  return row.amount === null ? 'Tutar girilmedi' : formatCurrency(row.amount, row.target.currency)
 }
 
 /** Tutarın altındaki küçük not: kısmi ödeme, tutar kaynağı, fazla ödeme. */
@@ -127,10 +127,10 @@ export function amountNote(row: PaymentRow): string {
   }
   if (row.state === 'skipped' || row.state === 'clear') return ''
   switch (row.amountSource) {
-    case 'estimate': return 'ekstre tahmini'
-    case 'custom':   return 'bu aya özel'
-    case 'derived':  return 'aylık taksit'
-    default:         return ''
+    case 'custom':  return 'bu aya özel'
+    case 'derived': return 'aylık taksit'
+    default:
+      return row.amount === null && row.target.kind === 'card' ? 'ekstre tutarını gir' : ''
   }
 }
 
