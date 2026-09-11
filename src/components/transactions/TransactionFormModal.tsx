@@ -428,8 +428,7 @@ export function TransactionFormModal() {
   const recurring    = useRecurringStore(s => s.recurring)
   const addRec       = useRecurringStore(s => s.add)
   const updateRec    = useRecurringStore(s => s.update)
-  const tags           = useTags()
-  const tagSuggestions = useMemo(() => tags.map(t => t.tag), [tags])
+  const tags         = useTags()
 
   const open = modal === 'add-transaction' || modal === 'edit-transaction'
     || modal === 'add-recurring' || modal === 'edit-recurring'
@@ -1788,8 +1787,8 @@ export function TransactionFormModal() {
             <Field label="Etiketler" optional>
               <TagInput
                 value={form.tags}
-                onChange={tags => patch({ tags })}
-                suggestions={tagSuggestions}
+                onChange={next => patch({ tags: next })}
+                tags={tags}
               />
             </Field>
           )}
