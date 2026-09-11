@@ -6,7 +6,7 @@ import { PeriodTabs }      from '@/components/ui/PeriodTabs'
 import { SelectField }     from '@/components/ui/Select'
 import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
-import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore } from '@/store'
+import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore, useSettingsStore } from '@/store'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { sumByType, isFlowTx, txTouchesAccount } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
@@ -37,7 +37,9 @@ export default function TransactionsPage() {
   const [accountFilter, setAccountFilter]   = useState<string>('')
   const [familyFilter, setFamilyFilter] = useState<PersonFilter>(null)
   const [recipientFilter, setRecipientFilter] = useState<PersonFilter>(null)
-  const [showFuture, setShowFuture] = useState(true)
+  // Kalıcı tercih (settings.store) — kutu kaldırılınca yenilemeden sonra da kapalı kalır
+  const showFuture    = useSettingsStore(s => s.showFutureTxs)
+  const setShowFuture = useSettingsStore(s => s.setShowFutureTxs)
   const [sortOption, setSortOption] = useState<TxSortOption>('date-desc')
   const [periodOffset, setPeriodOffset] = useState(0)
 

@@ -5,7 +5,7 @@ import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
 import { AccountAvatar }      from '@/components/accounts/AccountAvatar'
-import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore, useCategoryStore } from '@/store'
+import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore, useCategoryStore, useSettingsStore } from '@/store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import { useShallow }         from 'zustand/react/shallow'
@@ -50,6 +50,9 @@ export default function AccountDetailClient({
   const periodType    = useUIStore(s => s.periodType)
   const people        = usePeopleStore(s => s.people)
   const categories    = useCategoryStore(s => s.categories)
+  // Kalıcı tercih (settings.store) — İşlemler sayfasıyla ortak, yenilemede korunur
+  const showFuture    = useSettingsStore(s => s.showFutureTxs)
+  const setShowFuture = useSettingsStore(s => s.setShowFutureTxs)
 
   const accountTxs = useTransactionStore(useShallow(s =>
     s.transactions.filter(t => t.accountId === id || t.toAccountId === id)
@@ -63,7 +66,6 @@ export default function AccountDetailClient({
   const [search, setSearch]                 = useState('')
   const [typeFilter, setTypeFilter]         = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [showFuture, setShowFuture]         = useState(true)
   const [sortOption, setSortOption]         = useState<TxSortOption>('date-desc')
   const [periodOffset, setPeriodOffset]     = useState(0)
 
