@@ -291,14 +291,21 @@ export function isPrincipalMoveTx(t: Pick<Transaction, 'icon' | 'description'>):
   return isInvestmentPrincipalTx(t) || isDebtPrincipalTx(t)
 }
 
-// Gerçekleşen yatırım kâr/zararı — satış anında yazılan "… Satış Kârı" (gelir) ve
-// "… Satış Zararı" (gider) defter satırları. Bunlar GERÇEK nakit gelir/giderdir ve
-// normalde akışa (isFlowTx) dahildir. Ancak dashboard "Fon getirileri dahil"
-// anahtarı KAPALIYKEN, kullanıcı fon-sız bir gelir/net görmek istediğinden bu
-// satırlar da (gerçekleşmemiş fon getirisiyle birlikte) akıştan çıkarılır.
+// Gerçekleşen yatırım kâr/zararı — satış anında yazılan "… Satış Kârı" (gelir),
+// "… Satış Zararı" (gider) ve o kârdan kesilen "… Satış Stopajı" (gider) defter
+// satırları. Bunlar GERÇEK nakit gelir/giderdir ve normalde akışa (isFlowTx)
+// dahildir. Ancak dashboard "Fon getirileri dahil" anahtarı KAPALIYKEN,
+// kullanıcı fon-sız bir gelir/net görmek istediğinden bu satırlar da
+// (gerçekleşmemiş fon getirisiyle birlikte) akıştan çıkarılır. Stopaj kârın
+// EKİdir: kâr akıştan çıkarılıp vergisi bırakılırsa net fon-sız olmaz, fon-sız
+// artı bir vergi gideri olurdu.
 // icon+açıklama sezgisi isInvestmentPrincipalTx ile aynı konvansiyonu paylaşır.
 export function isRealizedInvestmentPnlTx(t: Pick<Transaction, 'icon' | 'description'>): boolean {
-  return !!t.icon && (t.description.endsWith('Satış Kârı') || t.description.endsWith('Satış Zararı'))
+  return !!t.icon && (
+    t.description.endsWith('Satış Kârı') ||
+    t.description.endsWith('Satış Zararı') ||
+    t.description.endsWith('Satış Stopajı')
+  )
 }
 
 // Income/expense/net over an already date-scoped slice, summed in TRY-normalized

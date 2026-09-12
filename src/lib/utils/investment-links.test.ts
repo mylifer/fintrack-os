@@ -34,6 +34,35 @@ describe('sellCleanupTxIds', () => {
     expect(ids).toEqual(['sale-1', 'pnl-1'])
   })
 
+  it('stopaj bağı varsa üçüncü kayıt olarak eklenir', () => {
+    const ledger = [
+      tx({ id: 'sale-1', description: '100 AFA Satışı' }),
+      tx({ id: 'pnl-1',  description: 'AFA Satış Kârı' }),
+      tx({ id: 'tax-1',  description: 'AFA Satış Stopajı', type: 'expense' }),
+    ]
+    const ids = sellCleanupTxIds(
+      {
+        targetAccountId: ACC, date: DATE,
+        linkedTransactionId: 'sale-1', pnlLinkedTransactionId: 'pnl-1', taxLinkedTransactionId: 'tax-1',
+      },
+      'AFA', ledger,
+    )
+    expect(ids).toEqual(['sale-1', 'pnl-1', 'tax-1'])
+  })
+
+  it('stopaj ID bağı yoksa açıklamayla ARANMAZ — aynı gün ikinci satışın kesintisi silinmesin', () => {
+    const ledger = [
+      tx({ id: 'sale-1', description: '100 AFA Satışı' }),
+      tx({ id: 'pnl-1',  description: 'AFA Satış Kârı' }),
+      tx({ id: 'tax-2',  description: 'AFA Satış Stopajı', type: 'expense' }), // başka satışın kesintisi
+    ]
+    const ids = sellCleanupTxIds(
+      { targetAccountId: ACC, date: DATE, linkedTransactionId: 'sale-1', pnlLinkedTransactionId: 'pnl-1' },
+      'AFA', ledger,
+    )
+    expect(ids).toEqual(['sale-1', 'pnl-1'])
+  })
+
   it('P&L kaydı store listesinde görünmese bile ID bağıyla hedeflenir', () => {
     const ids = sellCleanupTxIds(
       { targetAccountId: ACC, date: DATE, linkedTransactionId: 'sale-1', pnlLinkedTransactionId: 'pnl-1' },

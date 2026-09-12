@@ -9,6 +9,9 @@ import { loadEntities } from './entity-helpers'
 import { setBaseRates } from '@/lib/utils/fx'
 import { sellCleanupTxIds } from '@/lib/utils/investment-links'
 import { useTransactionStore } from './transactions.store'
+import { useCategoryStore } from './categories.store'
+import { getFundTaxConfig } from './settings.store'
+import { fundTaxRate, taxOnGain } from '@/lib/utils/fund-tax'
 import { isTefasAsset, tefasCode, tefasCodesIn } from '@/lib/tefas'
 import type {
   InvestmentTransaction, InvestmentHolding,
@@ -148,6 +151,14 @@ async function cleanLinkedTxs(investTx: InvestmentTransaction): Promise<void> {
   for (const t of toDelete) await txStore.remove(t.id, { undoable: false })
 }
 
+// Stopaj gider satırının kategorisi — sistem "Vergi" gider kategorisi.
+// Bulunamazsa (kategoriler henüz yüklenmediyse ya da kullanıcı arşivlediyse)
+// satır kategorisiz yazılır; kesintinin kaydedilmesi kategoriye bağlı DEĞİL.
+function taxCategoryId(): string | undefined {
+  return useCategoryStore.getState().categories
+    .find(c => c.isSystem && c.scope === 'expense' && c.name === 'Vergi' && !c.isArchived)?.id
+}
+
 async function createSellLinkedTxs(
   targetAccountId: string,
   asset: InvestmentAsset,
@@ -156,7 +167,7 @@ async function createSellLinkedTxs(
   costBasis: number,
   date: string,
   createdAt?: string,
-): Promise<{ saleId: string; pnlId?: string }> {
+): Promise<{ saleId: string; pnlId?: string; taxId?: string }> {
   const now        = createdAt ?? new Date().toISOString()
   const txStore    = useTransactionStore.getState()
   const label = assetLabel(asset)
@@ -202,7 +213,33 @@ async function createSellLinkedTxs(
     pnlId = pnlLinked.id
   }
 
-  return { saleId: saleLinked.id, pnlId }
+  // Stopaj — yalnız TEFAS fonunda, yalnız KÂRLI satışta ve ayar açıkken.
+  // Kesinti gerçek bir nakit çıkışıdır: satışın yattığı hesaptan gider yazılır.
+  // Oran 0 ya da ayar kapalıysa hiçbir satır üretilmez (mevcut davranış aynen
+  // korunur). Kuruş altı kalan tutarlar için satır açılmaz.
+  let taxId: string | undefined
+  const rate = fundTaxRate(asset, getFundTaxConfig())
+  const tax  = hasCost ? taxOnGain(pnl, rate) : 0
+  if (tax >= 0.01) {
+    const taxLinked: Transaction = {
+      id:            crypto.randomUUID(),
+      type:          'expense',
+      amount:        tax,
+      currency:      'TRY',
+      date,
+      accountId:     targetAccountId,
+      categoryId:    taxCategoryId(),
+      icon:          assetIcon(asset),
+      description:   `${label} Satış Stopajı`,
+      isInstallment: false,
+      createdAt:     now,
+      updatedAt:     now,
+    }
+    await txStore.add(taxLinked)
+    taxId = taxLinked.id
+  }
+
+  return { saleId: saleLinked.id, pnlId, taxId }
 }
 
 async function cleanSellLinkedTxs(investTx: InvestmentTransaction): Promise<void> {
@@ -328,6 +365,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
   addTransaction: async (tx) => {
     let linkedTransactionId: string | undefined
     let pnlLinkedTransactionId: string | undefined
+    let taxLinkedTransactionId: string | undefined
     const total = tx.quantity * tx.pricePerUnit
 
     if (tx.type === 'buy' && tx.sourceAccountId) {
@@ -343,9 +381,10 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       )
       linkedTransactionId    = linked.saleId
       pnlLinkedTransactionId = linked.pnlId
+      taxLinkedTransactionId = linked.taxId
     }
 
-    const finalTx = { ...tx, linkedTransactionId, pnlLinkedTransactionId }
+    const finalTx = { ...tx, linkedTransactionId, pnlLinkedTransactionId, taxLinkedTransactionId }
     await localUpsert('investment_transactions', finalTx)
     set(s => ({ transactions: [finalTx, ...s.transactions] }))
 
@@ -366,6 +405,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     const newTotal = newTx.quantity * newTx.pricePerUnit
     let linkedTransactionId: string | undefined
     let pnlLinkedTransactionId: string | undefined
+    let taxLinkedTransactionId: string | undefined
 
     if (newTx.type === 'buy' && newTx.sourceAccountId) {
       linkedTransactionId = await createLinkedTx(
@@ -381,11 +421,12 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       )
       linkedTransactionId    = linked.saleId
       pnlLinkedTransactionId = linked.pnlId
+      taxLinkedTransactionId = linked.taxId
     }
 
     // undefined bacaklar localPatch'te null'a çevrilip alanı temizler (buy'a
-    // dönüşen satışın eski P&L bağı kalıntı bırakmasın)
-    const finalPatch = { ...patch, linkedTransactionId, pnlLinkedTransactionId }
+    // dönüşen satışın eski P&L / stopaj bağı kalıntı bırakmasın)
+    const finalPatch = { ...patch, linkedTransactionId, pnlLinkedTransactionId, taxLinkedTransactionId }
     await localPatch('investment_transactions', id, finalPatch as Record<string, unknown>)
     set(s => ({
       transactions: s.transactions.map(t => t.id === id ? { ...t, ...finalPatch } : t),

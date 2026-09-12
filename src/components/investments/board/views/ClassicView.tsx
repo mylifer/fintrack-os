@@ -35,7 +35,7 @@ interface ChartGroup {
 }
 
 export function ClassicView({
-  rows, transactions, prices, fundPrices, sort, totalValue, totalCost, onBuy, onSell,
+  rows, transactions, prices, fundPrices, sort, totalValue, totalCost, totalTax, onBuy, onSell,
 }: {
   rows:         AssetRow[]
   transactions: InvestmentTransaction[]
@@ -45,6 +45,9 @@ export function ClassicView({
   sort:         SortId
   totalValue:   number
   totalCost:    number
+  /** TEFAS fonlarının gerçekleşmemiş kârı üzerindeki stopaj karşılığı; ayar
+   *  kapalıyken 0 ve satır hiç görünmez (kartlar her hâlükârda BRÜT kalır). */
+  totalTax:     number
   onBuy:        () => void
   onSell:       () => void
 }) {
@@ -172,6 +175,19 @@ export function ClassicView({
             value={(totalPnlPct >= 0 ? '+' : '') + totalPnlPct.toFixed(2) + '%'}
             color={totalPnlPct > 0 ? 'ok' : totalPnlPct < 0 ? 'danger' : 'neutral'}
           />
+        </div>
+      )}
+
+      {/* ── Stopaj sonrası net ────────────────────────────────────────
+          Kartlar brüt kalsın diye ayrı, ince bir satır: bugün satılsa
+          cebe girecek tutar. */}
+      {totalTax > 0 && (
+        <div className="-mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 px-1 text-xs text-muted-foreground tabular-nums">
+          <span>Stopaj karşılığı</span>
+          <span className="font-medium text-destructive">−{formatCurrency(totalTax)}</span>
+          <span aria-hidden>·</span>
+          <span>Net (stopaj sonrası)</span>
+          <span className="font-medium text-foreground">{formatCurrency(totalValue - totalTax)}</span>
         </div>
       )}
 

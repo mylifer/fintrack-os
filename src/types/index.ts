@@ -302,6 +302,7 @@ export interface InvestmentTransaction {
   targetAccountId?: string  // sell: account to credit to (optional)
   linkedTransactionId?: string // id of the linked transaction in transactions table
   pnlLinkedTransactionId?: string // sell: id of the linked "Satış Kârı/Zararı" P&L transaction
+  taxLinkedTransactionId?: string // sell: id of the linked "… Satış Stopajı" tax expense transaction (TEFAS)
   date: string            // ISO 8601 date
   note?: string
   createdAt: string

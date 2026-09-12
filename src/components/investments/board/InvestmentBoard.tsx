@@ -9,6 +9,8 @@ import { useAccountStore, useInvestmentStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { matchesTokens, tokenize } from '@/lib/utils/boardText'
 import { tefasCodesIn } from '@/lib/tefas'
+import { useFundTaxConfig } from '@/store/settings.store'
+import { portfolioTax } from '@/lib/utils/fund-tax'
 import { useInvestmentsView } from '@/components/layout/InvestmentsViewProvider'
 import { INVESTMENTS_VIEWS } from '@/lib/investments-view'
 import { TransactionTable } from './TransactionTable'
@@ -55,6 +57,7 @@ export function InvestmentBoard() {
   const getHoldings       = useInvestmentStore(s => s.getHoldings)
   const removeTransaction = useInvestmentStore(s => s.removeTransaction)
   const accounts          = useAccountStore(useShallow(s => s.accounts))
+  const fundTax           = useFundTaxConfig()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalType, setModalType] = useState<'buy' | 'sell'>('buy')
@@ -104,6 +107,13 @@ export function InvestmentBoard() {
   const totalCost  = allRows.reduce((s, r) => s + r.totalCost, 0)
   const totalPnl   = totalValue - totalCost
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0
+
+  // Stopaj karşılığı — TEFAS fonlarının GERÇEKLEŞMEMİŞ kârı üzerinden, fon
+  // bazında (bkz. lib/utils/fund-tax). Ayar kapalıyken 0'dır ve hiçbir satır
+  // görünmez; toplam değer/maliyet/K-Z brüt kalmaya DEVAM eder — net yalnızca
+  // ek bir okuma olarak gösterilir, mevcut sayıların anlamı değişmez.
+  const totalTax = useMemo(() => portfolioTax(allRows, fundTax), [allRows, fundTax])
+  const netAfterTax = totalValue - totalTax
 
   // Günlük değişim: yalnızca önceki kapanışı BİLİNEN varlıklardan toplanır;
   // bilinmeyenler 0 sayılmaz, tutar eksik kalmasın diye ayrıca sayılır.
@@ -161,6 +171,13 @@ export function InvestmentBoard() {
               value={fmtPct(totalPnlPct)}
               className={pnlColor(totalPnl)}
             />
+            {totalTax > 0 && (
+              <SumItem
+                label="Net (Stopaj Sonrası)"
+                value={formatCurrency(netAfterTax)}
+                note={`Stopaj karşılığı ${formatCurrency(totalTax)}`}
+              />
+            )}
             <SumItem
               label="Bugün"
               value={dayPct === null ? '—' : `${(dayValue >= 0 ? '+' : '−')}${formatCurrency(Math.abs(dayValue))} · ${fmtPct(dayPct)}`}
@@ -244,7 +261,7 @@ export function InvestmentBoard() {
           <ClassicView
             rows={rows} transactions={transactions}
             prices={prices} fundPrices={fundPrices} sort={sort}
-            totalValue={totalValue} totalCost={totalCost}
+            totalValue={totalValue} totalCost={totalCost} totalTax={totalTax}
             onBuy={openBuy} onSell={openSell}
           />
         ) : view === 'console' ? (

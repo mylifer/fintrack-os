@@ -121,6 +121,8 @@ describe('yatırım anaparası akıştan hariç, gerçekleşen K/Z dahil', () =>
     // anapara hareketi P&L değil
     expect(isRealizedInvestmentPnlTx(tx({ icon: 'F', description: '10 AKB Satışı' }))).toBe(false)
     expect(isRealizedInvestmentPnlTx(tx({ icon: 'F', description: '10 AKB Alımı' }))).toBe(false)
+    // stopaj kârın ekidir — aynı kovada (fon-sız akışta kâr çıkıp vergisi kalmasın)
+    expect(isRealizedInvestmentPnlTx(tx({ icon: 'F', description: 'AKB Satış Stopajı' }))).toBe(true)
     // icon yoksa eşleşmez (kullanıcının elle yazdığı benzer açıklama)
     expect(isRealizedInvestmentPnlTx(tx({ description: 'Dükkan Satış Kârı' }))).toBe(false)
   })

@@ -9,6 +9,7 @@ import { TransactionImportModal } from '@/components/settings/TransactionImportM
 import { WorkspaceManager } from '@/components/settings/WorkspaceManager'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
 import { InvestmentsViewSettings } from '@/components/settings/InvestmentsViewSettings'
+import { FundTaxSettings } from '@/components/settings/FundTaxSettings'
 import { loadDemoData, clearAllData } from '@/lib/seed'
 import { scanDemoData, removeDemoData, type DemoScan } from '@/lib/demo-cleanup'
 import { SelectField } from '@/components/ui/Select'
@@ -163,6 +164,9 @@ export default function SettingsPage() {
 
         {/* Görünüm — Yatırımlar sayfası düzeni */}
         <InvestmentsViewSettings />
+
+        {/* ── TEFAS fon stopajı ───────────────────────────────── */}
+        <FundTaxSettings />
 
         {/* Çalışma Alanları */}
         <WorkspaceManager />

@@ -7,6 +7,8 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
 import { SelectField } from '@/components/ui/Select'
 import { isTefasAsset, tefasCode, tefasAsset, TEFAS_CODE_RE } from '@/lib/tefas'
+import { useFundTaxConfig } from '@/store/settings.store'
+import { fundTaxRate, taxOnGain, fmtRate } from '@/lib/utils/fund-tax'
 import type { InvestmentAsset, InvestmentTransaction, TefasFundPrice } from '@/types'
 
 // Varlık seçiminde 'TEFAS_NEW' sentinel'i: kod girilerek yeni fon eklenir
@@ -57,6 +59,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   const fundPrices        = useInvestmentStore(s => s.fundPrices)
   const getHoldings       = useInvestmentStore(s => s.getHoldings)
   const accounts = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
+  const fundTax  = useFundTaxConfig()
 
   const isEdit = !!editingTx
 
@@ -321,6 +324,16 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     ? heldQty + (isEdit && txType === editingTx?.type ? editOffset : 0)
     : Infinity
   const sellExceeded = txType === 'sell' && qtyNum > maxSell
+
+  /* Satış önizlemesi — kaydedilecek defter satırlarının aynısı hesaplanır
+     (investment.store/createSellLinkedTxs ile AYNI formül): ortalama maliyet
+     üzerinden gerçekleşen kâr, sonra kâr üzerinden stopaj. Ayar kapalıysa ya
+     da fon TEFAS değilse oran 0 → blok hiç görünmez. */
+  const sellRate     = txType === 'sell' && resolvedAsset ? fundTaxRate(resolvedAsset, fundTax) : 0
+  const sellCost     = qtyNum * (currentHolding?.avgCostPerUnit ?? 0)
+  const sellGain     = sellCost > 0.001 ? total - sellCost : 0
+  const sellTax      = taxOnGain(sellGain, sellRate)
+  const showSellTax  = !sellExceeded && sellRate > 0 && total > 0 && sellCost > 0.001
 
   const canSave = qtyNum > 0 && priceNum > 0 && !!date && !sellExceeded && !saving && resolvedAsset !== null
 
@@ -627,6 +640,36 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               />
             </div>
           </div>
+
+          {/* Stopaj önizlemesi — yalnız TEFAS satışında ve ayar açıkken.
+              Kaydet'e basılınca burada yazan tutar ayrı bir gider satırı olur. */}
+          {showSellTax && (
+            <div className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-xs flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Gerçekleşen kâr</span>
+                <span className={`tabular-nums font-medium ${sellGain >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  {(sellGain >= 0 ? '+' : '−') + formatCurrency(Math.abs(sellGain))}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Stopaj ({fmtRate(sellRate)})</span>
+                <span className="tabular-nums font-medium text-destructive">
+                  {sellTax > 0 ? '−' + formatCurrency(sellTax) : formatCurrency(0)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-t border-border pt-1 mt-0.5">
+                <span className="text-foreground font-medium">Hesaba net kalan</span>
+                <span className="tabular-nums font-semibold text-foreground">
+                  {formatCurrency(total - sellTax)}
+                </span>
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
+                {sellTax > 0
+                  ? 'Kesinti ayrı bir "Satış Stopajı" gideri olarak Vergi kategorisine yazılır.'
+                  : 'Kâr olmadığı için kesinti yazılmaz.'}
+              </div>
+            </div>
+          )}
 
         </div>
 
