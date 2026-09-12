@@ -538,33 +538,6 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
             )}
           </div>
 
-          {/* Toplam — pay ile birlikte girilirse birim fiyatı belirler */}
-          <div>
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">
-              {txType === 'buy' ? 'Toplam Maliyet (₺)' : 'Toplam Tutar (₺)'}
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₺</span>
-              <input
-                type="number"
-                value={totalAnchored ? totalDraft : total > 0 ? String(Number(total.toFixed(2))) : ''}
-                onChange={e => applyTotal(e.target.value)}
-                placeholder="0.00"
-                min={0}
-                step="any"
-                disabled={fetchingPrice}
-                className="w-full text-sm border border-border rounded-xl pl-7 pr-3 h-10 bg-background text-foreground font-semibold tabular-nums focus:outline-none focus:border-accent disabled:opacity-60"
-              />
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {totalAnchored && qtyNum > 0
-                ? `Birim fiyat toplamdan hesaplandı: ${priceNum.toLocaleString('tr-TR', { maximumFractionDigits: 6 })} ₺/${assetMeta.unit}`
-                : totalAnchored
-                  ? `${assetMeta.unit} miktarını girin — birim fiyat otomatik hesaplanacak.`
-                  : 'Toplamı yazarsan birim fiyat paya göre otomatik hesaplanır.'}
-            </div>
-          </div>
-
           {/* Source account (buy only) */}
           {txType === 'buy' && (
             <div>
@@ -632,6 +605,27 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               placeholder="Açıklama ekle..."
               className="w-full text-sm border border-border rounded-xl px-3 h-10 bg-background text-foreground focus:outline-none focus:border-accent"
             />
+          </div>
+
+          {/* Total — eski özet satırının görünümü, değeri yazılabilir:
+              toplam girilip pay da doluysa birim fiyat buradan türetilir */}
+          <div className="flex items-center justify-between py-3 px-4 rounded-xl bg-background border border-border text-sm focus-within:border-accent transition-colors">
+            <span className="text-muted-foreground font-medium">Toplam</span>
+            <div className="flex items-center gap-0.5 font-semibold text-foreground text-base">
+              <span>₺</span>
+              <input
+                type="number"
+                value={totalAnchored ? totalDraft : total > 0 ? String(Number(total.toFixed(2))) : ''}
+                onChange={e => applyTotal(e.target.value)}
+                placeholder="0,00"
+                min={0}
+                step="any"
+                disabled={fetchingPrice}
+                aria-label="Toplam"
+                // Çerçevesiz hücrede artır/azalt okları sayıyı hover'da kaydırıyor — gizle
+                className="w-32 bg-transparent border-0 p-0 text-right text-base font-semibold tabular-nums text-foreground placeholder:text-muted-foreground/60 focus:outline-none disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+            </div>
           </div>
 
         </div>
