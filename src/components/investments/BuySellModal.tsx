@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useInvestmentStore, useAccountStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -31,6 +31,18 @@ const GOLD_GRAMS: Partial<Record<InvestmentAsset, number>> = {
   GOLD_BRACELET: 0.916,
 }
 
+// Toplam maliyetten birim fiyat türetme. Taban 6 ondalık (TEFAS pay fiyatı
+// kotasyonu); pay sayısı çok büyükse 6 ondalık toplamı kuruşun ötesinde
+// kaydırabildiği için gerektiği kadar ondalık eklenir. Number() kuyruktaki
+// sıfırları ve float gürültüsünü atar.
+function derivePrice(total: number, quantity: number): string {
+  for (let d = 6; d < 12; d++) {
+    const rounded = Number((total / quantity).toFixed(d))
+    if (Math.abs(rounded * quantity - total) < 0.005) return String(rounded)
+  }
+  return String(Number((total / quantity).toFixed(12)))
+}
+
 interface Props {
   open: boolean
   defaultType?: 'buy' | 'sell'
@@ -56,6 +68,9 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   >({ status: 'idle' })
   const [qty,            setQty]            = useState('')
   const [price,          setPrice]          = useState('')
+  // Kullanıcının ELLE girdiği toplam maliyet. Boşken toplam pay × birim
+  // fiyattan hesaplanır; doluyken birim fiyat bu toplamdan türetilir.
+  const [totalDraft,     setTotalDraft]     = useState('')
   const [accountId,      setAccountId]      = useState('')   // buy: source account
   const [targetAccId,    setTargetAccId]    = useState('')   // sell: target account
   const [date,           setDate]           = useState(today())
@@ -63,6 +78,23 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   const [saving,         setSaving]         = useState(false)
   const [fetchingPrice,  setFetchingPrice]  = useState(false)
   const [priceFetchFailed, setPriceFetchFailed] = useState(false)
+  // Kullanıcının birim fiyatı ELLE girdiği (varlık|tarih) kombinasyonu.
+  // Otomatik doldurma bu anahtar güncelken alana DOKUNMAZ.
+  //
+  // Neden gerekli: yatırımlar ve dashboard sayfaları fiyatları 60 sn'de bir
+  // tazeliyor (investments/page.tsx:88) ve modal o sayfadan açıldığı için
+  // interval çalışmaya devam ediyor. `prices` doldurma efektinin bağımlılığı
+  // olduğundan, kullanıcı gerçek alım fiyatını yazıp diğer alanları doldururken
+  // efekt yeniden koşuyor ve fiyatı sessizce canlı fiyata geri çeviriyordu —
+  // sonuçta YANLIŞ birim fiyatla kayıt oluşuyordu.
+  //
+  // Neden state değil ref: anahtarı state ile tutup ayrı bir efektle sıfırlamak,
+  // tarih değiştiğinde sıfırlama efektinin doldurma efektinden ÖNCE çalışmasına
+  // ama doldurma efektinin hâlâ ESKİ değeri okumasına yol açardı; deps o render'da
+  // değişmediği için doldurma bir daha koşmaz ve alan hiç dolmazdı. Ref anında
+  // güncellenir, bu sıralama sorununu tamamen ortadan kaldırır.
+  const touchedPriceKey = useRef<string | null>(null)
+  const priceKey = `${asset}|${date}`
 
   // Populate form when modal opens
   useEffect(() => {
@@ -93,6 +125,8 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     // Önceki açılışta yarıda kesilen geçmiş-fiyat isteğinin göstergesi taşınmasın
     setFetchingPrice(false)
     setPriceFetchFailed(false)
+    setTotalDraft('')
+    touchedPriceKey.current = null
   }, [open, editingTx, defaultType])
 
   // TEFAS fon kodu doğrulama — kod şekli oturunca debounce'la fiyat servisine sor
@@ -144,13 +178,23 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
   function fillLivePrice() {
     const p = liveUnitPrice(asset)
-    if (p > 0) setPrice(isTefas ? p.toFixed(6) : p.toFixed(2))
+    if (p > 0) {
+      setPrice(isTefas ? p.toFixed(6) : p.toFixed(2))
+      setTotalDraft('')
+    }
   }
 
   // Auto-fill price when date or asset changes (new transactions only)
   useEffect(() => {
     if (!open || editingTx) return
     if (!date) return
+    // Kullanıcı bu varlık+tarih için fiyatı elle girdiyse üzerine yazma.
+    // (Varlık ya da tarih değişince anahtar tutmaz ve doldurma yine çalışır.)
+    if (touchedPriceKey.current === priceKey) return
+    // Toplam maliyet elle girildiyse birim fiyat ondan türetilir; tarih
+    // değişse bile canlı/geçmiş fiyat bu türetilmiş fiyatı ezmemeli
+    // (ezerse toplam ile pay × birim fiyat birbirini tutmaz).
+    if (totalDraft.trim() !== '') return
 
     const todayStr = today()
 
@@ -199,11 +243,44 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
       .finally(() => { if (!ctrl.signal.aborted) setFetchingPrice(false) })
 
     return () => ctrl.abort()
-  }, [open, date, asset, editingTx, prices, fundLookup])
+  }, [open, date, asset, editingTx, prices, fundLookup, priceKey, totalDraft])
 
   const qtyNum    = parseFloat(qty)   || 0
   const priceNum  = parseFloat(price) || 0
   const total     = qtyNum * priceNum
+  const totalAnchored = totalDraft.trim() !== ''
+
+  // Toplam ↔ pay ↔ birim fiyat üçlüsü: iki alan biliniyorsa üçüncüsü yazılır.
+  // Toplam ile pay girilmişse birim fiyat hesaplanır (TEFAS'ta gerçek akış:
+  // "₺5.000 ödedim, 123,456 pay aldım" → pay fiyatı).
+  function applyQty(value: string) {
+    setQty(value)
+    const q = parseFloat(value) || 0
+    const t = parseFloat(totalDraft) || 0
+    if (t > 0 && q > 0) {
+      setPrice(derivePrice(t, q))
+      setPriceFetchFailed(false)
+      touchedPriceKey.current = priceKey
+    }
+  }
+
+  function applyTotal(value: string) {
+    setTotalDraft(value)
+    const t = parseFloat(value) || 0
+    if (t > 0 && qtyNum > 0) {
+      setPrice(derivePrice(t, qtyNum))
+      setPriceFetchFailed(false)
+      touchedPriceKey.current = priceKey
+    }
+  }
+
+  // Birim fiyat elle yazılınca toplam yeniden türetilen alan olur
+  function applyPrice(value: string) {
+    setPrice(value)
+    setPriceFetchFailed(false)
+    setTotalDraft('')
+    touchedPriceKey.current = priceKey
+  }
 
   // Asset choices — statik varlıklar + portföydeki TEFAS fonları (+ alımda yeni fon)
   const holdings = getHoldings()
@@ -339,6 +416,8 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 const next = e.target.value as AssetChoice
                 setAsset(next)
                 setPrice('')
+                setTotalDraft('')
+                touchedPriceKey.current = null
                 if (next !== 'TEFAS_NEW') { setFundCode(''); setFundLookup({ status: 'idle' }) }
               }}
               options={visibleAssets.map(a => ({ value: a.asset, label: `${a.emoji} ${a.label}` }))}
@@ -400,7 +479,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               <input
                 type="number"
                 value={qty}
-                onChange={e => setQty(e.target.value)}
+                onChange={e => applyQty(e.target.value)}
                 placeholder="0"
                 min={0}
                 step="any"
@@ -444,7 +523,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               <input
                 type="number"
                 value={price}
-                onChange={e => { setPrice(e.target.value); setPriceFetchFailed(false) }}
+                onChange={e => applyPrice(e.target.value)}
                 placeholder="0.00"
                 min={0}
                 step="any"
@@ -457,6 +536,33 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
                 Seçilen tarihin fiyatı alınamadı — fiyatı elle girebilirsiniz.
               </div>
             )}
+          </div>
+
+          {/* Toplam — pay ile birlikte girilirse birim fiyatı belirler */}
+          <div>
+            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1.5">
+              {txType === 'buy' ? 'Toplam Maliyet (₺)' : 'Toplam Tutar (₺)'}
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₺</span>
+              <input
+                type="number"
+                value={totalAnchored ? totalDraft : total > 0 ? String(Number(total.toFixed(2))) : ''}
+                onChange={e => applyTotal(e.target.value)}
+                placeholder="0.00"
+                min={0}
+                step="any"
+                disabled={fetchingPrice}
+                className="w-full text-sm border border-border rounded-xl pl-7 pr-3 h-10 bg-background text-foreground font-semibold tabular-nums focus:outline-none focus:border-accent disabled:opacity-60"
+              />
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {totalAnchored && qtyNum > 0
+                ? `Birim fiyat toplamdan hesaplandı: ${priceNum.toLocaleString('tr-TR', { maximumFractionDigits: 6 })} ₺/${assetMeta.unit}`
+                : totalAnchored
+                  ? `${assetMeta.unit} miktarını girin — birim fiyat otomatik hesaplanacak.`
+                  : 'Toplamı yazarsan birim fiyat paya göre otomatik hesaplanır.'}
+            </div>
           </div>
 
           {/* Source account (buy only) */}
@@ -528,13 +634,6 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
             />
           </div>
 
-          {/* Total */}
-          {total > 0 && (
-            <div className="flex items-center justify-between py-3 px-4 rounded-xl bg-background border border-border text-sm">
-              <span className="text-muted-foreground font-medium">Toplam</span>
-              <span className="font-semibold text-foreground text-base tabular-nums">{formatCurrency(total)}</span>
-            </div>
-          )}
         </div>
 
         {/* Footer */}
