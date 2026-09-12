@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { Account } from '@/types'
-import { isInRange, getStatementPeriod, daysUntil, isDueSoon, isOverdue } from './date'
+import { isInRange, getStatementPeriod, daysUntil, isDueSoon, isOverdue, formatDate, formatDateShort } from './date'
+
+describe('formatDate — geçersiz tarih sayfayı çökertmez', () => {
+  it('takvimde olmayan günü ham metin olarak döndürür', () => {
+    expect(formatDate('2026-04-31')).toBe('2026-04-31')
+    expect(formatDateShort('2026-02-30')).toBe('2026-02-30')
+  })
+  it('geçerli tarihi biçimlendirmeye devam eder', () => {
+    expect(formatDateShort('2026-03-05')).toBe('5 Mar')
+    expect(formatDate('2026-03-05')).toBe('5 Mar 2026')
+  })
+})
 
 describe('isInRange', () => {
   it('matches a date inside the range', () => {

@@ -173,8 +173,18 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
 
           <Select label="Tür" value={type} onChange={e => setType(e.target.value as AccountType)} options={TYPE_OPTIONS} />
 
+          {/* İşlemi olan hesabın para birimi değiştirilemez: bakiye ve gelir/gider
+              tutarları hesabın kendi biriminde toplanır (computeTransactionEffect);
+              mevcut işlemler dönüştürülmeden birim değişince 1.000 $ sessizce
+              1.000 ₺ oluyordu. */}
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Para Birimi" value={currency} onChange={e => setCurrency(e.target.value as CurrencyCode)} options={CURRENCY_OPTIONS} />
+            <Select
+              label="Para Birimi"
+              value={currency}
+              onChange={e => setCurrency(e.target.value as CurrencyCode)}
+              options={CURRENCY_OPTIONS}
+              disabled={txCount > 0}
+            />
             <CurrencyInput
               label={isCreditCard ? 'Açılış Borcu' : 'Açılış Bakiyesi'}
               value={initialBalStr}
@@ -182,6 +192,11 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
               currency={currency}
             />
           </div>
+          {txCount > 0 && (
+            <p className="-mt-2 text-xs text-muted-foreground">
+              Bu hesabın işlemleri olduğu için para birimi değiştirilemez.
+            </p>
+          )}
 
           {account && (
             <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/50 border border-border/60">

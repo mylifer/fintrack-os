@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Transaction } from '@/types'
 import { setBaseRates } from '@/lib/utils/fx'
+import { rescaleSplits } from '@/lib/utils/categorySplits'
 
 /* ────────────────────────────────────────────────────────────────────────
    transactions.store — amountTry snapshot bütünlüğü (S2/S3)
@@ -55,6 +56,45 @@ async function withNoRates(fn: () => Promise<void>) {
   vi.resetModules()
   await fn()
 }
+
+/* ── Bölünmüş işlem: kategori filtresi ve iade payları ──────────────────────
+   getFiltered yalnız categoryId'ye (baskın pay) bakıyordu: ikincil payın
+   kategorisinde işlem listelenmiyordu. RefundModal da iadeyi yalnız ana
+   kategoriye yazıyordu; artık payları rescaleSplits ile NEGATİF ölçekler —
+   aşağıdaki test store değişmezinin (withSplits) negatif payları koruduğunu
+   kilitler. */
+describe('bölünmüş işlem — kategori filtresi ve iade payları', () => {
+  const split: Transaction = {
+    id: 'sp', type: 'expense', amount: 1000, currency: 'TRY', date: '2026-01-10',
+    accountId: 'a', description: 'Migros', isInstallment: false, createdAt: '', updatedAt: '',
+    categoryId: 'market',
+    categorySplits: [{ categoryId: 'market', amount: 600 }, { categoryId: 'ev', amount: 400 }],
+  }
+
+  beforeEach(() => { upserts.length = 0 })
+
+  it('ikincil payın kategorisiyle filtrelenince listelenir', () => {
+    const out = useTransactionStore.getState().getFiltered({ categoryIds: ['ev'] }, [split])
+    expect(out.map(t => t.id)).toEqual(['sp'])
+  })
+
+  it('hiçbir payı eşleşmeyen kategoride listelenmez', () => {
+    expect(useTransactionStore.getState().getFiltered({ categoryIds: ['yakit'] }, [split])).toEqual([])
+  })
+
+  it('orantılı negatif paylı iade store değişmezinden geçer', async () => {
+    await useTransactionStore.getState().add({
+      ...split, id: 'iade', amount: -250, refundOfId: 'sp',
+      categorySplits: rescaleSplits(split.categorySplits!, -250),
+    })
+    const saved = upserts.at(-1)!
+    expect(saved.categorySplits).toEqual([
+      { categoryId: 'market', amount: -150 },
+      { categoryId: 'ev',     amount: -100 },
+    ])
+    expect(saved.categoryId).toBe('market')
+  })
+})
 
 describe('update() — amountTry snapshot', () => {
   beforeEach(() => {

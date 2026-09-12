@@ -10,7 +10,7 @@ import {
   useAccountStore, useInvestmentStore, useRecurringStore,
   useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore, usePaymentsStore,
 } from '@/store'
-import { buildSchedule, buildTargets, monthOf } from '@/lib/payments/schedule'
+import { assignCardPayments, buildSchedule, buildTargets, monthOf } from '@/lib/payments/schedule'
 import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
@@ -23,6 +23,7 @@ export function useSidebarData() {
   const pathname = usePathname()
 
   const accounts    = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
+  const allAccounts = useAccountStore(s => s.accounts)
   const prices      = useInvestmentStore(s => s.prices)
   const fundPrices  = useInvestmentStore(s => s.fundPrices)
   const investTxs   = useInvestmentStore(s => s.transactions)
@@ -46,10 +47,16 @@ export function useSidebarData() {
     const targets = buildTargets({ accounts, debts, plans: paymentPlans })
     if (targets.length === 0) return 0
     const from = targets.reduce((m, t) => (t.startMonth < m ? t.startMonth : m), current)
-    return buildSchedule({ targets, occurrences: paymentOccurrences, transactions, from, to: current, todayStr })
+    // cardPayments TÜM hesaplardan (arşivli kartlar dahil) — bildirim merkezi ve
+    // sayfayla aynı eşleme. Verilmezse "tek aktif kart" kuralı arşivli kartın
+    // adını taşıyan ödemeyi aktif karta yazıp rozeti sayfadan ayırabiliyordu.
+    return buildSchedule({
+      targets, occurrences: paymentOccurrences, transactions, from, to: current, todayStr,
+      cardPayments: assignCardPayments(allAccounts, transactions),
+    })
       .filter(r => r.timing === 'overdue' || r.timing === 'today')
       .length
-  }, [accounts, debts, paymentPlans, paymentOccurrences, transactions])
+  }, [accounts, allAccounts, debts, paymentPlans, paymentOccurrences, transactions])
 
   // "Net Varlık" şeridi borçtan arındırılmıştır — dashboard kartıyla aynı değer.
   const debtBurden      = calcDebtBurden(debts)

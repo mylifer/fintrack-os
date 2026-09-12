@@ -60,11 +60,26 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
   },
 
   remove: async (id) => {
-    // 1. Bağlı tüm işlemleri tam olarak çek (debtId kontrolü için obje gerekiyor)
-    const linkedTxs = await db.transactions
+    // 1. Bağlı tüm CANLI işlemleri tam olarak çek (debtId kontrolü için obje gerekiyor).
+    //    isLive şart: Dexie tombstone'lu satırları tutmaya devam eder ve zaten
+    //    silinmiş bir borç ödemesi 2. adımda İKİNCİ kez revertPayment'tan geçerdi
+    //    (silme anında bir kez geri alınmıştı). revertPayment `Math.max(0, …)` ile
+    //    kırptığı için basit vakada fark görünmez; borcun BAŞKA bir hesaptan
+    //    yapılmış canlı ödemesi varsa paidAmount gerçek değerinin altına düşer ve
+    //    kalan borç kalıcı olarak şişer (paidAmount kalıcı bir sütundur, buluta
+    //    senkronlanır). Bkz. accounts.store.test.ts — "tombstone'lu borç ödemesi".
+    const linkedTxs = (await db.transactions
       .filter(t => t.accountId === id || t.toAccountId === id)
-      .toArray() as Transaction[]
-    const linkedTxIds = linkedTxs.map(t => t.id)
+      .toArray() as Transaction[]).filter(isLive)
+    // Çalışma alanları arası transferin KARŞI bacağı başka alandaki bir hesaba
+    // yazılıdır; tekil silme (transactions.store remove) onu da tombstone'lar.
+    // Hesap silmede atlanınca diğer alanda karşılığı olmayan bir satır kalıyordu.
+    const linkedIds   = new Set(linkedTxs.map(t => t.id))
+    const transferIds = new Set(linkedTxs.flatMap(t => (t.workspaceTransferId ? [t.workspaceTransferId] : [])))
+    const peerTxs = transferIds.size === 0 ? [] : (await db.transactions
+      .filter(t => !!t.workspaceTransferId && transferIds.has(t.workspaceTransferId) && !linkedIds.has(t.id))
+      .toArray() as Transaction[]).filter(isLive)
+    const linkedTxIds = [...linkedTxs, ...peerTxs].map(t => t.id)
 
     // 2. Borç bağlantılı işlemlerin ödemelerini geri al (TL bazında, taksit
     //    sayısı da düşürülerek — M3/M4)

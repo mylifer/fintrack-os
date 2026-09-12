@@ -44,13 +44,15 @@ export default function SubscriptionDetailClient({ groupKey }: Props) {
   const router       = useRouter()
   const transactions = useTransactionStore(s => s.transactions)
   const txsReady     = useTransactionStore(s => s.ready)
-  // Subscribe to prices so TRY figures recompute once live FX rates load
-  // (toBaseTry reads module-level rates published by the investment store).
-  useInvestmentStore(s => s.prices)
+  // Kurlar gelince ₺ toplamlar yeniden hesaplansın: toBaseTry modül düzeyindeki
+  // kurları okur, bu yüzden prices memo BAĞIMLILIĞI olmalı — yalnız abone olmak
+  // render tetikler ama memo eski kurla hesaplanmış grubu döndürürdü.
+  const prices = useInvestmentStore(s => s.prices)
 
   const group = useMemo(
     () => findSubscriptionGroup(transactions, groupKey),
-    [transactions, groupKey],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [transactions, groupKey, prices],
   )
 
   // Toplu düzenleme seçimi (koşullu return'lardan ÖNCE — hook kuralları)

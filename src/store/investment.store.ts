@@ -294,7 +294,6 @@ interface InvestmentState {
   addTransaction:          (tx: InvestmentTransaction) => Promise<void>
   updateTransaction:       (id: string, patch: Partial<InvestmentTransaction>) => Promise<void>
   removeTransaction:       (id: string) => Promise<void>
-  reprocessSellLinkedTxs:  () => Promise<void>
   fetchPrices:             () => Promise<void>
   fetchFundPrices:         (extraCodes?: string[]) => Promise<void>
   getHoldings:             () => InvestmentHolding[]
@@ -406,57 +405,6 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     // txStore.remove above, which is itself now a tombstone.
     await softDelete('investment_transactions', id)
     set(s => ({ transactions: s.transactions.filter(t => t.id !== id) }))
-  },
-
-  reprocessSellLinkedTxs: async () => {
-    const MIGRATION_KEY = 'inv_sell_pnl_v3'
-    if (typeof window !== 'undefined') {
-      if (localStorage.getItem(MIGRATION_KEY)) return
-      localStorage.setItem(MIGRATION_KEY, '1')
-    }
-
-    try {
-      const sorted = [...get().transactions].sort((a, b) => {
-        const d = a.date.localeCompare(b.date)
-        return d !== 0 ? d : a.createdAt.localeCompare(b.createdAt)
-      })
-
-      const portfolio = new Map<InvestmentAsset, { qty: number; totalCost: number }>()
-
-      for (const tx of sorted) {
-        const pos = portfolio.get(tx.asset) ?? { qty: 0, totalCost: 0 }
-
-        if (tx.type === 'buy') {
-          pos.qty       += tx.quantity
-          pos.totalCost += tx.quantity * tx.pricePerUnit
-          portfolio.set(tx.asset, { ...pos })
-        } else {
-          const avgCost   = pos.qty > 0 ? pos.totalCost / pos.qty : 0
-          const costBasis = tx.quantity * avgCost
-
-          if (tx.targetAccountId) {
-            await cleanSellLinkedTxs(tx)
-            const total  = tx.quantity * tx.pricePerUnit
-            const linked = await createSellLinkedTxs(
-              tx.targetAccountId, tx.asset, tx.quantity, total, costBasis, tx.date, tx.createdAt,
-            )
-            await localPatch('investment_transactions', tx.id, {
-              linkedTransactionId:    linked.saleId,
-              pnlLinkedTransactionId: linked.pnlId,
-            })
-          }
-
-          const newQty = Math.max(0, pos.qty - tx.quantity)
-          portfolio.set(tx.asset, { qty: newQty, totalCost: newQty * avgCost })
-        }
-      }
-
-      const txs = (await db.investmentTransactions.orderBy('date').reverse().toArray()).filter(isLive).filter(rowInActiveWorkspace)
-      set({ transactions: txs })
-    } catch (err) {
-      if (typeof window !== 'undefined') localStorage.removeItem(MIGRATION_KEY)
-      throw err
-    }
   },
 
   fetchPrices: async () => {

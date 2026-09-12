@@ -10,6 +10,7 @@ import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useR
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { sumByType, isFlowTx, txTouchesAccount } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
+import { expandByCategory } from '@/lib/utils/categorySplits'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { isFutureDate } from '@/components/transactions/views/shared'
 import { formatCurrency }  from '@/lib/utils/currency'
@@ -148,10 +149,14 @@ export default function TransactionsPage() {
   // gelecek tarihli (isPosted), mutabakat ghost'u ve yatırım anaparası (… Alımı/
   // Satışı) toplama girmez. Bu satırlar listede hâlâ görünür — özet "gerçek akışı"
   // yansıtır, ham liste toplamını değil (aynı ay her sayfada aynı gelir/gideri verir).
-  const { expense: totalExpense, income: totalIncome, transfer: totalTransfer } = useMemo(
-    () => sumByType(reportFiltered.filter(t => isFlowTx(t))),
-    [reportFiltered],
-  )
+  // Kategori filtresi açıkken bölünmüş işlemin YALNIZ o kategoriye düşen payı
+  // sayılır (liste işlemin tamamını gösterir, özet payı) — calcBudgetSpent kuralı.
+  const { expense: totalExpense, income: totalIncome, transfer: totalTransfer } = useMemo(() => {
+    const scoped = categoryFilter
+      ? expandByCategory(reportFiltered).filter(t => t.categoryId === categoryFilter)
+      : reportFiltered
+    return sumByType(scoped.filter(t => isFlowTx(t)))
+  }, [reportFiltered, categoryFilter])
   // Özet çubuğundaki oran çubuğu yalnızca akışı (gelir vs gider) resmeder;
   // transfer akış değil (hesaplar arası taşıma) → çubuğa girmez, sadece sayıda durur.
   const flowTotal = totalIncome + totalExpense

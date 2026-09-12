@@ -13,12 +13,22 @@ const TYPE_LABELS: Record<TransactionType, string> = {
   transfer: 'Transfer',
 }
 
+// Düz bir sayı ("-250.00", "1234.50"): Excel/Sheets bunu formül olarak
+// DEĞERLENDİRMEZ, sıradan bir negatif/pozitif sayıdır.
+const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/
+
 function escapeCsvCell(value: string): string {
   // Formula-injection guard: a cell starting with = + - @ (or tab/CR) is
   // executed as a formula when the CSV is opened in Excel/Sheets. Prefix a
   // single quote to neutralise it.
+  //
+  // İstisna: düz sayılar. İade satırları bilerek NEGATİF tutarlı yazılıyor
+  // (bkz. supabase_schema.sql — transactions_amount_check kaldırıldı), bu
+  // yüzden "-250.00" hücresi "'-250.00" olarak dışa aktarılıyor ve
+  // uygulamanın KENDİ çıktısı geri içe aktarılamıyordu. "-1+1" gibi gerçekten
+  // formül olabilecek girdiler desene uymadığı için hâlâ kaçırılır.
   let v = value
-  if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`
+  if (/^[=+\-@\t\r]/.test(v) && !PLAIN_NUMBER.test(v)) v = `'${v}`
   if (v.includes(',') || v.includes('"') || v.includes('\n')) {
     return `"${v.replace(/"/g, '""')}"`
   }
@@ -204,19 +214,24 @@ const TYPE_MAP: Record<string, TransactionType> = {
   transfer: 'transfer',
 }
 
+// Takvimde gerçekten var olan bir gün mü? `new Date('2026-04-31')` hata vermez,
+// 1 Mayıs'a TAŞAR — eskiden yalnız isNaN'a bakıldığı için "31.04.2026" geçerli
+// sayılıp kaydediliyordu. Tarih sütunu text olduğundan satır buluta da gidiyor,
+// parseISO onu geçersiz sayıyor ve listelerde `format` RangeError ile sayfayı
+// çökertiyordu. Bileşenler Date'ten geri okunup girilenle kıyaslanır.
+function calendarIso(year: number, month: number, day: number): string | null {
+  const d = new Date(Date.UTC(year, month - 1, day))
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
 function parseDate(raw: string): string | null {
   const s = raw.trim()
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const d = new Date(s)
-    return isNaN(d.getTime()) ? null : s
-  }
+  const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (ymd) return calendarIso(Number(ymd[1]), Number(ymd[2]), Number(ymd[3]))
   // DD/MM/YYYY or DD.MM.YYYY
   const dmy = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/)
-  if (dmy) {
-    const iso = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
-    const d = new Date(iso)
-    return isNaN(d.getTime()) ? null : iso
-  }
+  if (dmy) return calendarIso(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]))
   return null
 }
 
@@ -244,7 +259,9 @@ function parseAmount(raw: string): number | null {
   // Ayraçlar temizlendikten sonra kalıntı ayraç/harf varsa sayı geçersizdir
   if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null
   const n = parseFloat(cleaned)
-  if (isNaN(n) || n <= 0) return null
+  // Negatif tutar geçerlidir: uygulama iadeyi NEGATİF gider olarak yazar ve
+  // dışa aktarır. Hangi türde kabul edildiği validateImportRows'ta denetlenir.
+  if (isNaN(n) || n === 0) return null
   return Math.round(n * 100) / 100
 }
 
@@ -304,6 +321,11 @@ export function validateImportRows(
     // İçe aktarma tek hesaba yapılır; hedef hesabı olmayan transfer yalnızca
     // para çıkışı yaratır — kabul etme
     if (type === 'transfer')           errs.push('Transfer satırları içe aktarılamaz (hedef hesap bilgisi CSV\'de yok)')
+    // Negatif gider = iade (RefundModal ile aynı model). Negatif gelirin
+    // uygulamada karşılığı yok — sessizce gideri artırmasın diye reddedilir.
+    if (amount !== null && amount < 0 && type === 'income') {
+      errs.push('Negatif tutar yalnızca gider (iade) satırlarında kabul edilir')
+    }
 
     const categoryId = rawCat.trim() ? catByName.get(rawCat.trim().toLowerCase()) : undefined
     const curRaw     = rawCur.trim().toUpperCase()

@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localBulkUpsert, localPatch, reconcilingPull } from '@/lib/sync/engine'
+import { localUpsert, localBulkUpsert, localPatch, reconcilingPull, lastPullWasAuthoritative } from '@/lib/sync/engine'
 import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import type { Category, CategoryScope, DefaultCategoryDef } from '@/types'
 import { DEFAULT_CATEGORIES } from '@/types'
@@ -65,6 +65,11 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
   },
 
   initDefaults: async () => {
+    // Yetkisiz (başarısız/eksik) bir çekişten sonra yerel boşluk "kategori yok"
+    // demek değildir — varsayılanları eklemek, bulut kategorileri gelince hepsini
+    // ÇİFTLİYORDU. Bir sonraki başarılı yüklemede zaten yeniden çalışır.
+    if (!lastPullWasAuthoritative('categories')) return
+
     // Sadece AKTİF çalışma alanının kategorileri sayılır — aksi halde başka
     // bir çalışma alanında zaten var olan bir isim burada da "var" sayılıp
     // yeni (boş) çalışma alanına hiç varsayılan kategori eklenmezdi.

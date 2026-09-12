@@ -10,7 +10,7 @@ import { roundMoney } from '@/lib/utils/money'
 import { today } from '@/lib/utils/date'
 import { paymentTxIdFor } from './ids'
 import {
-  buildSchedule, dueDateFor, monthOf, paymentDescription, shiftMonth,
+  assignCardPayments, buildSchedule, dueDateFor, monthOf, paymentDescription, shiftMonth,
   type PaymentRow, type PaymentTarget,
 } from './schedule'
 
@@ -160,10 +160,13 @@ async function freezeBefore(target: PaymentTarget, beforeMonth: string, changes:
   if (!changes.amount && !changes.day && !changes.from) return
   if (beforeMonth <= target.startMonth) return
   const { occurrences, saveOccurrences } = usePaymentsStore.getState()
+  const transactions = useTransactionStore.getState().transactions
   const rows = buildSchedule({
     targets: [target],
     occurrences,
-    transactions: useTransactionStore.getState().transactions,
+    transactions,
+    // Tek hedef verildiği için eşleme TÜM hesaplardan yapılmalı (bkz. ScheduleInput).
+    cardPayments: assignCardPayments(useAccountStore.getState().accounts, transactions),
     from: target.startMonth,
     to: shiftMonth(beforeMonth, -1),
     todayStr: today(),

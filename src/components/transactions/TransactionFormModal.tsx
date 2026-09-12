@@ -16,7 +16,7 @@ import {
 import { parseCurrencyInput, getCurrencySymbol, formatCurrency } from '@/lib/utils/currency'
 import { splitMoney, sumMoney } from '@/lib/utils/money'
 import { rebalanceInstallmentsBelow } from '@/lib/utils/installments'
-import { toBaseTry } from '@/lib/utils/fx'
+import { toBaseTry, baseAmount } from '@/lib/utils/fx'
 import { today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -60,17 +60,13 @@ const FREQ_OPTIONS = [
   { value: 'yearly',  label: 'Yıllık'  },
 ]
 
-const DAY_OPTIONS = Array.from({ length: 28 }, (_, i) => ({
-  value: String(i + 1),
-  label: `${i + 1}. gün`,
-}))
-
 // Recurring-only fields, kept beside the shared transaction form state.
+// "Ayın Günü" alanı yok: takvim onu hiç okumadı, gün BAŞLANGIÇ TARİHİNDEN gelir
+// (bkz. lib/utils/recurrence.ts anchorDayOf).
 function newRecurringForm() {
   return {
     name:       '',
     frequency:  'monthly' as RecurringFrequency,
-    dayOfMonth: '1',
     startDate:  today(),
     endDate:    '',
   }
@@ -475,7 +471,6 @@ export function TransactionFormModal() {
     ? {
         name:       editingRec.name,
         frequency:  editingRec.frequency,
-        dayOfMonth: String(editingRec.dayOfMonth ?? 1),
         startDate:  editingRec.startDate,
         endDate:    editingRec.endDate ?? '',
       }
@@ -700,8 +695,9 @@ export function TransactionFormModal() {
         familyMemberId: tab !== 'transfer' ? (form.familyMemberId ?? undefined) : undefined,
         recipientId:    tab !== 'transfer' ? (form.recipientId    ?? undefined) : undefined,
         frequency:   rec.frequency,
+        // Bilgi amaçlı: takvim başlangıç tarihinin gününden yürür (recurrence.ts).
         dayOfMonth:  rec.frequency === 'monthly' || rec.frequency === 'yearly'
-          ? Number(rec.dayOfMonth)
+          ? Number(rec.startDate.slice(8, 10))
           : undefined,
         startDate:   rec.startDate,
         endDate:     rec.endDate || undefined,
@@ -955,7 +951,10 @@ export function TransactionFormModal() {
       const wasDebtPayment = editingTx.type === 'transfer' && !!editDebtId && !editingTx.toAccountId
       const isDebtPaymentNow = tab === 'transfer' && form.isDebtPayment && !!formDebtId
       const { recordPayment, revertPayment, adjustPaidAmount } = useDebtStore.getState()
-      const oldPaidTry = editingTx.amountTry ?? editingTx.amount   // prior payment in TRY
+      // Önceki ödemenin TL değeri — silme yoluyla (transactions.store remove) AYNI
+      // kural. `amountTry ?? amount` snapshot'sız yabancı para ödemesinde ham
+      // tutarı TL sayıyor, düzenleme ile silme paidAmount'u farklı oynatıyordu.
+      const oldPaidTry = baseAmount(editingTx)
 
       if (wasDebtPayment && editDebtId && isDebtPaymentNow && formDebtId) {
         if (editDebtId === formDebtId) {
@@ -1580,14 +1579,9 @@ export function TransactionFormModal() {
                   />
                 </Field>
                 {(rec.frequency === 'monthly' || rec.frequency === 'yearly') && (
-                  <Field label="Ayın Günü">
-                    <AppSelect
-                      value={rec.dayOfMonth}
-                      onChange={v => setRec(r => ({ ...r, dayOfMonth: v }))}
-                      options={DAY_OPTIONS}
-                      onOpenChange={onSelectOpen}
-                    />
-                  </Field>
+                  <p className="self-end pb-2 text-xs text-muted-foreground">
+                    {rec.frequency === 'monthly' ? 'Her ay' : 'Her yıl'} başlangıç tarihinin gününde; kısa aylarda ay sonunda.
+                  </p>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-3">

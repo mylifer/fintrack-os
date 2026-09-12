@@ -527,7 +527,7 @@ export default function DashboardPage() {
                         {account && <p className="text-xs text-muted-foreground truncate">{account.name}</p>}
                       </div>
                       <span className={`text-sm tabular-nums shrink-0 font-medium ${r.type === 'income' ? 'text-green-600' : 'text-destructive'}`}>
-                        {r.type === 'income' ? '+' : '−'}{formatCurrency(r.amount)}
+                        {r.type === 'income' ? '+' : '−'}{formatCurrency(r.amount, r.currency)}
                       </span>
                       <Button variant="outline" size="sm" onClick={() => handleGenerate(r.id)} disabled={!!generatingId} className="shrink-0">
                         {generatingId === r.id ? '…' : 'Kaydet'}

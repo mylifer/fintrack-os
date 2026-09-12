@@ -8,7 +8,7 @@ export async function getUserId(): Promise<string | undefined> {
 
 /* ── Tarayıcı deposu temizliği ──────────────────────────────────────────────
    Paylaşılan cihaz sertleştirmesi: TÜM tarayıcı deposu silinir, böylece hiçbir
-   şey (migration bayrakları — inv_sell_pnl_v3, zustand-persist anahtarları,
+   şey (zustand-persist anahtarları,
    ft_last_uid, fintrack.lastSyncUserId, fintrack.activeWorkspaceId ve özellikle
    `fintrack.brandDomain.v1` — ki anahtarları KULLANICININ İŞLEM AÇIKLAMALARIDIR)
    bir sonraki kullanıcıya sızmaz. Kişisel bir finans uygulamasında çıkıştan

@@ -1,13 +1,19 @@
 'use client'
 
 import { useEffect, type ReactNode } from 'react'
-import { useAccountStore, useTransactionStore, useInvestmentStore } from '@/store'
+import { useAccountStore, useTransactionStore, useInvestmentStore, useUIStore } from '@/store'
 import { useWorkspaceStore } from '@/store/workspace.store'
-import { startAutoSync, guardUserSwitch } from '@/lib/sync/engine'
+import { startAutoSync, guardUserSwitch, lastPullWasAuthoritative, type SyncTable } from '@/lib/sync/engine'
 import { reloadAllStores } from '@/lib/reload-stores'
 import { useNotificationsStore } from '@/store/notifications.store'
-import { today } from '@/lib/utils/date'
+import { currentMonthYear, today } from '@/lib/utils/date'
 import { maybeAutoBackup } from '@/lib/auto-backup'
+
+// Otomatik yedeğin kapsadığı tablolar (auto-backup.ts readSnapshot ile aynı küme).
+const BACKUP_TABLES: SyncTable[] = [
+  'accounts', 'transactions', 'categories', 'budgets', 'debts',
+  'investment_transactions', 'people', 'recurring_transactions',
+]
 
 // Modül seviyesinde tekil koruma: StrictMode'da effect iki kez çalışır ve iki
 // eşzamanlı init, initDefaults'un "mevcutları oku → eksikleri ekle" akışını
@@ -17,7 +23,6 @@ let initPromise: Promise<void> | null = null
 export function DataProvider({ children }: { children: ReactNode }) {
   const loadWorkspaces            = useWorkspaceStore(s => s.load)
   const fetchPrices               = useInvestmentStore(s => s.fetchPrices)
-  const reprocessSellLinkedTxs    = useInvestmentStore(s => s.reprocessSellLinkedTxs)
 
   useEffect(() => {
     async function init() {
@@ -37,9 +42,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         fetchPrices(),
       ])
 
-      reprocessSellLinkedTxs().catch(err => {
-        console.error('[init:reprocessSellLinkedTxs]', err)
-      })
+      // Satış defter satırlarını yeniden yazan tek seferlik göç (inv_sell_pnl_v3)
+      // KALDIRILDI: bayrağı localStorage'daydı ve çıkışta silindiği için her
+      // girişte/yeni cihazda tekrar çalışıp satış gelir + K/Z satırlarını yeni
+      // id'lerle baştan yazıyordu (kullanıcı düzenlemeleri kayboluyordu). Satışlar
+      // bağlarını addTransaction/updateTransaction'da zaten kurar — geri eklemeyin.
 
       // C1: drain any mutations left in the outbox from a previous (possibly
       // offline) session, and keep draining whenever connectivity returns.
@@ -47,7 +54,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       // Günlük otomatik bulut yedeği. Yüklemeler bittikten sonra çalışır ki
       // snapshot taze veriyi içersin; best-effort — hata uygulamayı kırmaz.
-      maybeAutoBackup().catch(err => console.warn('[auto-backup]', err))
+      // Yalnız TÜM yedek tablolarının çekişi eksiksizse: yarıda kalan bir çekişte
+      // Dexie kısmi/boş olabilir (çıkış sonrası) ve kısmi bir "otomatik" yedek hem
+      // en eski sağlam yedeği budar hem de 24 saat boyunca yenisini engellerdi.
+      if (BACKUP_TABLES.every(t => lastPullWasAuthoritative(t))) {
+        maybeAutoBackup().catch(err => console.warn('[auto-backup]', err))
+      }
 
       // Ask the browser to keep our IndexedDB data across eviction pressure.
       // Without this, Safari can wipe local data after ~7 days of no visits.
@@ -63,7 +75,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
         initPromise = null // başarısız init tekrar denenebilsin
       })
     }
-  }, [loadWorkspaces, fetchPrices, reprocessSellLinkedTxs])
+  }, [loadWorkspaces, fetchPrices])
+
+  // Kurlar yayınlanınca bakiyeleri yeniden hesapla.
+  //
+  // Neden: çapraz kur transferinin GELEN bacağı hedef hesabın para birimine
+  // çevrilerek işlenir (calculations.ts:44-49) ve bu çeviri fx.ts'teki canlı
+  // kurlara dayanır. Kur yokken fromBaseTry ham TRY tutarı döndürüyor, yani
+  // 10.000 ₺'lik transfer USD hesabına 10.000 $ olarak giriyor (~34,5 kat şişme).
+  // init'te reloadAllStores() ve fetchPrices() PARALEL koşuyor ve reloadAllStores
+  // kendi sonunda recomputeBalances çağırıyor — yani bakiyeler tipik olarak
+  // kurlar gelmeden hesaplanıyordu. `prices` değişimini izlemek hem bu açılış
+  // yarışını hem de ilk fetch'in başarısız olup sonrakinin tutması durumunu
+  // kapatır. recomputeBalances türetilmiş bir değeri tazeler — hiçbir şey
+  // yazmaz, bu yüzden fazladan çalışması zararsızdır.
+  const prices = useInvestmentStore(s => s.prices)
+  useEffect(() => {
+    if (!prices) return
+    const { transactions, ready } = useTransactionStore.getState()
+    if (!ready) return   // işlemler henüz yüklenmedi; reloadAllStores zaten hesaplayacak
+    useAccountStore.getState().recomputeBalances(transactions)
+  }, [prices])
 
   // Gün değişince bakiyeleri yeniden hesapla: gelecek tarihli işlemler güncel
   // bakiyeye dahil edilmez, günü gelen LEGACY (approvalStatus null) işlem o gün
@@ -76,9 +108,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const check = () => {
       const day = today()
       if (day === lastDay) return
+      const prevDay = lastDay
       lastDay = day
       const { transactions } = useTransactionStore.getState()
       useAccountStore.getState().recomputeBalances(transactions)
+      // Ay döndüyse ve kullanıcı ay gezintisi yapmamışsa (seçili ay hâlâ biten
+      // ay) dashboard/bütçe kartları yeni aya geçsin — günlerce açık kalan PWA'da
+      // "Bu ay harcama limitleri" önceki ayda takılı kalıyordu.
+      if (prevDay.slice(0, 7) !== day.slice(0, 7)) {
+        const { selectedPeriod, setPeriod } = useUIStore.getState()
+        const [py, pm] = prevDay.split('-').map(Number)
+        if (selectedPeriod.year === py && selectedPeriod.month === pm) setPeriod(currentMonthYear())
+      }
       // Bildirim sayacı today()'e bağlı türetilir — gün atlayınca tazele
       useNotificationsStore.getState().refresh()
     }

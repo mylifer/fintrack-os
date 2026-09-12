@@ -70,6 +70,47 @@ function TxDeleteDialog({ tx, onDelete }: { tx: Transaction; onDelete: () => voi
   )
 }
 
+// Borç silme onayı — işlem silmeyle aynı desen. Eskiden çöp kutusu tek tıkla
+// siliyordu (yalnız 6 sn'lik geri al); borç Net Varlık'tan düştüğü için
+// kazara silme sayfadaki toplamları sessizce değiştiriyordu.
+function DebtDeleteDialog({ debt, onDelete }: { debt: Debt; onDelete: () => void }) {
+  return (
+    <AlertDialog.Root>
+      <AlertDialog.Trigger asChild>
+        <button
+          className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          title="Sil"
+        >
+          <TrashIcon />
+        </button>
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
+        <AlertDialog.Content className={[
+          'fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
+          'w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-background p-6 shadow-xl',
+          'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+          'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+        ].join(' ')}>
+          <AlertDialog.Title className="text-base font-semibold text-foreground mb-1">Borcu sil</AlertDialog.Title>
+          <AlertDialog.Description className="text-sm text-muted-foreground mb-5">
+            <span className="font-medium text-foreground">&ldquo;{debt.name}&rdquo;</span> silinecek. Bağlı ödeme ve anapara
+            işlemleri silinmez. Sildikten sonra birkaç saniye içinde geri alabilirsin.
+          </AlertDialog.Description>
+          <div className="flex justify-end gap-2">
+            <AlertDialog.Cancel asChild>
+              <button className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-accent transition-colors">İptal</button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action asChild>
+              <button onClick={onDelete} className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors">Sil</button>
+            </AlertDialog.Action>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  )
+}
+
 const TYPE_OPTIONS = [
   { value: 'personal',          label: 'Kişisel Borç/Alacak' },
   { value: 'bank_loan',         label: 'Banka Kredisi' },
@@ -423,12 +464,14 @@ export default function DebtsPage() {
     }
   }
 
-  function DebtCard({ debt, settled = false }: { debt: DebtWithRemaining; settled?: boolean }) {
+  // Render yardımcısı — bileşen DEĞİL: render içinde tanımlı bileşen her render'da
+  // yeni tip sayılıp kartı yeniden oluşturuyor, sayı animasyonları sıfırlanıyordu.
+  function renderDebtCard(debt: DebtWithRemaining, settled = false) {
     const overdue = !settled && debt.dueDate && isOverdue(debt.dueDate)
     const days    = debt.dueDate ? daysUntil(debt.dueDate) : null
 
     return (
-      <div className={[
+      <div key={debt.id} className={[
         'rounded-xl border border-border bg-card p-5 flex flex-col gap-3',
         settled ? 'opacity-70 hover:opacity-100 transition-opacity' : '',
       ].join(' ')}>
@@ -458,13 +501,7 @@ export default function DebtsPage() {
             >
               <PencilIcon />
             </button>
-            <button
-              onClick={() => remove(debt.id)}
-              className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-              title="Sil"
-            >
-              <TrashIcon />
-            </button>
+            <DebtDeleteDialog debt={debt} onDelete={() => remove(debt.id)} />
           </div>
         </div>
 
@@ -581,7 +618,7 @@ export default function DebtsPage() {
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {debts.map(d => <DebtCard key={d.id} debt={d} />)}
+            {debts.map(d => renderDebtCard(d))}
           </div>
         )}
 
@@ -597,7 +634,7 @@ export default function DebtsPage() {
             </button>
             {showSettled && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                {settledDebts.map(d => <DebtCard key={d.id} debt={d} settled />)}
+                {settledDebts.map(d => renderDebtCard(d, true))}
               </div>
             )}
           </div>

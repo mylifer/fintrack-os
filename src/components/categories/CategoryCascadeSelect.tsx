@@ -86,7 +86,10 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
     }
   }
 
-  function ItemList({ items, activeId, onHover, onSelect, iconSize }: {
+  // Render yardımcısı — bileşen DEĞİL. Render içinde tanımlı bir bileşen her
+  // render'da yeni tip sayılır: her üzerine gelişte satır düğümleri yeniden
+  // oluşuyor, fare basılıyken düğüm değişirse tıklama kaybolabiliyordu.
+  function renderItemList({ items, activeId, onHover, onSelect, iconSize }: {
     items: Category[]
     activeId?: string | null
     onHover?: (id: string) => void
@@ -225,7 +228,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
             /* ── Cascade (default) ── */
             <>
               <div style={{ padding: 4, maxHeight: MAX_H, overflowY: 'auto' }} onWheel={handleWheel}>
-                <ItemList items={roots} activeId={hoveredL0} onHover={hoverL0} onSelect={select} iconSize={13} />
+                {renderItemList({ items: roots, activeId: hoveredL0, onHover: hoverL0, onSelect: select, iconSize: 13 })}
               </div>
 
               {hoveredL0 && l1List.length > 0 && (
@@ -235,7 +238,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
                   onWheel={handleWheel}
                 >
                   <div style={{ padding: 4 }}>
-                    <ItemList items={l1List} activeId={hoveredL1} onHover={id => setHoveredL1(id)} onSelect={select} iconSize={11} />
+                    {renderItemList({ items: l1List, activeId: hoveredL1, onHover: id => setHoveredL1(id), onSelect: select, iconSize: 11 })}
                   </div>
                 </div>
               )}
@@ -247,7 +250,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
                   onWheel={handleWheel}
                 >
                   <div style={{ padding: 4 }}>
-                    <ItemList items={l2List} activeId={null} onSelect={select} iconSize={10} />
+                    {renderItemList({ items: l2List, activeId: null, onSelect: select, iconSize: 10 })}
                   </div>
                 </div>
               )}

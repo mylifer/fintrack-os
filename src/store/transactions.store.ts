@@ -18,7 +18,7 @@ import { useWorkspaceStore } from './workspace.store'
 import { toBaseTry, fromBaseTry, baseAmount, baseSnapshot } from '@/lib/utils/fx'
 import { txTouchesAccount } from '@/lib/utils/calculations'
 import { splitMoney } from '@/lib/utils/money'
-import { splitsAreValid, splitsMatchAmount, primarySplitCategoryId, rescaleSplits } from '@/lib/utils/categorySplits'
+import { splitsAreValid, splitsMatchAmount, primarySplitCategoryId, rescaleSplits, txHasCategory } from '@/lib/utils/categorySplits'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 
 // Snapshot the base-currency (TRY) value at write time (S2/S3). Every creation
@@ -735,7 +735,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // txTouchesAccount: transferin HEDEF bacağı da bu hesabın işlemidir —
     // yalnız accountId'ye bakmak gelen transferleri listeden gizliyordu.
     if (filters.accountIds?.length) txs = txs.filter(t => filters.accountIds!.some(id => txTouchesAccount(t, id)))
-    if (filters.categoryIds?.length) txs = txs.filter(t => t.categoryId && filters.categoryIds!.includes(t.categoryId))
+    // txHasCategory: bölünmüş işlem PAYLARINDAN biri eşleşse de listelenir — yalnız
+    // categoryId'ye (baskın pay) bakılınca ikincil payın kategorisinde görünmüyordu.
+    if (filters.categoryIds?.length) txs = txs.filter(t => filters.categoryIds!.some(id => txHasCategory(t, id)))
     if (filters.types?.length) txs = txs.filter(t => filters.types!.includes(t.type))
     if (filters.familyMemberIds?.length) txs = txs.filter(t => t.familyMemberId && filters.familyMemberIds!.includes(t.familyMemberId))
     if (filters.recipientIds?.length) txs = txs.filter(t => t.recipientId && filters.recipientIds!.includes(t.recipientId))

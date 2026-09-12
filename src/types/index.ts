@@ -368,7 +368,7 @@ export interface RecurringTransaction {
   description: string       // Description copied to generated transaction
   notes?: string
   frequency: RecurringFrequency
-  dayOfMonth?: number       // 1–28, meaningful for monthly/yearly
+  dayOfMonth?: number       // Bilgi amaçlı (başlangıç günü) — takvim startDate'in gününden yürür, bkz. recurrence.ts
   monthOfYear?: number      // 1–12, meaningful for yearly
   startDate: string         // ISO date — first occurrence
   endDate?: string          // Optional end date

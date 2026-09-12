@@ -9,11 +9,7 @@ import {
   createCloudBackup, listCloudBackups, fetchCloudBackupPayload,
   readSnapshot, totalRecords, BACKUP_KIND_LABELS, type CloudBackupMeta,
 } from '@/lib/auto-backup'
-import {
-  useAccountStore, useTransactionStore, useCategoryStore,
-  useBudgetStore, useDebtStore, useInvestmentStore,
-  usePeopleStore, useRecurringStore,
-} from '@/store'
+import { reloadAllStores } from '@/lib/reload-stores'
 
 /* ── Types ───────────────────────────────────────────────────── */
 
@@ -162,16 +158,6 @@ export function BackupManager() {
   const [cloudBusy,    setCloudBusy]    = useState('')
 
   const importing = importPhase !== 'idle'
-
-  const loadAccounts     = useAccountStore(s => s.load)
-  const loadTransactions = useTransactionStore(s => s.load)
-  const loadCategories   = useCategoryStore(s => s.load)
-  const initCategories   = useCategoryStore(s => s.initDefaults)
-  const loadBudgets      = useBudgetStore(s => s.load)
-  const loadDebts        = useDebtStore(s => s.load)
-  const loadInvestments  = useInvestmentStore(s => s.load)
-  const loadPeople       = usePeopleStore(s => s.load)
-  const loadRecurring    = useRecurringStore(s => s.load)
 
   /* ── Export ─────────────────────────────────────────────── */
 
@@ -339,17 +325,12 @@ export function BackupManager() {
     )
   }
 
+  // Merkezi yeniden yükleme (lib/reload-stores): FK sırası, ödeme takibi ve
+  // bakiye yeniden hesabı dahil. Eskiden burada ayrı bir kopya vardı ve
+  // recomputeBalances çağırmadığı için geri yükleme sonrası hesaplar yalnız
+  // açılış bakiyesini gösteriyordu (kenar çubuğu Net Varlık dahil).
   async function reloadStores() {
-    await Promise.all([
-      loadAccounts(),
-      loadTransactions(),
-      loadCategories().then(initCategories),
-      loadBudgets(),
-      loadDebts(),
-      loadInvestments(),
-      loadPeople(),
-      loadRecurring(),
-    ])
+    await reloadAllStores()
   }
 
   async function handleImport() {

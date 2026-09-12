@@ -11,6 +11,7 @@ import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { dedupeTags } from '@/lib/utils/tags'
+import { rescaleSplits } from '@/lib/utils/categorySplits'
 import { X } from 'lucide-react'
 import type { Transaction } from '@/types'
 
@@ -94,6 +95,12 @@ export function RefundModal() {
         date:           dateStr || today(),        // user-chosen refund date (period control, S4)
         accountId:      original.accountId,
         categoryId:     original.categoryId,
+        // Bölünmüş işlemin iadesi payları ORANTILI geri alır — yalnız ana kategori
+        // düşülünce ana kategori eksiye iniyor, diğer paylar şişik kalıyordu.
+        // Paylar tutarla aynı işareti taşır; store değişmezi yeniden doğrular.
+        ...(original.categorySplits && original.categorySplits.length > 1
+          ? { categorySplits: rescaleSplits(original.categorySplits, -Math.abs(refundAmount)) }
+          : {}),
         merchant:       original.merchant,
         description:    `[İade] ${original.description}`,
         refundOfId:     original.id,               // link → original (cumulative guard, S4)

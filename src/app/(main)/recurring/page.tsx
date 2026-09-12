@@ -204,7 +204,7 @@ function DueRow({
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
         <span className={`font-medium tabular-nums text-lg ${r.type === 'income' ? 'text-green-600' : r.type === 'transfer' ? 'text-blue-500' : 'text-destructive'}`}>
-          {r.type === 'income' ? '+' : r.type === 'expense' ? '−' : '⇄'}{formatCurrency(r.amount)}
+          {r.type === 'income' ? '+' : r.type === 'expense' ? '−' : '⇄'}{formatCurrency(r.amount, r.currency)}
         </span>
         <button
           onClick={onSkip}
@@ -266,7 +266,7 @@ function RecurringRow({
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
         <span className={`tabular-nums text-lg font-medium ${r.type === 'income' ? 'text-green-600' : 'text-muted-foreground'}`}>
-          {formatCurrency(r.amount)}
+          {formatCurrency(r.amount, r.currency)}
         </span>
         <div className="row-actions opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
           <button onClick={onEdit} className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent text-xs transition-colors" title="Düzenle">✎</button>

@@ -54,7 +54,19 @@ type Row = { id: string; deleted_at?: string | null; workspaceId?: string | null
 // the account that produced it (shared-device cross-tenant leak fix). It is not
 // indexed, so it needs no Dexie schema/version bump — Dexie persists the whole
 // object regardless of which keys are indexed.
-type OutboxRow = OutboxEntry & { ownerId?: string | null }
+// `seq` sürüm damgasıdır: flush, push ettiği SÜRÜM hâlâ kuyruktaysa girdiyi
+// siler (bkz. flushOutbox). `updatedAt` bu iş için yetmez — aynı milisaniyede
+// yapılan iki yazma aynı damgayı alır ve taze düzenleme yanlışlıkla silinir.
+// ownerId ile aynı desen: indekslenmez, Dexie nesnenin tamamını sakladığı için
+// şema/sürüm yükseltmesi GEREKMEZ. Oturum önekiyle birleştirilir ki sayaç
+// sayfa yenilemesiyle sıfırlandığında eski bir girdinin damgasıyla çakışmasın.
+type OutboxRow = OutboxEntry & { ownerId?: string | null; seq?: string }
+
+const OUTBOX_SESSION = typeof crypto !== 'undefined' && crypto.randomUUID
+  ? crypto.randomUUID()
+  : String(Math.random()).slice(2)
+let outboxSeq = 0
+const nextSeq = (): string => `${OUTBOX_SESSION}:${++outboxSeq}`
 
 // Supabase table name → Dexie table.
 const DEXIE: Record<SyncTable, EntityTable<Row, 'id'>> = {
@@ -147,6 +159,7 @@ async function putOutbox(table: SyncTable, row: { id: string }, ownerId: string 
     lastError: null,
     enqueuedAt: existing?.enqueuedAt ?? ts,        // preserve first-seen order
     updatedAt: ts,
+    seq: nextSeq(),                                // sürüm damgası (ACK kapısı)
   }
   await db._outbox.put(entry)
 }
@@ -313,15 +326,37 @@ export async function flushOutbox(): Promise<void> {
         // olan eski satırlar da kendiliğinden düzelsin — bkz. sync/sanitize.ts.
         const payload = sanitizeIdRefs({ ...e.snapshot, user_id: userId })
         const { error } = await supabase.from(e.table).upsert(payload, { onConflict: 'id' })
+
+        // Sürüm kapısı: push AĞ üzerinden sürerken kullanıcı aynı kaydı
+        // düzenlemiş olabilir. Girdi kimliği sabittir (`table:id`), dolayısıyla
+        // o düzenleme AYNI girdinin üzerine yazar. Koşulsuz `delete(e.id)` bu
+        // TAZE girdiyi silerdi: düzenleme kuyruktan yok olur, buluta hiç gitmez
+        // ve bir sonraki reconcilingPull eski bulut değerini yerele de geri
+        // yazar (sessiz veri kaybı). Bu yüzden hem ACK hem hata güncellemesi
+        // yalnızca PUSH ETTİĞİMİZ sürüm hâlâ kuyruktaysa uygulanır.
+        // Bkz. engine.test.ts — "push sırasında düzenleme".
+        // Legacy girdilerde `seq` yoktur; ikisi de undefined → eşit sayılır ve
+        // eski (koşulsuz silme) davranışı korunur — yükseltmede kayıp olmaz.
+        const current = await db._outbox.get(e.id)
+        const stale = current !== undefined && (current as OutboxRow).seq !== (e as OutboxRow).seq
+
         if (error) {
           failed++
           const attempts = e.attempts + 1
           if (attempts >= MAX_ATTEMPTS) {
             console.error(`[sync:dead-letter] ${e.table}/${e.entityId} giving up after ${attempts} attempts:`, error.message)
           }
-          await db._outbox.update(e.id, { attempts, lastError: error.message, updatedAt: now() })
-        } else {
+          // Taze girdinin sayacını eski isteğin hatasıyla kirletme — yeni
+          // yükün kendi deneme bütçesi olmalı.
+          if (!stale) {
+            await db._outbox.update(e.id, { attempts, lastError: error.message, updatedAt: now() })
+          }
+        } else if (!stale) {
           await db._outbox.delete(e.id)  // ACK
+        } else {
+          // Taze düzenleme kuyrukta kalır; kickSync/rerun onu bu turda ya da
+          // hemen ardından gönderir (upsert idempotent, tekrar zararsız).
+          rerun = true
         }
       }
 
@@ -462,6 +497,19 @@ async function fetchAllRows(
   return { rows: acc, complete: true }
 }
 
+/* Son çekiş YETKİLİ miydi (tablo başına)? Yetkili = bulut kümesi eksiksiz
+   okundu ya da oturum yok (yalnız yerel mod). Eksik/başarısız çekişte
+   reconcilingPull yerel satırları döndürür; yerel boşsa (çıkıştan sonra Dexie
+   temizdir) sonuç "hiç kayıt yok" DEMEK DEĞİLDİR. Boş sonuca bakıp varsayılan
+   üreten akışlar (varsayılan çalışma alanı, varsayılan kategoriler) buna bakar —
+   eskiden ağ hatasında buluttaki "Genel"in yanına ikinci bir varsayılan alan ve
+   çift kategoriler doğuyordu. */
+const pullAuthoritative = new Map<SyncTable, boolean>()
+
+export function lastPullWasAuthoritative(table: SyncTable): boolean {
+  return pullAuthoritative.get(table) ?? false
+}
+
 /**
  * Fetch the full cloud set (paginated, tombstones included) and reconcile it
  * into Dexie without destroying local state:
@@ -487,8 +535,13 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
   // `workspaces` is the partition axis itself — never filtered by workspace.
   const scoped = (rows: Row[]): Row[] => table === 'workspaces' ? rows : rows.filter(rowInActiveWorkspace)
 
+  // Önceki başarılı çekişin bayrağı taşınmasın: bu çekiş ya da birleştirme
+  // yarıda patlarsa tablo yetkisiz kalır.
+  pullAuthoritative.set(table, false)
+
   const userId = await getUserId()
   if (!userId) {
+    pullAuthoritative.set(table, true)   // yalnız yerel mod — yerel küme tek gerçek
     return scoped((await t.toArray()).filter(isLive)) as unknown as T[]
   }
 
@@ -523,6 +576,8 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
       }
     }
   })
+
+  pullAuthoritative.set(table, true)
 
   if (requeued > 0) {
     console.warn(`[sync:requeue] ${table}: ${requeued} local row(s) missing from cloud — re-enqueued for push`)

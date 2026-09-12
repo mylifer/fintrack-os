@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, reconcilingPull } from '@/lib/sync/engine'
+import { localUpsert, localPatch, reconcilingPull, lastPullWasAuthoritative } from '@/lib/sync/engine'
 import {
   getPersistedActiveWorkspaceId, setActiveWorkspaceId, setDefaultWorkspaceId,
 } from '@/lib/workspace-context'
@@ -39,6 +39,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     } catch (err) {
       console.error('[workspace:load]', err)
       rows = (await db.workspaces.toArray()).filter(isLive)
+    }
+
+    // Boş sonuç yalnız çekiş YETKİLİYSE "hiç alan yok" demektir. Eksik bir
+    // çekişte (ağ hatası + çıkış sonrası boş Dexie) varsayılan oluşturmak,
+    // buluttaki "Genel"in yanına ikinci bir isDefault alan ekliyordu. Bu durumda
+    // alan çözülmeden devam edilir: aktif/varsayılan null kalır, yeni kayıtlar
+    // workspaceId'siz (= varsayılan alana ait) yazılır; sonraki açılışta düzelir.
+    if (rows.length === 0 && !lastPullWasAuthoritative('workspaces')) {
+      set({ workspaces: [], activeId: null, ready: true })
+      return
     }
 
     // İlk çalıştırma: hiç çalışma alanı yoksa bir varsayılan oluştur

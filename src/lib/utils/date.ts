@@ -2,7 +2,7 @@ import {
   format, parseISO, startOfMonth, endOfMonth,
   subMonths, addMonths, isWithinInterval, startOfYear, endOfYear,
   differenceInCalendarDays, isBefore, addDays, subDays, subWeeks, subYears,
-  addWeeks, addYears, startOfWeek, endOfWeek, startOfDay,
+  addWeeks, addYears, startOfWeek, endOfWeek, startOfDay, isValid,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { Account, MonthYear, PeriodType } from '@/types'
@@ -11,12 +11,16 @@ export function today(): string {
   return format(new Date(), 'yyyy-MM-dd')
 }
 
+// Geçersiz tarih (ör. önceden içe aktarılmış "2026-04-31") `format`'ı RangeError
+// ile patlatır ve bütün sayfayı hata ekranına düşürür — satır silinemez hale
+// gelir. Liste çizilebilsin diye ham metin gösterilir.
 export function formatDate(iso: string, fmt = 'd MMM yyyy'): string {
-  return format(parseISO(iso), fmt, { locale: tr })
+  const d = parseISO(iso)
+  return isValid(d) ? format(d, fmt, { locale: tr }) : iso
 }
 
 export function formatDateShort(iso: string): string {
-  return format(parseISO(iso), 'd MMM', { locale: tr })
+  return formatDate(iso, 'd MMM')
 }
 
 export function formatMonthYear(my: MonthYear): string {

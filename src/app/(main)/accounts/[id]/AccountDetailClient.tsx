@@ -12,6 +12,7 @@ import { useShallow }         from 'zustand/react/shallow'
 import { formatCurrency }     from '@/lib/utils/currency'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
+import { txHasCategory } from '@/lib/utils/categorySplits'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
 import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
@@ -114,7 +115,8 @@ export default function AccountDetailClient({
       if (familyFilter    && t.familyMemberId !== familyFilter.id)   return false
       if (recipientFilter && t.recipientId    !== recipientFilter.id) return false
       if (typeFilter && t.type !== typeFilter) return false
-      if (categoryFilter && t.categoryId !== categoryFilter) return false
+      // Bölünmüş işlem ikincil payının kategorisinde de listelenir
+      if (categoryFilter && !txHasCategory(t, categoryFilter)) return false
       if (search && !searchMatcher(t)) return false
       return true
     }),
@@ -258,15 +260,23 @@ export default function AccountDetailClient({
           </div>
         )}
 
-        {/* Period stats */}
+        {/* Period stats — calcPeriodFlow ₺-normalize (baseAmount, S2/S3) bir
+            değer döndürür, hesabın kendi para biriminde DEĞİL. Eskiden
+            account.currency ile basılıyordu: USD hesabında 1.000 $ gelir
+            "+34.500 $" görünüyordu (kurun katı kadar şişme). Sembol ₺ olmalı;
+            hesap TRY dışıysa etiket bunu açıkça söyler. */}
         <div className="flex gap-6 pt-4 border-t border-border">
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Gelir</div>
-            <div className="text-sm font-medium tabular-nums text-green-600">+{formatCurrency(animIncome, account.currency)}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              Gelir{account.currency !== 'TRY' && ' (₺)'}
+            </div>
+            <div className="text-sm font-medium tabular-nums text-green-600">+{formatCurrency(animIncome)}</div>
           </div>
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Gider</div>
-            <div className="text-sm font-medium tabular-nums text-destructive">−{formatCurrency(animExpense, account.currency)}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              Gider{account.currency !== 'TRY' && ' (₺)'}
+            </div>
+            <div className="text-sm font-medium tabular-nums text-destructive">−{formatCurrency(animExpense)}</div>
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">İşlem</div>
