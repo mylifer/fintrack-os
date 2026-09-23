@@ -57,6 +57,7 @@ export default function LoginPage() {
       // modül-seviyesi init kilidini yeni kullanıcı için sıfırlar (bkz.
       // Sidebar.handleSignOut). Soft push bunları taşıyıp önceki kullanıcının
       // verisini gösterebilirdi.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli HARD reload: soft navigasyon önceki kullanıcının bellekteki verisini taşır (yukarıdaki not)
       window.location.assign('/dashboard')
     } else {
       router.push('/dashboard')
