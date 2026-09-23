@@ -8,6 +8,7 @@ import { useTransactionStore } from './transactions.store'
 import { useDebtStore } from './debts.store'
 import { useRecurringStore } from './recurring.store'
 import { useInvestmentStore } from './investment.store'
+import { usePaymentSchedulesStore } from './paymentSchedules.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, localBatch, reconcilingPull } from '@/lib/sync/engine'
 import { rowInActiveWorkspace } from '@/lib/workspace-context'
@@ -124,6 +125,12 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     const debtStore = useDebtStore.getState()
     for (const d of debtStore.debts.filter(d => d.accountId === id)) {
       await debtStore.update(d.id, { accountId: undefined })
+    }
+
+    // 4e. Ödeme takvimlerinin (görüntüleme amaçlı) hesap bağlantısını temizle
+    const paymentStore = usePaymentSchedulesStore.getState()
+    for (const ps of paymentStore.schedules.filter(ps => ps.accountId === id)) {
+      await paymentStore.update(ps.id, { accountId: undefined })
     }
 
     // 5. Store'ları güncelle

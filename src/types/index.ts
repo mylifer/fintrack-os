@@ -226,6 +226,34 @@ export interface DebtWithRemaining extends Debt {
   progressPercent: number
 }
 
+// ─── Payment Schedule (Ödeme Takvimi) ───────────────────────────────────────
+// Kredi / kredi kartı gibi düzenli ödemelerin SON ÖDEME GÜNÜNÜ izlemek için
+// hafif bir hatırlatma katmanı. Debt/Account'tan bilinçli olarak bağımsızdır:
+// bakiyeye veya ödeme planına dokunmaz, yalnızca "bu ay son ödeme günü şu"
+// bilgisini taşır ve bildirim merkezinde hatırlatma üretir.
+
+export type PaymentScheduleType = 'credit_card' | 'loan' | 'other'
+
+export interface PaymentSchedule {
+  id: string
+  name: string                 // "Ziraat Kredi Kartı", "Konut Kredisi"
+  type: PaymentScheduleType
+  dueDay: number                // 1–31: varsayılan ayın günü (kısa aylarda ay sonuna sabitlenir)
+  amount?: number                // Tahmini/planlanan ödeme tutarı (opsiyonel)
+  accountId?: string             // Görüntüleme amaçlı opsiyonel hesap bağı
+  notes?: string
+  isActive: boolean
+  // Ay bazlı istisnalar: "YYYY-MM" -> o aya özel son ödeme tarihi (ISO gün).
+  // Yoksa dueDay o ayın karşılığından türetilir (bkz. lib/utils/paymentSchedule.ts).
+  overrides?: Record<string, string> | null
+  // Ödendi işaretleri: "YYYY-MM" (dönem) -> ödendiği gün (ISO). İşaretli dönem
+  // kapanır; hatırlatma ödenmemiş en eski döneme bakar.
+  paidMonths?: Record<string, string> | null
+  createdAt: string
+  deleted_at?: string | null
+  workspaceId?: string
+}
+
 // ─── UI Store ──────────────────────────────────────────────────────────────
 
 export type ModalType =

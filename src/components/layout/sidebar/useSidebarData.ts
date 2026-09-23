@@ -9,6 +9,7 @@ import { retryDeadLetters, pendingCount } from '@/lib/sync/engine'
 import {
   useAccountStore, useInvestmentStore, useRecurringStore,
   useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore,
+  usePaymentSchedulesStore,
 } from '@/store'
 import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
@@ -31,8 +32,11 @@ export function useSidebarData() {
   )
   const transactions = useTransactionStore(useShallow(s => s.transactions))
   const debts        = useDebtStore(useShallow(s => s.debts))
-  const getDue       = useRecurringStore(s => s.getDue)
-  const dueCount     = getDue(today()).length
+  // Sayaçlar selector İÇİNDE hesaplanır: fonksiyonun kendisini seçmek (sabit
+  // referans) liste değişince yeniden render tetiklemiyor, rozet eskiyordu.
+  const todayStr        = today()
+  const dueCount        = useRecurringStore(s => s.getDue(todayStr).length)
+  const paymentDueCount = usePaymentSchedulesStore(s => s.getDueToday(todayStr).length)
 
   // "Net Varlık" şeridi borçtan arındırılmıştır — dashboard kartıyla aynı değer.
   const debtBurden      = calcDebtBurden(debts)
@@ -79,6 +83,7 @@ export function useSidebarData() {
     budgets,
     allCategories,
     dueCount,
+    paymentDueCount,
     totalWealth,
     animTotalWealth,
     trendAmount,

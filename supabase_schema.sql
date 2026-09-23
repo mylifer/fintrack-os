@@ -36,7 +36,8 @@
 -- Tables covered (Supabase/Postgres names). Keep this list in sync with the
 -- Dexie schema in src/lib/db/index.ts.
 --   accounts, transactions, categories, budgets, debts,
---   investment_transactions, people, recurring_transactions, workspaces
+--   investment_transactions, people, recurring_transactions, workspaces,
+--   payment_schedules
 
 -- ── Çoklu Çalışma Alanı (Workspace) desteği ─────────────────────────────────
 -- "workspaces": kullanıcının birden fazla, birbirini etkilemeyen bütçe/hesap
@@ -62,6 +63,26 @@ create table if not exists public.workspaces (
 -- violates row-level security policy" verir, bu ise tablo-seviyesi izin).
 grant select, insert, update, delete on public.workspaces to authenticated;
 
+-- ── Ödeme Takvimi (payment_schedules) — ayrıntı: migrations/0011 ───────────
+-- Kredi / kredi kartı son ödeme günü hatırlatmaları. Bakiyeye dokunmaz.
+create table if not exists public.payment_schedules (
+  id           text primary key,
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  "name"       text not null,
+  "type"       text not null check ("type" in ('credit_card', 'loan', 'other')),
+  "dueDay"     integer not null check ("dueDay" between 1 and 31),
+  amount       numeric,
+  "accountId"  text,
+  notes        text,
+  "isActive"   boolean not null default true,
+  overrides    jsonb,
+  "paidMonths" jsonb,
+  "createdAt"  text not null,
+  deleted_at   timestamptz,
+  "workspaceId" text
+);
+grant select, insert, update, delete on public.payment_schedules to authenticated;
+
 -- ── Reusable installer ──────────────────────────────────────────────────────
 -- A DO block applies the identical hardening to each table so no table can be
 -- accidentally left without a policy (the classic RLS foot-gun).
@@ -78,7 +99,8 @@ declare
     'investment_transactions',
     'people',
     'recurring_transactions',
-    'workspaces'
+    'workspaces',
+    'payment_schedules'
   ];
 begin
   foreach t in array tables loop
@@ -306,6 +328,10 @@ alter table public.recurring_transactions add column if not exists "familyMember
 alter table public.recurring_transactions add column if not exists "recipientId" text;
 alter table public.recurring_transactions add column if not exists "createdAt" text;
 
+alter table public.payment_schedules add column if not exists "overrides" jsonb;
+alter table public.payment_schedules add column if not exists "paidMonths" jsonb;
+alter table public.payment_schedules add column if not exists "workspaceId" text;
+
 -- ── Verification helpers (optional; run manually after applying) ─────────────
 -- Every table below MUST report rowsecurity = true:
 --   select relname, relrowsecurity as rls_enabled
@@ -313,7 +339,8 @@ alter table public.recurring_transactions add column if not exists "createdAt" t
 --   where relnamespace = 'public'::regnamespace
 --     and relname in (
 --       'accounts','transactions','categories','budgets','debts',
---       'investment_transactions','people','recurring_transactions'
+--       'investment_transactions','people','recurring_transactions',
+--       'workspaces','payment_schedules'
 --     )
 --   order by relname;
 --

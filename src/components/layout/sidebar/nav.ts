@@ -10,8 +10,8 @@ export interface NavItem {
   icon: string
   /** Açılır alt liste — hesap veya bütçe satırlarını basar */
   expand?: 'accounts' | 'budgets'
-  /** Vadesi gelen tekrarlayan sayısını rozet olarak gösterir */
-  badge?: 'due'
+  /** Vadesi gelen tekrarlayan / ödeme takvimi sayısını rozet olarak gösterir */
+  badge?: 'due' | 'payments'
 }
 
 export interface NavGroup {
@@ -45,6 +45,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/budgets',       label: 'Bütçeler',    icon: IC.budgets, expand: 'budgets' },
       { href: '/debts',         label: 'Borçlar',     icon: IC.debts },
       { href: '/recurring',     label: 'Tekrarlayan', icon: IC.recurring, badge: 'due' },
+      { href: '/payment-schedules', label: 'Ödeme Takvimi', icon: IC.calendar, badge: 'payments' },
       { href: '/subscriptions', label: 'Abonelikler', icon: IC.subscriptions },
     ],
   },

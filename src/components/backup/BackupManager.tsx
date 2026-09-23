@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { db } from '@/lib/db'
 import { getUserId } from '@/lib/auth'
-import { cloudReplaceAll, type BackupData } from '@/lib/backup-sync'
+import { cloudReplaceAll, replacePaymentSchedules, type BackupData } from '@/lib/backup-sync'
 import {
   createCloudBackup, listCloudBackups, fetchCloudBackupPayload,
   readSnapshot, totalRecords, BACKUP_KIND_LABELS, type CloudBackupMeta,
@@ -12,7 +12,7 @@ import {
 import {
   useAccountStore, useTransactionStore, useCategoryStore,
   useBudgetStore, useDebtStore, useInvestmentStore,
-  usePeopleStore, useRecurringStore,
+  usePeopleStore, useRecurringStore, usePaymentSchedulesStore,
 } from '@/store'
 
 /* ── Types ───────────────────────────────────────────────────── */
@@ -29,6 +29,7 @@ interface BackupFile {
     investmentTransactions: unknown[]
     people:                 unknown[]
     recurringTransactions:  unknown[]
+    paymentSchedules?:      unknown[]   // yoksa (eski yedek) takvimlere dokunulmaz
   }
 }
 
@@ -41,6 +42,7 @@ const TABLE_LABELS: Record<keyof BackupFile['data'], string> = {
   investmentTransactions: 'Yatırım İşlemi',
   people:                 'Kişi',
   recurringTransactions:  'Tekrarlayan İşlem',
+  paymentSchedules:       'Ödeme Takvimi',
 }
 
 /* ── Per-record validation (type-confusion hardening) ─────────────
@@ -72,6 +74,10 @@ const isFiniteNum  = (v: unknown): v is number  => typeof v === 'number' && Numb
 // Optional numeric: absent/null is fine, but if present it must be a finite number.
 const isOptFiniteNum = (v: unknown): boolean =>
   v === undefined || v === null || (typeof v === 'number' && Number.isFinite(v))
+// Optional map ("YYYY-MM" -> ISO gün): absent/null or a plain object of strings.
+const isOptPlainObj = (v: unknown): boolean =>
+  v === undefined || v === null ||
+  (typeof v === 'object' && !Array.isArray(v) && Object.values(v as object).every(isStr))
 
 type RecordGuard = (r: Record<string, unknown>) => boolean
 
@@ -102,6 +108,11 @@ const RECORD_GUARDS: Record<keyof BackupFile['data'], RecordGuard> = {
     isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.type) && isFiniteNum(r.amount) &&
     isStr(r.currency) && isNonEmptyStr(r.accountId) && isStr(r.frequency) &&
     isNonEmptyStr(r.startDate) && isNonEmptyStr(r.nextDueDate),
+  paymentSchedules: r =>
+    isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.type) &&
+    Number.isInteger(r.dueDay) && (r.dueDay as number) >= 1 && (r.dueDay as number) <= 31 &&
+    isOptFiniteNum(r.amount) && typeof r.isActive === 'boolean' && isStr(r.createdAt) &&
+    isOptPlainObj(r.overrides) && isOptPlainObj(r.paidMonths),
 }
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -122,10 +133,17 @@ function validateBackup(raw: unknown): BackupFile {
   for (const key of ['investmentTransactions', 'people', 'recurringTransactions'] as const) {
     if (!Array.isArray(b.data[key])) throw new Error(`"${key}" alanı eksik veya bozuk.`)
   }
+  // paymentSchedules bilerek boş diziye ÇEVRİLMEZ: anahtarın yokluğu "bu yedek
+  // takvimleri bilmiyor" demektir ve geri yükleme mevcut takvimleri korur.
+  // Varsa dizi olmalı.
+  if (b.data.paymentSchedules !== undefined && !Array.isArray(b.data.paymentSchedules)) {
+    throw new Error('"paymentSchedules" alanı bozuk.')
+  }
 
   // Per-record type-confusion guard (reject-all): abort on the first bad row.
   for (const key of Object.keys(RECORD_GUARDS) as Array<keyof BackupFile['data']>) {
     const rows  = b.data[key]
+    if (!rows) continue // opsiyonel tablo (paymentSchedules) bu yedekte yok
     const guard = RECORD_GUARDS[key]
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
@@ -172,6 +190,7 @@ export function BackupManager() {
   const loadInvestments  = useInvestmentStore(s => s.load)
   const loadPeople       = usePeopleStore(s => s.load)
   const loadRecurring    = useRecurringStore(s => s.load)
+  const loadPaymentSchedules = usePaymentSchedulesStore(s => s.load)
 
   /* ── Export ─────────────────────────────────────────────── */
 
@@ -316,6 +335,9 @@ export function BackupManager() {
   // replace (cloudReplaceAll already rewrote the cloud), so any pre-restore
   // pending mutation must be discarded — otherwise flushOutbox would replay stale
   // pre-restore snapshots on top of the restored cloud data (H2).
+  // EXCEPT payment_schedules: that table is not part of this replace (see
+  // replacePaymentSchedules), so its pending edits are still the latest truth —
+  // dropping them would let the next pull overwrite them with the older cloud row.
   async function writeDexie(data: BackupData) {
     await db.transaction('rw',
       [db.accounts, db.transactions, db.categories, db.budgets, db.debts, db.investmentTransactions, db.people, db.recurringTransactions, db._outbox],
@@ -323,7 +345,8 @@ export function BackupManager() {
         await Promise.all([
           db.accounts.clear(), db.transactions.clear(), db.categories.clear(),
           db.budgets.clear(), db.debts.clear(), db.investmentTransactions.clear(),
-          db.people.clear(), db.recurringTransactions.clear(), db._outbox.clear(),
+          db.people.clear(), db.recurringTransactions.clear(),
+          db._outbox.where('table').notEqual('payment_schedules').delete(),
         ])
         await Promise.all([
           data.accounts.length               && db.accounts.bulkAdd(data.accounts),
@@ -349,6 +372,7 @@ export function BackupManager() {
       loadInvestments(),
       loadPeople(),
       loadRecurring(),
+      loadPaymentSchedules(),
     ])
   }
 
@@ -398,13 +422,26 @@ export function BackupManager() {
       await cloudReplaceAll(data, userId)
       committed = true
 
+      // 2b. Ödeme takvimleri RPC'nin kapsamında değil — outbox üzerinden
+      //     değiştirilir (bkz. replacePaymentSchedules). Yalnızca yedek bu
+      //     tabloyu taşıyorsa; eski yedekler mevcut takvimleri korur. Geri
+      //     yükleme zaten commit oldu: burada hata rollback TETİKLEMEZ.
+      let schedulesFailed = false
+      if (data.paymentSchedules) {
+        await replacePaymentSchedules(data.paymentSchedules).catch(e => {
+          console.error('[backup:payment-schedules]', e)
+          schedulesFailed = true
+        })
+      }
+
       // 3. Rehydrate stores from the now-consistent cloud. Non-fatal: if this
       //    throws, the data is already safely restored in both Dexie and cloud.
       await reloadStores()
 
       setPreview(null)
       setFileName('')
-      flash('success', 'Yedek geri yüklendi ve buluta senkronize edildi.')
+      if (schedulesFailed) setError('Yedek geri yüklendi, ancak ödeme takvimleri geri yüklenemedi.')
+      else flash('success', 'Yedek geri yüklendi ve buluta senkronize edildi.')
     } catch (err) {
       console.error('[backup:restore]', err)
       if (committed) {

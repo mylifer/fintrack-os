@@ -37,7 +37,7 @@ function subCls(active: boolean) {
 
 export function SidebarCompact() {
   const {
-    pathname, accounts, budgets, allCategories, dueCount,
+    pathname, accounts, budgets, allCategories, dueCount, paymentDueCount,
     totalWealth, animTotalWealth, trendAmount, trendPct,
     isOnAccounts, accountsOpen, setAccountsOpen,
     isOnBudgets, budgetsOpen, setBudgetsOpen,
@@ -160,6 +160,11 @@ export function SidebarCompact() {
                   {item.badge === 'due' && dueCount > 0 && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-500 leading-none flex-shrink-0">
                       {dueCount}
+                    </span>
+                  )}
+                  {item.badge === 'payments' && paymentDueCount > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-500 leading-none flex-shrink-0">
+                      {paymentDueCount}
                     </span>
                   )}
                 </Link>

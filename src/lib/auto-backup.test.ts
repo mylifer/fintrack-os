@@ -28,6 +28,7 @@ const tables = {
   investmentTransactions: new FakeTable(),
   people:                 new FakeTable(),
   recurringTransactions:  new FakeTable(),
+  paymentSchedules:       new FakeTable(),
 }
 
 vi.mock('@/lib/db', () => ({ db: tables }))

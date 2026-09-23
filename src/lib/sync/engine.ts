@@ -41,6 +41,7 @@ export type SyncTable =
   | 'people'
   | 'recurring_transactions'
   | 'workspaces'
+  | 'payment_schedules'
 
 // Minimal row shape every synced table shares. `workspaces` itself has no
 // workspaceId (it IS the partition axis for the other 8 tables).
@@ -65,6 +66,7 @@ const DEXIE: Record<SyncTable, EntityTable<Row, 'id'>> = {
   people:                  db.people as unknown as EntityTable<Row, 'id'>,
   recurring_transactions:  db.recurringTransactions as unknown as EntityTable<Row, 'id'>,
   workspaces:              db.workspaces as unknown as EntityTable<Row, 'id'>,
+  payment_schedules:       db.paymentSchedules as unknown as EntityTable<Row, 'id'>,
 }
 
 // Runtime-computed fields that are NOT Supabase columns and must be stripped

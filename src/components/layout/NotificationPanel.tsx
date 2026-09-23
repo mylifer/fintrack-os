@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { useShallow } from 'zustand/react/shallow'
-import { useAccountStore, useCategoryStore, useTransactionStore } from '@/store'
+import { useAccountStore, useCategoryStore, useTransactionStore, usePaymentSchedulesStore } from '@/store'
 import type { AppNotification } from '@/store/notifications.store'
 import { approveRecurring, skipRecurring } from '@/lib/utils/recurring-actions'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -12,6 +13,8 @@ import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import type { CurrencyCode, RecurringFrequency, Transaction, TransactionType } from '@/types'
+import { PAYMENT_TYPE_LABEL } from '@/components/payments/board/shared'
+import { today } from '@/lib/utils/date'
 
 /* Zile tıklayınca açılan bildirim paneli. İki bölüm:
      1. "Onay bekleyen" — tarihi gelmiş öğeler (aksiyonlu):
@@ -21,6 +24,8 @@ import type { CurrencyCode, RecurringFrequency, Transaction, TransactionType } f
           (mevcut remove akışı — soft delete + Undo toast, kalıcı silme değil).
      2. "Yaklaşan" — 7 gün içindeki pending işlemler (erken onay opsiyonel) +
         nextDueDate'i yaklaşan tekrarlayanlar (salt bilgi).
+   Ödeme takvimleri iki bölümde de yer alabilir (takvim başına tek satır):
+   "Ödendi" dönemi kapatır (Undo toast ile geri alınabilir).
    Onay/atlama sonrası liste reaktif düşer: her iki bölüm de store'lardan
    türetilir (useNotifications), ekstra senkron gerekmez. */
 
@@ -71,14 +76,17 @@ export function NotificationPanel({
   const categories = useCategoryStore(s => s.categories)
   const updateTx   = useTransactionStore(s => s.update)
   const removeTx   = useTransactionStore(s => s.remove)
+  const markPaid   = usePaymentSchedulesStore(s => s.markPaid)
 
   // Aynı öğede çift tık / eşzamanlı aksiyon koruması
   const [busyKey, setBusyKey] = useState<string | null>(null)
 
-  const due = notifications.filter(n => n.kind === 'recurring-due' || n.kind === 'future-tx-due')
-  const upcoming = notifications.filter(n => n.kind === 'recurring-upcoming' || n.kind === 'future-tx-upcoming')
+  const due = notifications.filter(n => n.kind === 'recurring-due' || n.kind === 'future-tx-due' || n.kind === 'payment-due')
+  const upcoming = notifications.filter(n => n.kind === 'recurring-upcoming' || n.kind === 'future-tx-upcoming' || n.kind === 'payment-upcoming')
 
   const accountName  = (id: string) => accounts.find(a => a.id === id)?.name
+  // Takvimin kendi para birimi yok: bağlı hesabınki, yoksa TRY.
+  const accountCurrency = (id?: string): CurrencyCode => accounts.find(a => a.id === id)?.currency ?? 'TRY'
   const categoryOf   = (id?: string) => (id ? categories.find(c => c.id === id) : undefined)
 
   async function run(key: string, fn: () => Promise<void>) {
@@ -97,6 +105,8 @@ export function NotificationPanel({
     run(`tx:${tx.id}`, () => updateTx(tx.id, { approvalStatus: 'approved', approvedAt: new Date().toISOString() }))
   // Reddet = mevcut remove akışı: soft delete + Undo toast (geri alınabilir)
   const rejectTx = (tx: Transaction) => run(`tx:${tx.id}`, () => removeTx(tx.id))
+  const payNow = (scheduleId: string, monthKey: string) =>
+    run(`pay:${scheduleId}`, () => markPaid(scheduleId, monthKey, today()))
 
   return (
     <div
@@ -172,6 +182,35 @@ export function NotificationPanel({
                   </div>
                   <AmountText type={n.recurring.type} amount={n.recurring.amount} currency={n.recurring.currency} />
                 </RowShell>
+              ) : n.kind === 'payment-due' ? (
+                <RowShell key={`pd:${n.schedule.id}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-semibold text-foreground truncate">{n.schedule.name}</span>
+                      <Badge variant="danger">{PAYMENT_TYPE_LABEL[n.schedule.type]}</Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {[accountName(n.schedule.accountId ?? ''), fmtDay(n.dueDate)].filter(Boolean).join(' · ')}
+                      {n.unpaidDueCount > 1 && ` · ${n.unpaidDueCount} dönem ödenmedi`}
+                    </div>
+                    <RowActions>
+                      <button
+                        className={primaryBtn}
+                        disabled={busyKey !== null}
+                        onClick={() => payNow(n.schedule.id, n.monthKey)}
+                        title="Bu dönemi ödendi olarak işaretle"
+                      >
+                        {busyKey === `pay:${n.schedule.id}` ? 'İşaretleniyor…' : 'Ödendi'}
+                      </button>
+                      <Link href="/payment-schedules" onClick={onClose} className={ghostBtn}>Ödeme Takvimine Git</Link>
+                    </RowActions>
+                  </div>
+                  {n.schedule.amount != null && (
+                    <span className="font-semibold tabular-nums text-sm flex-shrink-0 text-destructive">
+                      −{formatCurrency(Math.abs(n.schedule.amount), accountCurrency(n.schedule.accountId))}
+                    </span>
+                  )}
+                </RowShell>
               ) : (
                 <RowShell key={`td:${n.tx.id}`}>
                   <div className="flex-1 min-w-0">
@@ -241,6 +280,33 @@ export function NotificationPanel({
                     </div>
                   </div>
                   <AmountText type={n.recurring.type} amount={n.recurring.amount} currency={n.recurring.currency} />
+                </RowShell>
+              ) : n.kind === 'payment-upcoming' ? (
+                <RowShell key={`pu:${n.schedule.id}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium text-foreground truncate">{n.schedule.name}</span>
+                      <Badge variant="secondary">{PAYMENT_TYPE_LABEL[n.schedule.type]}</Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {[accountName(n.schedule.accountId ?? ''), fmtDay(n.dueDate)].filter(Boolean).join(' · ')}
+                    </div>
+                    <RowActions>
+                      <button
+                        className={ghostBtn}
+                        disabled={busyKey !== null}
+                        onClick={() => payNow(n.schedule.id, n.monthKey)}
+                        title="Erken ödendiyse bu dönemi kapat"
+                      >
+                        {busyKey === `pay:${n.schedule.id}` ? 'İşaretleniyor…' : 'Ödendi'}
+                      </button>
+                    </RowActions>
+                  </div>
+                  {n.schedule.amount != null && (
+                    <span className="font-semibold tabular-nums text-sm flex-shrink-0 text-foreground/70">
+                      {formatCurrency(n.schedule.amount, accountCurrency(n.schedule.accountId))}
+                    </span>
+                  )}
                 </RowShell>
               ) : (
                 <RowShell key={`tu:${n.tx.id}`}>
