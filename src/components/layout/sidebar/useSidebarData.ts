@@ -33,8 +33,9 @@ export function useSidebarData() {
   )
   const transactions = useTransactionStore(useShallow(s => s.transactions))
   const debts        = useDebtStore(useShallow(s => s.debts))
-  const getDue       = useRecurringStore(s => s.getDue)
-  const dueCount     = getDue(today()).length
+  // Sayaç selector İÇİNDE hesaplanır: getDue fonksiyonunu seçmek (sabit referans)
+  // tekrarlayanlar değişince yeniden render tetiklemiyor, rozet eskiyordu.
+  const dueCount     = useRecurringStore(s => s.getDue(today()).length)
 
   // Ödeme Takibi rozeti: gecikmiş ya da son günü bugün olan kart/borç ödemesi.
   // Sayfadaki "Gecikmiş" ile aynı kaynak (buildSchedule), takip başlangıcından
