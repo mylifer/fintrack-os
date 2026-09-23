@@ -60,11 +60,13 @@ const AUTO_INTERVAL_MS = 24 * 60 * 60 * 1000
  * Eski yedek dosyalarında tombstone'lar duruyor; RPC tarafında da ikinci bir
  * savunma var (0009: `deleted_at` artık yükten korunur, null'a zorlanmaz). */
 export async function readSnapshot(): Promise<BackupData> {
-  const [accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions] =
+  const [accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions,
+    paymentPlans, paymentOccurrences] =
     await Promise.all([
       db.accounts.toArray(), db.transactions.toArray(), db.categories.toArray(),
       db.budgets.toArray(), db.debts.toArray(), db.investmentTransactions.toArray(),
       db.people.toArray(), db.recurringTransactions.toArray(),
+      db.paymentPlans.toArray(), db.paymentOccurrences.toArray(),
     ])
   return {
     accounts:               accounts.filter(isLive),
@@ -75,11 +77,13 @@ export async function readSnapshot(): Promise<BackupData> {
     investmentTransactions: investmentTransactions.filter(isLive),
     people:                 people.filter(isLive),
     recurringTransactions:  recurringTransactions.filter(isLive),
+    paymentPlans:           paymentPlans.filter(isLive),
+    paymentOccurrences:     paymentOccurrences.filter(isLive),
   }
 }
 
 function computeCounts(data: BackupData): Record<string, number> {
-  return Object.fromEntries(Object.entries(data).map(([k, rows]) => [k, rows.length]))
+  return Object.fromEntries(Object.entries(data).map(([k, rows]) => [k, rows?.length ?? 0]))
 }
 
 export function totalRecords(counts: Record<string, number>): number {

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { db } from '@/lib/db'
 import { getUserId } from '@/lib/auth'
-import { cloudReplaceAll, type BackupData } from '@/lib/backup-sync'
+import { cloudReplaceAll, replacePaymentTracking, type BackupData } from '@/lib/backup-sync'
 import {
   createCloudBackup, listCloudBackups, fetchCloudBackupPayload,
   readSnapshot, totalRecords, BACKUP_KIND_LABELS, type CloudBackupMeta,
@@ -25,6 +25,9 @@ interface BackupFile {
     investmentTransactions: unknown[]
     people:                 unknown[]
     recurringTransactions:  unknown[]
+    // Ödeme Takibi — yoksa (eski yedek) mevcut kayıtlara dokunulmaz
+    paymentPlans?:          unknown[]
+    paymentOccurrences?:    unknown[]
   }
 }
 
@@ -37,6 +40,8 @@ const TABLE_LABELS: Record<keyof BackupFile['data'], string> = {
   investmentTransactions: 'Yatırım İşlemi',
   people:                 'Kişi',
   recurringTransactions:  'Tekrarlayan İşlem',
+  paymentPlans:           'Ödeme Planı',
+  paymentOccurrences:     'Ödeme Kaydı',
 }
 
 /* ── Per-record validation (type-confusion hardening) ─────────────
@@ -98,6 +103,14 @@ const RECORD_GUARDS: Record<keyof BackupFile['data'], RecordGuard> = {
     isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.type) && isFiniteNum(r.amount) &&
     isStr(r.currency) && isNonEmptyStr(r.accountId) && isStr(r.frequency) &&
     isNonEmptyStr(r.startDate) && isNonEmptyStr(r.nextDueDate),
+  paymentPlans: r =>
+    isNonEmptyStr(r.id) && isStr(r.targetKind) && isNonEmptyStr(r.targetId) &&
+    isOptFiniteNum(r.amount) && isOptFiniteNum(r.dayOfMonth) &&
+    typeof r.isActive === 'boolean' && isStr(r.createdAt),
+  paymentOccurrences: r =>
+    isNonEmptyStr(r.id) && isStr(r.targetKind) && isNonEmptyStr(r.targetId) &&
+    isNonEmptyStr(r.month) && isOptFiniteNum(r.amount) && isOptFiniteNum(r.paidAmount) &&
+    isStr(r.createdAt),
 }
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -118,10 +131,17 @@ function validateBackup(raw: unknown): BackupFile {
   for (const key of ['investmentTransactions', 'people', 'recurringTransactions'] as const) {
     if (!Array.isArray(b.data[key])) throw new Error(`"${key}" alanı eksik veya bozuk.`)
   }
+  // Ödeme Takibi tabloları bilerek boş diziye ÇEVRİLMEZ: anahtarın yokluğu "bu
+  // yedek o tabloyu bilmiyor" demektir ve geri yükleme mevcut kayıtları korur.
+  // Varsa dizi olmalı.
+  for (const key of ['paymentPlans', 'paymentOccurrences'] as const) {
+    if (b.data[key] !== undefined && !Array.isArray(b.data[key])) throw new Error(`"${key}" alanı bozuk.`)
+  }
 
   // Per-record type-confusion guard (reject-all): abort on the first bad row.
   for (const key of Object.keys(RECORD_GUARDS) as Array<keyof BackupFile['data']>) {
     const rows  = b.data[key]
+    if (!rows) continue // opsiyonel tablo (Ödeme Takibi) bu yedekte yok
     const guard = RECORD_GUARDS[key]
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
@@ -302,6 +322,9 @@ export function BackupManager() {
   // replace (cloudReplaceAll already rewrote the cloud), so any pre-restore
   // pending mutation must be discarded — otherwise flushOutbox would replay stale
   // pre-restore snapshots on top of the restored cloud data (H2).
+  // EXCEPT the payment tracking tables: they are not part of this replace (see
+  // replacePaymentTracking), so their pending edits are still the latest truth —
+  // dropping them would let the next pull overwrite them with the older cloud row.
   async function writeDexie(data: BackupData) {
     await db.transaction('rw',
       [db.accounts, db.transactions, db.categories, db.budgets, db.debts, db.investmentTransactions, db.people, db.recurringTransactions, db._outbox],
@@ -309,7 +332,8 @@ export function BackupManager() {
         await Promise.all([
           db.accounts.clear(), db.transactions.clear(), db.categories.clear(),
           db.budgets.clear(), db.debts.clear(), db.investmentTransactions.clear(),
-          db.people.clear(), db.recurringTransactions.clear(), db._outbox.clear(),
+          db.people.clear(), db.recurringTransactions.clear(),
+          db._outbox.where('table').noneOf(['payment_plans', 'payment_occurrences']).delete(),
         ])
         await Promise.all([
           data.accounts.length               && db.accounts.bulkAdd(data.accounts),
@@ -379,13 +403,23 @@ export function BackupManager() {
       await cloudReplaceAll(data, userId)
       committed = true
 
+      // 2b. Ödeme Takibi tabloları RPC'nin kapsamında değil — outbox üzerinden
+      //     değiştirilir (bkz. replacePaymentTracking). Geri yükleme zaten
+      //     commit oldu: burada hata rollback TETİKLEMEZ, ama görünür olur.
+      let paymentsFailed = false
+      await replacePaymentTracking(data).catch(e => {
+        console.error('[backup:payment-tracking]', e)
+        paymentsFailed = true
+      })
+
       // 3. Rehydrate stores from the now-consistent cloud. Non-fatal: if this
       //    throws, the data is already safely restored in both Dexie and cloud.
       await reloadStores()
 
       setPreview(null)
       setFileName('')
-      flash('success', 'Yedek geri yüklendi ve buluta senkronize edildi.')
+      if (paymentsFailed) setError('Yedek geri yüklendi, ancak ödeme takibi kayıtları geri yüklenemedi.')
+      else flash('success', 'Yedek geri yüklendi ve buluta senkronize edildi.')
     } catch (err) {
       console.error('[backup:restore]', err)
       if (committed) {

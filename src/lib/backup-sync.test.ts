@@ -1,0 +1,77 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+/* ────────────────────────────────────────────────────────────────────────
+   backup-sync — Ödeme Takibi tablolarının geri yüklenmesi
+
+   restore_user_backup RPC'si payment_plans / payment_occurrences'ı bilmiyor;
+   eskiden bu tablolar yedeğe hiç girmiyordu ve geri yükleme onları olduğu gibi
+   (geri yüklenen işlemlerle tutarsız) bırakıyordu. replacePaymentTracking bu iki
+   tabloyu outbox üzerinden değiştirir. Testler kararı (hangi op'lar) sabitler.
+──────────────────────────────────────────────────────────────────────── */
+
+type Row = { id: string; deleted_at?: string | null }
+
+const tables = {
+  paymentPlans:       { rows: [] as Row[], toArray: async () => tables.paymentPlans.rows },
+  paymentOccurrences: { rows: [] as Row[], toArray: async () => tables.paymentOccurrences.rows },
+}
+const batches: unknown[][] = []
+
+vi.mock('@/lib/db', () => ({ db: tables }))
+vi.mock('@/lib/supabase', () => ({ supabase: {} }))
+vi.mock('@/lib/sync/engine', () => ({
+  localBatch: async (ops: unknown[]) => { batches.push(ops) },
+}))
+
+const { replacePaymentTracking } = await import('./backup-sync')
+
+const base = {
+  accounts: [], transactions: [], categories: [], budgets: [], debts: [],
+  investmentTransactions: [], people: [], recurringTransactions: [],
+}
+
+beforeEach(() => {
+  batches.length = 0
+  tables.paymentPlans.rows = []
+  tables.paymentOccurrences.rows = []
+})
+
+describe('replacePaymentTracking', () => {
+  it('eski yedek (anahtar yok) mevcut kayıtlara dokunmaz', async () => {
+    tables.paymentPlans.rows = [{ id: 'p1' }]
+    tables.paymentOccurrences.rows = [{ id: 'o1' }]
+
+    await replacePaymentTracking(base)
+
+    expect(batches).toEqual([[]])
+  })
+
+  it('yedekte olmayan canlı kaydı tombstone\'lar, yedektekileri upsert eder', async () => {
+    tables.paymentPlans.rows = [{ id: 'p-keep' }, { id: 'p-gone' }, { id: 'p-dead', deleted_at: '2026-09-01T00:00:00Z' }]
+
+    await replacePaymentTracking({ ...base, paymentPlans: [{ id: 'p-keep' }, { id: 'p-new' }] as never })
+
+    const ops = batches[0] as Array<Record<string, unknown>>
+    expect(ops.filter(o => o.kind === 'patch').map(o => o.id)).toEqual(['p-gone'])
+    expect(ops.filter(o => o.kind === 'upsert').map(o => (o.entity as Row).id)).toEqual(['p-keep', 'p-new'])
+    expect(ops.every(o => o.table === 'payment_plans')).toBe(true)
+  })
+
+  it('boş dizi "hiç kayıt yoktu" demektir — hepsi tombstone\'lanır', async () => {
+    tables.paymentOccurrences.rows = [{ id: 'o1' }, { id: 'o2' }]
+
+    await replacePaymentTracking({ ...base, paymentOccurrences: [] })
+
+    const ops = batches[0] as Array<Record<string, unknown>>
+    expect(ops.map(o => [o.kind, o.table, o.id])).toEqual([
+      ['patch', 'payment_occurrences', 'o1'],
+      ['patch', 'payment_occurrences', 'o2'],
+    ])
+  })
+
+  it('iki tablo tek batch\'te (yerelde ya hep ya hiç)', async () => {
+    await replacePaymentTracking({ ...base, paymentPlans: [{ id: 'p1' }] as never, paymentOccurrences: [{ id: 'o1' }] as never })
+    expect(batches).toHaveLength(1)
+    expect((batches[0] as Array<Record<string, unknown>>).map(o => o.table)).toEqual(['payment_plans', 'payment_occurrences'])
+  })
+})
