@@ -1,10 +1,14 @@
 -- ============================================================================
 -- 0009 — restore_user_backup: sütun listesi artık ŞEMADAN türetiliyor
 --
--- ⚠️  BU MIGRATION HENÜZ ÇALIŞTIRILMADI. Denetim (audit/bug-audit-2026-08-28.md,
---     bulgu #1) kapsamında yazıldı. ÜRETİMDE ÇALIŞTIRMADAN ÖNCE boş bir Supabase
---     projesinde gerçek bir yedek dosyasıyla test edin — aşağıdaki "Doğrulama"
---     bölümüne bakın.
+-- ✅ ÜRETİMDE UYGULANDI (bu güncel hâliyle, F1 + F7 dahil): 2026-09-23.
+--    Denetim (audit/bug-audit-2026-08-28.md, bulgu #1) kapsamında yazıldı.
+--    Üretimde önceden 29 Ağustos'taki ilk hâli (F7 düzeltmesi YOK) çalışıyordu;
+--    2026-09-23'te 0012 ile birlikte bu hâl yüklendi. Uygulamadan önce, üretimin
+--    birebir kopyası (PGlite) üzerinde doğrulandı: çalışma alanları korunuyor
+--    (F1), yedekte tombstone'lu satır dirilmiyor (F7), sütunlar (workspaceId,
+--    categorySplits) korunuyor, başka hesaba geri yükleme reddediliyor.
+--    Tekrar çalıştırmak güvenlidir (create or replace; veriye dokunmaz).
 --
 -- SORUN
 -- -----
