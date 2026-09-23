@@ -151,6 +151,7 @@ export async function handleSignOut() {
     // HARD reload (soft router.push değil): bellekteki Zustand store'larını ve
     // DataProvider'ın modül-seviyesi init kilidini sıfırlar. Aksi halde aynı
     // sekmede ikinci kullanıcı, birinci kullanıcının verisini ekranda görürdü.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli HARD reload: soft navigasyon önceki kullanıcının bellekteki verisini taşır (yukarıdaki not)
     window.location.assign('/login')
   }
 }

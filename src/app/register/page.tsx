@@ -74,6 +74,7 @@ export default function RegisterPage() {
     if (switched) {
       // HARD navigation: bellekteki Zustand store'larını ve DataProvider'ın
       // modül-seviyesi init kilidini sıfırlar (bkz. login/page.tsx).
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli HARD reload: soft navigasyon önceki kullanıcının bellekteki verisini taşır (yukarıdaki not)
       window.location.assign('/dashboard')
     } else {
       router.push('/dashboard')
