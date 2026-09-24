@@ -53,7 +53,7 @@ export function SidebarCompact() {
           F
         </div>
         <div className="flex-1 min-w-0">
-          <WorkspaceSwitcher />
+          <WorkspaceSwitcher dense />
         </div>
       </div>
 
