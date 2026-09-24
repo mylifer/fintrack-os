@@ -299,23 +299,24 @@ export function isPlaceholderIcon(icon: string): boolean {
 }
 
 /**
- * Var olan bir kategori için uygulanması gereken yamayı döndürür; gerek
- * yoksa null. Bilinçli seçimleri ezmez:
- *  • ikon hâlâ varsayılan/legacy ise → ikon + renk birlikte güncellenir,
- *  • ikon anlamlıysa ama renk hiç değiştirilmemişse → yalnızca renk,
- *  • ikisi de özelleştirilmişse → dokunulmaz.
- * Yalnızca anahtar kelime eşleşen (güvenli) öneriler uygulanır; eşleşmeyen
- * isimler için var olan veriye rastgele görünen renk yazılmaz.
+ * Var olan bir kategoriye tek seferlik geçişte yazılacak yamayı döndürür;
+ * değişiklik gerekmiyorsa null.
+ *  • Ad bir anahtar kelimeyle eşleşiyorsa → önerilen ikon + renk yazılır,
+ *    elle seçilmiş olsa bile (geçişin amacı bu; categories.store sonucu
+ *    "Geri al" bildirimiyle gösterir).
+ *  • Eşleşmiyorsa yalnızca hiç dokunulmamış (yer tutucu ikon + varsayılan
+ *    renk) kategoriye yedek ikon/renk verilir — bilinçli bir seçim, adından
+ *    anlam çıkarılamayan bir kategoride rastgele görünen bir renkle ezilmez.
  */
 export function autoIconPatch(
   cat: { name: string; icon: string; color: string; scope: CategoryScope },
 ): { icon?: string; color?: string } | null {
   const s = suggestCategoryIcon(cat.name, cat.scope)
-  if (!s.matched) return null
+  const untouched = isPlaceholderIcon(cat.icon) && cat.color === DEFAULT_COLOR
+  if (!s.matched && !untouched) return null
 
-  if (isPlaceholderIcon(cat.icon)) {
-    return cat.color === s.color ? { icon: s.icon } : { icon: s.icon, color: s.color }
-  }
-  if (cat.color === DEFAULT_COLOR && s.color !== DEFAULT_COLOR) return { color: s.color }
-  return null
+  const patch: { icon?: string; color?: string } = {}
+  if (cat.icon  !== s.icon)  patch.icon  = s.icon
+  if (cat.color !== s.color) patch.color = s.color
+  return patch.icon || patch.color ? patch : null
 }

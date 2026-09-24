@@ -30,18 +30,25 @@ function applyIconMigration(raw: Category[]): { categories: Category[]; dirty: C
 }
 
 /* ── Tek seferlik otomatik ikon/renk ataması ──────────────────────────────
-   Var olan kullanıcı kategorilerinin çoğu hızlı ekleme akışından geldiği için
-   gri "package" ikonu + varsayılan mor renkle duruyor. lib/category-icon-suggest
-   bunlara adlarına uygun ikon ve semantik renk verir.
+   Var olan kullanıcı kategorilerini lib/category-icon-suggest ile adlarına
+   göre yeniden ikonlar/renklendirir (kural: autoIconPatch). Sonuç bir
+   "Geri al" bildirimiyle gösterilir; elle seçilmiş bir ikon ezildiyse tek
+   dokunuşla eski haline döner.
 
    Sistem kategorilerine DOKUNULMAZ: onlar zaten DEFAULT_CATEGORIES'ten
    initDefaults() Faz 3 tarafından her açılışta senkronlanıyor, buradaki bir
    değişiklik bir sonraki yüklemede geri alınırdı.
 
    Çalışma alanı başına bir kez çalışır: aksi halde kullanıcının sonradan
-   varsayılana çevirdiği bir seçim her açılışta yeniden ezilirdi. Bayrak
-   localStorage'da; lib/auth.ts'teki clearLocalData() çıkışta temizliyor. */
-const AUTO_ICON_KEY = 'fintrack.categoryAutoIcon.v1'
+   değiştirdiği bir seçim her açılışta yeniden ezilirdi. Yalnızca YETKİLİ bir
+   çekişten sonra çalışır ve ancak o zaman "bitti" işaretlenir — yeni bir
+   cihazda bulut henüz gelmemişken boş yerel küme üzerinde koşup kendini
+   tamamlanmış saymasın (initDefaults ile aynı koruma). Bayrak localStorage'da;
+   lib/auth.ts'teki clearLocalData() çıkışta temizliyor.
+
+   v1 yalnızca yer tutucu ikonlu kategorilere dokunuyordu ve pratikte hiçbir
+   şey değiştirmedi; kural genişletildiği için anahtar v2'ye çıktı. */
+const AUTO_ICON_KEY = 'fintrack.categoryAutoIcon.v2'
 
 function autoIconFlagKey(): string {
   return `${AUTO_ICON_KEY}:${getActiveWorkspaceId() ?? 'default'}`
@@ -62,16 +69,21 @@ function markAutoIconPassDone(): void {
   } catch { /* storage kapalı */ }
 }
 
-async function runAutoIconPass(
-  categories: Category[],
-): Promise<Array<{ id: string; patch: Partial<Category> }>> {
-  const updates: Array<{ id: string; patch: Partial<Category> }> = []
+interface AutoIconUpdate {
+  id: string
+  patch: Partial<Category>
+  /** Geri alma için yamadan önceki değerler. */
+  prev: Pick<Category, 'icon' | 'color'>
+}
+
+async function runAutoIconPass(categories: Category[]): Promise<AutoIconUpdate[]> {
+  const updates: AutoIconUpdate[] = []
   for (const cat of categories) {
     if (cat.isSystem) continue
     const patch = autoIconPatch(cat)
     if (!patch) continue
     await localPatch('categories', cat.id, patch as Record<string, unknown>)
-    updates.push({ id: cat.id, patch })
+    updates.push({ id: cat.id, patch, prev: { icon: cat.icon, color: cat.color } })
   }
   markAutoIconPassDone()
   return updates
@@ -113,18 +125,29 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       set({ categories, loading: false, ready: true })
     }
 
-    // Tek seferlik otomatik ikon/renk geçişi. Her iki yoldan sonra da (bulut
-    // çekimi ya da çevrimdışı yedek) çalışır; yazmalar outbox üzerinden
-    // kalıcı olduğu için çevrimdışı çalıştırmak da güvenli.
-    if (!autoIconPassDone()) {
+    // Tek seferlik otomatik ikon/renk geçişi — yalnızca yetkili bir çekişten
+    // sonra (bkz. AUTO_ICON_KEY açıklaması). Yazmalar outbox üzerinden kalıcı.
+    if (lastPullWasAuthoritative('categories') && !autoIconPassDone()) {
       const updates = await runAutoIconPass(get().categories)
       if (updates.length > 0) {
-        set(s => ({
-          categories: s.categories.map(c => {
-            const u = updates.find(x => x.id === c.id)
-            return u ? { ...c, ...u.patch } : c
-          }),
-        }))
+        const applyEach = (pick: (u: AutoIconUpdate) => Partial<Category>) =>
+          set(s => ({
+            categories: s.categories.map(c => {
+              const u = updates.find(x => x.id === c.id)
+              return u ? { ...c, ...pick(u) } : c
+            }),
+          }))
+        applyEach(u => u.patch)
+        useUndoStore.getState().pushUndo(
+          `${updates.length} kategorinin simgesi ve rengi adına göre güncellendi`,
+          async () => {
+            for (const u of updates) {
+              await localPatch('categories', u.id, u.prev as Record<string, unknown>)
+            }
+            applyEach(u => u.prev)
+          },
+          20_000,
+        )
       }
     }
   },

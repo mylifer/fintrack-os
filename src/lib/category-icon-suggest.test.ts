@@ -104,16 +104,26 @@ describe('autoIconPatch', () => {
     expect(autoIconPatch(cat({}))).toEqual({ icon: 'shopping-cart', color: '#10B981' })
   })
 
-  it('ikon anlamlıysa ama renk hiç değiştirilmemişse yalnızca rengi düzeltir', () => {
-    expect(autoIconPatch(cat({ icon: 'basket' }))).toEqual({ color: '#10B981' })
+  it('ad eşleşiyorsa elle seçilmiş ikon ve rengi de önerilenle değiştirir', () => {
+    expect(autoIconPatch(cat({ icon: 'basket', color: '#FF0000' })))
+      .toEqual({ icon: 'shopping-cart', color: '#10B981' })
   })
 
-  it('hem ikon hem renk özelleştirilmişse dokunmaz', () => {
-    expect(autoIconPatch(cat({ icon: 'basket', color: '#FF0000' }))).toBeNull()
+  it('yalnızca farklı olan alanı yamalar', () => {
+    expect(autoIconPatch(cat({ icon: 'shopping-cart', color: '#FF0000' }))).toEqual({ color: '#10B981' })
+    expect(autoIconPatch(cat({ icon: 'basket', color: '#10B981' }))).toEqual({ icon: 'shopping-cart' })
   })
 
-  it('anahtar kelime eşleşmeyen isimlerde var olan veriye dokunmaz', () => {
-    expect(autoIconPatch(cat({ name: 'Zırıltı Mırıltı' }))).toBeNull()
+  it('eşleşmeyen ama hiç dokunulmamış kategoriye yedek renk verir', () => {
+    const p = autoIconPatch(cat({ name: 'Zırıltı Mırıltı' }))
+    expect(p?.icon).toBeUndefined()            // yedek ikon zaten package
+    expect(p?.color).toMatch(/^#[0-9A-F]{6}$/)
+    expect(p?.color).not.toBe('#6366F1')
+  })
+
+  it('eşleşmeyen ve özelleştirilmiş kategoriye dokunmaz', () => {
+    expect(autoIconPatch(cat({ name: 'Zırıltı Mırıltı', icon: 'basket' }))).toBeNull()
+    expect(autoIconPatch(cat({ name: 'Zırıltı Mırıltı', color: '#FF0000' }))).toBeNull()
   })
 
   it('zaten doğru olan kategoride gereksiz yama üretmez', () => {
