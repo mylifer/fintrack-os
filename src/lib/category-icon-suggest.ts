@@ -13,7 +13,7 @@
    (I→ı, İ→i) uygulanır, aksanlar ASCII'ye indirilir ve sondan eklerle
    uzayan sözcükler (market+ler, kira+sı) önek eşleşmesiyle yakalanır. */
 
-import { COLOR_PALETTE, DEFAULT_COLOR, DEFAULT_ICON } from './category-palette'
+import { SUGGEST_PALETTE, DEFAULT_COLOR, DEFAULT_ICON } from './category-palette'
 import type { CategoryScope } from '@/types'
 
 /* ── Alan renkleri — DEFAULT_CATEGORIES ile aynı tonlar ──────────────── */
@@ -244,14 +244,15 @@ function scoreKeyword(kw: string, name: string, tokens: readonly string[]): numb
 
 /* ── Renk yedeği ──────────────────────────────────────────────────────── */
 /* Anahtar kelime bulunamadığında bile renk seçilir: aynı isim her zaman aynı
-   rengi alsın diye paletten deterministik (FNV-1a) bir indeks. */
+   rengi alsın diye DONDURULMUŞ paletten deterministik (FNV-1a) bir indeks
+   (seçici paleti büyüdükçe var olan adların rengi kaymasın). */
 function paletteColorFor(name: string): string {
   let h = 0x811c9dc5
   for (let i = 0; i < name.length; i++) {
     h ^= name.charCodeAt(i)
     h = Math.imul(h, 0x01000193) >>> 0
   }
-  return COLOR_PALETTE[h % COLOR_PALETTE.length]
+  return SUGGEST_PALETTE[h % SUGGEST_PALETTE.length]
 }
 
 export interface IconSuggestion {

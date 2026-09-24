@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import * as TablerIcons from '@tabler/icons-react'
 import { TABLER_ICON_NAMES } from '@/lib/tabler-icon-names'
 import { tablerComponentName, COLOR_PALETTE, DEFAULT_ICON, DEFAULT_COLOR, TABLER_MAP } from './CategoryIcon'
+import { COLOR_PALETTE_GROUPS } from '@/lib/category-palette'
 import type { TablerIcon } from '@tabler/icons-react'
 
 interface Props {
@@ -15,6 +16,11 @@ interface Props {
 /* ── Convert kebab name to readable label ────────────────────────── */
 function toLabel(name: string): string {
   return name.replace(/-/g, ' ')
+}
+
+/* ── <input type="color"> yalnızca #rrggbb kabul eder ────────────── */
+function colorInputValue(color: string): string {
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : DEFAULT_COLOR.toLowerCase()
 }
 
 /* ── Get icon component from TablerIcons module ──────────────────── */
@@ -31,6 +37,7 @@ export function CategoryIconPicker({ icon, color, onChange }: Props) {
 
   const currentIcon  = icon  || DEFAULT_ICON
   const currentColor = color || DEFAULT_COLOR
+  const isCustomColor = !COLOR_PALETTE.includes(currentColor.toUpperCase())
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -90,28 +97,58 @@ export function CategoryIconPicker({ icon, color, onChange }: Props) {
           </div>
 
           {/* Color palette */}
-          <div className="px-3 pt-2.5 pb-2 border-b border-border flex-shrink-0">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Renk</div>
-            <div className="flex flex-wrap gap-1.5">
-              {COLOR_PALETTE.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => onChange(currentIcon, c)}
-                  title={c}
-                  className="w-6 h-6 rounded-lg transition-all hover:scale-110 flex-shrink-0"
-                  style={{
-                    background: c,
-                    outline: currentColor === c ? '2px solid white' : 'none',
-                    boxShadow: currentColor === c ? `0 0 0 3px ${c}` : 'none',
-                  }}
+          <div className="px-3 pt-2.5 pb-2.5 border-b border-border flex-shrink-0">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Renk</div>
+              {/* Paletin dışındaki her renk için tarayıcının renk seçicisi */}
+              <label
+                className="relative flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer"
+                title="Paletin dışında bir renk seç"
+              >
+                <span
+                  className="w-4 h-4 rounded-md flex-shrink-0"
+                  style={isCustomColor
+                    ? { background: currentColor, boxShadow: `0 0 0 2px var(--background), 0 0 0 3.5px ${currentColor}` }
+                    : { background: 'conic-gradient(#EF4444, #EAB308, #22C55E, #06B6D4, #3B82F6, #A855F7, #EC4899, #EF4444)' }}
                 />
+                Özel renk
+                <input
+                  type="color"
+                  value={colorInputValue(currentColor)}
+                  onChange={e => onChange(currentIcon, e.target.value.toUpperCase())}
+                  className="sr-only"
+                />
+              </label>
+            </div>
+            <div className="flex flex-col gap-2">
+              {COLOR_PALETTE_GROUPS.map(group => (
+                <div key={group.label} role="group" aria-label={group.label} className="grid grid-cols-10 gap-y-1.5 justify-items-center">
+                  {group.colors.map(c => {
+                    const selected = currentColor.toUpperCase() === c
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => onChange(currentIcon, c)}
+                        title={c}
+                        aria-label={c}
+                        aria-pressed={selected}
+                        className="w-6 h-6 rounded-lg transition-all hover:scale-110 flex-shrink-0"
+                        style={{
+                          background: c,
+                          outline: selected ? '2px solid white' : 'none',
+                          boxShadow: selected ? `0 0 0 3px ${c}` : 'none',
+                        }}
+                      />
+                    )
+                  })}
+                </div>
               ))}
             </div>
           </div>
 
           {/* Icon grid — all icons, scrollable */}
-          <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
+          <div className="overflow-y-auto" style={{ maxHeight: 272 }}>
             <div className="p-2 flex flex-wrap gap-1">
               {visibleIcons.map(name => (
                 <IconButton
