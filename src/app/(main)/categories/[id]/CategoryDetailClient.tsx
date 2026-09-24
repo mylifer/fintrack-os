@@ -11,6 +11,8 @@ import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { compareCategoriesByName } from '@/lib/utils/categories'
+import { suggestCategoryIcon, isPlaceholderIcon } from '@/lib/category-icon-suggest'
+import { DEFAULT_COLOR } from '@/lib/category-palette'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { subMoney } from '@/lib/utils/money'
@@ -128,6 +130,11 @@ export default function CategoryDetailClient({ id }: Props) {
   const [editColor,    setEditColor]    = useState('')
   const [editParentL0, setEditParentL0] = useState('')
   const [editParentL1, setEditParentL1] = useState('')
+  /* Ad değişince simge/renk yalnızca kategori hâlâ varsayılan görünümdeyse
+     (yer tutucu ikon + hiç değiştirilmemiş renk) otomatik güncellenir; bilinçli
+     bir seçim yeniden adlandırma yüzünden ezilmez. Seçiciye elle dokunulduğu
+     anda kilitlenir. CategoryEditModal ile aynı kural. */
+  const [iconLocked,   setIconLocked]   = useState(true)
 
   function startEdit() {
     if (!cat) return
@@ -137,7 +144,16 @@ export default function CategoryDetailClient({ id }: Props) {
     setEditColor(cat.color)
     setEditParentL0(level === 1 ? (cat.parentId ?? '') : '')
     setEditParentL1(level === 2 ? (cat.parentId ?? '') : '')
+    setIconLocked(!(isPlaceholderIcon(cat.icon) && cat.color === DEFAULT_COLOR))
     setEditing(true)
+  }
+
+  function applyEditName(next: string) {
+    setEditName(next)
+    if (iconLocked || !cat) return
+    const s = suggestCategoryIcon(next, cat.scope)
+    setEditIcon(s.icon)
+    setEditColor(s.color)
   }
 
   function pickL0(id: string) { setEditParentL0(id); setEditParentL1('') }
@@ -219,10 +235,11 @@ export default function CategoryDetailClient({ id }: Props) {
       {/* ── Edit form ── */}
       {editing && (
         <div className="flex items-center gap-2 px-6 py-3 bg-accent/20 border-b border-border flex-shrink-0 flex-wrap">
-          <CategoryIconPicker icon={editIcon} color={editColor} onChange={(ico, col) => { setEditIcon(ico); setEditColor(col) }} />
+          <CategoryIconPicker icon={editIcon} color={editColor}
+            onChange={(ico, col) => { setEditIcon(ico); setEditColor(col); setIconLocked(true) }} />
 
           <input type="text" value={editName} autoFocus
-            onChange={e => setEditName(e.target.value)}
+            onChange={e => applyEditName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') saveEdit() }}
             className="flex-1 min-w-[140px] text-sm border border-border rounded-lg px-3 h-9 bg-background focus:outline-none focus:border-primary" />
 

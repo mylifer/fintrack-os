@@ -13,6 +13,8 @@ import { DEFAULT_CATEGORIES } from '@/types'
 // whether prior async Supabase writes succeeded.
 import { NOTO_TO_TABLER, LEGACY_COLOR } from '@/lib/legacy-icon-map'
 import { compareCategoriesByName } from '@/lib/utils/categories'
+import { autoIconPatch } from '@/lib/category-icon-suggest'
+import { getActiveWorkspaceId } from '@/lib/workspace-context'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 
 function applyIconMigration(raw: Category[]): { categories: Category[]; dirty: Category[] } {
@@ -25,6 +27,54 @@ function applyIconMigration(raw: Category[]): { categories: Category[]; dirty: C
     return patched
   })
   return { categories, dirty }
+}
+
+/* ── Tek seferlik otomatik ikon/renk ataması ──────────────────────────────
+   Var olan kullanıcı kategorilerinin çoğu hızlı ekleme akışından geldiği için
+   gri "package" ikonu + varsayılan mor renkle duruyor. lib/category-icon-suggest
+   bunlara adlarına uygun ikon ve semantik renk verir.
+
+   Sistem kategorilerine DOKUNULMAZ: onlar zaten DEFAULT_CATEGORIES'ten
+   initDefaults() Faz 3 tarafından her açılışta senkronlanıyor, buradaki bir
+   değişiklik bir sonraki yüklemede geri alınırdı.
+
+   Çalışma alanı başına bir kez çalışır: aksi halde kullanıcının sonradan
+   varsayılana çevirdiği bir seçim her açılışta yeniden ezilirdi. Bayrak
+   localStorage'da; lib/auth.ts'teki clearLocalData() çıkışta temizliyor. */
+const AUTO_ICON_KEY = 'fintrack.categoryAutoIcon.v1'
+
+function autoIconFlagKey(): string {
+  return `${AUTO_ICON_KEY}:${getActiveWorkspaceId() ?? 'default'}`
+}
+
+function autoIconPassDone(): boolean {
+  if (typeof window === 'undefined') return true
+  try {
+    return localStorage.getItem(autoIconFlagKey()) === '1'
+  } catch {
+    return true   // storage kapalıysa geçişi hiç denemeyiz (tekrar tekrar yazmasın)
+  }
+}
+
+function markAutoIconPassDone(): void {
+  try {
+    localStorage.setItem(autoIconFlagKey(), '1')
+  } catch { /* storage kapalı */ }
+}
+
+async function runAutoIconPass(
+  categories: Category[],
+): Promise<Array<{ id: string; patch: Partial<Category> }>> {
+  const updates: Array<{ id: string; patch: Partial<Category> }> = []
+  for (const cat of categories) {
+    if (cat.isSystem) continue
+    const patch = autoIconPatch(cat)
+    if (!patch) continue
+    await localPatch('categories', cat.id, patch as Record<string, unknown>)
+    updates.push({ id: cat.id, patch })
+  }
+  markAutoIconPassDone()
+  return updates
 }
 
 interface CategoryState {
@@ -61,6 +111,21 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       const raw = (await db.categories.toArray()).filter(isLive).filter(rowInActiveWorkspace)
       const { categories } = applyIconMigration(raw.sort(compareCategoriesByName))
       set({ categories, loading: false, ready: true })
+    }
+
+    // Tek seferlik otomatik ikon/renk geçişi. Her iki yoldan sonra da (bulut
+    // çekimi ya da çevrimdışı yedek) çalışır; yazmalar outbox üzerinden
+    // kalıcı olduğu için çevrimdışı çalıştırmak da güvenli.
+    if (!autoIconPassDone()) {
+      const updates = await runAutoIconPass(get().categories)
+      if (updates.length > 0) {
+        set(s => ({
+          categories: s.categories.map(c => {
+            const u = updates.find(x => x.id === c.id)
+            return u ? { ...c, ...u.patch } : c
+          }),
+        }))
+      }
     }
   },
 

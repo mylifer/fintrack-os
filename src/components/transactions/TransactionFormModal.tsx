@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/Select'
 import { CategoryCascadeSelect } from '@/components/categories/CategoryCascadeSelect'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
+import { suggestCategoryIcon } from '@/lib/category-icon-suggest'
 import { TagInput } from '@/components/transactions/TagInput'
 import { useTags } from '@/lib/hooks/useTags'
 import { dedupeTags, tagColor, tagKey } from '@/lib/utils/tags'
@@ -1096,12 +1097,17 @@ export function TransactionFormModal() {
   }
 
   const createCategory = async (name: string) => {
+    // Bu akışta ikon seçici yok — kategori işlem yazarken bir kutudan
+    // oluşturuluyor. Simge ve renk ada göre otomatik seçilir, sonradan
+    // Kategoriler ekranından değiştirilebilir.
+    const scope = tab === 'income' ? 'income' : 'expense'
+    const suggestion = suggestCategoryIcon(name, scope)
     const cat: Category = {
       id:        crypto.randomUUID(),
       name,
-      icon:      'package',
-      color:     '#6366F1',
-      scope:     tab === 'income' ? 'income' : 'expense',
+      icon:      suggestion.icon,
+      color:     suggestion.color,
+      scope,
       isSystem:  false,
       sortOrder: categories.reduce((m, c) => Math.max(m, c.sortOrder), 0) + 1,
     }

@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { SelectField } from '@/components/ui/Select'
 import { CategoryIconPicker } from '../CategoryIconPicker'
 import { compareCategoriesByName } from '@/lib/utils/categories'
+import { suggestCategoryIcon, isPlaceholderIcon } from '@/lib/category-icon-suggest'
+import { DEFAULT_COLOR } from '@/lib/category-palette'
 import type { Category, CategoryScope } from '@/types'
 
 /* Kategori ekle / düzenle. Her iki görünümün ortak düzenleme yüzeyi: satır içi
@@ -81,6 +83,35 @@ export function CategoryEditModal({ scope, category, parentId, onClose }: Props)
   const [saving, setSaving] = useState(false)
 
   const activeScope = category?.scope ?? scope
+
+  /* Otomatik simge/renk: ad yazıldıkça lib/category-icon-suggest eşleştirmesi
+     uygulanır, böylece kullanıcının hiçbir şey seçmesi gerekmez. Seçici bir kez
+     elle kullanıldığında kilitlenir ve ad değişse bile bir daha dokunulmaz.
+     Düzenleme modunda kilit baştan kapalı sayılır — mevcut bilinçli bir seçim
+     yeniden adlandırınca ezilmemeli; yalnızca kategori hâlâ varsayılan
+     görünümdeyse (yer tutucu ikon + hiç değiştirilmemiş renk) otomatik devreye
+     girer. */
+  const [iconLocked, setIconLocked] = useState(
+    !!category && !(isPlaceholderIcon(category.icon) && category.color === DEFAULT_COLOR),
+  )
+  const [autoPicked, setAutoPicked] = useState(false)
+
+  function applyName(next: string) {
+    setName(next)
+    if (iconLocked) return
+    const s = suggestCategoryIcon(next, activeScope)
+    setIcon(s.icon)
+    setColor(s.color)
+    setAutoPicked(!!next.trim())
+  }
+
+  function pickIconManually(i: string, c: string) {
+    setIcon(i)
+    setColor(c)
+    setIconLocked(true)
+    setAutoPicked(false)
+  }
+
   // Kendi alt ağacının altına taşınamaz (döngü olur).
   const excluded = category ? descendantsOf(category.id) : new Set<string>()
 
@@ -153,11 +184,12 @@ export function CategoryEditModal({ scope, category, parentId, onClose }: Props)
           <CategoryIconPicker
             icon={icon}
             color={color}
-            onChange={(i, c) => { setIcon(i); setColor(c) }}
+            onChange={pickIconManually}
           />
           <p className="text-xs text-muted-foreground">
-            Simge ve rengi seçin; kategori her yerde (listeler, grafikler, işlem
-            satırları) bu renkle görünür.
+            {autoPicked
+              ? 'Simge ve renk kategori adına göre otomatik seçildi; beğenmezseniz soldaki kareye dokunup değiştirebilirsiniz.'
+              : 'Simge ve rengi seçin; kategori her yerde (listeler, grafikler, işlem satırları) bu renkle görünür.'}
           </p>
         </div>
 
@@ -165,7 +197,7 @@ export function CategoryEditModal({ scope, category, parentId, onClose }: Props)
           autoFocus
           label="Kategori adı"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={e => applyName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') save() }}
           placeholder="Örn. Market"
         />

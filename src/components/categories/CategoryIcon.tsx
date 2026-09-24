@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { NOTO_TO_TABLER } from '@/lib/legacy-icon-map'
+import { COLOR_PALETTE, DEFAULT_ICON, DEFAULT_COLOR } from '@/lib/category-palette'
 import {
   IconWallet, IconCreditCard, IconCash, IconTrendingUp, IconBuildingBank,
   IconBriefcase, IconGift, IconReceipt, IconCoin, IconScale, IconPackage,
@@ -143,15 +144,10 @@ export const TABLER_MAP: Record<string, TablerIcon> = {
 }
 
 /* ── Color palette ────────────────────────────────────────────────── */
-export const COLOR_PALETTE = [
-  '#6366F1', '#3B82F6', '#0EA5E9', '#06B6D4',
-  '#10B981', '#84CC16', '#EAB308', '#F97316',
-  '#EF4444', '#EC4899', '#A855F7', '#8B5CF6',
-  '#6B8F80', '#78716C', '#0F766E', '#1D4ED8',
-]
-
-export const DEFAULT_ICON  = 'package'
-export const DEFAULT_COLOR = '#6366F1'
+/* Değerler artık lib/category-palette.ts'te (yaprak modül): store ve otomatik
+   ikon önericisi bu ağır istemci bileşenini import etmeden paleti kullanabilsin
+   diye. Var olan import noktaları bozulmasın diye buradan yeniden dışa aktarılır. */
+export { COLOR_PALETTE, DEFAULT_ICON, DEFAULT_COLOR }
 
 /* ── Dynamic fallback for icons not in the static map ───────────── */
 let allTablerIcons: Record<string, TablerIcon> | null = null
