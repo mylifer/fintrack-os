@@ -14,6 +14,7 @@ import { DEFAULT_CATEGORIES } from '@/types'
 import { NOTO_TO_TABLER, LEGACY_COLOR } from '@/lib/legacy-icon-map'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import { autoIconPatch } from '@/lib/category-icon-suggest'
+import { recolorPatch } from '@/lib/category-recolor'
 import { getActiveWorkspaceId } from '@/lib/workspace-context'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 
@@ -50,34 +51,42 @@ function applyIconMigration(raw: Category[]): { categories: Category[]; dirty: C
    şey değiştirmedi; kural genişletildiği için anahtar v2'ye çıktı. */
 const AUTO_ICON_KEY = 'fintrack.categoryAutoIcon.v2'
 
-function autoIconFlagKey(): string {
-  return `${AUTO_ICON_KEY}:${getActiveWorkspaceId() ?? 'default'}`
+/* ── Tek seferlik anlamsal renk düzeni ────────────────────────────────────
+   lib/category-recolor'daki haritayı (varsayılan listede OLMAYAN kategoriler)
+   uygular; sistem kategorileri zaten Faz 3'te DEFAULT_CATEGORIES'ten boyanır.
+   Otomatik ikon geçişiyle aynı sözleşme (çalışma alanı başına bir kez, yalnız
+   yetkili çekişten sonra, "Geri al" bildirimiyle). İkon geçişinden SONRA
+   koşar: o anahtar kelimeye göre renk yazabilir, son sözü bu harita söyler. */
+const RECOLOR_KEY = 'fintrack.categoryRecolor.v1'
+
+function passFlagKey(key: string): string {
+  return `${key}:${getActiveWorkspaceId() ?? 'default'}`
 }
 
-function autoIconPassDone(): boolean {
+function passDone(key: string): boolean {
   if (typeof window === 'undefined') return true
   try {
-    return localStorage.getItem(autoIconFlagKey()) === '1'
+    return localStorage.getItem(passFlagKey(key)) === '1'
   } catch {
     return true   // storage kapalıysa geçişi hiç denemeyiz (tekrar tekrar yazmasın)
   }
 }
 
-function markAutoIconPassDone(): void {
+function markPassDone(key: string): void {
   try {
-    localStorage.setItem(autoIconFlagKey(), '1')
+    localStorage.setItem(passFlagKey(key), '1')
   } catch { /* storage kapalı */ }
 }
 
-interface AutoIconUpdate {
+interface PassUpdate {
   id: string
   patch: Partial<Category>
   /** Geri alma için yamadan önceki değerler. */
-  prev: Pick<Category, 'icon' | 'color'>
+  prev: Partial<Pick<Category, 'icon' | 'color'>>
 }
 
-async function runAutoIconPass(categories: Category[]): Promise<AutoIconUpdate[]> {
-  const updates: AutoIconUpdate[] = []
+async function runAutoIconPass(categories: Category[]): Promise<PassUpdate[]> {
+  const updates: PassUpdate[] = []
   for (const cat of categories) {
     if (cat.isSystem) continue
     const patch = autoIconPatch(cat)
@@ -85,7 +94,19 @@ async function runAutoIconPass(categories: Category[]): Promise<AutoIconUpdate[]
     await localPatch('categories', cat.id, patch as Record<string, unknown>)
     updates.push({ id: cat.id, patch, prev: { icon: cat.icon, color: cat.color } })
   }
-  markAutoIconPassDone()
+  markPassDone(AUTO_ICON_KEY)
+  return updates
+}
+
+async function runRecolorPass(categories: Category[]): Promise<PassUpdate[]> {
+  const updates: PassUpdate[] = []
+  for (const cat of categories) {
+    const patch = recolorPatch(cat)
+    if (!patch) continue
+    await localPatch('categories', cat.id, patch)
+    updates.push({ id: cat.id, patch, prev: { color: cat.color } })
+  }
+  markPassDone(RECOLOR_KEY)
   return updates
 }
 
@@ -125,30 +146,39 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       set({ categories, loading: false, ready: true })
     }
 
-    // Tek seferlik otomatik ikon/renk geçişi — yalnızca yetkili bir çekişten
-    // sonra (bkz. AUTO_ICON_KEY açıklaması). Yazmalar outbox üzerinden kalıcı.
-    if (lastPullWasAuthoritative('categories') && !autoIconPassDone()) {
+    // Tek seferlik geçişler — yalnızca yetkili bir çekişten sonra (bkz.
+    // AUTO_ICON_KEY / RECOLOR_KEY açıklamaları). Yazmalar outbox üzerinden kalıcı.
+    if (!lastPullWasAuthoritative('categories')) return
+
+    const announce = (updates: PassUpdate[], label: string) => {
+      if (updates.length === 0) return
+      const applyEach = (pick: (u: PassUpdate) => Partial<Category>) =>
+        set(s => ({
+          categories: s.categories.map(c => {
+            const u = updates.find(x => x.id === c.id)
+            return u ? { ...c, ...pick(u) } : c
+          }),
+        }))
+      applyEach(u => u.patch)
+      useUndoStore.getState().pushUndo(
+        label,
+        async () => {
+          for (const u of updates) {
+            await localPatch('categories', u.id, u.prev as Record<string, unknown>)
+          }
+          applyEach(u => u.prev)
+        },
+        20_000,
+      )
+    }
+
+    if (!passDone(AUTO_ICON_KEY)) {
       const updates = await runAutoIconPass(get().categories)
-      if (updates.length > 0) {
-        const applyEach = (pick: (u: AutoIconUpdate) => Partial<Category>) =>
-          set(s => ({
-            categories: s.categories.map(c => {
-              const u = updates.find(x => x.id === c.id)
-              return u ? { ...c, ...pick(u) } : c
-            }),
-          }))
-        applyEach(u => u.patch)
-        useUndoStore.getState().pushUndo(
-          `${updates.length} kategorinin simgesi ve rengi adına göre güncellendi`,
-          async () => {
-            for (const u of updates) {
-              await localPatch('categories', u.id, u.prev as Record<string, unknown>)
-            }
-            applyEach(u => u.prev)
-          },
-          20_000,
-        )
-      }
+      announce(updates, `${updates.length} kategorinin simgesi ve rengi adına göre güncellendi`)
+    }
+    if (!passDone(RECOLOR_KEY)) {
+      const updates = await runRecolorPass(get().categories)
+      announce(updates, `${updates.length} kategorinin rengi yeni renk düzenine göre güncellendi`)
     }
   },
 

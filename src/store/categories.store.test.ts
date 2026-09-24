@@ -61,8 +61,8 @@ describe('categories.store otomatik ikon geçişi', () => {
     await useCategoryStore.getState().load()
 
     const byId = Object.fromEntries(useCategoryStore.getState().categories.map(c => [c.id, c]))
-    expect(byId.a).toMatchObject({ icon: 'shopping-cart', color: '#10B981' })
-    expect(byId.b).toMatchObject({ icon: 'movie', color: '#A855F7' })
+    expect(byId.a).toMatchObject({ icon: 'shopping-cart', color: '#22C55E' })
+    expect(byId.b).toMatchObject({ icon: 'movie', color: '#D946EF' })
     // Kalıcı yazıldı (outbox yolu)
     expect(patches.map(p => p.id).sort()).toEqual(['a', 'b'])
   })
@@ -120,8 +120,49 @@ describe('categories.store otomatik ikon geçişi', () => {
   })
 
   it('değişecek bir şey yoksa bildirim göstermez', async () => {
-    pulled = [cat({ id: 'a', name: 'Market', icon: 'shopping-cart', color: '#10B981' })]
+    pulled = [cat({ id: 'a', name: 'Market', icon: 'shopping-cart', color: '#22C55E' })]
     await useCategoryStore.getState().load()
     expect(useUndoStore.getState().toasts).toHaveLength(0)
+  })
+})
+
+describe('categories.store anlamsal renk geçişi', () => {
+  it('varsayılan listede olmayan kategorileri (eski sistem kategorileri dahil) haritaya göre boyar', async () => {
+    pulled = [
+      cat({ id: 'p', name: 'Pets', icon: 'paw', color: '#FF0000' }),                         // ikon geçişi dokunmaz
+      cat({ id: 'e', name: 'Eğitim', icon: 'book', color: '#0EA5E9', isSystem: true }),     // Faz 3'ün dışında
+      cat({ id: 'x', name: 'Dekor', icon: 'lamp', color: '#FF0000', isArchived: true }),    // arşivli → atlanır
+    ]
+
+    await useCategoryStore.getState().load()
+
+    const byId = Object.fromEntries(useCategoryStore.getState().categories.map(c => [c.id, c]))
+    expect(byId.p.color).toBe('#84CC16')
+    expect(byId.e.color).toBe('#6366F1')
+    expect(byId.x.color).toBe('#FF0000')
+    expect(patches).toHaveLength(2)
+    expect(patches).toEqual(expect.arrayContaining([
+      { id: 'p', patch: { color: '#84CC16' } },
+      { id: 'e', patch: { color: '#6366F1' } },
+    ]))
+    const toasts = useUndoStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0].label).toContain('2 kategorinin rengi')
+  })
+
+  it('çalışma alanı başına bir kez; "Geri al" eski rengi döndürür', async () => {
+    pulled = [cat({ id: 'p', name: 'Pets', icon: 'paw', color: '#FF0000' })]
+    await useCategoryStore.getState().load()
+    const [toast] = useUndoStore.getState().toasts
+    await useUndoStore.getState().runUndo(toast.id)
+
+    expect(useCategoryStore.getState().categories[0].color).toBe('#FF0000')
+    expect(patches.at(-1)).toEqual({ id: 'p', patch: { color: '#FF0000' } })
+
+    // Geri alınan seçim bir sonraki açılışta yeniden ezilmez
+    patches.length = 0
+    pulled = [cat({ id: 'p', name: 'Pets', icon: 'paw', color: '#FF0000' })]
+    await useCategoryStore.getState().load()
+    expect(patches).toHaveLength(0)
   })
 })

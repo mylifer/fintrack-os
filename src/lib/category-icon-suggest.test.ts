@@ -101,17 +101,17 @@ describe('autoIconPatch', () => {
     ({ name: 'Market', icon: 'package', color: '#6366F1', scope: 'expense' as const, ...o })
 
   it('yer tutucu ikonu ikon+renkle birlikte günceller', () => {
-    expect(autoIconPatch(cat({}))).toEqual({ icon: 'shopping-cart', color: '#10B981' })
+    expect(autoIconPatch(cat({}))).toEqual({ icon: 'shopping-cart', color: '#22C55E' })
   })
 
   it('ad eşleşiyorsa elle seçilmiş ikon ve rengi de önerilenle değiştirir', () => {
     expect(autoIconPatch(cat({ icon: 'basket', color: '#FF0000' })))
-      .toEqual({ icon: 'shopping-cart', color: '#10B981' })
+      .toEqual({ icon: 'shopping-cart', color: '#22C55E' })
   })
 
   it('yalnızca farklı olan alanı yamalar', () => {
-    expect(autoIconPatch(cat({ icon: 'shopping-cart', color: '#FF0000' }))).toEqual({ color: '#10B981' })
-    expect(autoIconPatch(cat({ icon: 'basket', color: '#10B981' }))).toEqual({ icon: 'shopping-cart' })
+    expect(autoIconPatch(cat({ icon: 'shopping-cart', color: '#FF0000' }))).toEqual({ color: '#22C55E' })
+    expect(autoIconPatch(cat({ icon: 'basket', color: '#22C55E' }))).toEqual({ icon: 'shopping-cart' })
   })
 
   it('eşleşmeyen ama hiç dokunulmamış kategoriye yedek renk verir', () => {
@@ -127,6 +127,6 @@ describe('autoIconPatch', () => {
   })
 
   it('zaten doğru olan kategoride gereksiz yama üretmez', () => {
-    expect(autoIconPatch(cat({ icon: 'shopping-cart', color: '#10B981' }))).toBeNull()
+    expect(autoIconPatch(cat({ icon: 'shopping-cart', color: '#22C55E' }))).toBeNull()
   })
 })

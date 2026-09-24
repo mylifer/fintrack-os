@@ -17,28 +17,38 @@ import { SUGGEST_PALETTE, DEFAULT_COLOR, DEFAULT_ICON } from './category-palette
 import type { CategoryScope } from '@/types'
 
 /* ── Alan renkleri — DEFAULT_CATEGORIES ile aynı tonlar ──────────────── */
+/* Üst kategori aileleri DEFAULT_CATEGORIES'in üst kategori renkleriyle, alt
+   alanlar (alkol, yazılım, kırtasiye…) oradaki alt kategori tonlarıyla aynı —
+   yeni bir kategori ait olduğu ailenin rengini alsın. */
 const C = {
-  food:      '#F97316',
-  grocery:   '#10B981',
-  cafe:      '#F59E0B',
-  transport: '#3B82F6',
-  home:      '#EAB308',
-  shopping:  '#EC4899',
-  bills:     '#F97316',
-  subs:      '#8B5CF6',
-  fun:       '#A855F7',
-  health:    '#EF4444',
-  insurance: '#64748B',
-  invest:    '#6366F1',
-  tax:       '#78716C',
-  bank:      '#1D4ED8',
-  edu:       '#0EA5E9',
-  travel:    '#0EA5E9',
-  pet:       '#84CC16',
-  tech:      '#3B82F6',
-  nature:    '#84CC16',
-  income:    '#10B981',
-  neutral:   '#6B7280',
+  food:       '#F97316',
+  grocery:    '#22C55E',
+  cafe:       '#713F12',
+  transport:  '#3B82F6',
+  home:       '#F59E0B',
+  shopping:   '#EC4899',
+  care:       '#F43F5E',
+  bills:      '#14B8A6',
+  subs:       '#8B5CF6',
+  software:   '#6D28D9',
+  fun:        '#D946EF',
+  alcohol:    '#A21CAF',
+  health:     '#EF4444',
+  insurance:  '#06B6D4',
+  invest:     '#10B981',
+  tax:        '#7F1D1D',
+  bank:       '#1E3A8A',
+  edu:        '#6366F1',
+  travel:     '#0EA5E9',
+  pet:        '#84CC16',
+  tech:       '#7E22CE',
+  stationery: '#B91C1C',
+  tobacco:    '#44403C',
+  legal:      '#374151',
+  donation:   '#A855F7',
+  nature:     '#84CC16',
+  income:     '#10B981',
+  neutral:    '#6B7280',
 } as const
 
 interface Rule {
@@ -63,8 +73,8 @@ const RULES: readonly Rule[] = [
   { icon: 'fish',            color: C.food, kw: ['balik', 'susi', 'sushi', 'deniz urunleri'] },
   { icon: 'coffee',          color: C.cafe, kw: ['kahve', 'coffee', 'cafe', 'kafe', 'starbucks', 'espresso', 'latte', 'kahveci'] },
   { icon: 'cup',             color: C.cafe, kw: ['cay', 'cay ocagi', 'tea'] },
-  { icon: 'beer',            color: C.cafe, kw: ['bira', 'beer', 'pub', 'bar', 'meyhane', 'birahane'] },
-  { icon: 'glass-full',      color: C.cafe, kw: ['alkol', 'sarap', 'wine', 'raki', 'viski', 'icki', 'tekel'] },
+  { icon: 'beer',            color: C.alcohol, kw: ['bira', 'beer', 'pub', 'bar', 'meyhane', 'birahane'] },
+  { icon: 'glass-full',      color: C.alcohol, kw: ['alkol', 'sarap', 'wine', 'raki', 'viski', 'icki', 'tekel'] },
 
   /* ── Market ────────────────────────────────────────────────────────── */
   { icon: 'shopping-cart',   color: C.grocery, kw: ['market', 'bakkal', 'grocery', 'gida', 'erzak', 'migros', 'a101', 'bim', 'carrefour', 'sok market', 'macrocenter', 'market alisverisi'] },
@@ -82,8 +92,8 @@ const RULES: readonly Rule[] = [
   { icon: 'tool',            color: C.transport, kw: ['lastik', 'oto bakim', 'arac bakim', 'otomobil bakim', 'yedek parca', 'tamirci', 'servis'] },
   { icon: 'bike',            color: C.transport, kw: ['bisiklet', 'bike', 'scooter'] },
   { icon: 'motorbike',       color: C.transport, kw: ['motosiklet', 'motorsiklet'] },
-  { icon: 'bolt',            color: '#EAB308',   kw: ['sarj', 'charge', 'elektrikli arac'] },
-  { icon: 'droplet',         color: '#06B6D4',   kw: ['arac yikama', 'oto yikama', 'yikama', 'car wash'] },
+  { icon: 'bolt',            color: '#0E7490',   kw: ['sarj', 'charge', 'elektrikli arac'] },
+  { icon: 'droplet',         color: '#0EA5E9',   kw: ['arac yikama', 'oto yikama', 'yikama', 'car wash'] },
   { icon: 'alert-triangle',  color: C.health,    kw: ['ceza', 'trafik cezasi', 'para cezasi'] },
   { icon: 'license',         color: C.tax,       kw: ['ehliyet', 'ruhsat', 'noter'] },
 
@@ -115,8 +125,8 @@ const RULES: readonly Rule[] = [
   { icon: 'movie',           color: C.fun,  kw: ['netflix', 'disney', 'blutv', 'exxen', 'dizi', 'film', 'sinema', 'cinema', 'movie', 'mubi'] },
   { icon: 'music',           color: C.fun,  kw: ['spotify', 'muzik', 'music', 'konser', 'concert', 'festival', 'apple music'] },
   { icon: 'device-gamepad-2', color: C.fun, kw: ['oyun', 'game', 'gaming', 'steam', 'playstation', 'xbox', 'epic', 'nintendo'] },
-  { icon: 'cloud',           color: C.tech, kw: ['bulut', 'cloud', 'icloud', 'dropbox', 'depolama', 'google drive', 'hosting', 'sunucu', 'domain'] },
-  { icon: 'device-desktop',  color: C.tech, kw: ['yazilim', 'software', 'uygulama', 'lisans', 'adobe', 'office', 'saas'] },
+  { icon: 'cloud',           color: C.software, kw: ['bulut', 'cloud', 'icloud', 'dropbox', 'depolama', 'google drive', 'hosting', 'sunucu', 'domain'] },
+  { icon: 'device-desktop',  color: C.software, kw: ['yazilim', 'software', 'uygulama', 'lisans', 'adobe', 'office', 'saas'] },
   { icon: 'robot',           color: C.subs, kw: ['yapay zeka', 'chatgpt', 'openai', 'claude', 'midjourney'] },
 
   /* ── Eğlence & hobi ────────────────────────────────────────────────── */
@@ -150,8 +160,8 @@ const RULES: readonly Rule[] = [
   { icon: 'swimming',        color: C.health, kw: ['yuzme', 'havuz'] },
 
   /* ── Kişisel bakım ─────────────────────────────────────────────────── */
-  { icon: 'sparkles',        color: C.shopping, kw: ['kisisel bakim', 'kozmetik', 'makyaj', 'cilt bakimi', 'guzellik', 'parfum', 'spa', 'masaj', 'bakim'] },
-  { icon: 'scissors',        color: C.shopping, kw: ['kuafor', 'berber', 'tiras', 'manikur', 'pedikur', 'sac'] },
+  { icon: 'sparkles',        color: C.care, kw: ['kisisel bakim', 'kozmetik', 'makyaj', 'cilt bakimi', 'guzellik', 'parfum', 'spa', 'masaj', 'bakim'] },
+  { icon: 'scissors',        color: C.care, kw: ['kuafor', 'berber', 'tiras', 'manikur', 'pedikur', 'sac'] },
 
   /* ── Alışveriş ─────────────────────────────────────────────────────── */
   { icon: 'shopping-bag',    color: C.shopping, kw: ['alisveris', 'shopping', 'magaza', 'trendyol', 'hepsiburada', 'amazon', 'n11'] },
@@ -166,9 +176,9 @@ const RULES: readonly Rule[] = [
   { icon: 'horse-toy',       color: C.shopping, kw: ['oyuncak'] },
   { icon: 'baby-carriage',   color: C.shopping, kw: ['bebek', 'cocuk', 'kres', 'emzik'] },
   { icon: 'gift',            color: C.shopping, kw: ['hediye', 'gift', 'hediyelik'] },
-  { icon: 'pencil',          color: C.invest,   kw: ['kirtasiye', 'defter', 'kalem', 'ofis malzemesi'] },
+  { icon: 'pencil',          color: C.stationery,   kw: ['kirtasiye', 'defter', 'kalem', 'ofis malzemesi'] },
   { icon: 'tool',            color: C.neutral,  kw: ['hirdavat', 'nalbur', 'yapi market', 'malzeme'] },
-  { icon: 'smoking',         color: C.tax,      kw: ['sigara', 'tutun', 'tobacco', 'puro', 'elektronik sigara'] },
+  { icon: 'smoking',         color: C.tobacco,      kw: ['sigara', 'tutun', 'tobacco', 'puro', 'elektronik sigara'] },
 
   /* ── Eğitim ────────────────────────────────────────────────────────── */
   { icon: 'school',          color: C.edu, kw: ['egitim', 'okul', 'universite', 'kurs', 'ders', 'sinav', 'harc', 'dershane', 'sertifika', 'yurt', 'education', 'ogrenci', 'udemy', 'dil kursu', 'seminer'] },
@@ -180,7 +190,7 @@ const RULES: readonly Rule[] = [
   { icon: 'building-bank',   color: C.bank, kw: ['banka', 'bank', 'banka masrafi', 'banka giderleri', 'hesap isletim', 'komisyon', 'eft', 'havale', 'atm', 'iban', 'masraf'] },
   { icon: 'credit-card',     color: C.bank, kw: ['kredi karti', 'kart', 'card', 'credit card'] },
   { icon: 'report-money',    color: C.bank, kw: ['kredi', 'loan', 'ihtiyac kredisi', 'konut kredisi', 'tuketici kredisi'] },
-  { icon: 'coins',           color: C.tax,  kw: ['borc', 'debt', 'alacak'] },
+  { icon: 'coins',           color: C.bank,  kw: ['borc', 'debt', 'alacak'] },
   { icon: 'calendar-repeat', color: C.subs, kw: ['taksit', 'installment', 'vade'] },
   { icon: 'receipt-tax',     color: C.tax,  kw: ['vergi', 'tax', 'mtv', 'kdv', 'otv', 'stopaj', 'beyanname'] },
   { icon: 'shield',          color: C.insurance, kw: ['sigorta', 'insurance', 'kasko', 'dask', 'police', 'sgk', 'prim'] },
@@ -191,17 +201,17 @@ const RULES: readonly Rule[] = [
   { icon: 'currency-bitcoin', color: C.food,  kw: ['kripto', 'bitcoin', 'btc', 'ethereum', 'binance'] },
   { icon: 'cash',            color: C.income, kw: ['nakit', 'cash', 'para'] },
   { icon: 'arrows-exchange', color: C.neutral, kw: ['transfer', 'virman', 'gonderim'] },
-  { icon: 'gavel',           color: C.neutral, kw: ['avukat', 'hukuk', 'legal', 'mahkeme', 'dava'] },
-  { icon: 'scale',           color: C.neutral, kw: ['adalet', 'noter ucreti'] },
+  { icon: 'gavel',           color: C.legal, kw: ['avukat', 'hukuk', 'legal', 'mahkeme', 'dava'] },
+  { icon: 'scale',           color: C.legal, kw: ['adalet', 'noter ucreti'] },
 
   /* ── İş & gelir ────────────────────────────────────────────────────── */
   { icon: 'briefcase',       color: C.income, kw: ['maas', 'salary', 'ucret', 'mesai', 'bordro', 'freelance', 'serbest', 'danismanlik', 'proje', 'musteri'] },
   { icon: 'building-store',  color: C.income, kw: ['satis', 'sale', 'ticaret', 'dukkan', 'isletme'] },
   { icon: 'moneybag',        color: C.income, kw: ['gelir', 'income', 'kazanc', 'hasilat', 'ek gelir'] },
   { icon: 'arrow-up-right',  color: C.income, kw: ['cashback', 'iade', 'refund', 'geri odeme', 'puan'] },
-  { icon: 'heart-handshake', color: C.health, kw: ['bagis', 'yardim', 'sadaka', 'zekat', 'charity', 'donation', 'burs'] },
+  { icon: 'heart-handshake', color: C.donation, kw: ['bagis', 'yardim', 'sadaka', 'zekat', 'charity', 'donation', 'burs'] },
   { icon: 'ad',              color: C.shopping, kw: ['reklam', 'pazarlama', 'marketing', 'sponsorluk'] },
-  { icon: 'truck-delivery',  color: C.tax,   kw: ['kargo', 'nakliye', 'gonderi', 'posta', 'teslimat'] },
+  { icon: 'truck-delivery',  color: C.neutral,   kw: ['kargo', 'nakliye', 'gonderi', 'posta', 'teslimat'] },
   { icon: 'building-skyscraper', color: C.neutral, kw: ['ofis', 'is yeri', 'sirket', 'personel'] },
   { icon: 'home',            color: C.income, kw: ['kira geliri'] },
 
