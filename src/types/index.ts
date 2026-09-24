@@ -474,19 +474,17 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
   { name: 'Yatırım',           icon: 'trending-up',      color: '#6366F1', scope: 'expense', isSystem: true, sortOrder: 11 },
   { name: 'Vergi',             icon: 'scale',            color: '#78716C', scope: 'expense', isSystem: true, sortOrder: 12 },
   { name: 'Banka Giderleri',   icon: 'building-bank',    color: '#1D4ED8', scope: 'expense', isSystem: true, sortOrder: 13 },
-  { name: 'Şarj',              icon: 'bolt',             color: '#EAB308', scope: 'expense', isSystem: true, sortOrder: 14 },
-  { name: 'Legal',             icon: 'scale',            color: '#6B7280', scope: 'expense', isSystem: true, sortOrder: 15 },
   { name: 'Çeşitli Hizmetler', icon: 'tool',             color: '#6B7280', scope: 'expense', isSystem: true, sortOrder: 16 },
   { name: 'Tütün',             icon: 'smoking',          color: '#78716C', scope: 'expense', isSystem: true, sortOrder: 17 },
-  { name: 'Duty Free',         icon: 'plane',            color: '#0EA5E9', scope: 'expense', isSystem: true, sortOrder: 18 },
   { name: 'Kişisel Bakım',     icon: 'sparkles',         color: '#EC4899', scope: 'expense', isSystem: true, sortOrder: 19 },
-  { name: 'Araç Yıkama',       icon: 'droplet',          color: '#06B6D4', scope: 'expense', isSystem: true, sortOrder: 20 },
-  { name: 'Alkol',             icon: 'beer',             color: '#F59E0B', scope: 'expense', isSystem: true, sortOrder: 21 },
-  { name: 'Kırtasiye',         icon: 'pencil',           color: '#6366F1', scope: 'expense', isSystem: true, sortOrder: 22 },
-  { name: 'Yazılım',           icon: 'device-desktop',   color: '#3B82F6', scope: 'expense', isSystem: true, sortOrder: 23 },
   { name: 'Diğer Gider',       icon: 'package',          color: '#6B7280', scope: 'expense', isSystem: true, sortOrder: 24 },
 
+  // Aşağıdaki hiyerarşi var olan çalışma alanlarına lib/category-restructure
+  // ile bir kez uygulanır — buradaki bir değişiklik oraya da yansıtılmalı.
+
   // ── Gider: Ulaşım alt kategorileri ───────────────────────────────────────
+  { name: 'Şarj',              icon: 'bolt',             color: '#EAB308', scope: 'expense', isSystem: true, sortOrder: 14, _parentName: 'Ulaşım' },
+  { name: 'Araç Yıkama',       icon: 'droplet',          color: '#06B6D4', scope: 'expense', isSystem: true, sortOrder: 20, _parentName: 'Ulaşım' },
   { name: 'HGS',               icon: 'road',             color: '#3B82F6', scope: 'expense', isSystem: true, sortOrder: 41, _parentName: 'Ulaşım' },
   { name: 'Otopark',           icon: 'parking',          color: '#3B82F6', scope: 'expense', isSystem: true, sortOrder: 42, _parentName: 'Ulaşım' },
   { name: 'Taksi',             icon: 'car',              color: '#3B82F6', scope: 'expense', isSystem: true, sortOrder: 43, _parentName: 'Ulaşım' },
@@ -504,12 +502,20 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
   // ── Gider: Alışveriş alt kategorileri ────────────────────────────────────
   { name: 'Teknoloji',         icon: 'device-laptop',    color: '#EC4899', scope: 'expense', isSystem: true, sortOrder: 61, _parentName: 'Alışveriş' },
   { name: 'Giyim',             icon: 'hanger',           color: '#EC4899', scope: 'expense', isSystem: true, sortOrder: 62, _parentName: 'Alışveriş' },
+  { name: 'Duty Free',         icon: 'plane',            color: '#0EA5E9', scope: 'expense', isSystem: true, sortOrder: 18, _parentName: 'Alışveriş' },
+  { name: 'Kırtasiye',         icon: 'pencil',           color: '#6366F1', scope: 'expense', isSystem: true, sortOrder: 22, _parentName: 'Alışveriş' },
+
+  // ── Gider: diğer alt kategoriler ──────────────────────────────────────────
+  { name: 'Legal',             icon: 'scale',            color: '#6B7280', scope: 'expense', isSystem: true, sortOrder: 15, _parentName: 'Çeşitli Hizmetler' },
+  { name: 'Alkol',             icon: 'beer',             color: '#F59E0B', scope: 'expense', isSystem: true, sortOrder: 21, _parentName: 'Eğlence' },
+  { name: 'Yazılım',           icon: 'device-desktop',   color: '#3B82F6', scope: 'expense', isSystem: true, sortOrder: 23, _parentName: 'Abonelikler' },
 
   // ── Gider: Faturalar alt kategorileri ─────────────────────────────────────
+  // "Mobil Hat" Telefon ile aynı işi gördüğü için kaldırıldı (var olanlar
+  // lib/category-restructure'da Telefon'a birleştirilir).
   { name: 'Aidat',             icon: 'building',         color: '#F97316', scope: 'expense', isSystem: true, sortOrder: 71, _parentName: 'Faturalar' },
   { name: 'Doğalgaz',          icon: 'flame',            color: '#F97316', scope: 'expense', isSystem: true, sortOrder: 72, _parentName: 'Faturalar' },
-  { name: 'Mobil Hat',         icon: 'phone',            color: '#F97316', scope: 'expense', isSystem: true, sortOrder: 73, _parentName: 'Faturalar' },
-  { name: 'Su',                icon: 'droplet',          color: '#F97316', scope: 'expense', isSystem: true, sortOrder: 74, _parentName: 'Faturalar' },
+  { name: 'Su',              icon: 'droplet',          color: '#F97316', scope: 'expense', isSystem: true, sortOrder: 74, _parentName: 'Faturalar' },
   { name: 'Elektrik',          icon: 'bolt',             color: '#F97316', scope: 'expense', isSystem: true, sortOrder: 75, _parentName: 'Faturalar' },
   { name: 'İnternet',          icon: 'wifi',             color: '#F97316', scope: 'expense', isSystem: true, sortOrder: 76, _parentName: 'Faturalar' },
   { name: 'Telefon',           icon: 'phone-call',       color: '#F97316', scope: 'expense', isSystem: true, sortOrder: 77, _parentName: 'Faturalar' },

@@ -5,6 +5,7 @@ import {
   useBudgetStore, useDebtStore, useInvestmentStore, usePeopleStore,
   useRecurringStore, usePaymentsStore,
 } from '@/store'
+import { runCategoryRestructurePass } from '@/lib/category-restructure'
 
 /* Tüm veri store'larını (fiyat feed'i / sync altyapısı HARİÇ — bunlar
    workspace'e özgü değil, uygulama ömrü boyunca bir kez kurulur) yeniden
@@ -41,6 +42,10 @@ export async function reloadAllStores(): Promise<void> {
     loadRecurring(),
     loadPayments(),   // ödeme takibi: hesaplara/borçlara/işlemlere referans verir
   ])
+
+  // Tek seferlik kategori düzeni geçişi — işlem/bütçe/tekrarlayan bağlarını da
+  // taşıdığı için Faz 2'den SONRA koşmalı. Hatası açılışı yarıda kesmesin.
+  await runCategoryRestructurePass().catch(err => console.error('[category-restructure]', err))
 
   const { transactions } = useTransactionStore.getState()
   recomputeBalances(transactions)
