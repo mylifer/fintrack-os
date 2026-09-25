@@ -10,6 +10,7 @@ import { CategoryIconPicker } from '../CategoryIconPicker'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import { suggestCategoryIcon, isPlaceholderIcon } from '@/lib/category-icon-suggest'
 import { DEFAULT_COLOR } from '@/lib/category-palette'
+import { parseKeywords } from '@/lib/auto-category'
 import type { Category, CategoryScope } from '@/types'
 
 /* Kategori ekle / düzenle. Her iki görünümün ortak düzenleme yüzeyi: satır içi
@@ -81,6 +82,8 @@ export function CategoryEditModal({ scope, category, parentId, onClose }: Props)
   )
   const [error,  setError]  = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const initialKeywords = (category?.matchKeywords ?? []).join(', ')
+  const [keywords, setKeywords] = useState(initialKeywords)
 
   const activeScope = category?.scope ?? scope
 
@@ -142,6 +145,13 @@ export function CategoryEditModal({ scope, category, parentId, onClose }: Props)
 
     setError(null)
     setSaving(true)
+    // Kurallar yalnız DEĞİŞTİYSE yazılır: alan satıra bir kez girince her
+    // senkronda sütun olarak gider — 0014 uygulanmamış bir projede kural
+    // kullanmayanların kategori düzenlemeleri bu yüzden bozulmasın.
+    const parsedKeywords = parseKeywords(keywords)
+    const keywordPatch = parsedKeywords.join(', ') !== initialKeywords
+      ? { matchKeywords: parsedKeywords.length ? parsedKeywords : null }
+      : {}
     try {
       if (category) {
         await update(category.id, {
@@ -149,6 +159,7 @@ export function CategoryEditModal({ scope, category, parentId, onClose }: Props)
           icon:     icon || 'package',
           color:    color || '#6366F1',
           parentId: newParentId,
+          ...keywordPatch,
         })
       } else {
         const maxSort = categories.reduce((m, c) => Math.max(m, c.sortOrder), 0)
@@ -161,6 +172,7 @@ export function CategoryEditModal({ scope, category, parentId, onClose }: Props)
           parentId:  newParentId,
           isSystem:  false,
           sortOrder: maxSort + 1,
+          ...keywordPatch,
         })
       }
       onClose()
@@ -230,6 +242,14 @@ export function CategoryEditModal({ scope, category, parentId, onClose }: Props)
             className="bg-background text-sm"
           />
         )}
+
+        <Input
+          label="Otomatik eşleşme kelimeleri"
+          value={keywords}
+          onChange={e => setKeywords(e.target.value)}
+          placeholder={activeScope === 'income' ? 'Örn. maaş, prim' : 'Örn. migros, a101, şok'}
+          hint="Virgülle ayırın. İşlem açıklaması bunlardan birini içerirse bu kategori kendiliğinden seçilir (içe aktarmada da)."
+        />
 
         <div className="flex items-center justify-end gap-2 pt-1">
           <Button variant="ghost" size="sm" onClick={onClose}>İptal</Button>

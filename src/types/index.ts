@@ -152,6 +152,10 @@ export interface Category {
   isSystem: boolean         // Cannot be deleted
   isArchived?: boolean      // Soft-deleted; hidden from pickers but kept for historical data
   sortOrder: number
+  // Otomatik kategori kuralı: işlem açıklaması bu kelimelerden birini içerirse
+  // kategori kendiliğinden seçilir (lib/auto-category). Küçük harf, tekil.
+  // Supabase sütunu 0014'te eklenir; hiç kural girilmemiş satırda alan YOKTUR.
+  matchKeywords?: string[] | null
   deleted_at?: string | null // Tombstone (C3)
   workspaceId?: string      // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }

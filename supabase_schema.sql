@@ -286,6 +286,7 @@ alter table public.categories add column if not exists "parentId" text;
 alter table public.categories add column if not exists "isSystem" boolean;
 alter table public.categories add column if not exists "isArchived" boolean;
 alter table public.categories add column if not exists "sortOrder" double precision;
+alter table public.categories add column if not exists "matchKeywords" text[];  -- 0014
 
 alter table public.budgets add column if not exists "categoryId" text;
 alter table public.budgets add column if not exists "amount" double precision;

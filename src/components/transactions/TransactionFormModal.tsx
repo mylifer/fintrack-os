@@ -32,6 +32,7 @@ import {
 import { CategoryCascadeSelect } from '@/components/categories/CategoryCascadeSelect'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { suggestCategoryIcon } from '@/lib/category-icon-suggest'
+import { keywordCategory, recipientCategory } from '@/lib/auto-category'
 import { TagInput } from '@/components/transactions/TagInput'
 import { useTags } from '@/lib/hooks/useTags'
 import { dedupeTags, tagColor, tagKey } from '@/lib/utils/tags'
@@ -513,6 +514,9 @@ export function TransactionFormModal() {
       : Math.abs(editingTx?.amount ?? 0)
     return rescaleSplits(magnitude, totalSeed).map(s => ({ ...s, pinned: true }))
   })
+  // Otomatik seçilen kategori (yoksa null): kullanıcı elle seçene kadar
+  // açıklama/alıcı değiştikçe güncellenebilir — bkz. withAutoCategory.
+  const [autoCategory, setAutoCategory] = useState<string | null>(null)
 
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
@@ -772,6 +776,7 @@ export function TransactionFormModal() {
   // açıklama, kategori, kişi, etiket, not ve taksit/borç ayarları temizlenir.
   function resetForNext(keepDate: string) {
     setForm(f => formForNextEntry(f.type, f.accountId, keepDate))
+    setAutoCategory(null)
     setAmountStr('')
     setAmountSign(1)
     setInstallments(1)
@@ -786,6 +791,7 @@ export function TransactionFormModal() {
     const tx = useTransactionStore.getState().transactions.find(t => t.id === row.id)
     if (!tx) return
     setTab(tx.type as Tab)
+    setAutoCategory(null)
     setForm({
       type:           tx.type as Tab,
       amount:         tx.amount,
@@ -1051,6 +1057,28 @@ export function TransactionFormModal() {
 
   const patch = (p: Partial<ReturnType<typeof newForm>>) => setForm(f => ({ ...f, ...p }))
 
+  // ── Otomatik kategori (lib/auto-category) ──────────────────────────────
+  // Önce açıklamadaki anahtar kelime kuralı, yoksa alıcının en sık kategorisi.
+  // Yalnız kategori BOŞKEN ya da mevcut kategori yine bizim otomatik seçimimizken
+  // devreye girer; elle seçilen kategoriye (ve bölmeye) dokunulmaz.
+  function autoPick(description: string, recipientId: string | null | undefined): string | undefined {
+    if (tab === 'transfer') return undefined
+    return keywordCategory(description, tab, categories)
+      ?? (recipientId ? recipientCategory(recipientId, tab, transactions, categories) : undefined)
+  }
+
+  function withAutoCategory(p: Partial<ReturnType<typeof newForm>>): Partial<ReturnType<typeof newForm>> {
+    if (tab === 'transfer' || splits) return p
+    const current = form.categoryId ?? ''
+    if (current && current !== autoCategory) return p
+    const pick = autoPick(
+      p.description ?? form.description,
+      'recipientId' in p ? p.recipientId : form.recipientId,
+    )
+    setAutoCategory(pick ?? null)
+    return { ...p, categoryId: pick ?? '' }
+  }
+
   // ── Bölme yardımcıları ──────────────────────────────────────────────────
   // Tüm pay matematiği BÜYÜKLÜK üzerinden yürür (tutar alanı da öyle);
   // işaret yalnızca kayıt anında amountSign ile geri takılır.
@@ -1215,6 +1243,7 @@ export function TransactionFormModal() {
                   setTab(key)
                   // Kategoriler tipe göre filtrelendiğinden paylar da geçersizleşir.
                   setSplits(null)
+                  setAutoCategory(null)
                   patch({ type: key, categoryId: '', toAccountId: undefined, isDebtPayment: false, debtId: undefined })
                 }}
                 className={cn(
@@ -1349,21 +1378,27 @@ export function TransactionFormModal() {
             <DescriptionAutocomplete
               autoFocus={false}
               value={form.description}
-              onChange={v => patch({ description: v })}
-              onSelect={s => patch({
-                description:    s.description,
-                categoryId:     s.categoryId,
-                familyMemberId: s.familyMemberId,
-                recipientId:    s.recipientId,
-                // Etiketler yalnızca öneride varsa gelir; kullanıcının elle
-                // girdikleri korunur (abonelik etiketi dahil)
-                ...(s.tags?.length ? { tags: dedupeTags([...form.tags, ...s.tags]) } : {}),
-                // Transferde alıcı hesabı son işlemden getir — kaynakla aynıysa
-                // veya borç ödeme modundaysa dokunma
-                ...(tab === 'transfer' && !form.isDebtPayment && s.toAccountId && s.toAccountId !== form.accountId
-                  ? { toAccountId: s.toAccountId }
-                  : {}),
-              })}
+              onChange={v => patch(withAutoCategory({ description: v }))}
+              onSelect={s => {
+                // Öneri geçmişten gelir: kategorisi varsa o kullanılır (otomatik
+                // sayılmaz); yoksa kural/alıcı geçmişi denenir.
+                const fallback = !s.categoryId && !splits ? autoPick(s.description, s.recipientId) : undefined
+                setAutoCategory(fallback ?? null)
+                patch({
+                  description:    s.description,
+                  categoryId:     s.categoryId || fallback || '',
+                  familyMemberId: s.familyMemberId,
+                  recipientId:    s.recipientId,
+                  // Etiketler yalnızca öneride varsa gelir; kullanıcının elle
+                  // girdikleri korunur (abonelik etiketi dahil)
+                  ...(s.tags?.length ? { tags: dedupeTags([...form.tags, ...s.tags]) } : {}),
+                  // Transferde alıcı hesabı son işlemden getir — kaynakla aynıysa
+                  // veya borç ödeme modundaysa dokunma
+                  ...(tab === 'transfer' && !form.isDebtPayment && s.toAccountId && s.toAccountId !== form.accountId
+                    ? { toAccountId: s.toAccountId }
+                    : {}),
+                })
+              }}
               suggestions={suggestions}
               categories={categories}
               people={allPeople}
@@ -1512,6 +1547,14 @@ export function TransactionFormModal() {
                 <div className="flex items-center justify-between">
                   <Label className={cn("text-sm font-medium", errors.categoryId && "text-destructive")}>
                     Kategori
+                    {autoCategory && form.categoryId === autoCategory && !splits && (
+                      <span
+                        className="ml-1.5 text-[10px] font-normal text-muted-foreground"
+                        title="Açıklamadaki kurala ya da alıcının geçmişine göre seçildi — değiştirebilirsiniz"
+                      >
+                        otomatik
+                      </span>
+                    )}
                   </Label>
                   {/* Bölme yalnızca gerçek bir tutar varken anlamlı — 0'ı bölmek
                       boş bir bar üretirdi. */}
@@ -1546,7 +1589,7 @@ export function TransactionFormModal() {
                   <CategoryCascadeSelect
                     categories={filteredCategories}
                     value={form.categoryId ?? ''}
-                    onChange={v => patch({ categoryId: v })}
+                    onChange={v => { setAutoCategory(null); patch({ categoryId: v }) }}
                     error={!!errors.categoryId}
                     onCreate={createCategory}
                   />
@@ -1772,7 +1815,7 @@ export function TransactionFormModal() {
                 key={`rec-${modal}-${modalPayload?.id ?? 'new'}`}
                 role="recipient"
                 value={form.recipientId}
-                onChange={id => patch({ recipientId: id })}
+                onChange={id => patch(withAutoCategory({ recipientId: id }))}
               />
             </div>
           )}

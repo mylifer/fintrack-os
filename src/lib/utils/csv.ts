@@ -1,5 +1,6 @@
 import type { Account, Transaction, Category, CurrencyCode, TransactionType } from '@/types'
 import { serializeTagsCell, parseTagsCell } from '@/lib/utils/tags'
+import { keywordCategory } from '@/lib/auto-category'
 
 // ─── Export ────────────────────────────────────────────────────────────────
 
@@ -360,7 +361,10 @@ export function validateImportRows(
       errs.push('Negatif tutar yalnızca gider (iade) satırlarında kabul edilir')
     }
 
-    const categoryId = rawCat.trim() ? catByName.get(rawCat.trim().toLowerCase()) : undefined
+    // Kategori sütunu yoksa ya da ad eşleşmezse (banka dökümleri genelde
+    // kategori taşımaz) kategorideki anahtar kelime kuralları denenir.
+    const categoryId = (rawCat.trim() ? catByName.get(rawCat.trim().toLowerCase()) : undefined)
+      ?? (type ? keywordCategory(rawDesc, type, categories) : undefined)
     const curRaw     = rawCur.trim().toUpperCase()
     const currency   = (VALID_CURRENCIES.has(curRaw) ? curRaw : 'TRY') as CurrencyCode
     const tags       = parseTagsCell(rawTags)
