@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, createElement } from 'react'
 import { NOTO_TO_TABLER } from '@/lib/legacy-icon-map'
 import { COLOR_PALETTE, DEFAULT_ICON, DEFAULT_COLOR } from '@/lib/category-palette'
 import {
@@ -197,26 +197,25 @@ export function CategoryIcon({ icon, color = DEFAULT_COLOR, size = 16, className
     ? (NOTO_TO_TABLER[icon]?.icon ?? DEFAULT_ICON)
     : icon
 
-  // Check static map first (zero flash)
-  const staticTabler = TABLER_MAP[resolvedIcon]
+  // Static map, or the module-level cache once the full set has loaded — both
+  // resolve synchronously during render (zero flash, no state round-trip).
+  const syncIcon = resolveTablerIcon(resolvedIcon)
 
-  // State for dynamically loaded icons not in the static map
-  const [dynamicIcon, setDynamicIcon] = useState<TablerIcon | null>(() => staticTabler || null)
+  // Not cached yet → lazy-load the full Tabler module. The loaded icon is kept
+  // WITH its name so a later prop change never shows the previous icon.
+  const [loaded, setLoaded] = useState<{ name: string; icon: TablerIcon } | null>(null)
 
   useEffect(() => {
-    if (resolvedIcon in TABLER_MAP || resolvedIcon in ICON_MAP) return
-    // Try from already-loaded cache
-    const cached = resolveTablerIcon(resolvedIcon)
-    if (cached) { setDynamicIcon(cached); return }
-    // Lazy load full Tabler module (cached at module level after first call)
+    if (syncIcon || resolvedIcon in ICON_MAP) return
+    let alive = true
     ensureAllTablerIcons().then(() => {
       const ic = resolveTablerIcon(resolvedIcon)
-      if (ic) setDynamicIcon(ic)
+      if (alive && ic) setLoaded({ name: resolvedIcon, icon: ic })
     })
-  }, [resolvedIcon])
+    return () => { alive = false }
+  }, [resolvedIcon, syncIcon])
 
-  // Prefer the statically-mapped icon (survives prop changes even if state is stale)
-  const TIcon = staticTabler ?? dynamicIcon
+  const TIcon = syncIcon ?? (loaded?.name === resolvedIcon ? loaded.icon : null)
 
   if (TIcon) {
     return (
@@ -224,7 +223,10 @@ export function CategoryIcon({ icon, color = DEFAULT_COLOR, size = 16, className
         className={`inline-flex items-center justify-center flex-shrink-0 ${className}`}
         style={{ width: containerSize, height: containerSize, borderRadius: radius, background: color }}
       >
-        <TIcon size={size} style={{ color: 'white' }} stroke={1.75} />
+        {/* Bileşen render'da yaratılmaz, statik haritadan/modül önbelleğinden
+            SEÇİLİR — createElement bunu static-components kuralına takılmadan
+            ifade eder (CategoryIconPicker.drawIcon ile aynı gerekçe). */}
+        {createElement(TIcon, { size, style: { color: 'white' }, stroke: 1.75 })}
       </span>
     )
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertDialog } from 'radix-ui'
 import { SelectField } from '@/components/ui/Select'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -80,7 +80,12 @@ export function BatchEditDrawer({
   }
 
   // Seçim tamamen kalkınca (X / Vazgeç / uygula / filtre değişimi) formu sıfırla.
-  useEffect(() => { if (!open) reset() }, [open])
+  // Render sırasında: çekmece kapanırken form bir kare eski değerleri taşımasın.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (wasOpen !== open) {
+    setWasOpen(open)
+    if (!open) reset()
+  }
 
   const categoryOptions = useMemo(() => [
     { value: '', label: 'Kategori seç…', disabled: true },

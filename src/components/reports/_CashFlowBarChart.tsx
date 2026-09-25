@@ -3,15 +3,16 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { formatCompact, formatAxisCompact } from '@/lib/utils/currency'
+import { chartIndex, type ChartTooltipProps } from './chart-tooltip'
 import type { CashFlowPoint } from '@/lib/utils/cashflow'
 
 export type { CashFlowPoint }
 export type CashFlowChartType = 'bar' | 'line'
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: ChartTooltipProps) {
   if (!active || !payload?.length) return null
-  const income  = (payload.find((p: any) => p.dataKey === 'income')?.value  ?? 0) as number
-  const expense = (payload.find((p: any) => p.dataKey === 'expense')?.value ?? 0) as number
+  const income  = (payload.find(p => p.dataKey === 'income')?.value  ?? 0) as number
+  const expense = (payload.find(p => p.dataKey === 'expense')?.value ?? 0) as number
   const net = income - expense
   return (
     <div className="bg-card border border-border rounded-lg shadow-md px-4 py-3 text-xs min-w-[148px]">
@@ -77,9 +78,10 @@ export function CashFlowBarChartInner({
   // Line modunda tıklama grafik seviyesinde yakalanır: aktif nokta indeksi
   // data dizisine eşlenir.
   const handleChartClick = onBarClick
-    ? (state: any) => {
-        const idx = state?.activeTooltipIndex
-        const p = typeof idx === 'number' ? data[idx] : undefined
+    ? (state: { activeTooltipIndex?: unknown }) => {
+        // Recharts 3 indeksi string verir ("3") — chartIndex iki biçimi de çözer
+        const idx = chartIndex(state?.activeTooltipIndex)
+        const p = idx !== null ? data[idx] : undefined
         if (p?.from && p?.to) onBarClick(p)
       }
     : undefined

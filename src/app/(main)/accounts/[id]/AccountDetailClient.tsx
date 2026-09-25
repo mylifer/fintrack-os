@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
@@ -73,8 +73,13 @@ export default function AccountDetailClient({
   const recurring = useRecurringStore(s => s.recurring)
 
   // Dönem türü değişince gezinti sıfırlanır (Aylık'ta Ağustos'a gidip Yıllık'a
-  // geçmek 2027'de bırakmasın).
-  useEffect(() => { setPeriodOffset(0) }, [periodType])
+  // geçmek 2027'de bırakmasın). Render sırasında ayarlanır — effect'te
+  // sıfırlamak bir kare boyunca eski ofsetle yanlış dönemi çiziyordu.
+  const [offsetFor, setOffsetFor] = useState(periodType)
+  if (offsetFor !== periodType) {
+    setOffsetFor(periodType)
+    setPeriodOffset(0)
+  }
 
   const { from, to } = useMemo(
     () => getPeriodRangeAt(periodType, periodOffset),

@@ -19,7 +19,7 @@ import { getPeriodRangeAt, formatPeriodLabel, formatDateShort, formatDate, daysU
 import { approveRecurring } from '@/lib/utils/recurring-actions'
 import dynamic from 'next/dynamic'
 import { useCountUp } from '@/lib/hooks/useCountUp'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'

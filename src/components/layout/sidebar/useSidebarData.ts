@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
@@ -86,17 +86,23 @@ export function useSidebarData() {
   const budgets       = useBudgetStore(useShallow(s => s.budgets.filter(b => b.period === 'monthly')))
   const allCategories = useCategoryStore(useShallow(s => s.categories))
 
+  // Bölüme girilince alt liste açılır; çıkınca kullanıcının seçimi korunur.
+  // Render sırasında ayarlanır (effect'te bir kare kapalı çiziliyordu).
   const isOnAccounts = pathname === '/accounts' || pathname.startsWith('/accounts/')
   const [accountsOpen, setAccountsOpen] = useState(isOnAccounts)
-  useEffect(() => {
+  const [prevOnAccounts, setPrevOnAccounts] = useState(isOnAccounts)
+  if (prevOnAccounts !== isOnAccounts) {
+    setPrevOnAccounts(isOnAccounts)
     if (isOnAccounts) setAccountsOpen(true)
-  }, [isOnAccounts])
+  }
 
   const isOnBudgets = pathname === '/budgets' || pathname.startsWith('/budgets/')
   const [budgetsOpen, setBudgetsOpen] = useState(isOnBudgets)
-  useEffect(() => {
+  const [prevOnBudgets, setPrevOnBudgets] = useState(isOnBudgets)
+  if (prevOnBudgets !== isOnBudgets) {
+    setPrevOnBudgets(isOnBudgets)
     if (isOnBudgets) setBudgetsOpen(true)
-  }, [isOnBudgets])
+  }
 
   return {
     pathname,
@@ -151,7 +157,6 @@ export async function handleSignOut() {
     // HARD reload (soft router.push değil): bellekteki Zustand store'larını ve
     // DataProvider'ın modül-seviyesi init kilidini sıfırlar. Aksi halde aynı
     // sekmede ikinci kullanıcı, birinci kullanıcının verisini ekranda görürdü.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli HARD reload: soft navigasyon önceki kullanıcının bellekteki verisini taşır (yukarıdaki not)
     window.location.assign('/login')
   }
 }

@@ -103,6 +103,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   useEffect(() => {
     if (!open) return
     if (editingTx) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- bilinçli: açılış anında formu doldurur; fiyat doldurma effect'iyle ref sıralaması (touchedPriceKey, yukarıdaki not) bu yapıya dayanıyor — render-içi kalıba taşımak o sırayı bozar
       setTxType(editingTx.type)
       setAsset(editingTx.asset)
       setQty(String(editingTx.quantity))
@@ -137,6 +138,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     if (!open || asset !== 'TEFAS_NEW') return
     const code = fundCode.trim().toUpperCase()
     if (!TEFAS_CODE_RE.test(code)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- bilinçli: kod bozulunca ÖNCEKİ kodun 'ok' sonucu hemen düşmeli; türetilmiş bir değer, yeni kod doğrulanana kadar eski fonu kaydettirebilirdi
       setFundLookup({ status: 'idle' })
       return
     }
@@ -204,6 +206,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     if (date >= todayStr) {
       // Yarıda kesilen geçmiş-fiyat isteğinin göstergesi takılı kalmasın
       // (abort edilen isteğin finally'si bayrağı sıfırlamaz)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- bilinçli: iptal edilen isteğin yaşam döngüsü bayraklarını kapatır (dış sistemle eşitleme)
       setFetchingPrice(false)
       setPriceFetchFailed(false)
       if (date === todayStr) {

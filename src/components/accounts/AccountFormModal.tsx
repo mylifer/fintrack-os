@@ -280,7 +280,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
                   disabled={!iconUrl.trim()}
                   className="px-3 py-2.5 text-xs font-semibold border border-border hover:bg-accent disabled:opacity-40 transition-colors flex-shrink-0"
                 >
-                  URL'den Çek
+                  URL&apos;den Çek
                 </button>
                 <label className="px-3 py-2.5 text-xs font-semibold border border-border hover:bg-accent cursor-pointer transition-colors flex-shrink-0">
                   Yükle

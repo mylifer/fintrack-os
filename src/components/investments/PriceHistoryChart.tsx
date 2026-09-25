@@ -110,6 +110,16 @@ interface Props {
 
 // ── Chart data row ─────────────────────────────────────────────────
 
+// Sabit boş dizi: `?? []` her render'da yeni kimlik üretip chartData useMemo'sunu boşa koştururdu
+const NO_POINTS: PricePoint[] = []
+
+/** Recharts'ın dot/activeDot render fonksiyonuna verdiği alanlardan kullanılanlar. */
+interface ChartDotProps {
+  cx?: number
+  cy?: number
+  payload?: { date?: string }
+}
+
 interface ChartRow {
   date:         string
   value:        number
@@ -170,24 +180,29 @@ export function PriceHistoryChart({
   // birebir bulunmayabilir (hafta sonu/tatil, eksik CDN verisi).
 
   // ── Fetch ───────────────────────────────────────────────────────
-  const [priceHistory, setPriceHistory] = useState<PricePoint[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState(false)
+  // Yanıt, hangi isteğe ait olduğunu (key) taşır: yükleniyor durumu "son yanıt
+  // güncel isteğe ait değil" diye TÜRETİLİR — effect başında state sıfırlamaya
+  // gerek kalmaz. Yeni istek sürerken önceki seri ekranda kalır (eski davranış).
+  const requestKey = `${asset}|${fundCode ?? ''}|${fetchFrom}`
+  const [result, setResult] = useState<{ key: string; data: PricePoint[]; error: boolean } | null>(null)
+  const priceHistory = result?.data ?? NO_POINTS
+  const loading = result?.key !== requestKey
+  const error   = !loading && !!result?.error
 
   useEffect(() => {
     // Abort: hızlı periyot/varlık değişiminde eski yanıt yenisini ezmesin,
     // unmount sonrası setState olmasın
     const ctrl = new AbortController()
-    setLoading(true)
-    setError(false)
     const params = new URLSearchParams({ asset, from: fetchFrom })
     if (fundCode) params.set('code', fundCode)
     fetch(`/api/prices/history?${params}`, { signal: ctrl.signal })
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then((d: PricePoint[]) => { setPriceHistory(d); setLoading(false) })
-      .catch(() => { if (!ctrl.signal.aborted) { setError(true); setLoading(false) } })
+      .then((d: PricePoint[]) => setResult({ key: requestKey, data: d, error: false }))
+      .catch(() => {
+        if (!ctrl.signal.aborted) setResult(prev => ({ key: requestKey, data: prev?.data ?? [], error: true }))
+      })
     return () => ctrl.abort()
-  }, [asset, fundCode, fetchFrom])
+  }, [asset, fundCode, fetchFrom, requestKey])
 
   // ── Chart data ───────────────────────────────────────────────────
   // currentValue may be 0 (all sold) — show flat portfolio line at 0.
@@ -556,23 +571,25 @@ export function PriceHistoryChart({
               stroke={color}
               strokeWidth={2}
               fill={`url(#${gradId})`}
-              dot={(props: any) => {
+              dot={(props: ChartDotProps) => {
                 const { cx = 0, cy = 0, payload } = props
-                if (!buyMarkers.has(payload?.date)) {
-                  return <circle key={`nd-${payload?.date}`} cx={cx} cy={cy} r={0} fill="none" />
+                const date = payload?.date ?? ''
+                if (!buyMarkers.has(date)) {
+                  return <circle key={`nd-${date}`} cx={cx} cy={cy} r={0} fill="none" />
                 }
                 return (
-                  <g key={`buy-${payload.date}`}>
+                  <g key={`buy-${date}`}>
                     <circle cx={cx} cy={cy} r={10} fill={color} fillOpacity={0.12} />
                     <circle cx={cx} cy={cy} r={4}  fill={color} stroke="#ffffff" strokeWidth={2} />
                   </g>
                 )
               }}
-              activeDot={(props: any) => {
+              activeDot={(props: ChartDotProps) => {
                 const { cx = 0, cy = 0, payload } = props
-                const isBuy = buyMarkers.has(payload?.date)
+                const date = payload?.date ?? ''
+                const isBuy = buyMarkers.has(date)
                 return (
-                  <g key={`active-v-${payload?.date}`}>
+                  <g key={`active-v-${date}`}>
                     {isBuy && <circle cx={cx} cy={cy} r={11} fill={color} fillOpacity={0.2} />}
                     <circle cx={cx} cy={cy} r={isBuy ? 5 : 4} fill={color} stroke="#ffffff" strokeWidth={2} />
                   </g>

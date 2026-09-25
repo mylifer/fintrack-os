@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useUIStore, useAccountStore, useTransactionStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
@@ -47,15 +47,9 @@ export function ReconcileBalanceModal() {
   // negative). Credit-card input is entered as a positive debt, mirroring the
   // AccountFormModal convention.
   const appBalance = account?.balance ?? 0
-  const actualSigned = useMemo(() => {
-    const parsed = parseCurrencyInput(actualStr)
-    return isCreditCard ? -Math.abs(parsed) : parsed
-  }, [actualStr, isCreditCard])
-
-  const delta = useMemo(
-    () => Math.round((actualSigned - appBalance) * 100) / 100,
-    [actualSigned, appBalance],
-  )
+  const parsedActual = parseCurrencyInput(actualStr)
+  const actualSigned = isCreditCard ? -Math.abs(parsedActual) : parsedActual
+  const delta = Math.round((actualSigned - appBalance) * 100) / 100
   const hasInput = actualStr.trim() !== ''
 
   if (!account) return null

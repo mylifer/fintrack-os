@@ -3,13 +3,14 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { formatCompact, formatAxisCompact } from '@/lib/utils/currency'
+import type { ChartTooltipProps } from './chart-tooltip'
 
 export type CategoryTrendPoint = {
   label: string
   amount: number
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: ChartTooltipProps) {
   if (!active || !payload?.length) return null
   const value = payload[0]?.value as number
   return (

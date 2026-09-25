@@ -8,7 +8,6 @@ import { rowInWorkspace } from '@/lib/workspace-context'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/Input'
-import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { DateStepperInput } from '@/components/ui/DateStepperInput'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,

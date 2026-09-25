@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Header }          from '@/components/layout/Header'
 import { PeriodTabs }      from '@/components/ui/PeriodTabs'
 import { SelectField }     from '@/components/ui/Select'
@@ -66,8 +66,13 @@ export default function TransactionsPage() {
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
   const selectedIdList = useMemo(() => [...selectedIds], [selectedIds])
 
-  // Dönem türü değişince gezinti sıfırlanır
-  useEffect(() => { setPeriodOffset(0) }, [periodType])
+  // Dönem türü değişince gezinti sıfırlanır (render sırasında — bkz.
+  // AccountDetailClient'taki aynı kalıp)
+  const [offsetFor, setOffsetFor] = useState(periodType)
+  if (offsetFor !== periodType) {
+    setOffsetFor(periodType)
+    setPeriodOffset(0)
+  }
 
   const { from, to } = useMemo(
     () => getPeriodRangeAt(periodType, periodOffset),
@@ -87,8 +92,14 @@ export default function TransactionsPage() {
 
   // Filtre/dönem değişince seçim sıfırlanır — gizlenen satırları yanlışlıkla
   // toplu düzenlememek için (seçim yalnızca ekranda görünen işlemleri kapsar).
-  useEffect(() => { setSelectedIds(new Set()) },
-    [search, typeFilter, categoryFilter, accountFilter, familyFilter?.id, recipientFilter?.id, from, to])
+  // Render sırasında: effect'te sıfırlamak bir kare boyunca gizlenmiş satırları
+  // seçili bırakıyordu.
+  const selectionKey = [search, typeFilter, categoryFilter, accountFilter, familyFilter?.id, recipientFilter?.id, from, to].join('|')
+  const [selectionFor, setSelectionFor] = useState(selectionKey)
+  if (selectionFor !== selectionKey) {
+    setSelectionFor(selectionKey)
+    setSelectedIds(new Set())
+  }
 
   const filtered = useMemo(
     () => getFiltered(filters),

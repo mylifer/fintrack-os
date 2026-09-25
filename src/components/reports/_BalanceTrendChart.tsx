@@ -3,6 +3,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { formatCompact } from '@/lib/utils/currency'
+import type { ChartTooltipProps } from './chart-tooltip'
 
 export type TrendPoint = {
   label: string
@@ -17,7 +18,7 @@ function niceStep(span: number): number {
   return (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: ChartTooltipProps) {
   if (!active || !payload?.length) return null
   const value = payload[0]?.value as number
   return (

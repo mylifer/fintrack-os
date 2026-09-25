@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { ChevronLeft } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/currency'
 import { sumBy } from '@/lib/utils/money'
+import type { ChartTooltipProps } from './chart-tooltip'
 
 export type CategorySlice = {
   categoryId: string | null   // null = uncategorized
@@ -18,7 +19,7 @@ export type CategorySlice = {
 const OTHER_ID  = '__other__'
 const PAGE_SIZE = 8
 
-function CustomTooltip({ active, payload }: any) {
+function CustomTooltip({ active, payload }: ChartTooltipProps) {
   if (!active || !payload?.length) return null
   const slice = payload[0].payload as CategorySlice
   return (
@@ -94,7 +95,7 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, onDri
     onDrillChange?.()   // dışarıdaki index tabanlı seçim bu görünümde geçersiz
   }
 
-  const handlePieClick = (pieData: any, index: number) => {
+  const handlePieClick = (pieData: unknown, index: number) => {
     const slice = pieData as CategorySlice
     // "Diğer" toplama dilimi — kendi drill-down hedefi yok, alt kırılımını aç.
     if (slice.categoryId === OTHER_ID) { goTo(true); return }

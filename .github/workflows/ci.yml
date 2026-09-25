@@ -1,0 +1,46 @@
+# Her push ve PR'da tip kontrolü, lint, birim testleri ve üretim derlemesi.
+# Vercel deploy'undan bağımsızdır: burası yalnız "bu commit sağlam mı?" sorusunu
+# yanıtlar. Adımlardan biri kırılırsa PR'da kırmızı görünür.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Tip kontrolü
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Birim testleri
+        run: npm test
+
+      # Derleme, useSearchParams/Suspense gibi yalnız build'de patlayan kuralları
+      # yakalar. Supabase değişkenleri yalnızca istemci modülünün yüklenebilmesi
+      # için sahte değerlerdir — derleme sırasında ağa çıkılmaz.
+      - name: Üretim derlemesi
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          NEXT_TELEMETRY_DISABLED: 1

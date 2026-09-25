@@ -351,6 +351,7 @@ alter table public.investment_transactions add column if not exists "sourceAccou
 alter table public.investment_transactions add column if not exists "targetAccountId" text;
 alter table public.investment_transactions add column if not exists "linkedTransactionId" text;
 alter table public.investment_transactions add column if not exists "pnlLinkedTransactionId" text;
+alter table public.investment_transactions add column if not exists "taxLinkedTransactionId" text;  -- 0012
 alter table public.investment_transactions add column if not exists "date" text;
 alter table public.investment_transactions add column if not exists "note" text;
 alter table public.investment_transactions add column if not exists "createdAt" text;

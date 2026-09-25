@@ -27,11 +27,16 @@ export function useCountUp(target: number, duration = 900): number {
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     if (reduced) {
+      // No animation: jump straight to the target — on the next task, like the
+      // animated path, so the effect never sets state synchronously.
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      displayedRef.current = target
-      revealedRef.current = true
-      setValue(target)
-      return
+      if (settleRef.current) clearTimeout(settleRef.current)
+      settleRef.current = setTimeout(() => {
+        displayedRef.current = target
+        revealedRef.current = true
+        setValue(target)
+      }, 0)
+      return () => { if (settleRef.current) clearTimeout(settleRef.current) }
     }
 
     const run = () => {

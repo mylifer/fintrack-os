@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, createElement, type ComponentProps } from 'react'
 import * as TablerIcons from '@tabler/icons-react'
 import { TABLER_ICON_NAMES } from '@/lib/tabler-icon-names'
 import { tablerComponentName, COLOR_PALETTE, DEFAULT_ICON, DEFAULT_COLOR, TABLER_MAP } from './CategoryIcon'
@@ -28,6 +28,13 @@ function getIcon(name: string): TablerIcon | null {
   const cn = tablerComponentName(name)
   const ic = (TablerIcons as unknown as Record<string, unknown>)[cn]
   return ic != null ? (ic as TablerIcon) : null
+}
+
+/* İkon bileşeni render sırasında OLUŞTURULMAZ — modül seviyesindeki kütüphaneden
+   adıyla SEÇİLİR. createElement bunu, JSX'teki "render'da bileşen yaratma"
+   uyarısına (react-hooks/static-components) takılmadan ifade eder. */
+function drawIcon(Icon: TablerIcon, props: ComponentProps<TablerIcon>) {
+  return createElement(Icon, props)
 }
 
 export function CategoryIconPicker({ icon, color, onChange }: Props) {
@@ -73,7 +80,7 @@ export function CategoryIconPicker({ icon, color, onChange }: Props) {
         title="İkon ve renk seç"
       >
         {TriggerIcon
-          ? <TriggerIcon size={20} style={{ color: 'white' }} stroke={1.75} />
+          ? drawIcon(TriggerIcon, { size: 20, style: { color: 'white' }, stroke: 1.75 })
           : <span className="text-white text-xs font-bold">?</span>
         }
       </button>
@@ -196,10 +203,10 @@ function IconButton({
       } : undefined}
     >
       {selected
-        ? <TIcon size={18} style={{ color: 'white' }} stroke={1.75} />
+        ? drawIcon(TIcon, { size: 18, style: { color: 'white' }, stroke: 1.75 })
         : (
           <span className="w-9 h-9 rounded-xl flex items-center justify-center hover:scale-110 transition-transform bg-muted/40 hover:bg-muted/70">
-            <TIcon size={18} className="text-foreground/70" stroke={1.75} />
+            {drawIcon(TIcon, { size: 18, className: 'text-foreground/70', stroke: 1.75 })}
           </span>
         )
       }
