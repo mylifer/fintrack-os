@@ -21,6 +21,7 @@ import { formatDate } from '@/lib/utils/date'
 import { isReconciliation } from '@/lib/utils/reconciliation'
 import { isPrincipalMoveTx, isRealizedInvestmentPnlTx, calcNetWorth, excludeFuture, calcDebtBurden, buildDebtBurdenSeries } from '@/lib/utils/calculations'
 import { computeHoldings, getAssetPrice } from '@/store/investment.store'
+import { usePeopleStore } from '@/store'
 import { today } from '@/lib/utils/date'
 import { baseAmount } from '@/lib/utils/fx'
 import { expandByCategory } from '@/lib/utils/categorySplits'
@@ -225,20 +226,30 @@ export function DetailedStats({
     }
   }, [analyticTxs, catMap, distTotal])
 
-  /* Top 5 merchants (expense + income), % of scope total. */
-  const topMerchants = useMemo(() => {
+  /* Top 5 payees (expense + income), % of scope total.
+     Gruplama ALICI'ya (recipientId) göre: formlar karşı tarafı alıcı olarak
+     kaydeder, `merchant` alanını hiçbir form yazmaz — yalnız alıcısı olmayan
+     eski/demo satırlarda yedek olarak okunur. Aynı ada sahip iki alıcı (farklı
+     çalışma alanlarından) ayrı kalsın diye anahtar id'dir. */
+  const people = usePeopleStore(s => s.people)
+  const topPayees = useMemo(() => {
+    const nameById = new Map(people.map(p => [p.id, p.name]))
     const build = (scope: 'expense' | 'income', total: number): RankItem[] => {
-      const groups = new Map<string, number>()   // accumulate in minor units (S8)
+      const groups = new Map<string, { name: string; minor: number }>()   // minor units (S8)
       for (const t of analyticTxs) {
         // Dağılım kapsamı (bkz. topCategories): tüm yatırım-ikonlu satırlar hariç.
         if (t.type !== scope || t.icon) continue
-        const name = t.merchant?.trim()
+        const personName = t.recipientId ? nameById.get(t.recipientId) : undefined
+        const name = personName ?? t.merchant?.trim()
         if (!name) continue
-        groups.set(name, (groups.get(name) ?? 0) + toMinor(baseAmount(t)))
+        const key = personName ? `p:${t.recipientId}` : `m:${name}`
+        const g = groups.get(key)
+        if (g) g.minor += toMinor(baseAmount(t))
+        else groups.set(key, { name, minor: toMinor(baseAmount(t)) })
       }
       return [...groups.entries()]
-        .map(([name, minor]) => ({
-          key: name,
+        .map(([key, { name, minor }]) => ({
+          key,
           name,
           color: '#8C8C8C',
           amount: toMajor(minor),
@@ -251,7 +262,7 @@ export function DetailedStats({
       expense: build('expense', distTotal.expense),
       income:  build('income',  distTotal.income),
     }
-  }, [analyticTxs, distTotal])
+  }, [analyticTxs, distTotal, people])
 
   /* Net worth: current (at period end), max & min with exact dates.
 
@@ -442,13 +453,13 @@ export function DetailedStats({
 
           <Divider />
 
-          {/* Top merchants */}
+          {/* Top payees */}
           <TwoCol>
-            <Panel title="Giderlere Göre En Büyük 5 Müşteri">
-              <RankList items={topMerchants.expense} amountClass="text-destructive" showDot={false} />
+            <Panel title="En Çok Harcama Yapılan 5 Alıcı">
+              <RankList items={topPayees.expense} amountClass="text-destructive" showDot={false} />
             </Panel>
-            <Panel title="Gelirlere Göre En Büyük 5 Müşteri">
-              <RankList items={topMerchants.income} amountClass="text-green-600" showDot={false} />
+            <Panel title="En Çok Gelir Gelen 5 Kaynak">
+              <RankList items={topPayees.income} amountClass="text-green-600" showDot={false} />
             </Panel>
           </TwoCol>
         </CardContent>

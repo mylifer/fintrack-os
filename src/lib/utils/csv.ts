@@ -95,11 +95,44 @@ export interface ParsedCsv {
   rowLines: number[]
 }
 
-export function parseCsvText(text: string): ParsedCsv {
+// Türkçe bölge ayarlı Excel "CSV" kaydederken ondalık virgülle çakışmasın diye
+// NOKTALI VİRGÜL kullanır; bazı banka dökümleri sekme kullanır. Ayraç, başlık
+// satırında (tırnak dışında) en sık geçen adaydan seçilir; eşitlikte virgül.
+const DELIMITER_CANDIDATES = [',', ';', '\t'] as const
+export type CsvDelimiter = typeof DELIMITER_CANDIDATES[number]
+
+export function detectDelimiter(text: string): CsvDelimiter {
+  const counts = new Map<string, number>()
+  let inQuotes = false
+  for (const ch of text) {
+    if (ch === '"') inQuotes = !inQuotes
+    else if (!inQuotes && (ch === '\n' || ch === '\r')) break
+    else if (!inQuotes) counts.set(ch, (counts.get(ch) ?? 0) + 1)
+  }
+  let best: CsvDelimiter = ','
+  for (const d of DELIMITER_CANDIDATES) {
+    if ((counts.get(d) ?? 0) > (counts.get(best) ?? 0)) best = d
+  }
+  return best
+}
+
+/** Dosya baytlarını metne çevirir. Önce UTF-8 denenir; geçersiz bayt dizisi
+ *  varsa Windows-1254 (Türkçe ANSI) okunur — Türkçe Windows'ta Excel'in
+ *  "CSV (noktalı virgülle ayrılmış)" çıktısı bu kodlamadadır ve UTF-8 olarak
+ *  okununca ş/ğ/ı/İ harfleri "�" olur. */
+export function decodeCsvBytes(bytes: ArrayBuffer): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return new TextDecoder('windows-1254').decode(bytes)
+  }
+}
+
+export function parseCsvText(text: string, delimiter: CsvDelimiter = detectDelimiter(text)): ParsedCsv {
   const normalized = text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 
   // Quote-aware tokenizer over the WHOLE text: a quoted cell may contain
-  // commas and newlines (our own export produces these), so rows cannot be
+  // delimiters and newlines (our own export produces these), so rows cannot be
   // derived from a plain split('\n').
   const records: string[][] = []
   const recordLines: number[] = []
@@ -123,7 +156,7 @@ export function parseCsvText(text: string): ParsedCsv {
       if (inQuotes && normalized[i + 1] === '"') { current += '"'; i++ }
       else inQuotes = !inQuotes
       rowEmpty = false
-    } else if (ch === ',' && !inQuotes) {
+    } else if (ch === delimiter && !inQuotes) {
       endCell()
     } else if (ch === '\n' && !inQuotes) {
       line++

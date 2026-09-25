@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { transactionsToCsvString, parseCsvText, csvFilenameSlug, autoDetectMapping, validateImportRows } from './csv'
+import { transactionsToCsvString, parseCsvText, csvFilenameSlug, autoDetectMapping, validateImportRows, detectDelimiter, decodeCsvBytes } from './csv'
 import type { Account, Category, Transaction } from '@/types'
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -196,5 +196,35 @@ describe('içe aktarma — negatif tutar (iade)', () => {
 
   it('sıfır tutar hâlâ reddedilir', () => {
     expect(validateImportRows([row('0')], mapping, cats).errors[0].message).toContain('Geçersiz tutar')
+  })
+})
+
+describe('içe aktarma — Türkçe Excel CSV (ayraç + kodlama)', () => {
+  it('noktalı virgüllü dosyada ayraç tespit edilir; ondalık virgül hücrede kalır', () => {
+    const text = 'Tarih;Açıklama;Tutar;Tür\n25.09.2026;Market, Kadıköy;1.234,56;gider\n'
+    expect(detectDelimiter(text)).toBe(';')
+    const { headers, rows } = parseCsvText(text)
+    expect(headers).toEqual(['Tarih', 'Açıklama', 'Tutar', 'Tür'])
+    expect(rows[0]['Açıklama']).toBe('Market, Kadıköy')
+    expect(rows[0]['Tutar']).toBe('1.234,56')
+
+    const { valid, errors } = validateImportRows(rows, autoDetectMapping(headers), [])
+    expect(errors).toEqual([])
+    expect(valid[0]).toMatchObject({ date: '2026-09-25', amount: 1234.56, type: 'expense' })
+  })
+
+  it('sekmeyle ayrılmış döküm ve uygulamanın kendi virgüllü çıktısı', () => {
+    expect(detectDelimiter('Tarih\tAçıklama\tTutar\n')).toBe('\t')
+    expect(detectDelimiter('Tarih,Açıklama,Tutar,Tür\n')).toBe(',')
+    // Başlıktaki tırnak içindeki ayraç sayılmaz
+    expect(detectDelimiter('"a;b;c",Tutar\n')).toBe(',')
+  })
+
+  it('Windows-1254 kodlu dosya Türkçe harfleri bozmadan okunur; UTF-8 olduğu gibi kalır', () => {
+    // "Şişli Çay" — cp1254: Ş=0xDE ş=0xFE Ç=0xC7 (UTF-8 olarak geçersiz baytlar)
+    const cp1254 = new Uint8Array([0xDE, 0x69, 0xFE, 0x6C, 0x69, 0x20, 0xC7, 0x61, 0x79])
+    expect(decodeCsvBytes(cp1254.buffer)).toBe('Şişli Çay')
+    const utf8 = new TextEncoder().encode('Şişli Çay')
+    expect(decodeCsvBytes(utf8.buffer as ArrayBuffer)).toBe('Şişli Çay')
   })
 })

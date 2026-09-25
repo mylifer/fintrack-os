@@ -13,6 +13,7 @@ import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { RolloverField } from '@/components/budgets/RolloverField'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import { formatMonthYear, prevMonth, nextMonth } from '@/lib/utils/date'
 import { getBudgetCategoryIds, enrichBudget, resolveBudgetCategories } from '@/lib/utils/calculations'
@@ -99,8 +100,13 @@ function BudgetCard({
           <AnimatedNumber value={b.spent} format={formatCurrency} />
         </span>
         <span className="text-xs text-muted-foreground">
-          / <AnimatedNumber value={b.amount} format={formatCurrency} />
+          / <AnimatedNumber value={b.limit} format={formatCurrency} />
         </span>
+        {b.carryover > 0 && (
+          <span className="text-[11px] text-green-600" title="Geçen aydan devreden artan">
+            (+{formatCurrency(b.carryover)} devir)
+          </span>
+        )}
       </div>
 
       {/* Progress */}
@@ -110,7 +116,7 @@ function BudgetCard({
       <div className="flex justify-between text-xs text-muted-foreground">
         <span>
           {b.status === 'exceeded'
-            ? <>{formatCurrency(b.spent - b.amount)} aşım</>
+            ? <>{formatCurrency(b.spent - b.limit)} aşım</>
             : <>{formatCurrency(b.remaining)} kaldı</>}
         </span>
         <span>%{b.alertThreshold} uyarı</span>
@@ -159,6 +165,7 @@ export default function BudgetsPage() {
   const [catSearch, setCatSearch]           = useState('')
   const [amtStr, setAmtStr]                 = useState('')
   const [threshold, setThreshold]           = useState('80')
+  const [rollover, setRollover]             = useState(false)
   const [loading, setLoading]               = useState(false)
 
   function startAdd() {
@@ -167,6 +174,7 @@ export default function BudgetsPage() {
     setCatSearch('')
     setAmtStr('')
     setThreshold('80')
+    setRollover(false)
     setShowForm(true)
   }
 
@@ -176,6 +184,7 @@ export default function BudgetsPage() {
     setCatSearch('')
     setAmtStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(b.amount))
     setThreshold(String(b.alertThreshold))
+    setRollover(!!b.rollover)
     setShowForm(true)
   }
 
@@ -186,6 +195,7 @@ export default function BudgetsPage() {
     setCatSearch('')
     setAmtStr('')
     setThreshold('80')
+    setRollover(false)
   }
 
   function toggleCat(id: string) {
@@ -215,6 +225,7 @@ export default function BudgetsPage() {
         categoryName,
         amount: parseCurrencyInput(amtStr),
         alertThreshold: Number(threshold) || 80,
+        rollover,
       })
     } else {
       const b: Budget = {
@@ -223,7 +234,7 @@ export default function BudgetsPage() {
         categoryName,
         amount: parseCurrencyInput(amtStr),
         period: 'monthly',
-        rollover: false,
+        rollover,
         alertThreshold: Number(threshold) || 80,
       }
       await add(b)
@@ -359,6 +370,7 @@ export default function BudgetsPage() {
             value={threshold}
             onChange={e => setThreshold(e.target.value)}
           />
+          <RolloverField checked={rollover} onChange={setRollover} />
 
           <div className="flex flex-col gap-2">
             <Button

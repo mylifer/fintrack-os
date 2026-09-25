@@ -88,7 +88,7 @@ const DEXIE: Record<SyncTable, EntityTable<Row, 'id'>> = {
 // flush time from the current session.
 const COMPUTED: Partial<Record<SyncTable, string[]>> = {
   accounts: ['balance'],
-  budgets:  ['spent', 'remaining', 'percentUsed', 'status', 'category'],
+  budgets:  ['spent', 'carryover', 'limit', 'remaining', 'percentUsed', 'status', 'category'],
   debts:    ['remainingAmount', 'progressPercent'],
 }
 

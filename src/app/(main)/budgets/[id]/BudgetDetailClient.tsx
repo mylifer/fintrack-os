@@ -17,9 +17,10 @@ import {
   formatMonthYear, prevMonth, nextMonth, currentMonthYear, lastNMonths, monthRange, isInRange,
 } from '@/lib/utils/date'
 import {
-  getBudgetCategoryIds, enrichBudget, calcBudgetSpent, resolveBudgetCategories,
+  getBudgetCategoryIds, enrichBudget, calcBudgetSpent, calcBudgetCarryover, resolveBudgetCategories,
   expandCategoryIds, isFlowTx,
 } from '@/lib/utils/calculations'
+import { RolloverField } from '@/components/budgets/RolloverField'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { baseAmount } from '@/lib/utils/fx'
 import { sumBy } from '@/lib/utils/money'
@@ -66,6 +67,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   const [editCatSearch,  setEditCatSearch]  = useState('')
   const [editAmtStr,     setEditAmtStr]     = useState('')
   const [editThreshold,  setEditThreshold]  = useState('80')
+  const [editRollover,   setEditRollover]   = useState(false)
   const [editLoading,    setEditLoading]    = useState(false)
 
   function openEdit() {
@@ -74,6 +76,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     setEditCatSearch('')
     setEditAmtStr(new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(budget.amount))
     setEditThreshold(String(budget.alertThreshold))
+    setEditRollover(!!budget.rollover)
     setShowEdit(true)
   }
 
@@ -90,6 +93,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
         categoryId,
         amount: parseCurrencyInput(editAmtStr),
         alertThreshold: Number(editThreshold) || 80,
+        rollover: editRollover,
       })
       setShowEdit(false)
     } catch (err) {
@@ -128,7 +132,9 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     if (!budget) return []
     return lastNMonths(6).map(my => {
       const spent = calcBudgetSpent(budget, reportTxs, my, categories)
-      const pct   = budget.amount > 0 ? Math.min(100, (spent / budget.amount) * 100) : 0
+      // Devir açıksa her ayın limiti farklıdır (amount + o aya devreden artan)
+      const limit = budget.amount + calcBudgetCarryover(budget, reportTxs, my, categories)
+      const pct   = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0
       const status =
         pct >= 100                    ? 'exceeded' as const
         : pct >= budget.alertThreshold ? 'warning'  as const
@@ -251,8 +257,13 @@ export default function BudgetDetailClient({ id }: { id: string }) {
             {formatCurrency(allTime ? totalSpent : (enriched?.spent ?? 0))}
           </span>
           <span className="text-sm text-muted-foreground">
-            / {formatCurrency(budget.amount)}
+            / {formatCurrency(!allTime && enriched ? enriched.limit : budget.amount)}
           </span>
+          {!allTime && enriched && enriched.carryover > 0 && (
+            <span className="text-xs text-green-600" title="Geçen aydan devreden artan">
+              (+{formatCurrency(enriched.carryover)} devir)
+            </span>
+          )}
         </div>
 
         {!allTime && enriched && (
@@ -260,7 +271,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
             <ProgressBar percent={enriched.percentUsed} status={enriched.status} showLabel />
             <div className="mt-2 text-xs text-muted-foreground">
               {enriched.status === 'exceeded'
-                ? `${formatCurrency(enriched.spent - budget.amount)} aşım`
+                ? `${formatCurrency(enriched.spent - enriched.limit)} aşım`
                 : `${formatCurrency(enriched.remaining)} kaldı`}
             </div>
           </>
@@ -452,6 +463,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
             value={editThreshold}
             onChange={e => setEditThreshold(e.target.value)}
           />
+          <RolloverField checked={editRollover} onChange={setEditRollover} />
 
           <div className="flex flex-col gap-2">
             <Button onClick={handleSave} loading={editLoading} fullWidth disabled={editCatIds.length === 0}>

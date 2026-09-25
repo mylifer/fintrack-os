@@ -569,7 +569,7 @@ export default function DashboardPage() {
                             {cat?.name}
                           </span>
                           <span className="text-sm tabular-nums text-muted-foreground">
-                            {formatCurrency(b.spent, 'TRY')} / {formatCurrency(b.amount, 'TRY')}
+                            {formatCurrency(b.spent, 'TRY')} / {formatCurrency(b.limit, 'TRY')}
                           </span>
                         </div>
                         <ProgressBar percent={b.percentUsed} status={b.status} showLabel />

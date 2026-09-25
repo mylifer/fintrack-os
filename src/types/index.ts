@@ -177,6 +177,8 @@ export interface Budget {
 
 export interface BudgetWithSpent extends Budget {
   spent: number
+  carryover: number         // Önceki aydan devreden artan (rollover kapalıysa 0)
+  limit: number             // Bu ayın geçerli limiti: amount + carryover
   remaining: number
   percentUsed: number
   status: BudgetStatus

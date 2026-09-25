@@ -299,6 +299,57 @@ describe('sumIncomeByKey (income category donut grouping)', () => {
   })
 })
 
+describe('bütçe devri (rollover)', () => {
+  const budget = (o: Partial<Budget> = {}) =>
+    ({ id: 'b', categoryId: 'c', amount: 1000, period: 'monthly', rollover: true, alertThreshold: 80, ...o }) as Budget
+  const feb = { month: 2, year: 2026 }
+
+  it('önceki ayda harcanmayan tutar bu ayın limitine eklenir', () => {
+    const b = enrichBudget(budget(), [
+      tx({ amount: 700, amountTry: 700, categoryId: 'c', date: '2026-01-10' }),
+      tx({ amount: 900, amountTry: 900, categoryId: 'c', date: '2026-02-10' }),
+    ], feb)
+    expect(b.carryover).toBe(300)
+    expect(b.limit).toBe(1300)
+    expect(b.remaining).toBe(400)
+    // Yüzde devirli limite göre: 900 / 1300 ≈ %69 → eşik (%80) altında. Devirsiz
+    // limitle %90 olur ve 'warning' çıkardı.
+    expect(b.percentUsed).toBeCloseTo(69.23, 1)
+    expect(b.status).toBe('ok')
+  })
+
+  it('devir kapalıysa limit bütçe tutarıdır', () => {
+    const b = enrichBudget(budget({ rollover: false }), [
+      tx({ amount: 100, amountTry: 100, categoryId: 'c', date: '2026-01-10' }),
+    ], feb)
+    expect(b.carryover).toBe(0)
+    expect(b.limit).toBe(1000)
+  })
+
+  it('aşım sonraki aya devretmez', () => {
+    const b = enrichBudget(budget(), [
+      tx({ amount: 1500, amountTry: 1500, categoryId: 'c', date: '2026-01-10' }),
+    ], feb)
+    expect(b.carryover).toBe(0)
+    expect(b.limit).toBe(1000)
+  })
+
+  it('takip başlamadan önceki boş ay devretmez (defterde o aya kadar işlem yok)', () => {
+    const b = enrichBudget(budget(), [
+      tx({ amount: 200, amountTry: 200, categoryId: 'c', date: '2026-02-03' }),
+    ], feb)
+    expect(b.carryover).toBe(0)
+  })
+
+  it('yalnızca bir ay geriye bakar — birikim zincirlenmez; Ocak → önceki yılın Aralık ayı', () => {
+    const txs = [
+      tx({ amount: 1, amountTry: 1, categoryId: 'other', date: '2025-11-01' }), // takip Kasım'da başladı
+    ]
+    // Kasım ve Aralık'ta bütçeye hiç harcama yok: Ocak'a yalnız Aralık'ın 1000'i devreder
+    expect(enrichBudget(budget(), txs, { month: 1, year: 2026 }).carryover).toBe(1000)
+  })
+})
+
 describe('enrich helpers', () => {
   it('budget spent/remaining/status', () => {
     const b = enrichBudget(

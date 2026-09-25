@@ -228,6 +228,29 @@ export function calcBudgetSpent(
   return sumBy(matching, baseAmount)
 }
 
+// Devir (rollover): açık bir bütçede BİR ÖNCEKİ ayda harcanmayan tutar bu ayın
+// limitine eklenir. Bilinçli olarak tek ay geriye bakılır — zincirleme birikim
+// yok: aylarca dokunulmayan bir bütçe limiti şişirmesin, kullanıcı da "geçen
+// aydan kalan" sayısını tek bakışta doğrulayabilsin. Aşım bir sonraki aya
+// borç olarak devretmez (yalnız artan devreder).
+//
+// Bütçenin oluşturulma tarihi tutulmuyor; takip başlamadan önceki boş bir ay
+// "hiç harcanmamış" sayılıp limiti ikiye katlamasın diye, defterde önceki ayın
+// sonuna kadar hiç işlem yoksa devir sıfırdır.
+export function calcBudgetCarryover(
+  budget: Budget,
+  transactions: Transaction[],
+  my?: MonthYear,
+  categories: Category[] = [],
+): number {
+  if (!budget.rollover || !my) return 0
+  const prev = my.month === 1 ? { month: 12, year: my.year - 1 } : { month: my.month - 1, year: my.year }
+  const prevEnd = monthRange(prev).to
+  if (!transactions.some(tx => tx.date.slice(0, 10) <= prevEnd)) return 0
+  const prevSpent = calcBudgetSpent(budget, transactions, prev, categories)
+  return Math.max(0, subMoney(budget.amount, prevSpent))
+}
+
 export function enrichBudget(
   budget: Budget,
   transactions: Transaction[],
@@ -235,14 +258,16 @@ export function enrichBudget(
   categories: Category[] = [],
 ): BudgetWithSpent {
   const spent = calcBudgetSpent(budget, transactions, my, categories)
-  const remaining = Math.max(0, subMoney(budget.amount, spent))
-  const percentUsed = budget.amount > 0 ? (spent / budget.amount) * 100 : 0
+  const carryover = calcBudgetCarryover(budget, transactions, my, categories)
+  const limit = toMajor(toMinor(budget.amount) + toMinor(carryover))
+  const remaining = Math.max(0, subMoney(limit, spent))
+  const percentUsed = limit > 0 ? (spent / limit) * 100 : 0
   const status =
     percentUsed >= 100 ? 'exceeded'
     : percentUsed >= budget.alertThreshold ? 'warning'
     : 'ok'
 
-  return { ...budget, spent, remaining, percentUsed, status }
+  return { ...budget, spent, carryover, limit, remaining, percentUsed, status }
 }
 
 // Yatırım anapara (özsermaye) hareketi — fon/varlık ALIMI ("… Alımı") ve

@@ -9,6 +9,7 @@ import { localBulkUpsert } from '@/lib/sync/engine'
 import { toBaseTry, rateFor } from '@/lib/utils/fx'
 import {
   parseCsvText,
+  decodeCsvBytes,
   autoDetectMapping,
   validateImportRows,
   APP_FIELD_LABELS,
@@ -45,6 +46,7 @@ export function TransactionImportModal({ open, onClose }: Props) {
   const [error, setError]         = useState('')
   const [importedCount, setImportedCount] = useState(0)
   const [skippedDup, setSkippedDup]       = useState(0)
+  const [dragging, setDragging]           = useState(false)
 
   const activeAccounts = accounts.filter(a => !a.isArchived)
 
@@ -67,27 +69,33 @@ export function TransactionImportModal({ open, onClose }: Props) {
 
   // ── Step 1: File upload ─────────────────────────────────────────────────
 
+  async function readFile(file: File) {
+    setError('')
+    try {
+      // Bayt olarak okunur: kodlama (UTF-8 / Windows-1254) ve ayraç (, ; sekme)
+      // dosyadan tespit edilir — bkz. decodeCsvBytes / detectDelimiter.
+      const result = parseCsvText(decodeCsvBytes(await file.arrayBuffer()))
+      const detected = autoDetectMapping(result.headers)
+      setParsed(result)
+      setMapping(detected)
+      setAccountId(activeAccounts[0]?.id ?? '')
+      setStep('mapping')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Dosya okunamadı.')
+    }
+  }
+
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (!file) return
+    if (file) void readFile(file)
+  }
 
-    setError('')
-    const reader = new FileReader()
-    reader.onload = ev => {
-      try {
-        const result = parseCsvText(ev.target?.result as string)
-        const detected = autoDetectMapping(result.headers)
-        setParsed(result)
-        setMapping(detected)
-        setAccountId(activeAccounts[0]?.id ?? '')
-        setStep('mapping')
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Dosya okunamadı.')
-      }
-    }
-    reader.onerror = () => setError('Dosya okunamadı.')
-    reader.readAsText(file, 'UTF-8')
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) void readFile(file)
   }
 
   // ── Step 2: Validate ─────────────────────────────────────────────────────
@@ -185,7 +193,7 @@ export function TransactionImportModal({ open, onClose }: Props) {
 
   return (
     <Modal open={open} onClose={handleClose} title="İşlemleri İçe Aktar" size="lg">
-      <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} className="hidden" />
+      <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" onChange={handleFile} className="hidden" />
 
       {/* ── Upload step ── */}
       {step === 'upload' && (
@@ -196,8 +204,16 @@ export function TransactionImportModal({ open, onClose }: Props) {
           </p>
 
           <div
+            role="button"
+            tabIndex={0}
             onClick={() => fileRef.current?.click()}
-            className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-border rounded-2xl py-12 cursor-pointer hover:border-primary/50 hover:bg-accent/30 transition-colors"
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click() } }}
+            onDragOver={e => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-2xl py-12 cursor-pointer transition-colors ${
+              dragging ? 'border-primary bg-accent/40' : 'border-border hover:border-primary/50 hover:bg-accent/30'
+            }`}
           >
             <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-2xl">
               📂

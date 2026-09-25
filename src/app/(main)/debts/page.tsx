@@ -278,7 +278,7 @@ export default function DebtsPage() {
       direction:    debt.direction,
       totalStr:     fmt(debt.totalAmount),
       paidStr:      fmt(debt.paidAmount),
-      interestStr:  debt.interestRate ? String(debt.interestRate) : '',
+      interestStr:  debt.interestRate ? String(debt.interestRate).replace('.', ',') : '',
       startDate:    debt.startDate,
       borrowDate:   debt.borrowDate ?? principalTx?.date.slice(0, 10) ?? '',
       dueDate:      debt.dueDate ?? '',
@@ -479,8 +479,13 @@ export default function DebtsPage() {
         <div className="flex items-start justify-between gap-2">
           <div>
             <div className="font-semibold text-sm">{debt.name}</div>
-            {debt.counterparty && (
-              <div className="text-xs text-muted-foreground mt-0.5">{debt.counterparty}</div>
+            {(debt.counterparty || debt.interestRate) && (
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {[
+                  debt.counterparty,
+                  debt.interestRate ? `Yıllık %${debt.interestRate.toLocaleString('tr-TR')} faiz` : null,
+                ].filter(Boolean).join(' · ')}
+              </div>
             )}
           </div>
           <div className="row-actions flex items-center gap-1.5 flex-shrink-0">
@@ -834,7 +839,18 @@ export default function DebtsPage() {
             <Input label="Taksit Sayısı" type="number" min={1} value={form.totalInst} onChange={e => setForm(f => ({...f, totalInst: e.target.value}))} placeholder="36" />
           </div>
 
-          <Input label="Alacaklı / Kişi" value={form.counterparty} onChange={e => setForm(f => ({...f, counterparty: e.target.value}))} placeholder="Garanti BBVA" />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Alacaklı / Kişi" value={form.counterparty} onChange={e => setForm(f => ({...f, counterparty: e.target.value}))} placeholder="Garanti BBVA" />
+            {/* Bilgi amaçlı: ödeme planı kullanıcının girdiği aylık taksitten
+                yürür, faizden yeniden hesaplanmaz. */}
+            <Input
+              label="Yıllık Faiz (%)"
+              inputMode="decimal"
+              value={form.interestStr}
+              onChange={e => setForm(f => ({...f, interestStr: e.target.value.replace(/[^\d.,]/g, '')}))}
+              placeholder="3,5"
+            />
+          </div>
 
           {/* Anapara — opsiyonel: seçilirse tutar hesaba girer/hesaptan çıkar.
               Düzenlemede gizli: aynı borç için ikinci kez yazılmasın. */}
