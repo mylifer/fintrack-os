@@ -6,6 +6,50 @@ export async function getUserId(): Promise<string | undefined> {
   return data.session?.user.id
 }
 
+// Shared-device: son giriş yapan kullanıcının id'sini tutar. Yeni girişte
+// kullanıcı değişimini yükleme/sync'ten ÖNCE tespit etmek için kullanılır.
+// Oturum açan HER yol (giriş, kayıt, şifre sıfırlama) bu tek işaretçiyi
+// paylaşmak zorunda — biri atlarsa sonraki kullanıcı diğerinin kontrolüne
+// görünmez olur (Güvenlik denetimi 2026-08-29, bulgu F3).
+const LAST_UID_KEY = 'ft_last_uid'
+
+/** Oturum açan kullanıcıyı uygulamaya sokar. Bu cihazda daha önce FARKLI bir
+ *  kullanıcı oturum açtıysa yerel Dexie + outbox + tarayıcı deposu önce
+ *  temizlenir ve HARD navigasyon yapılır: bellekteki Zustand store'ları ve
+ *  DataProvider'ın modül-seviyesi init kilidi yeni kullanıcı için sıfırlanır
+ *  (soft push bunları taşıyıp önceki kullanıcının verisini gösterebilirdi). */
+export async function enterApp(
+  uid: string | undefined,
+  push: (href: string) => void,
+  tag: string,
+): Promise<void> {
+  const prevUid = localStorage.getItem(LAST_UID_KEY)
+  const switched = !!uid && !!prevUid && prevUid !== uid
+
+  if (switched) {
+    try {
+      await clearLocalData()
+    } catch (err) {
+      console.error(`[${tag}:clearLocalData]`, err)
+    }
+  }
+
+  if (uid) localStorage.setItem(LAST_UID_KEY, uid)
+
+  if (switched) {
+    window.location.assign('/dashboard')
+  } else {
+    push('/dashboard')
+  }
+}
+
+/** İkinci adım (TOTP) bekleyen bir oturum var mı? Şifreyle girilmiş ama
+ *  doğrulama uygulamasıyla henüz onaylanmamış (aal1 → aal2) oturumlarda true. */
+export async function needsMfaStep(): Promise<boolean> {
+  const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+  return !!data && data.nextLevel === 'aal2' && data.currentLevel !== 'aal2'
+}
+
 /* ── Tarayıcı deposu temizliği ──────────────────────────────────────────────
    Paylaşılan cihaz sertleştirmesi: TÜM tarayıcı deposu silinir, böylece hiçbir
    şey (zustand-persist anahtarları,

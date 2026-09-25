@@ -1,23 +1,44 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { clearLocalData } from '@/lib/auth'
+import { enterApp, needsMfaStep } from '@/lib/auth'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/button'
+import { MfaCodeForm } from '@/components/auth/MfaCodeForm'
 
-// Shared-device: son giriş yapan kullanıcının id'sini tutar. Yeni girişte
-// kullanıcı değişimini yükleme/sync'ten ÖNCE tespit etmek için kullanılır.
-const LAST_UID_KEY = 'ft_last_uid'
+// /auth/callback bir e-posta bağlantısını çözemezse buraya ?error= ile döner
+const CALLBACK_ERRORS: Record<string, string> = {
+  link: 'Bağlantı geçersiz ya da süresi dolmuş. Bağlantıyı isteğin yapıldığı tarayıcıda açın veya yeniden isteyin.',
+}
 
 export default function LoginPage() {
+  // useSearchParams statik ön-render'da Suspense sınırı ister (Next 16)
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [step, setStep]         = useState<'password' | 'mfa'>('password')
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError]       = useState('')
+  const [error, setError]       = useState(() => CALLBACK_ERRORS[searchParams.get('error') ?? ''] ?? '')
   const [loading, setLoading]   = useState(false)
+
+  // Proxy, doğrulama adımı yarım kalmış (aal1) oturumları buraya gönderir:
+  // şifreyi yeniden sormadan doğrudan kod adımını aç.
+  useEffect(() => {
+    let alive = true
+    needsMfaStep().then(needs => { if (alive && needs) setStep('mfa') })
+    return () => { alive = false }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -35,33 +56,40 @@ export default function LoginPage() {
       return
     }
 
-    // Shared-device cross-tenant sızıntısını önle: yükleme/sync başlamadan
-    // ÖNCE, bu cihazda daha önce farklı bir kullanıcı oturum açtıysa yerel
-    // Dexie + outbox'ı temizle.
-    const newUid = data.user?.id
-    const prevUid = localStorage.getItem(LAST_UID_KEY)
-    const switched = !!newUid && !!prevUid && prevUid !== newUid
-
-    if (switched) {
-      try {
-        await clearLocalData()
-      } catch (err) {
-        console.error('[login:clearLocalData]', err)
-      }
+    // İki adımlı doğrulama açıksa oturum henüz aal1: veriye (RLS) ve uygulamaya
+    // (proxy) erişim kod girilene kadar kapalı.
+    if (await needsMfaStep()) {
+      setStep('mfa')
+      setLoading(false)
+      return
     }
 
-    if (newUid) localStorage.setItem(LAST_UID_KEY, newUid)
+    await enterApp(data.user?.id, href => router.push(href), 'login')
+  }
 
-    if (switched) {
-      // HARD navigation: bellekteki Zustand store'larını ve DataProvider'ın
-      // modül-seviyesi init kilidini yeni kullanıcı için sıfırlar (bkz.
-      // Sidebar.handleSignOut). Soft push bunları taşıyıp önceki kullanıcının
-      // verisini gösterebilirdi.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli HARD reload: soft navigasyon önceki kullanıcının bellekteki verisini taşır (yukarıdaki not)
-      window.location.assign('/dashboard')
-    } else {
-      router.push('/dashboard')
-    }
+  async function handleMfaVerified() {
+    const { data: { user } } = await supabase.auth.getUser()
+    await enterApp(user?.id, href => router.push(href), 'login')
+  }
+
+  async function handleMfaCancel() {
+    await supabase.auth.signOut({ scope: 'local' })
+    setPassword('')
+    setStep('password')
+  }
+
+  if (step === 'mfa') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm">
+          <div className="mb-8">
+            <h1 className="text-2xl font-semibold text-foreground">İki Adımlı Doğrulama</h1>
+            <p className="text-sm text-muted-foreground mt-1">Girişi tamamlamak için doğrulama kodunu girin</p>
+          </div>
+          <MfaCodeForm onVerified={handleMfaVerified} onCancel={handleMfaCancel} submitLabel="Giriş Yap" />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -82,15 +110,20 @@ export default function LoginPage() {
             autoComplete="email"
             required
           />
-          <Input
-            label="Şifre"
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="••••••••"
-            autoComplete="current-password"
-            required
-          />
+          <div className="flex flex-col gap-1.5">
+            <Input
+              label="Şifre"
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+            />
+            <Link href="/forgot-password" className="self-end text-xs text-muted-foreground hover:text-foreground hover:underline">
+              Şifremi unuttum
+            </Link>
+          </div>
 
           {error && (
             <p className="text-xs text-destructive">{error}</p>

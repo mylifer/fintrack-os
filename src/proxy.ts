@@ -1,7 +1,26 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/register']
+// Oturumsuz erişilir; oturumu tam (gerekiyorsa aal2) olan kullanıcı buradan
+// /dashboard'a yönlendirilir.
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password']
+// E-posta bağlantısı akışları: oturumlu da oturumsuz da DOKUNULMADAN geçer.
+// /reset-password kurtarma oturumunu ve iki adımlı doğrulamayı kendisi yönetir.
+const AUTH_FLOW_PATHS = ['/auth/callback', '/reset-password']
+
+/** Erişim token'ındaki doğrulama seviyesi ('aal1' | 'aal2'). Token'ın kendisi
+ *  aynı istekte getUser() ile sunucuda doğrulandığı için yalnızca decode
+ *  edilir. Okunamazsa undefined — çağıran bunu aal2 DEĞİL sayar (fail-closed). */
+function tokenAal(accessToken: string | undefined): string | undefined {
+  try {
+    const payload = accessToken?.split('.')[1]
+    if (!payload) return undefined
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    return (JSON.parse(json) as { aal?: string }).aal
+  } catch {
+    return undefined
+  }
+}
 
 // Origin of the Supabase project the browser talks to directly
 // (createBrowserClient). Derived at request time from the public env var so we
@@ -105,9 +124,36 @@ export async function proxy(request: NextRequest) {
     return res
   }
 
+  // Supabase izinli listede olmayan bir e-posta yönlendirmesini Site URL'e
+  // (kök) düşürür: kodu kaybetmeden dönüş noktasına taşı.
+  if (pathname === '/' && (request.nextUrl.searchParams.has('code') || request.nextUrl.searchParams.has('token_hash'))) {
+    const callback = new URL('/auth/callback', request.url)
+    callback.search = request.nextUrl.search
+    return withCsp(NextResponse.redirect(callback))
+  }
+
+  if (AUTH_FLOW_PATHS.includes(pathname)) return withCsp(response)
+
+  // İki adımlı doğrulama açık ama oturum henüz aal1 (şifre girilmiş, kod
+  // girilmemiş): uygulamaya ve API'ye giriş yok, yalnızca /login'deki kod
+  // adımı. Asıl kilit RLS'te (0013) — bu, arayüzü o kilide çarptırmamak için.
+  const hasVerifiedFactor = !!user?.factors?.some(f => f.status === 'verified')
+  let mfaPending = false
+  if (hasVerifiedFactor) {
+    const { data: { session } } = await supabase.auth.getSession()
+    mfaPending = tokenAal(session?.access_token) !== 'aal2'
+  }
+
   if (PUBLIC_PATHS.includes(pathname)) {
-    if (user) return withCsp(NextResponse.redirect(new URL('/dashboard', request.url)))
+    if (user && !mfaPending) return withCsp(NextResponse.redirect(new URL('/dashboard', request.url)))
     return withCsp(response)
+  }
+
+  if (mfaPending) {
+    if (pathname.startsWith('/api')) {
+      return withCsp(NextResponse.json({ error: 'mfa_required' }, { status: 401 }))
+    }
+    return withCsp(NextResponse.redirect(new URL('/login', request.url)))
   }
 
   // Auth bypass yalnızca AÇIK opt-in ile ve asla production'da çalışmaz.

@@ -4,14 +4,9 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { clearLocalData } from '@/lib/auth'
+import { enterApp } from '@/lib/auth'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/button'
-
-// Shared-device: son giriş yapan kullanıcının id'sini tutar. login/page.tsx ile
-// AYNI anahtar — iki sayfa tek bir işaretçiyi paylaşmak zorunda, yoksa kayıt
-// yolundan gelen kullanıcı giriş yolunun kontrolüne görünmez olur.
-const LAST_UID_KEY = 'ft_last_uid'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -32,7 +27,14 @@ export default function RegisterPage() {
     if (password.length < 12) { setError('Şifre en az 12 karakter olmalıdır.'); return }
 
     setLoading(true)
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    // Doğrulama bağlantısı /auth/callback'e döner: kod orada oturuma çevrilir ve
+    // kullanıcı ayrıca giriş yapmadan uygulamaya düşer. Adres Supabase'in izinli
+    // yönlendirme listesinde yoksa Site URL'e düşülür (proxy oradan da yakalar).
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    })
     setLoading(false)
 
     if (error) {
@@ -49,7 +51,7 @@ export default function RegisterPage() {
       return
     }
 
-    // Paylaşılan cihaz: giriş sayfasıyla AYNI koruma (bkz. login/page.tsx).
+    // Paylaşılan cihaz: giriş sayfasıyla AYNI koruma (bkz. lib/auth enterApp).
     // Eskiden burası eksikti — /register üzerinden gelen ilk kullanıcı
     // `ft_last_uid`'i hiç yazmıyordu, bu yüzden ondan sonra giriş yapan ikinci
     // kullanıcıda login sayfasının `switched` kontrolü sessizce false kalıyor ve
@@ -57,28 +59,7 @@ export default function RegisterPage() {
     // İşaretçi yalnızca session VARKEN yazılır: onay bekleyen bir kayıtta
     // kullanıcı henüz oturum açmış değildir ve işaretçiyi şimdiden ona
     // devretmek, gerçek girişte birinci savunma katmanını kör ederdi.
-    const newUid  = data.user?.id
-    const prevUid = localStorage.getItem(LAST_UID_KEY)
-    const switched = !!newUid && !!prevUid && prevUid !== newUid
-
-    if (switched) {
-      try {
-        await clearLocalData()
-      } catch (err) {
-        console.error('[register:clearLocalData]', err)
-      }
-    }
-
-    if (newUid) localStorage.setItem(LAST_UID_KEY, newUid)
-
-    if (switched) {
-      // HARD navigation: bellekteki Zustand store'larını ve DataProvider'ın
-      // modül-seviyesi init kilidini sıfırlar (bkz. login/page.tsx).
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli HARD reload: soft navigasyon önceki kullanıcının bellekteki verisini taşır (yukarıdaki not)
-      window.location.assign('/dashboard')
-    } else {
-      router.push('/dashboard')
-    }
+    await enterApp(data.user?.id, href => router.push(href), 'register')
   }
 
   if (emailSent) {
