@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Account, Transaction, Category, Budget, Debt, InvestmentTransaction, Person, RecurringTransaction, OutboxEntry, Workspace, PaymentPlan, PaymentOccurrence } from '@/types'
+import type { Account, Transaction, Category, Budget, Debt, InvestmentTransaction, Person, RecurringTransaction, OutboxEntry, Workspace, PaymentPlan, PaymentOccurrence, SavingsGoal } from '@/types'
 // Shared legacy→Tabler icon map (single source of truth). The v6 migration only
 // ever encounters the noto: subset, but lookups are by exact key so the
 // superset is harmless and correct. A plain module import is safe inside the
@@ -18,6 +18,7 @@ class FinTrackDB extends Dexie {
   workspaces!: EntityTable<Workspace, 'id'>
   paymentPlans!: EntityTable<PaymentPlan, 'id'>
   paymentOccurrences!: EntityTable<PaymentOccurrence, 'id'>
+  savingsGoals!: EntityTable<SavingsGoal, 'id'>
   _outbox!: EntityTable<OutboxEntry, 'id'>
 
   constructor() {
@@ -225,6 +226,25 @@ class FinTrackDB extends Dexie {
       workspaces:             '&id, isDefault, deleted_at',
       paymentPlans:           '&id, targetKind, targetId, deleted_at, workspaceId',
       paymentOccurrences:     '&id, targetKind, targetId, month, deleted_at, workspaceId',
+      _outbox:                '&id, table, entityId, enqueuedAt',
+    })
+
+    // v14: Birikim Hedefleri. Tek YENİ tablo — mevcut tablolara ve verilere
+    // dokunulmaz, veri dönüşümü yok. Supabase karşılığı:
+    // supabase/migrations/0015_savings_goals.sql.
+    this.version(14).stores({
+      accounts:               '&id, type, currency, isArchived, deleted_at, workspaceId',
+      transactions:           '&id, type, accountId, toAccountId, categoryId, date, installGroupId, debtId, familyMemberId, recipientId, deleted_at, approvalStatus, workspaceId, workspaceTransferId',
+      categories:             '&id, scope, parentId, isSystem, isArchived, deleted_at, workspaceId',
+      budgets:                '&id, categoryId, period, year, month, deleted_at, workspaceId',
+      debts:                  '&id, type, direction, isSettled, dueDate, deleted_at, workspaceId',
+      investmentTransactions: '&id, type, asset, date, deleted_at, workspaceId',
+      people:                 '&id, role, deleted_at, workspaceId',
+      recurringTransactions:  '&id, type, frequency, nextDueDate, isActive, deleted_at, workspaceId',
+      workspaces:             '&id, isDefault, deleted_at',
+      paymentPlans:           '&id, targetKind, targetId, deleted_at, workspaceId',
+      paymentOccurrences:     '&id, targetKind, targetId, month, deleted_at, workspaceId',
+      savingsGoals:           '&id, accountId, deleted_at, workspaceId',
       _outbox:                '&id, table, entityId, enqueuedAt',
     })
   }

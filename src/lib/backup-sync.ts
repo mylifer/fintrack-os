@@ -5,7 +5,7 @@ import { localBatch, type BatchOp } from './sync/engine'
 import type {
   Account, Transaction, Category, Budget, Debt,
   InvestmentTransaction, Person, RecurringTransaction,
-  PaymentPlan, PaymentOccurrence,
+  PaymentPlan, PaymentOccurrence, SavingsGoal,
 } from '@/types'
 
 /**
@@ -34,6 +34,8 @@ export interface BackupData {
   // yoksa geri yükleme o tabloya DOKUNMAZ (boş dizi ise "hiç kayıt yoktu" demektir).
   paymentPlans?:          PaymentPlan[]
   paymentOccurrences?:    PaymentOccurrence[]
+  // Birikim Hedefleri — aynı kural: anahtar yoksa (eski yedek) dokunulmaz.
+  savingsGoals?:          SavingsGoal[]
 }
 
 /**
@@ -48,25 +50,33 @@ export async function cloudReplaceAll(data: BackupData, userId: string): Promise
   if (error) throw new Error(`Bulut geri yükleme hatası: ${error.message}`)
 }
 
+/** RPC'nin kapsamı DIŞINDA kalan, geri yüklemede outbox üzerinden değiştirilen
+ *  tablolar. BackupManager.writeDexie bunların bekleyen outbox girdilerini
+ *  silmez — bkz. replaceOutboxTables. */
+export const OUTBOX_RESTORED_TABLES = ['payment_plans', 'payment_occurrences', 'savings_goals'] as const
+type OutboxRestoredTable = typeof OUTBOX_RESTORED_TABLES[number]
+
 /**
- * Ödeme Takibi tablolarını (payment_plans, payment_occurrences) yedektekilerle
+ * RPC'nin bilmediği tabloları — Ödeme Takibi (payment_plans,
+ * payment_occurrences) ve Birikim Hedefleri (savings_goals) — yedektekilerle
  * değiştirir.
  *
- * restore_user_backup RPC'si bu tabloları bilmiyor (0009 üretimde henüz test
- * edilmediği için ona dokunulmadı), bu yüzden değişim dayanıklı outbox üzerinden
- * yapılır: yedekte olmayan canlı kayıtlar tombstone'lanır, yedektekiler upsert
- * edilir. Tek Dexie transaction'ı (localBatch) — yerelde ya hepsi ya hiçbiri;
- * bulut tarafını outbox taşır, çevrimdışıysa bağlantı gelince tamamlanır.
- * Yedek bir tabloyu taşımıyorsa (eski yedek) o tablo olduğu gibi kalır.
+ * restore_user_backup RPC'si bu tabloları bilmiyor (0009'un tablo listesi sabit;
+ * üretimde çalışan fonksiyona dokunmamak için genişletilmedi), bu yüzden değişim
+ * dayanıklı outbox üzerinden yapılır: yedekte olmayan canlı kayıtlar
+ * tombstone'lanır, yedektekiler upsert edilir. Tek Dexie transaction'ı
+ * (localBatch) — yerelde ya hepsi ya hiçbiri; bulut tarafını outbox taşır,
+ * çevrimdışıysa bağlantı gelince tamamlanır. Yedek bir tabloyu taşımıyorsa
+ * (eski yedek) o tablo olduğu gibi kalır.
  *
  * Çağıran: geri yükleme RPC'si COMMIT olduktan SONRA — writeDexie outbox'ı
  * temizlediği için bu girdiler ondan sonra eklenmeli.
  */
-export async function replacePaymentTracking(data: BackupData): Promise<void> {
+export async function replaceOutboxTables(data: BackupData): Promise<void> {
   const ts = new Date().toISOString()
   const ops: BatchOp[] = []
   const collect = (
-    table: 'payment_plans' | 'payment_occurrences',
+    table: OutboxRestoredTable,
     current: { id: string; deleted_at?: string | null }[],
     rows: { id: string }[] | undefined,
   ) => {
@@ -79,5 +89,6 @@ export async function replacePaymentTracking(data: BackupData): Promise<void> {
   }
   if (data.paymentPlans) collect('payment_plans', await db.paymentPlans.toArray(), data.paymentPlans)
   if (data.paymentOccurrences) collect('payment_occurrences', await db.paymentOccurrences.toArray(), data.paymentOccurrences)
+  if (data.savingsGoals) collect('savings_goals', await db.savingsGoals.toArray(), data.savingsGoals)
   await localBatch(ops)
 }

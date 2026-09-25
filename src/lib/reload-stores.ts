@@ -3,7 +3,7 @@
 import {
   useAccountStore, useTransactionStore, useCategoryStore,
   useBudgetStore, useDebtStore, useInvestmentStore, usePeopleStore,
-  useRecurringStore, usePaymentsStore,
+  useRecurringStore, usePaymentsStore, useGoalsStore,
 } from '@/store'
 import { runCategoryRestructurePass } from '@/lib/category-restructure'
 
@@ -23,6 +23,7 @@ export async function reloadAllStores(): Promise<void> {
   const { load: loadInvestments } = useInvestmentStore.getState()
   const { load: loadRecurring } = useRecurringStore.getState()
   const { load: loadPayments } = usePaymentsStore.getState()
+  const { load: loadGoals } = useGoalsStore.getState()
 
   // Phase 1: FK parent tabloları — child'lar yüklenmeden önce hazır olmalı.
   // Yeni/boş bir çalışma alanı için initCategories() varsayılan kategorileri
@@ -41,6 +42,7 @@ export async function reloadAllStores(): Promise<void> {
     loadInvestments(),
     loadRecurring(),
     loadPayments(),   // ödeme takibi: hesaplara/borçlara/işlemlere referans verir
+    loadGoals(),      // birikim hedefleri: hesaplara referans verir
   ])
 
   // Tek seferlik kategori düzeni geçişi — işlem/bütçe/tekrarlayan bağlarını da

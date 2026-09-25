@@ -61,12 +61,12 @@ const AUTO_INTERVAL_MS = 24 * 60 * 60 * 1000
  * savunma var (0009: `deleted_at` artık yükten korunur, null'a zorlanmaz). */
 export async function readSnapshot(): Promise<BackupData> {
   const [accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions,
-    paymentPlans, paymentOccurrences] =
+    paymentPlans, paymentOccurrences, savingsGoals] =
     await Promise.all([
       db.accounts.toArray(), db.transactions.toArray(), db.categories.toArray(),
       db.budgets.toArray(), db.debts.toArray(), db.investmentTransactions.toArray(),
       db.people.toArray(), db.recurringTransactions.toArray(),
-      db.paymentPlans.toArray(), db.paymentOccurrences.toArray(),
+      db.paymentPlans.toArray(), db.paymentOccurrences.toArray(), db.savingsGoals.toArray(),
     ])
   return {
     accounts:               accounts.filter(isLive),
@@ -79,6 +79,7 @@ export async function readSnapshot(): Promise<BackupData> {
     recurringTransactions:  recurringTransactions.filter(isLive),
     paymentPlans:           paymentPlans.filter(isLive),
     paymentOccurrences:     paymentOccurrences.filter(isLive),
+    savingsGoals:           savingsGoals.filter(isLive),
   }
 }
 

@@ -510,6 +510,8 @@ export async function clearAllData(): Promise<void> {
   // Ödeme takibi kayıtları hesaplara/borçlara bağlı — onlar silinince yetim kalmasın.
   await db.paymentPlans.clear()
   await db.paymentOccurrences.clear()
+  // Birikim hedefleri hesaplara bağlanabilir — hesaplar silinince yetim kalmasın.
+  await db.savingsGoals.clear()
   await db._outbox.clear() // discard pending mutations — this is an explicit wipe
 
   if (userId) {
@@ -528,6 +530,7 @@ export async function clearAllData(): Promise<void> {
       supabase.from('recurring_transactions').update({ deleted_at: ts }).eq('user_id', userId),
       supabase.from('payment_plans').update({ deleted_at: ts }).eq('user_id', userId),
       supabase.from('payment_occurrences').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('savings_goals').update({ deleted_at: ts }).eq('user_id', userId),
     ])
   }
 }

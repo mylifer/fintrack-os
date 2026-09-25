@@ -30,6 +30,7 @@ const tables = {
   recurringTransactions:  new FakeTable(),
   paymentPlans:           new FakeTable(),
   paymentOccurrences:     new FakeTable(),
+  savingsGoals:           new FakeTable(),
 }
 
 vi.mock('@/lib/db', () => ({ db: tables }))

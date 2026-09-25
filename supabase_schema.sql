@@ -21,13 +21,20 @@
 --
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
--- çalıştırdıktan SONRA supabase/migrations/0001..0010'u da sırayla uygulayın.
+-- çalıştırdıktan SONRA supabase/migrations/0001..0015'i sırayla uygulayın.
 -- Yalnızca burada olmayan, migration'lara bağlı parçalar:
 --   • user_backups tablosu + RLS'i            → 0005
 --   • restore_user_backup() RPC'si            → 0004, 0009 (0009 önce F1 için
 --                                                düzeltilmiş olmalı)
 --   • investment_transactions.asset CHECK'i   → 0003
 --   • rls_auto_enable() + ensure_rls trigger  → 0010
+--   • MFA (aal2) kısıtlayıcı politikaları +
+--     delete_my_account() RPC'si              → 0013 — bu dosya TÜM politikaları
+--                                                silip kurduğu için bunu
+--                                                çalıştırdıktan sonra 0013 ve
+--                                                0015'i YENİDEN çalıştırın
+--   • categories."matchKeywords"              → 0014 (aşağıda da var)
+--   • savings_goals tablosu                   → 0015 (aşağıda da var)
 -- Sütunlar aşağıda tutulmaya çalışılıyor ama geçmişte kaydı: `categorySplits`
 -- (0007) uzun süre yalnızca migration'da kaldı. Yeni bir sütun eklerken HEM
 -- migration'a HEM buraya yazın. (Güvenlik denetimi 2026-08-29 → H2.)
@@ -106,6 +113,26 @@ create table if not exists public.payment_occurrences (
 grant select, insert, update, delete on public.payment_plans to authenticated;
 grant select, insert, update, delete on public.payment_occurrences to authenticated;
 
+-- ── Birikim Hedefleri (0015) ────────────────────────────────────────────────
+-- Ayrıntı ve deploy sırası: supabase/migrations/0015_savings_goals.sql.
+create table if not exists public.savings_goals (
+  id text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  "name" text not null,
+  "targetAmount" double precision not null,
+  "targetDate" text,
+  "accountId" text,
+  "savedAmount" double precision,
+  "color" text,
+  "notes" text,
+  "createdAt" text,
+  "updatedAt" text,
+  "workspaceId" text,
+  deleted_at timestamptz
+);
+
+grant select, insert, update, delete on public.savings_goals to authenticated;
+
 -- ── Reusable installer ──────────────────────────────────────────────────────
 -- A DO block applies the identical hardening to each table so no table can be
 -- accidentally left without a policy (the classic RLS foot-gun).
@@ -124,7 +151,8 @@ declare
     'recurring_transactions',
     'workspaces',
     'payment_plans',
-    'payment_occurrences'
+    'payment_occurrences',
+    'savings_goals'
   ];
 begin
   foreach t in array tables loop

@@ -441,6 +441,28 @@ export interface PaymentOccurrence {
   workspaceId?: string          // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
+// ─── Birikim Hedefi ─────────────────────────────────────────────────────────
+// "Aralık'a kadar tatil için 50.000 ₺". İlerleme iki kaynaktan birinden gelir:
+//   • accountId verilmişse o HESABIN bakiyesi (TRY'ye çevrilmiş) — birikim
+//     ayrı bir hesapta tutuluyorsa elle güncelleme gerekmez;
+//   • yoksa savedAmount — kullanıcının "para ekle/çıkar" ile tuttuğu tutar.
+// Hedef tutarı TRY'dir. Mantık: src/lib/utils/goals.ts. Supabase: 0015.
+
+export interface SavingsGoal {
+  id: string
+  name: string
+  targetAmount: number          // TRY
+  targetDate?: string | null    // ISO tarih — verilmezse süresiz hedef
+  accountId?: string | null     // bağlı hesap: ilerleme = bakiyesi
+  savedAmount?: number | null   // elle takip (hesap bağlı değilken)
+  color: string                 // Hex
+  notes?: string | null
+  createdAt: string
+  updatedAt: string
+  deleted_at?: string | null    // Tombstone (C3)
+  workspaceId?: string          // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
+}
+
 // ─── Sync outbox (C1 — durable offline writes) ──────────────────────────────
 
 /** A pending mutation awaiting push to Supabase. One entry per (table, entity):

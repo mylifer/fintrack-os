@@ -44,6 +44,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Planlama',
     items: [
       { href: '/budgets',       label: 'Bütçeler',      icon: IC.budgets, expand: 'budgets' },
+      { href: '/goals',         label: 'Hedefler',      icon: IC.goals },
       { href: '/debts',         label: 'Borçlar',       icon: IC.debts },
       { href: '/payments',      label: 'Ödeme Takibi',  icon: IC.payments, badge: 'payments' },
       { href: '/recurring',     label: 'Tekrarlayan',   icon: IC.recurring, badge: 'due' },

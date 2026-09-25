@@ -25,3 +25,5 @@ export { useSettingsStore } from './settings.store'
 export { useWorkspaceStore } from './workspace.store'
 
 export { usePaymentsStore } from './payments.store'
+
+export { useGoalsStore } from './goals.store'

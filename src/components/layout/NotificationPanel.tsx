@@ -11,6 +11,7 @@ import { approveRecurring, skipRecurring } from '@/lib/utils/recurring-actions'
 import { approvePaymentRow, quickApproveBlocker, setRowStatus } from '@/lib/payments/actions'
 import { paymentDescription, type PaymentRow } from '@/lib/payments/schedule'
 import { formatCurrency } from '@/lib/utils/currency'
+import { resolveBudgetCategories } from '@/lib/utils/calculations'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
@@ -28,6 +29,8 @@ import type { CurrencyCode, RecurringFrequency, Transaction, TransactionType } f
           Onayla yerine Ödeme Takibi'ne yönlendirir.
      2. "Yaklaşan" — 7 gün içindeki pending işlemler (erken onay opsiyonel) +
         nextDueDate'i yaklaşan tekrarlayanlar + ödemeler (salt bilgi).
+     3. "Bütçe uyarıları" — bu ay uyarı eşiğini geçen/aşılan bütçeler (salt
+        bilgi, detay sayfasına bağlantı).
    Onay/atlama sonrası liste reaktif düşer: tüm bölümler store'lardan
    türetilir (useNotifications), ekstra senkron gerekmez. */
 
@@ -87,6 +90,9 @@ export function NotificationPanel({
 
   const due = notifications.filter(n => n.kind === 'recurring-due' || n.kind === 'future-tx-due' || n.kind === 'payment-due')
   const upcoming = notifications.filter(n => n.kind === 'recurring-upcoming' || n.kind === 'future-tx-upcoming' || n.kind === 'payment-upcoming')
+  const budgetAlerts = notifications
+    .filter((n): n is Extract<AppNotification, { kind: 'budget-alert' }> => n.kind === 'budget-alert')
+    .sort((a, b) => b.budget.percentUsed - a.budget.percentUsed)
 
   const accountName  = (id?: string | null) => (id ? accounts.find(a => a.id === id)?.name : undefined)
   const categoryOf   = (id?: string) => (id ? categories.find(c => c.id === id) : undefined)
@@ -373,7 +379,7 @@ export function NotificationPanel({
       </div>
 
       <div className="overflow-y-auto max-h-[70vh]">
-        {due.length === 0 && upcoming.length === 0 && (
+        {due.length === 0 && upcoming.length === 0 && budgetAlerts.length === 0 && (
           <EmptyState icon="🔔" title="Bekleyen bildirim yok" description="Onay bekleyen veya yaklaşan işleminiz bulunmuyor." />
         )}
 
@@ -398,6 +404,40 @@ export function NotificationPanel({
             </div>
             <div className="divide-y divide-border">
               {upcoming.map(renderUpcoming)}
+            </div>
+          </section>
+        )}
+
+        {/* ── Bütçe uyarıları (bu ay) ──────────────────────────────── */}
+        {budgetAlerts.length > 0 && (
+          <section className={due.length > 0 || upcoming.length > 0 ? 'border-t border-border' : ''}>
+            <div className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Bütçe uyarıları — {budgetAlerts.length}
+            </div>
+            <div className="divide-y divide-border">
+              {budgetAlerts.map(({ budget: b }) => {
+                const { cats, label } = resolveBudgetCategories(b, categories)
+                return (
+                  <RowShell key={`ba:${b.id}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {cats[0] && <CategoryIcon icon={cats[0].icon} color={cats[0].color} size={14} />}
+                        <span className="text-sm font-medium text-foreground truncate">{label}</span>
+                        <Badge variant={b.status === 'exceeded' ? 'danger' : 'amber'}>
+                          {b.status === 'exceeded' ? 'Aşıldı' : `%${Math.round(b.percentUsed)}`}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {formatCurrency(b.spent)} / {formatCurrency(b.limit)}
+                        {b.status === 'exceeded'
+                          ? ` · ${formatCurrency(b.spent - b.limit)} aşım`
+                          : ` · ${formatCurrency(b.remaining)} kaldı`}
+                      </div>
+                    </div>
+                    <Link href={`/budgets/${b.id}`} onClick={onClose} className={linkBtn}>Detay</Link>
+                  </RowShell>
+                )
+              })}
             </div>
           </section>
         )}
