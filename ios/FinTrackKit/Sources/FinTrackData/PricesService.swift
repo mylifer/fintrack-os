@@ -3,7 +3,8 @@ import FinTrackCore
 
 /// Piyasa fiyatları — web'in sunucu rotalarıyla AYNI ücretsiz, anahtarsız kaynaklar:
 ///   • kurlar: fawazahmed0 currency-api (bugün + önceki gün)       — /api/prices
-///   • altın: truncgil (Kapalıçarşı ALIŞ), yoksa Yahoo GC=F spot   — /api/prices
+///   • altın: truncgil (Kapalıçarşı ALIŞ; alınamazsa ≤24 sa'lik son kotasyon),
+///     o da yoksa Yahoo GC=F spot — web lib/turkish-gold.ts + /api/prices
 ///   • TEFAS fonları: tefas.gov.tr fonFiyatBilgiGetir               — /api/prices/tefas
 ///   • BIST / kripto: Yahoo Finance chart (kripto USD × USD/TRY)   — /api/prices/market
 /// Web rotaları tarayıcı oturum çerezi istediği için iOS kaynaklara doğrudan gider.
@@ -60,7 +61,28 @@ public enum PricesService {
 
     struct TrQuote { var current: Double; var prev: Double }
 
+    /// Kapalıçarşı kotasyonu; alınamazsa en çok 24 saatlik son başarılı kotasyon
+    /// (web lib/turkish-gold.ts ile aynı kural — anlık spot fiyata atlamaktansa
+    /// birkaç saatlik Kapalıçarşı fiyatı tutarlıdır).
     static func turkishGold() async -> [String: TrQuote] {
+        let fresh = await fetchTurkishGold()
+        let key = "fintrack.trGold.v1"
+        if !fresh.isEmpty {
+            let stored = fresh.mapValues { [$0.current, $0.prev] }
+            if let d = try? JSONEncoder().encode(TrCache(at: Date(), quotes: stored)) {
+                UserDefaults.standard.set(d, forKey: key)
+            }
+            return fresh
+        }
+        guard let d = UserDefaults.standard.data(forKey: key),
+              let c = try? JSONDecoder().decode(TrCache.self, from: d),
+              Date().timeIntervalSince(c.at) <= 24 * 3600 else { return [:] }
+        return c.quotes.compactMapValues { $0.count == 2 ? TrQuote(current: $0[0], prev: $0[1]) : nil }
+    }
+
+    struct TrCache: Codable { var at: Date; var quotes: [String: [Double]] }
+
+    static func fetchTurkishGold() async -> [String: TrQuote] {
         guard let o = await getJSON("https://finans.truncgil.com/v4/today.json") as? [String: Any] else { return [:] }
         var out: [String: TrQuote] = [:]
         for key in ["GRA", "CEYREKALTIN", "YARIMALTIN", "TAMALTIN", "YIA"] {
