@@ -6,6 +6,7 @@ import FinTrackData
 struct FinTrackApp: App {
     @State private var model = AppModel()
     @State private var lock = AppLock()
+    @State private var router = Router()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -17,7 +18,9 @@ struct FinTrackApp: App {
             RootView()
                 .environment(model)
                 .environment(lock)
+                .environment(router)
                 .tint(Theme.tint)
+                .onOpenURL { router.open($0) }
                 .task { await model.start(config: AppConfig.fromBundle()) }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -53,7 +56,10 @@ struct RootView: View {
                 LockView().transition(.opacity)
             }
         }
-        .onChange(of: amountsHidden, initial: true) { _, v in Fmt.amountsHidden = v }
+        .onChange(of: amountsHidden, initial: true) { _, v in
+            Fmt.amountsHidden = v
+            model.amountsHiddenChanged()
+        }
     }
 
     @ViewBuilder private var content: some View {

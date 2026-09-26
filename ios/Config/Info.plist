@@ -6,5 +6,16 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_ANON_KEY</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.mylifer.fintrack</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fintrack</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

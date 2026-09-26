@@ -110,7 +110,7 @@ struct SummaryView: View {
                 HStack {
                     Text("Hesaplar").font(.headline)
                     Spacer()
-                    Text(Fmt.currency(model.netWorth))
+                    Text(Fmt.currency(model.accountsTotal))
                         .font(.headline.monospacedDigit())
                     Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary)
                 }
@@ -130,6 +130,16 @@ struct SummaryView: View {
                 }
                 if model.hasForeignAccountsWithoutRates {
                     Text("Kurlar alınamadı; döviz hesapları toplama çevrilmeden eklendi.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if !model.holdings.isEmpty || model.debtBurden > 0 {
+                    Divider()
+                    HStack {
+                        Text("Net değer").font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text(Fmt.currency(model.netWorth)).font(.subheadline.weight(.semibold).monospacedDigit())
+                    }
+                    Text("Hesaplar + yatırımlar \(Fmt.currency(model.investValue)) − borç \(Fmt.currency(model.debtBurden))")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

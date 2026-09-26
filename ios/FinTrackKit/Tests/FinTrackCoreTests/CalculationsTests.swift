@@ -351,3 +351,85 @@ struct CollapseTests {
         #expect(Installments.collapse(rows)[0].amount == 1600)
     }
 }
+
+/* Web calculations.test.ts — enrichDebt / calcDebtBurden ile aynı girdiler. */
+@Suite("borçlar")
+struct DebtTests {
+    func debt(_ o: JSONObject) -> Debt {
+        var raw: JSONObject = ["id": "d1", "name": "Kredi", "type": "bank_loan", "direction": "owe",
+                               "totalAmount": 1000, "paidAmount": 0, "startDate": "2026-01-10",
+                               "isSettled": false, "createdAt": "2026-01-10"]
+        for (k, v) in o { raw[k] = v }
+        return Debt(raw: raw)
+    }
+    @Test func remainingFloorsProgressCaps() {
+        let d = debt(["totalAmount": 1000, "paidAmount": 1200])
+        #expect(d.remaining == 0)
+        #expect(d.progress == 100)
+    }
+    @Test func burdenOnlyOpenOwe() {
+        #expect(Calc.debtBurden([
+            debt(["id": "a", "totalAmount": 1000, "paidAmount": 300]),
+            debt(["id": "b", "totalAmount": 500, "paidAmount": 500, "isSettled": true]),
+            debt(["id": "c", "totalAmount": 900, "paidAmount": 1200]),
+            debt(["id": "d", "direction": "owed", "totalAmount": 400]),
+        ]) == 700)
+    }
+    @Test func settledManuallyIsZero() {
+        #expect(Calc.debtBurden([debt(["totalAmount": 1000, "paidAmount": 400, "isSettled": true])]) == 0)
+    }
+}
+
+/* Web computeHoldings / getAssetPrice kuralları. */
+@Suite("portföy")
+struct PortfolioTests {
+    func inv(_ type: String, _ asset: String, _ qty: Double, _ price: Double, _ date: String, _ created: String = "") -> InvestmentTransaction {
+        InvestmentTransaction(raw: ["id": .string("\(type)-\(asset)-\(date)-\(qty)"), "type": .string(type), "asset": .string(asset),
+                                    "quantity": .number(qty), "pricePerUnit": .number(price),
+                                    "date": .string(date), "createdAt": .string(created.isEmpty ? date : created)])
+    }
+    var book: PriceBook {
+        var b = PriceBook()
+        b.usdTry = 40; b.eurTry = 45; b.gbpTry = 50; b.goldGramTry = 4000; b.prevGoldGramTry = 3900
+        b.goldQuarterTry = 6600
+        b.quotes = ["AFA": .init(name: "AFA", price: 2, prevPrice: 1.9, date: "2026-09-25"),
+                    "BIST:THYAO": .init(name: "THY", price: 300, prevPrice: nil, date: "2026-09-26")]
+        return b
+    }
+    @Test func weightedAverageCostAndSell() {
+        let h = Portfolio.holdings([
+            inv("buy", "TEFAS:AFA", 100, 1, "2026-01-01"),
+            inv("buy", "TEFAS:AFA", 100, 1.5, "2026-02-01"),
+            inv("sell", "TEFAS:AFA", 50, 3, "2026-03-01"),
+        ], prices: book)
+        #expect(h.count == 1)
+        #expect(h[0].quantity == 150)
+        #expect(abs(h[0].avgCostPerUnit - 1.25) < 1e-9)
+        #expect(abs(h[0].totalCost - 187.5) < 1e-9)
+        #expect(h[0].currentValue == 300)
+        #expect(abs(h[0].pnl - 112.5) < 1e-9)
+        #expect(abs(h[0].dayChange! - 15) < 1e-9)
+    }
+    @Test func fullySoldDisappears() {
+        #expect(Portfolio.holdings([inv("buy", "USD", 10, 40, "2026-01-01"), inv("sell", "USD", 10, 41, "2026-01-02")], prices: book).isEmpty)
+    }
+    @Test func sameDaySellAfterBuyByCreatedAt() {
+        let h = Portfolio.holdings([
+            inv("sell", "USD", 5, 41, "2026-01-01", "2026-01-01T12:00"),
+            inv("buy", "USD", 10, 40, "2026-01-01", "2026-01-01T09:00"),
+        ], prices: book)
+        #expect(h[0].quantity == 5)
+    }
+    @Test func assetPrices() {
+        #expect(book.price("GOLD_GRAM") == 4000)
+        #expect(book.price("GOLD_QUARTER") == 6600)                  // Türkiye kotasyonu
+        #expect(abs(book.price("GOLD_HALF") - 4000 * 3.2133) < 1e-6)  // gramdan türetme
+        #expect(book.price("EUR") == 45)
+        #expect(book.price("TEFAS:AFA") == 2)
+        #expect(book.price("BIST:THYAO") == 300)
+        #expect(book.price("CRYPTO:BTC") == 0)                        // fiyat yok
+        #expect(book.prevPrice("GOLD_GRAM") == 3900)
+        #expect(Asset.label("TEFAS:AFA") == "AFA")
+        #expect(Asset.label("GOLD_BRACELET") == "Gr Bilezik")
+    }
+}

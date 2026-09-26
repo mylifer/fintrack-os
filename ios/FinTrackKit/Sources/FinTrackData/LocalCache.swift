@@ -11,6 +11,8 @@ struct LocalCache {
         var categories: [JSONObject]
         var budgets: [JSONObject]
         var transactions: [JSONObject]
+        var investments: [JSONObject]?
+        var debts: [JSONObject]?
     }
 
     private func url(_ userId: String) -> URL? {
@@ -24,7 +26,8 @@ struct LocalCache {
         guard let url = url(userId) else { return }
         let stored = Stored(workspaces: s.workspaces.map(\.raw), accounts: s.accounts.map(\.raw),
                             categories: s.categories.map(\.raw), budgets: s.budgets.map(\.raw),
-                            transactions: s.transactions.map(\.raw))
+                            transactions: s.transactions.map(\.raw),
+                            investments: s.investments.map(\.raw), debts: s.debts.map(\.raw))
         guard let data = try? JSONEncoder().encode(stored) else { return }
         #if os(iOS)
         try? data.write(to: url, options: [.atomic, .completeFileProtection])
@@ -40,7 +43,9 @@ struct LocalCache {
                         accounts: s.accounts.map(Account.init(raw:)),
                         categories: s.categories.map(Category.init(raw:)),
                         budgets: s.budgets.map(Budget.init(raw:)),
-                        transactions: s.transactions.map(Transaction.init(raw:)))
+                        transactions: s.transactions.map(Transaction.init(raw:)),
+                        investments: (s.investments ?? []).map(InvestmentTransaction.init(raw:)),
+                        debts: (s.debts ?? []).map(Debt.init(raw:)))
     }
 
     func clear(userId: String) {

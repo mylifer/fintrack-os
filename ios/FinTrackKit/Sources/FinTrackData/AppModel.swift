@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import FinTrackCore
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 /// Uygulamanın tek durum kaynağı. Web'deki store'ların (accounts/transactions/
 /// categories/budgets/workspace) iOS'taki karşılığı — ilk aşamanın ihtiyacı kadar.
@@ -31,6 +34,10 @@ public final class AppModel {
     public private(set) var reportTransactions: [Transaction] = []
     public private(set) var balances: [String: Double] = [:]  // hesap id → kendi para biriminde
     public private(set) var fx = FX()
+    public private(set) var investments: [InvestmentTransaction] = []
+    public private(set) var debts: [Debt] = []
+    public private(set) var holdings: [Holding] = []
+    public private(set) var prices = PriceBook()
 
     // Tüm alanlar (çalışma alanı değişince yeniden süzmek için)
     private var all = Snapshot()
@@ -40,8 +47,16 @@ public final class AppModel {
     /// DEBUG örnek veri modu (simülatörde ekran doğrulama): buluta hiçbir şey yazılmaz.
     private var isDemo = false
     private static let activeKey = "fintrack.activeWorkspaceId"
+    private static let pricesKey = "fintrack.prices"
 
-    public init() {}
+    public init() {
+        // Son fiyatlar: çevrimdışı açılışta portföy ve döviz hesapları sıfır görünmesin
+        if let d = UserDefaults.standard.data(forKey: Self.pricesKey),
+           let p = try? JSONDecoder().decode(PriceBook.self, from: d) {
+            prices = p
+            fx = FX(rates: p.fxRates)
+        }
+    }
 
     public var userId: String? {
         if case .signedIn(let id, _) = auth { return id }
@@ -60,9 +75,9 @@ public final class AppModel {
         if ProcessInfo.processInfo.arguments.contains("-demo") {
             isDemo = true
             auth = .signedIn(userId: "demo", email: "demo@fintrack.local")
+            prices = DemoData.prices()
+            fx = FX(rates: prices.fxRates)
             apply(DemoData.snapshot())
-            fx = FX(rates: FXRates(usdTry: 41.2, eurTry: 48.3, gbpTry: 55.4))
-            recomputeBalances()
             phase = .ready
             return
         }
@@ -108,6 +123,8 @@ public final class AppModel {
         workspaces = []
         activeWorkspaceId = nil
         rescope()
+        WidgetSnapshot.clear()
+        reloadWidgets()
     }
 
     // MARK: Çekiş
@@ -117,8 +134,6 @@ public final class AppModel {
         guard !isDemo, let service, let uid = userId, !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
-
-        async let rates = RatesService.fetch()
 
         // Üyelikler ÖNCE: çekiş filtresi paylaşılan alanları bunlardan bilir
         let m = await service.memberWorkspaceIds(userId: uid)
@@ -131,8 +146,11 @@ public final class AppModel {
             async let ca = service.fetchAll(Category.self, userId: uid, memberIds: members)
             async let bu = service.fetchAll(Budget.self, userId: uid, memberIds: members)
             async let tx = service.fetchAll(Transaction.self, userId: uid, memberIds: members)
+            async let iv = service.fetchAll(InvestmentTransaction.self, userId: uid, memberIds: members)
+            async let de = service.fetchAll(Debt.self, userId: uid, memberIds: members)
             let snap = Snapshot(workspaces: try await ws, accounts: try await ac, categories: try await ca,
-                                budgets: try await bu, transactions: try await tx)
+                                budgets: try await bu, transactions: try await tx,
+                                investments: try await iv, debts: try await de)
             apply(snap)
             cache.save(snap, userId: uid)
             lastSync = Date()
@@ -142,10 +160,18 @@ public final class AppModel {
             lastError = "Veriler güncellenemedi. Bağlantınızı kontrol edin."
         }
 
-        if let r = await rates {
-            fx = FX(rates: r)
-            recomputeBalances()
-        }
+        await refreshPrices()
+    }
+
+    /// Kurlar + portföydeki varlıkların fiyatları. Başarısızsa eski fiyatlar kalır.
+    public func refreshPrices() async {
+        guard !isDemo else { return }
+        let assets = Set(all.investments.filter(\.isLive).map(\.asset))
+        guard let book = await PricesService.fetch(assets: assets, previous: prices.hasRates ? prices : nil) else { return }
+        prices = book
+        fx = FX(rates: book.fxRates)
+        if let d = try? JSONEncoder().encode(book) { UserDefaults.standard.set(d, forKey: Self.pricesKey) }
+        recomputeBalances()
     }
 
     public func setActiveWorkspace(_ id: String) {
@@ -176,6 +202,8 @@ public final class AppModel {
         categories = all.categories.filter(inActive).sorted { $0.sortOrder < $1.sortOrder }
         budgets = all.budgets.filter(inActive)
         transactions = all.transactions.filter(inActive).sorted(by: Self.txOrder)
+        investments = all.investments.filter(inActive)
+        debts = all.debts.filter(inActive)
         recomputeBalances()
     }
 
@@ -190,6 +218,41 @@ public final class AppModel {
         var out: [String: Double] = [:]
         for a in accounts { out[a.id] = Calc.balance(of: a, posted: posted, fx: fx) }
         balances = out
+        holdings = Portfolio.holdings(investments, prices: prices)
+            .sorted { $0.currentValue > $1.currentValue }
+        writeWidgetSnapshot()
+    }
+
+    // MARK: Widget
+
+    /// Ana ekran widget'ının okuduğu özet (App Group). Widget ağa çıkmaz.
+    private func writeWidgetSnapshot() {
+        guard userId != nil, !isDemo else { return }   // örnek veri gerçek widget'ın üzerine yazmasın
+        let my = MonthYear.current()
+        let flow = Calc.monthlyFlow(reportTransactions, my, fx: fx)
+        let states = budgetStates(my)
+        let lines = states.prefix(3).map { s -> WidgetSnapshot.BudgetLine in
+            let info = Calc.budgetLabel(s.budget, categories)
+            return .init(name: info.label, colorHex: info.cats.first?.color ?? "#6B7280", spent: s.spent,
+                         limit: s.limit, percent: s.percentUsed, status: s.status.rawValue)
+        }
+        let snap = WidgetSnapshot(
+            month: String(format: "%04d-%02d", my.year, my.month), monthTitle: DateUtil.monthTitle(my),
+            expense: flow.expense, income: flow.income, net: flow.net, netWorth: netWorth,
+            budgetSpent: Money.sum(states) { $0.spent }, budgetLimit: Money.sum(states) { $0.limit },
+            budgets: Array(lines), amountsHidden: Fmt.amountsHidden, updatedAt: Date())
+        let changed = snap.withoutDate != WidgetSnapshot.load()?.withoutDate
+        snap.save()
+        if changed { reloadWidgets() }
+    }
+
+    /// "Tutarları gizle" değişince widget da gizlesin.
+    public func amountsHiddenChanged() { writeWidgetSnapshot() }
+
+    private func reloadWidgets() {
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     // MARK: Türetilmiş
@@ -206,7 +269,18 @@ public final class AppModel {
 
     public var activeAccounts: [Account] { accounts.filter { !$0.isArchived } }
 
-    public var netWorth: Double { Calc.netWorth(accounts, balances: balances, fx: fx) }
+    /// Hesapların toplamı (TRY; döviz hesapları kurla)
+    public var accountsTotal: Double { Calc.netWorth(accounts, balances: balances, fx: fx) }
+    /// Yatırımların güncel değeri (TRY)
+    public var investValue: Double { Money.sum(holdings) { $0.currentValue } }
+    /// Kalan borç (yalnız "borçluyum", kapanmamış)
+    public var debtBurden: Double { Calc.debtBurden(debts) }
+    /// Net değer — web panosu ile aynı: hesaplar + yatırımlar − kalan borç
+    public var netWorth: Double { Money.sub(Money.add(accountsTotal, investValue), debtBurden) }
+    /// Toplam varlık — pozitif bakiyeler + yatırımlar (brüt)
+    public var totalAssets: Double {
+        Money.add(Calc.netWorth(accounts, balances: balances, fx: fx, onlyPositive: true), investValue)
+    }
 
     public var hasForeignAccountsWithoutRates: Bool {
         fx.rates == nil && activeAccounts.contains { $0.currency != .TRY }
@@ -284,4 +358,11 @@ struct Snapshot {
     var categories: [Category] = []
     var budgets: [Budget] = []
     var transactions: [Transaction] = []
+    var investments: [InvestmentTransaction] = []
+    var debts: [Debt] = []
+}
+
+extension WidgetSnapshot {
+    /// Karşılaştırma için zaman damgasız hali (değişmeyen özeti yeniden yazıp widget'ı boşuna yenilemeyelim)
+    var withoutDate: WidgetSnapshot { var c = self; c.updatedAt = .distantPast; return c }
 }

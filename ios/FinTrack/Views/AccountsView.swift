@@ -5,6 +5,11 @@ import FinTrackData
 struct AccountsView: View {
     @Environment(AppModel.self) private var model
     @State private var showArchived = false
+    @State private var showSettled = false
+
+    private var openOwe: [Debt] { model.debts.filter { $0.owe && !$0.isSettled }.sorted { $0.remaining > $1.remaining } }
+    private var openOwed: [Debt] { model.debts.filter { !$0.owe && !$0.isSettled }.sorted { $0.remaining > $1.remaining } }
+    private var settled: [Debt] { model.debts.filter(\.isSettled) }
 
     private var groups: [(type: AccountType, items: [Account])] {
         let list = model.accounts.filter { showArchived || !$0.isArchived }
@@ -18,23 +23,34 @@ struct AccountsView: View {
         NavigationStack {
             List {
                 Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Net değer").font(.subheadline).foregroundStyle(.secondary)
-                        Text(Fmt.currency(model.netWorth))
-                            .font(.system(size: 30, weight: .bold).monospacedDigit())
-                        let assets = Calc.netWorth(model.accounts, balances: model.balances, fx: model.fx, onlyPositive: true)
-                        Text("Toplam varlık \(Fmt.currency(assets))")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                } footer: {
-                    Text("Borç takibindeki kalan borçlar web'deki Net Varlık kartında ayrıca düşülür.")
+                    NetWorthBreakdown()
                 }
 
                 ForEach(groups, id: \.type) { g in
                     Section(g.type.label) {
                         ForEach(g.items) { a in
                             NavigationLink(value: a) { AccountRow(account: a) }
+                        }
+                    }
+                }
+                if !openOwe.isEmpty {
+                    Section {
+                        ForEach(openOwe) { d in NavigationLink(value: d) { DebtRow(debt: d) } }
+                    } header: {
+                        sectionHeader("Borçlarım", Fmt.currency(Calc.debtBurden(model.debts)))
+                    }
+                }
+                if !openOwed.isEmpty {
+                    Section {
+                        ForEach(openOwed) { d in NavigationLink(value: d) { DebtRow(debt: d) } }
+                    } header: {
+                        sectionHeader("Alacaklarım", Fmt.currency(Money.sum(openOwed) { $0.remaining }))
+                    }
+                }
+                if !settled.isEmpty {
+                    Section {
+                        DisclosureGroup("Kapanan borçlar (\(settled.count))", isExpanded: $showSettled) {
+                            ForEach(settled) { d in NavigationLink(value: d) { DebtRow(debt: d) } }
                         }
                     }
                 }
@@ -49,6 +65,7 @@ struct AccountsView: View {
             .refreshable { await model.refresh() }
             .navigationTitle("Hesaplar")
             .navigationDestination(for: Account.self) { AccountDetailView(account: $0) }
+            .navigationDestination(for: Debt.self) { DebtDetailView(debt: $0) }
             .toolbar {
                 if model.accounts.contains(where: \.isArchived) {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -59,6 +76,46 @@ struct AccountsView: View {
                 }
             }
         }
+    }
+}
+
+private func sectionHeader(_ title: String, _ value: String) -> some View {
+    HStack {
+        Text(title)
+        Spacer()
+        Text(value).monospacedDigit()
+    }
+}
+
+/// Net değer — web panosuyla aynı: hesaplar + yatırımlar − kalan borç.
+struct NetWorthBreakdown: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Net değer").font(.subheadline).foregroundStyle(.secondary)
+            Text(Fmt.currency(model.netWorth))
+                .font(.system(size: 30, weight: .bold).monospacedDigit())
+                .minimumScaleFactor(0.6).lineLimit(1)
+            VStack(spacing: 4) {
+                line("Hesaplar", Fmt.currency(model.accountsTotal))
+                if !model.holdings.isEmpty { line("Yatırımlar", Fmt.currency(model.investValue)) }
+                if model.debtBurden > 0 { line("Kalan borç", "−" + Fmt.currency(model.debtBurden)) }
+            }
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            Text("Toplam varlık \(Fmt.currency(model.totalAssets))")
+                .font(.caption).foregroundStyle(.secondary)
+            if model.hasForeignAccountsWithoutRates {
+                Text("Kurlar alınamadı; döviz hesapları çevrilmeden eklendi.")
+                    .font(.caption).foregroundStyle(Theme.warning)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func line(_ label: String, _ value: String) -> some View {
+        HStack { Text(label); Spacer(); Text(value) }
     }
 }
 

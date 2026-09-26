@@ -93,8 +93,58 @@ enum DemoData {
             tx("expense", 4_200, -38, "acc-card", "c-market", "Geçen ay market"),
         ]
 
+        func inv(_ id: String, _ type: String, _ asset: String, _ qty: Double, _ price: Double, _ offset: Int) -> InvestmentTransaction {
+            InvestmentTransaction(raw: ["id": .string(id), "type": .string(type), "asset": .string(asset),
+                                        "quantity": .number(qty), "pricePerUnit": .number(price),
+                                        "date": .string(day(offset)), "createdAt": .string(day(offset)),
+                                        "workspaceId": .string(ws)])
+        }
+        let investments = [
+            inv("i1", "buy", "GOLD_GRAM", 20, 3_950, -200),
+            inv("i2", "buy", "GOLD_QUARTER", 3, 6_400, -120),
+            inv("i3", "buy", "TEFAS:AFA", 12_000, 1.05, -90),
+            inv("i4", "buy", "TEFAS:AFA", 3_000, 1.18, -30),
+            inv("i5", "sell", "TEFAS:AFA", 2_000, 1.25, -10),
+            inv("i6", "buy", "USD", 500, 39.8, -150),
+            inv("i7", "buy", "BIST:THYAO", 40, 285, -60),
+            inv("i8", "buy", "CRYPTO:BTC", 0.01, 3_600_000, -45),
+        ]
+
+        func debt(_ id: String, _ name: String, _ type: String, _ dir: String, _ total: Double, _ paid: Double,
+                  monthly: Double? = nil, inst: (Int, Int)? = nil, due: Int? = nil, who: String? = nil) -> Debt {
+            var raw: JSONObject = ["id": .string(id), "name": .string(name), "type": .string(type),
+                                   "direction": .string(dir), "totalAmount": .number(total), "paidAmount": .number(paid),
+                                   "startDate": .string(day(-300)), "isSettled": .bool(paid >= total),
+                                   "createdAt": .string(day(-300)), "workspaceId": .string(ws),
+                                   "counterparty": JSONValue(who), "monthlyPayment": JSONValue(monthly)]
+            if let inst { raw["totalInstallments"] = .number(Double(inst.0)); raw["paidInstallments"] = .number(Double(inst.1)) }
+            if let due { raw["dueDate"] = .string(day(due)) }
+            return Debt(raw: raw)
+        }
+        let debts = [
+            debt("d1", "İhtiyaç kredisi", "bank_loan", "owe", 120_000, 45_000, monthly: 7_500, inst: (16, 6), due: 8, who: "Garanti BBVA"),
+            debt("d2", "Ahmet'e borç", "personal", "owe", 15_000, 5_000, due: -3, who: "Ahmet"),
+            debt("d3", "Ayşe'den alacak", "personal", "owed", 8_000, 2_000, who: "Ayşe"),
+            debt("d4", "Eski kart borcu", "credit_card_debt", "owe", 10_000, 10_000),
+        ]
+
         return Snapshot(workspaces: workspaces, accounts: accounts, categories: categories,
-                        budgets: budgets, transactions: transactions)
+                        budgets: budgets, transactions: transactions, investments: investments, debts: debts)
+    }
+
+    static func prices() -> PriceBook {
+        var b = PriceBook()
+        b.usdTry = 41.2; b.eurTry = 48.3; b.gbpTry = 55.4
+        b.prevUsdTry = 41.1; b.prevEurTry = 48.1; b.prevGbpTry = 55.3
+        b.goldGramTry = 4_520; b.prevGoldGramTry = 4_480
+        b.goldQuarterTry = 7_380; b.prevGoldQuarterTry = 7_310
+        b.quotes = [
+            "AFA": .init(name: "Ak Portföy Amerikan Yabancı Hisse Fonu", price: 1.31, prevPrice: 1.30, date: "2026-09-25"),
+            "BIST:THYAO": .init(name: "Türk Hava Yolları", price: 312.5, prevPrice: 318, date: "2026-09-26"),
+            "CRYPTO:BTC": .init(name: "Bitcoin", price: 4_150_000, prevPrice: 4_090_000, date: "2026-09-26"),
+        ]
+        b.updatedAt = Date()
+        return b
     }
 }
 #endif
