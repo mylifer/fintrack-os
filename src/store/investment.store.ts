@@ -14,6 +14,7 @@ import { getFundTaxConfig } from './settings.store'
 import { fundTaxRate, taxOnGain } from '@/lib/utils/fund-tax'
 import { isTefasAsset, tefasCode, tefasCodesIn } from '@/lib/tefas'
 import { avgCostAt } from '@/lib/utils/investment-returns'
+import { applyTurkishGold, fetchTurkishGoldClient } from '@/lib/turkish-gold'
 import { isMarketAsset, marketKind, marketSymbol, marketAssetsIn, MARKET_KIND_META } from '@/lib/market'
 import type {
   InvestmentTransaction, InvestmentHolding,
@@ -479,10 +480,17 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     if (get().pricesLoading) return
     set({ pricesLoading: true })
     try {
-      const res = await fetch('/api/prices', { cache: 'no-store' })
+      // Kapalıçarşı kotasyonu tarayıcıdan paralel çekilir; sunucunun altın
+      // alanlarının üstüne yazılır (sunucu truncgil'e aralıklı erişiyor ve
+      // erişemediğinde spot türetiyor — bkz. lib/turkish-gold.ts).
+      const [res, trGold] = await Promise.all([
+        fetch('/api/prices', { cache: 'no-store' }),
+        fetchTurkishGoldClient(),
+      ])
       if (!res.ok) throw new Error(`${res.status}`)
-      const data: PriceData = await res.json()
-      if ('error' in data) throw new Error(String((data as Record<string, unknown>).error))
+      const server: PriceData = await res.json()
+      if ('error' in server) throw new Error(String((server as Record<string, unknown>).error))
+      const data = applyTurkishGold(server, trGold)
       set({ prices: data, pricesError: null })
       setBaseRates(data) // publish live FX rates for base-currency normalization (S2/S3)
     } catch (err) {

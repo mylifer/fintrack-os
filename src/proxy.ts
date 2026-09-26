@@ -60,9 +60,11 @@ function buildCsp(nonce: string): string {
     `img-src 'self' data: blob: https://api.iconify.design https://www.google.com`,
     // Browser calls: same-origin API, Supabase (direct), speed-insights vitals,
     // and Iconify's icon API. The price CDNs are server-side only, so they are
-    // intentionally NOT listed here.
+    // intentionally NOT listed here — EXCEPT truncgil: the Kapalıçarşı gold quote
+    // is fetched from the browser because the server reaches it only
+    // intermittently (see lib/turkish-gold.ts).
     // wss: Supabase Realtime (canlı senkron, sync/realtime.ts) aynı host'a WebSocket açar.
-    `connect-src 'self'${supa ? ` ${supa} ${supa.replace(/^https:/, 'wss:')}` : ''} https://vitals.vercel-insights.com https://api.iconify.design`,
+    `connect-src 'self'${supa ? ` ${supa} ${supa.replace(/^https:/, 'wss:')}` : ''} https://vitals.vercel-insights.com https://api.iconify.design https://finans.truncgil.com`,
     `font-src 'self' data:`,
     `object-src 'none'`,
     `base-uri 'self'`,
