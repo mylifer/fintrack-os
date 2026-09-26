@@ -19,7 +19,8 @@ import { parseCurrencyInput } from '@/lib/utils/currency'
 import { toBaseTry, fromBaseTry } from '@/lib/utils/fx'
 import type { Account, Debt, DebtType, DebtDirection, DebtWithRemaining, Transaction } from '@/types'
 import { enrichDebt } from '@/lib/utils/calculations'
-import { debtPrincipalDescription, findDebtPrincipalTx } from '@/lib/utils/debt-links'
+import { debtPrincipalDescription, findDebtPrincipalTx, debtLinkedTransactions } from '@/lib/utils/debt-links'
+import { deleteDebtWithTransactions } from '@/lib/debt-actions'
 import { useShallow } from 'zustand/react/shallow'
 
 const PencilIcon = () => (
@@ -73,7 +74,12 @@ function TxDeleteDialog({ tx, onDelete }: { tx: Transaction; onDelete: () => voi
 // Borç silme onayı — işlem silmeyle aynı desen. Eskiden çöp kutusu tek tıkla
 // siliyordu (yalnız 6 sn'lik geri al); borç Net Varlık'tan düştüğü için
 // kazara silme sayfadaki toplamları sessizce değiştiriyordu.
-function DebtDeleteDialog({ debt, onDelete }: { debt: Debt; onDelete: () => void }) {
+function DebtDeleteDialog({ debt, linkedCount, onDelete }: {
+  debt: Debt
+  linkedCount: number
+  onDelete: (withTransactions: boolean) => void
+}) {
+  const [withTx, setWithTx] = useState(false)
   return (
     <AlertDialog.Root>
       <AlertDialog.Trigger asChild>
@@ -94,15 +100,32 @@ function DebtDeleteDialog({ debt, onDelete }: { debt: Debt; onDelete: () => void
         ].join(' ')}>
           <AlertDialog.Title className="text-base font-semibold text-foreground mb-1">Borcu sil</AlertDialog.Title>
           <AlertDialog.Description className="text-sm text-muted-foreground mb-5">
-            <span className="font-medium text-foreground">&ldquo;{debt.name}&rdquo;</span> silinecek. Bağlı ödeme ve anapara
-            işlemleri silinmez. Sildikten sonra birkaç saniye içinde geri alabilirsin.
+            <span className="font-medium text-foreground">&ldquo;{debt.name}&rdquo;</span> silinecek. Sildikten sonra birkaç
+            saniye içinde geri alabilirsin.
           </AlertDialog.Description>
+          {linkedCount > 0 && (
+            <label className="flex items-start gap-2.5 mb-5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={withTx}
+                onChange={e => setWithTx(e.target.checked)}
+                className="mt-0.5 rounded accent-primary"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm text-foreground">Bağlı {linkedCount} işlemi de sil</span>
+                <span className="text-xs text-muted-foreground">
+                  Borç yanlış girildiyse işaretleyin. Kapanmış bir borcu temizliyorsanız işaretlemeyin: ödemeler gerçekten
+                  yapıldığı için hesap bakiyelerinde kalmalı.
+                </span>
+              </span>
+            </label>
+          )}
           <div className="flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
               <button className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-accent transition-colors">İptal</button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
-              <button onClick={onDelete} className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors">Sil</button>
+              <button onClick={() => onDelete(withTx)} className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors">Sil</button>
             </AlertDialog.Action>
           </div>
         </AlertDialog.Content>
@@ -506,7 +529,11 @@ export default function DebtsPage() {
             >
               <PencilIcon />
             </button>
-            <DebtDeleteDialog debt={debt} onDelete={() => remove(debt.id)} />
+            <DebtDeleteDialog
+              debt={debt}
+              linkedCount={debtLinkedTransactions(debt, transactions).length}
+              onDelete={withTx => { void (withTx ? deleteDebtWithTransactions(debt) : remove(debt.id)) }}
+            />
           </div>
         </div>
 

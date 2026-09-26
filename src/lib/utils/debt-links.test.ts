@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { debtPrincipalDescription, findDebtPrincipalTx } from './debt-links'
+import { debtPrincipalDescription, findDebtPrincipalTx, debtLinkedTransactions } from './debt-links'
 import type { Debt, Transaction } from '@/types'
 
 type Candidate = Pick<Transaction, 'icon' | 'description' | 'debtPrincipalId'> & { id: string }
@@ -62,5 +62,22 @@ describe('findDebtPrincipalTx', () => {
       tx({ id: 'out', icon: '🤝', description: "Ahmet'e Borç — verilen borç" }),
     ]
     expect(findDebtPrincipalTx(debt({ id: 'd1', name: "Ahmet'e Borç", direction: 'owed' }), ledger)?.id).toBe('out')
+  })
+})
+
+describe('debtLinkedTransactions', () => {
+  const debt = { id: 'd1', name: 'Araba Kredisi', direction: 'owe' as const }
+  const tx = (o: Partial<Transaction>) => ({ id: 'x', description: '', ...o }) as Transaction
+
+  it('ödemeler + anapara; taksit grubunun tamamı; başka borcun satırları hariç', () => {
+    const rows = [
+      tx({ id: 'p1', debtId: 'd1' }),
+      tx({ id: 'p2', debtId: 'd1', installGroupId: 'g' }),
+      tx({ id: 'p3', installGroupId: 'g' }),
+      tx({ id: 'anapara', debtPrincipalId: 'd1' }),
+      tx({ id: 'baska', debtId: 'd2' }),
+      tx({ id: 'ilgisiz' }),
+    ]
+    expect(debtLinkedTransactions(debt, rows).map(t => t.id).sort()).toEqual(['anapara', 'p1', 'p2', 'p3'])
   })
 })

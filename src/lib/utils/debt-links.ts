@@ -41,3 +41,16 @@ export function findDebtPrincipalTx<T extends PrincipalTxCandidate>(
   )
   return matches.length === 1 ? matches[0] : undefined
 }
+
+/** Borca bağlı TÜM işlemler: ödemeler (debtId) ve anapara satırı. Taksitli bir
+ *  ödeme seçilirse grubun tamamı dahil edilir (grup yarım silinmesin). */
+export function debtLinkedTransactions<
+  T extends PrincipalTxCandidate & Pick<Transaction, 'id' | 'debtId' | 'installGroupId'>,
+>(debt: Pick<Debt, 'id' | 'name' | 'direction'>, transactions: readonly T[]): T[] {
+  const ids = new Set<string>()
+  for (const t of transactions) if (t.debtId === debt.id) ids.add(t.id)
+  const principal = findDebtPrincipalTx(debt, transactions)
+  if (principal) ids.add(principal.id)
+  const groups = new Set(transactions.filter(t => ids.has(t.id) && t.installGroupId).map(t => t.installGroupId!))
+  return transactions.filter(t => ids.has(t.id) || (t.installGroupId !== undefined && groups.has(t.installGroupId)))
+}

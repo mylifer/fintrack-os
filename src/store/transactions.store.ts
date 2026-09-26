@@ -12,7 +12,7 @@ import { useCategoryStore } from './categories.store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localBulkUpsert, localPatch, softDelete, softDeleteMany, reconcilingPull, localBatch, type BatchOp } from '@/lib/sync/engine'
+import { localUpsert, localBulkUpsert, localPatch, softDeleteMany, reconcilingPull, localBatch, type BatchOp } from '@/lib/sync/engine'
 import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { useWorkspaceStore } from './workspace.store'
 import { toBaseTry, fromBaseTry, baseAmount, baseSnapshot } from '@/lib/utils/fx'
@@ -80,6 +80,28 @@ async function findTransferPeerIds(group: Transaction[]): Promise<string[]> {
     if (peer && isLive(peer)) peerIds.push(peer.id)
   }
   return peerIds
+}
+
+/** Satırları (ve karşı bacaklarını) tombstone'lar ya da geri getirir; bağlı
+ *  borç ödemelerini geri alır ya da yeniden uygular — HEPSİ tek IndexedDB
+ *  işleminde (denetim #22). Eskiden her satır ve her borç ayrı yazılıyordu:
+ *  araya giren bir sekme kapanışı taksit grubunun bir kısmını silinmiş, borcu
+ *  yarı geri alınmış bırakabiliyordu. Borç tutarı TRY tabanlıdır (baseAmount). */
+async function setDeletedWithDebts(group: Transaction[], peerIds: string[], deleted: boolean): Promise<void> {
+  const debts = useDebtStore.getState()
+  const patches = debts.paymentPatches(
+    group.filter(t => t.debtId).map(t => ({ debtId: t.debtId!, amount: baseAmount(t) })),
+    deleted ? -1 : 1,
+  )
+  await localBatch([
+    {
+      kind: 'patchMany', table: 'transactions',
+      ids: [...group.map(t => t.id), ...peerIds],
+      patch: { deleted_at: deleted ? new Date().toISOString() : null },
+    },
+    ...[...patches].map(([id, patch]): BatchOp => ({ kind: 'patch', table: 'debts', id, patch })),
+  ])
+  debts.applyLocal(patches)
 }
 
 function txSortComparator(a: Transaction, b: Transaction): number {
@@ -637,17 +659,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const peerIds = await findTransferPeerIds(group)
 
     // Soft delete (C3) via the durable outbox: syncs as an UPDATE and cannot
-    // resurrect on the next reconciling pull.
-    for (const t of group) {
-      await softDelete('transactions', t.id)
-      // Revert this transaction's contribution to the linked debt: use the TRY
-      // base value (debts are TRY) and revertPayment so paidInstallments is
-      // decremented too (M3, M4).
-      if (t.debtId) {
-        await useDebtStore.getState().revertPayment(t.debtId, baseAmount(t))
-      }
-    }
-    for (const peerId of peerIds) await softDelete('transactions', peerId)
+    // resurrect on the next reconciling pull. Bağlı borca katkı TRY tabanıyla
+    // geri alınır ve paidInstallments de azalır (M3, M4) — atomik (#22).
+    await setDeletedWithDebts(group, peerIds, true)
 
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
     const removedIds = new Set(group.map(t => t.id))
@@ -661,13 +675,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     if (group.length && opts?.undoable !== false) {
       const label = group.length > 1 ? `Taksitli işlem silindi (${group.length} taksit)` : 'İşlem silindi'
       useUndoStore.getState().pushUndo(label, async () => {
-        for (const t of group) {
-          await localPatch('transactions', t.id, { deleted_at: null })
-          if (t.debtId) {
-            await useDebtStore.getState().recordPayment(t.debtId, baseAmount(t))
-          }
-        }
-        for (const peerId of peerIds) await localPatch('transactions', peerId, { deleted_at: null })
+        await setDeletedWithDebts(group, peerIds, false)
         const next = [...group, ...get().transactions]
         next.sort(txSortComparator)
         set({ transactions: next })
@@ -702,11 +710,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // iki bacak birden seçilmişse (nadir) zaten grupta olan tekrar eklenmez.
     const peerIds = await findTransferPeerIds(group)
 
-    for (const t of group) {
-      await softDelete('transactions', t.id)
-      if (t.debtId) await useDebtStore.getState().revertPayment(t.debtId, baseAmount(t))
-    }
-    for (const peerId of peerIds) await softDelete('transactions', peerId)
+    await setDeletedWithDebts(group, peerIds, true)
 
     const removedIds = new Set(group.map(t => t.id))
     const remaining = get().transactions.filter(t => !removedIds.has(t.id))
@@ -715,11 +719,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
     const label = group.length > 1 ? `${group.length} işlem silindi` : 'İşlem silindi'
     useUndoStore.getState().pushUndo(label, async () => {
-      for (const t of group) {
-        await localPatch('transactions', t.id, { deleted_at: null })
-        if (t.debtId) await useDebtStore.getState().recordPayment(t.debtId, baseAmount(t))
-      }
-      for (const peerId of peerIds) await localPatch('transactions', peerId, { deleted_at: null })
+      await setDeletedWithDebts(group, peerIds, false)
       const next = [...group, ...get().transactions]
       next.sort(txSortComparator)
       set({ transactions: next })

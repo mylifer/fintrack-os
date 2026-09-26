@@ -26,6 +26,11 @@ interface DebtState {
   /** Adjust paidAmount by delta only, WITHOUT touching installment count
    *  (used when the amount of an existing payment is edited). */
   adjustPaidAmount: (id: string, delta: number) => Promise<void>
+  /** recordPayment (+1) / revertPayment (−1) yamalarını YAZMADAN hesaplar —
+   *  çağıran bunları kendi atomik localBatch'ine koyar. */
+  paymentPatches: (changes: { debtId: string; amount: number }[], sign: 1 | -1) => Map<string, Partial<Debt>>
+  /** Yazılmış yamaları bellekteki listeye uygular (outbox'a yazmaz). */
+  applyLocal: (patches: Map<string, Partial<Debt>>) => void
   getActive: () => DebtWithRemaining[]
   getDueSoon: (days?: number) => DebtWithRemaining[]
 }
@@ -103,6 +108,37 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     const patch = { paidAmount, isSettled }
     await localPatch('debts', id, patch)
     set(s => ({ debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d) }))
+  },
+
+  paymentPatches: (changes, sign) => {
+    // recordPayment/revertPayment ile AYNI aritmetik, ama yazmadan: çağıran
+    // yamaları kendi localBatch'ine koyar ki işlem silme ve borç geri alma
+    // tek IndexedDB işleminde olsun (denetim #22). Aynı borca birden çok
+    // değişiklik (taksit grubu) sırayla birikir.
+    const working = new Map<string, Debt>()
+    for (const { debtId, amount } of changes) {
+      const debt = working.get(debtId) ?? get().debts.find(d => d.id === debtId)
+      if (!debt) continue
+      let paidAmount: number
+      let paidInstallments: number
+      if (sign < 0) {
+        paidAmount = Math.round(Math.max(0, debt.paidAmount - amount) * 100) / 100
+        paidInstallments = Math.max(0, (debt.paidInstallments ?? 0) - 1)
+      } else {
+        paidAmount = Math.round((debt.paidAmount + amount) * 100) / 100
+        const delta = amount < 0 ? -1 : amount > 0 ? 1 : 0
+        paidInstallments = Math.max(0, (debt.paidInstallments ?? 0) + delta)
+      }
+      working.set(debtId, { ...debt, paidAmount, paidInstallments, isSettled: paidAmount >= debt.totalAmount })
+    }
+    return new Map([...working].map(([id, d]) => [id, {
+      paidAmount: d.paidAmount, paidInstallments: d.paidInstallments, isSettled: d.isSettled,
+    }]))
+  },
+
+  applyLocal: (patches) => {
+    if (patches.size === 0) return
+    set(s => ({ debts: s.debts.map(d => patches.has(d.id) ? { ...d, ...patches.get(d.id) } : d) }))
   },
 
   getActive: () => get().debts.filter(d => !d.isSettled).map(enrichDebt),
