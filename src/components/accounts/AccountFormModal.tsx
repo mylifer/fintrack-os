@@ -268,9 +268,9 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Ekstre Kesim Günü</label>
                 <input
-                  type="number" min={1} max={28}
+                  type="number" min={1} max={31}
                   value={stmtDay}
-                  onChange={e => setStmtDay(Math.min(28, Math.max(1, Number(e.target.value) || 1)))}
+                  onChange={e => setStmtDay(Math.min(31, Math.max(1, Number(e.target.value) || 1)))}
                   className="w-full border border-border px-3 py-2.5 text-sm font-mono bg-background dark:bg-muted focus:border-ink outline-none"
                 />
               </div>

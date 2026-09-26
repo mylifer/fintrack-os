@@ -37,6 +37,7 @@ import type {
 import { roundMoney, sumBy } from '@/lib/utils/money'
 import { baseAmount, fromBaseTry, toBaseTry } from '@/lib/utils/fx'
 import { isPosted } from '@/lib/utils/calculations'
+import { lastClosingBefore } from './card-cycles'
 
 export { planIdFor, occurrenceIdFor } from './ids'
 
@@ -283,19 +284,17 @@ function inCurrency(t: Transaction, currency: CurrencyCode): number {
 }
 
 /** Vade gününden ÖNCEKİ son hesap kesiminde kapanan dönem. Kesim günü yoksa
- *  vadeden önceki takvim ayı. */
+ *  vadeden önceki takvim ayı. Kart Takvimi'nde bu aya / önceki aya özel kesim
+ *  girildiyse (PaymentOccurrence.statementDate) o kullanılır — kural
+ *  lib/payments/card-cycles ile aynı. */
 export function statementWindow(
   account: Pick<Account, 'statementDay'>,
   dueDate: string,
+  custom?: { closing?: string | null; prevClosing?: string | null },
 ): { from: string; to: string } {
-  const dueMonth = monthOf(dueDate)
-  if (!account.statementDay) {
-    const prev = shiftMonth(dueMonth, -1)
-    return { from: `${prev}-01`, to: dueDateFor(prev, 31) }
-  }
-  let closing = dueDateFor(dueMonth, account.statementDay)
-  if (closing >= dueDate) closing = dueDateFor(shiftMonth(dueMonth, -1), account.statementDay)
-  const prevClosing = dueDateFor(shiftMonth(monthOf(closing), -1), account.statementDay)
+  const day = account.statementDay ?? null
+  const closing = custom?.closing ?? lastClosingBefore(dueDate, day)
+  const prevClosing = custom?.prevClosing ?? lastClosingBefore(closing, day)
   return { from: addDaysIso(prevClosing, 1), to: closing }
 }
 
@@ -307,8 +306,9 @@ export function estimateStatement(
   account: Account,
   dueDate: string,
   transactions: readonly Transaction[],
+  custom?: { closing?: string | null; prevClosing?: string | null },
 ): number {
-  const { from, to } = statementWindow(account, dueDate)
+  const { from, to } = statementWindow(account, dueDate, custom)
   const charges = transactions.filter(t => {
     if (t.accountId !== account.id || t.systemKind) return false
     const d = t.date.slice(0, 10)

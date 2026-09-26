@@ -21,7 +21,7 @@
 --
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
--- çalıştırdıktan SONRA supabase/migrations/0001..0021'i sırayla uygulayın.
+-- çalıştırdıktan SONRA supabase/migrations/0001..0022'yi sırayla uygulayın.
 -- Yalnızca burada olmayan, migration'lara bağlı parçalar:
 --   • user_backups tablosu + RLS'i            → 0005
 --   • restore_user_backup() RPC'si            → 0004, 0009 (0009 önce F1 için
@@ -108,6 +108,7 @@ create table if not exists public.payment_occurrences (
   "amount" double precision,
   "fromAccountId" text,
   "dueDate" text,
+  "statementDate" text,           -- 0022: Kart Takvimi, aya özel kesim
   "status" text,
   "paidAmount" double precision,
   "paidDate" text,

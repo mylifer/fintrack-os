@@ -1,6 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { usePaymentsStore } from '@/store'
+import { occurrenceIdFor } from '@/lib/payments/ids'
+import { shiftMonthKey } from '@/lib/payments/card-cycles'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/Input'
@@ -88,8 +91,11 @@ function EditForm({ row, accounts, transactions, onClose, onPay, onSettings }: O
   const [error, setError] = useState('')
 
   const validDue = /^\d{4}-\d{2}-\d{2}$/.test(dueDate)
-  const window_ = target.account && validDue ? statementWindow(target.account, dueDate) : null
-  const spent = target.account && validDue ? estimateStatement(target.account, dueDate, transactions) : null
+  // Kart Takvimi'nde bu aya / önceki aya özel kesim girildiyse ekstre penceresi ondan
+  const prevOcc = usePaymentsStore(s => s.occurrences.find(o => o.id === occurrenceIdFor(target.kind, target.id, shiftMonthKey(row.month, -1))))
+  const customClosing = { closing: row.occurrence?.statementDate ?? null, prevClosing: prevOcc?.statementDate ?? null }
+  const window_ = target.account && validDue ? statementWindow(target.account, dueDate, customClosing) : null
+  const spent = target.account && validDue ? estimateStatement(target.account, dueDate, transactions, customClosing) : null
   const spentWindow = window_ ? `(${dayMonth(window_.from)} – ${dayMonth(window_.to)})` : null
   const defaultDue = dueDateFor(row.month, target.dayOfMonth ?? Number(row.dueDate.slice(8, 10)))
   const payable = accounts.filter(a => !a.isArchived && a.id !== target.id)

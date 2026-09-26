@@ -1,41 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import type { Transaction } from '@/types'
-import { buildCardStatements, dueDateAfter, statementPeriods } from './card-statement'
+import { buildCardStatements } from './card-statement'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
   id: Math.random().toString(36).slice(2), type: 'expense', amount: 0, currency: 'TRY', date: '2026-09-01',
   accountId: 'cc', description: '', isInstallment: false, createdAt: '', updatedAt: '', ...o,
-})
-
-describe('statementPeriods', () => {
-  it('kesim gününe göre açık ve kapanmış dönemler (yeniden eskiye)', () => {
-    const { open, closed } = statementPeriods(15, '2026-09-25', 2)
-    expect(open).toEqual({ from: '2026-09-16', to: '2026-10-15' })
-    expect(closed).toEqual([
-      { from: '2026-08-16', to: '2026-09-15' },
-      { from: '2026-07-16', to: '2026-08-15' },
-    ])
-  })
-
-  it('kesim günü bugünse dönem hâlâ açıktır', () => {
-    expect(statementPeriods(25, '2026-09-25', 1).open).toEqual({ from: '2026-08-26', to: '2026-09-25' })
-  })
-
-  it('yıl dönümü ve Ocak kesimi', () => {
-    const { open, closed } = statementPeriods(28, '2027-01-05', 1)
-    expect(open).toEqual({ from: '2026-12-29', to: '2027-01-28' })
-    expect(closed[0]).toEqual({ from: '2026-11-29', to: '2026-12-28' })
-  })
-})
-
-describe('dueDateAfter', () => {
-  it('kesimden sonraki ilk son ödeme günü; kısa aylarda ay sonu', () => {
-    expect(dueDateAfter('2026-09-15', 25)).toBe('2026-09-25')
-    expect(dueDateAfter('2026-09-15', 5)).toBe('2026-10-05')
-    expect(dueDateAfter('2026-01-28', 31)).toBe('2026-01-31')
-    expect(dueDateAfter('2026-02-10', 31)).toBe('2026-02-28')
-    expect(dueDateAfter('2026-09-15', 15)).toBe('2026-10-15')
-  })
 })
 
 describe('buildCardStatements', () => {
@@ -90,5 +59,31 @@ describe('buildCardStatements', () => {
     const { open } = buildCardStatements(account, rows, { payments: [], dueDay: null, minPayPct: null, todayStr: '2026-09-26' })
     expect(open.period).toEqual({ from: '2026-09-16', to: '2026-10-15' })
     expect(open.total).toBe(80)
+  })
+})
+
+describe('buildCardStatements — dönem sınırları ve aya özel tarihler', () => {
+  const base = { payments: [], minPayPct: null }
+
+  it('kesim bugünse dönem hâlâ açık; yıl dönümü', () => {
+    const acc = (d: number) => ({ id: 'cc', currency: 'TRY' as const, statementDay: d })
+    expect(buildCardStatements(acc(25), [], { ...base, dueDay: null, todayStr: '2026-09-25' }).open.period)
+      .toEqual({ from: '2026-08-26', to: '2026-09-25' })
+    const r = buildCardStatements(acc(28), [], { ...base, dueDay: null, todayStr: '2027-01-05', count: 1 })
+    expect(r.open.period).toEqual({ from: '2026-12-29', to: '2027-01-28' })
+    expect(r.statements[0].period).toEqual({ from: '2026-11-29', to: '2026-12-28' })
+  })
+
+  it('Kart Takvimi’nde girilen kesim ve son ödeme ekstreye yansır', () => {
+    const account = { id: 'cc', currency: 'TRY' as const, statementDay: 24 }
+    const rows = [tx({ amount: 400, date: '2026-09-23' }), tx({ amount: 600, date: '2026-09-24' })]
+    const overrides = new Map([['2026-10', { statementDate: '2026-09-23', dueDate: '2026-10-05' }]])
+    const { statements, open } = buildCardStatements(account, rows, {
+      ...base, dueDay: 4, todayStr: '2026-10-10', count: 1, overrides,
+    })
+    expect(statements[0]).toMatchObject({ period: { from: '2026-08-25', to: '2026-09-23' }, dueDate: '2026-10-05', total: 400 })
+    // 24 Eylül harcaması bir sonraki döneme kayar
+    expect(open.period.from).toBe('2026-09-24')
+    expect(open.total).toBe(600)
   })
 })

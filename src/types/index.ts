@@ -451,6 +451,9 @@ export interface PaymentOccurrence {
   amount?: number | null
   fromAccountId?: string | null
   dueDate?: string | null       // ISO tarih
+  /** Kredi kartı: bu ödemenin ekstresinin kesim tarihi (Kart Takvimi, 0022);
+   *  null = kartın varsayılan kesim gününden hesaplanır (lib/payments/card-cycles) */
+  statementDate?: string | null
   status?: PaymentStatus | null // null = bekliyor
   paidAmount?: number | null
   paidDate?: string | null

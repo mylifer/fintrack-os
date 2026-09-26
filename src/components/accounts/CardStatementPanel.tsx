@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useAccountStore, usePaymentsStore, useTransactionStore } from '@/store'
 import { buildCardStatements, type StatementStatus } from '@/lib/utils/card-statement'
 import { assignCardPayments } from '@/lib/payments/schedule'
@@ -27,6 +28,7 @@ export function CardStatementPanel({ account }: { account: Account }) {
   const transactions = useTransactionStore(s => s.transactions)
   const accounts     = useAccountStore(s => s.accounts)
   const plan = usePaymentsStore(s => s.plans.find(p => p.id === planIdFor('card', account.id)))
+  const occurrences = usePaymentsStore(s => s.occurrences)
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const todayStr = today()
@@ -35,7 +37,11 @@ export function CardStatementPanel({ account }: { account: Account }) {
     dueDay: plan?.dayOfMonth ?? null,
     minPayPct: account.minPayPct && account.minPayPct !== 3 ? account.minPayPct : null,
     todayStr,
-  }), [account, accounts, transactions, plan?.dayOfMonth, todayStr])
+    // Kart Takvimi'nde aya özel girilen kesim / son ödeme tarihleri
+    overrides: new Map(occurrences
+      .filter(o => o.targetKind === 'card' && o.targetId === account.id && !o.deleted_at)
+      .map(o => [o.month, { statementDate: o.statementDate ?? null, dueDate: o.dueDate ?? null }])),
+  }), [account, accounts, transactions, plan?.dayOfMonth, todayStr, occurrences])
 
   const money = (n: number) => formatCurrency(n, account.currency)
   const last = result.statements[0]
@@ -47,6 +53,7 @@ export function CardStatementPanel({ account }: { account: Account }) {
         <div className="text-xs text-muted-foreground">
           Kesim her ayın {account.statementDay ?? 1}&apos;i
           {plan?.dayOfMonth ? ` · son ödeme ${plan.dayOfMonth}'i` : ''}
+          {' · '}<Link href="/kart-takvimi" className="text-primary hover:underline">Kart Takvimi</Link>
         </div>
       </div>
 

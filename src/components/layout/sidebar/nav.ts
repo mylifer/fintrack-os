@@ -47,6 +47,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/goals',         label: 'Hedefler',      icon: IC.goals },
       { href: '/debts',         label: 'Borçlar',       icon: IC.debts },
       { href: '/payments',      label: 'Ödeme Takibi',  icon: IC.payments, badge: 'payments' },
+      { href: '/kart-takvimi',  label: 'Kart Takvimi',  icon: IC.cardCalendar },
       { href: '/recurring',     label: 'Tekrarlayan',   icon: IC.recurring, badge: 'due' },
       { href: '/subscriptions', label: 'Abonelikler',   icon: IC.subscriptions },
     ],

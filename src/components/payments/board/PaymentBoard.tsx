@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { usePaymentsView } from '@/components/layout/PaymentsViewProvider'
@@ -59,6 +60,7 @@ interface RowRef { targetKey: string; month: MonthKey }
 const refOf = (r: PaymentRow): RowRef => ({ targetKey: r.target.key, month: r.month })
 
 export function PaymentBoard() {
+  const router        = useRouter()
   const accounts      = useAccountStore(s => s.accounts)
   const accountsReady = useAccountStore(s => s.ready)
   const debts         = useDebtStore(s => s.debts)
@@ -144,7 +146,7 @@ export function PaymentBoard() {
 
   return (
     <>
-      <Header title="Ödeme Takibi" />
+      <Header title="Ödeme Takibi" action={{ label: 'Kart Takvimi', onClick: () => router.push('/kart-takvimi') }} />
 
       <div className="p-4 sm:p-6 flex flex-col gap-5">
         {loading ? (
