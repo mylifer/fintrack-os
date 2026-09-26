@@ -50,7 +50,7 @@ export function SidebarRefined() {
   } = useSidebarData()
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 shrink-0 bg-background border-r border-border">
+    <aside className="hidden lg:flex print:hidden flex-col w-64 h-screen sticky top-0 shrink-0 bg-background border-r border-border">
 
       {/* ── Logo ── */}
       <div className="px-5 pt-7 pb-4 flex-shrink-0">

@@ -9,7 +9,7 @@ import { PrivacyToggle } from '@/components/layout/PrivacyToggle'
    Header'ı yerini alır. Görünüm Kompakt kenar çubuğunun üst şeridiyle aynı. */
 export function MobileTopBar() {
   return (
-    <div className="lg:hidden h-11 flex-shrink-0 flex items-center gap-2 px-3 border-b border-border bg-background">
+    <div className="lg:hidden print:hidden h-11 flex-shrink-0 flex items-center gap-2 px-3 border-b border-border bg-background">
       <div className="w-5 h-5 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-black text-[11px] select-none flex-shrink-0">
         F
       </div>

@@ -27,7 +27,7 @@ export function UndoToaster() {
           to   { width: 0%; }
         }
       `}</style>
-      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2">
+      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 print:hidden">
         {/* Render newest-first without mutating the store array. */}
         {[...toasts].reverse().map(t => (
           <UndoToastCard

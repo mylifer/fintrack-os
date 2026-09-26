@@ -46,7 +46,7 @@ export function SidebarCompact() {
   } = useSidebarData()
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 shrink-0 bg-background border-r border-border">
+    <aside className="hidden lg:flex print:hidden flex-col w-64 h-screen sticky top-0 shrink-0 bg-background border-r border-border">
 
       {/* ── Üst şerit: logo + çalışma alanı tek satırda ── */}
       <div className="h-11 flex-shrink-0 flex items-center gap-2 px-3 border-b border-border">

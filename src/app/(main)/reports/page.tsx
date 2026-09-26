@@ -11,6 +11,8 @@ import {
   startOfWeek, endOfWeek,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
+import { comparisonRange, type CompareMode } from '@/lib/utils/period-compare'
+import { PrintButton } from '@/components/layout/PrintSupport'
 import { Header }           from '@/components/layout/Header'
 import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useSettingsStore, useDebtStore } from '@/store'
 import { getAssetPrice, computeHoldings } from '@/store/investment.store'
@@ -373,12 +375,9 @@ function buildPeriodComparison(
   categories: Array<{ id: string; name: string; color: string }>,
   dateRange: { from: string; to: string },
   accountId: string,
+  prevRange: { from: string; to: string },
 ): ComparisonRow[] {
-  const from = parseISO(dateRange.from)
-  const to   = parseISO(dateRange.to)
-  const days = differenceInDays(to, from) + 1
-  const prevTo   = format(subDays(from, 1),    'yyyy-MM-dd')
-  const prevFrom = format(subDays(from, days), 'yyyy-MM-dd')
+  const { from: prevFrom, to: prevTo } = prevRange
 
   const catMap = new Map<string, { current: number; prev: number }>()
 
@@ -655,7 +654,13 @@ export default function ReportsPage() {
     () => buildTrendData(accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices, debts),
     [accounts, transactions, dateRange, accountId, prices, investTxs, fundPrices, debts],
   )
-  const comparisonData  = useMemo(() => buildPeriodComparison(postedTxs, categories, dateRange, accountId), [postedTxs, categories, dateRange, accountId])
+  // Karşılaştırma: aynı uzunlukta önceki dönem ya da geçen yılın aynı dönemi
+  const [compareMode, setCompareMode] = useState<CompareMode>('previous')
+  const prevRange       = useMemo(() => comparisonRange(dateRange, compareMode), [dateRange, compareMode])
+  const comparisonData  = useMemo(
+    () => buildPeriodComparison(postedTxs, categories, dateRange, accountId, prevRange),
+    [postedTxs, categories, dateRange, accountId, prevRange],
+  )
 
   const activeTrendCat  = useMemo(() => {
     if (!trendCatKey) return comparisonData[0] ?? null
@@ -667,13 +672,10 @@ export default function ReportsPage() {
     [postedTxs, activeTrendCat],
   )
 
-  const prevPeriodLabel = useMemo(() => {
-    const from  = parseISO(dateRange.from)
-    const days  = differenceInDays(parseISO(dateRange.to), from) + 1
-    const pFrom = subDays(from, days)
-    const pTo   = subDays(from, 1)
-    return `${format(pFrom, 'd MMM', { locale: tr })} – ${format(pTo, 'd MMM yy', { locale: tr })}`
-  }, [dateRange])
+  const prevPeriodLabel = useMemo(
+    () => `${format(parseISO(prevRange.from), 'd MMM', { locale: tr })} – ${format(parseISO(prevRange.to), 'd MMM yy', { locale: tr })}`,
+    [prevRange],
+  )
 
   const catFilteredTxs = useMemo(() => {
     if (!selectedCat) return []
@@ -820,6 +822,13 @@ export default function ReportsPage() {
           ]}
           className="w-fit bg-card text-xs"
         />
+        <Link
+          href="/reports/monthly"
+          className="print:hidden inline-flex items-center px-3 h-8 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          Aylık Özet
+        </Link>
+        <PrintButton />
       </div>
 
       <div className="p-6 flex flex-col gap-6 overflow-auto flex-1">
@@ -1210,8 +1219,21 @@ export default function ReportsPage() {
           <CardHeader className="flex-row items-center justify-between px-5 py-4 border-b border-border/50">
             <span className="text-sm font-semibold text-foreground/90">Gelişmiş Analiz</span>
             {!isLoading && (
-              <span className="text-xs text-muted-foreground">
-                Önceki dönem: {prevPeriodLabel}
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="flex rounded-lg border border-border overflow-hidden print:hidden" role="group" aria-label="Karşılaştırma dönemi">
+                  {([['previous', 'Önceki dönem'], ['year', 'Geçen yıl']] as const).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setCompareMode(mode)}
+                      aria-pressed={compareMode === mode}
+                      className={`px-2 py-0.5 transition-colors ${compareMode === mode ? 'bg-primary/10 text-primary font-medium' : 'hover:text-foreground'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </span>
+                <span>{prevPeriodLabel}</span>
               </span>
             )}
           </CardHeader>

@@ -251,3 +251,11 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Yazdırma / PDF (Raporlar, Aylık Özet): kenar boşluğu, beyaz zemin. Gezinme
+   öğeleri bileşenlerde print:hidden ile gizlenir; koyu tema PrintSupport ile
+   baskı süresince kaldırılır. */
+@media print {
+  @page { margin: 12mm; }
+  body { background: #fff !important; }
+}
