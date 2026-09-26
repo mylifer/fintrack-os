@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { calcNetWorth, calcNetRaw, excludeFuture, calcDebtBurden, buildDebtBurdenSeries } from '@/lib/utils/calculations'
 import { getAssetPrice, computeHoldings, GOLD_GRAMS, assetLabel } from '@/store/investment.store'
 import { isTefasAsset, tefasCode } from '@/lib/tefas'
+import { isMarketAsset } from '@/lib/market'
 import { baseAmount } from '@/lib/utils/fx'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
@@ -81,6 +82,7 @@ function readHistCache(): Record<string, HistCacheEntry> {
 // dövizler kendi serisinden okunur.
 function seriesKeyOf(asset: InvestmentAsset): string {
   if (isTefasAsset(asset)) return `TEFAS:${tefasCode(asset)}`
+  if (isMarketAsset(asset)) return `MARKET:${asset}`   // MARKET:BIST:THYAO
   if (asset.startsWith('GOLD')) return 'GOLD'
   return asset // USD | EUR | GBP
 }
@@ -162,7 +164,10 @@ export function NetWorthChart() {
     let pending = keys.length
     for (const key of keys) {
       ;(async () => {
-        const [group, code] = key.split(':')
+        // İlk ':' grup ayırıcı — hisse/kripto kodunun kendisi de ':' içerir (MARKET:BIST:THYAO)
+        const sep   = key.indexOf(':')
+        const group = sep < 0 ? key : key.slice(0, sep)
+        const code  = sep < 0 ? '' : key.slice(sep + 1)
         const params = new URLSearchParams({ asset: group, from: investEarliest })
         if (code) params.set('code', code)
         try {

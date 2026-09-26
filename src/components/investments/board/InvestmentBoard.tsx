@@ -9,6 +9,7 @@ import { useAccountStore, useInvestmentStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { matchesTokens, tokenize } from '@/lib/utils/boardText'
 import { tefasCodesIn } from '@/lib/tefas'
+import { marketAssetsIn } from '@/lib/market'
 import { useFundTaxConfig } from '@/store/settings.store'
 import { portfolioTax } from '@/lib/utils/fund-tax'
 import { useInvestmentsView } from '@/components/layout/InvestmentsViewProvider'
@@ -80,10 +81,13 @@ export function InvestmentBoard() {
 
   const holdings = getHoldings()
 
-  // Fon şeridi yalnız AKTİF alanın fonlarını göstersin — fundPrices kod bazlı
-  // tek sözlük ve alan değiştikçe birikiyor.
+  // Fon şeridi yalnız AKTİF alanın fonlarını/hisselerini göstersin — fundPrices
+  // tek sözlük ve alan değiştikçe birikiyor. Anahtarlar: fon kodu + tam hisse/kripto varlığı.
   const wsFundCodes = useMemo(
-    () => new Set(tefasCodesIn(transactions.map(t => t.asset))),
+    () => new Set<string>([
+      ...tefasCodesIn(transactions.map(t => t.asset)),
+      ...marketAssetsIn(transactions.map(t => t.asset)),
+    ]),
     [transactions],
   )
 

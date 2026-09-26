@@ -39,14 +39,15 @@ export function PriceTicker({
               previous={prices.prevBilezikGramTry}
             />
           ) : null}
-          {Object.values(fundPrices)
-            .filter(fp => wsFundCodes.has(fp.code))
-            .sort((a, b) => a.code.localeCompare(b.code))
-            .map(fp => (
+          {/* Anahtar: TEFAS'ta fon kodu, hisse/kriptoda tam varlık ('BIST:THYAO') */}
+          {Object.entries(fundPrices)
+            .filter(([key]) => wsFundCodes.has(key))
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, fp]) => (
               <Ticker
-                key={fp.code}
+                key={key}
                 label={fp.code}
-                value={`₺${fp.price.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}`}
+                value={`₺${fp.price.toLocaleString('tr-TR', { maximumFractionDigits: fp.price >= 100 ? 2 : 4 })}`}
                 current={fp.price}
                 previous={fp.prevPrice}
               />

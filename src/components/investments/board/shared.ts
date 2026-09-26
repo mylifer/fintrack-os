@@ -1,4 +1,5 @@
 import { isTefasAsset, tefasCode } from '@/lib/tefas'
+import { isMarketAsset, marketKind, marketSymbol, MARKET_KIND_META } from '@/lib/market'
 import { GOLD_GRAMS } from '@/store/investment.store'
 import type {
   InvestmentAsset, InvestmentHolding, InvestmentTransaction,
@@ -27,18 +28,23 @@ const ASSET_META: Record<StaticInvestmentAsset, AssetMeta> = {
   GBP:           { label: 'İngiliz Sterlini',  icon: '£',  unit: '£'    },
 }
 
-/** TEFAS fonları dinamik: etiket fon kodu, alt etiket fon unvanı (fiyat geldiyse). */
+/** TEFAS fonları / hisse / kripto dinamik: etiket kod, alt etiket unvan (fiyat geldiyse). */
 export function assetMeta(asset: InvestmentAsset, fundPrices: Record<string, TefasFundPrice>): AssetMeta {
   if (isTefasAsset(asset)) {
     const code = tefasCode(asset)
     return { label: code, subLabel: fundPrices[code]?.name, icon: 'F', unit: 'pay' }
+  }
+  if (isMarketAsset(asset)) {
+    const kind = MARKET_KIND_META[marketKind(asset)]
+    const unit = marketKind(asset) === 'CRYPTO' ? marketSymbol(asset) : kind.unit
+    return { label: marketSymbol(asset), subLabel: fundPrices[asset]?.name ?? kind.label, icon: kind.icon, unit }
   }
   return ASSET_META[asset]
 }
 
 /* ── Varlık sınıfı ───────────────────────────────────────────────────────── */
 
-export type AssetClass = 'GOLD' | 'FX' | 'FUND'
+export type AssetClass = 'GOLD' | 'FX' | 'FUND' | 'STOCK' | 'CRYPTO'
 
 /** Sınıf renkleri mevcut grafik renklerinden gelir (renk varlığı izler, sırayı
  *  değil). Üçlü palet dataviz doğrulayıcısından açık+koyu temada geçti. */
@@ -46,12 +52,15 @@ export const CLASS_META: Record<AssetClass, { label: string; color: string }> = 
   GOLD: { label: 'Altın', color: '#d97706' },
   FX:   { label: 'Döviz', color: '#2563eb' },
   FUND: { label: 'Fon',   color: '#e11d48' },
+  STOCK:  { label: 'Hisse',  color: '#0d9488' },
+  CRYPTO: { label: 'Kripto', color: '#7c3aed' },
 }
 
-export const CLASS_ORDER: AssetClass[] = ['GOLD', 'FX', 'FUND']
+export const CLASS_ORDER: AssetClass[] = ['GOLD', 'FX', 'FUND', 'STOCK', 'CRYPTO']
 
 export function assetClass(asset: InvestmentAsset): AssetClass {
   if (isTefasAsset(asset)) return 'FUND'
+  if (isMarketAsset(asset)) return marketKind(asset) === 'BIST' ? 'STOCK' : 'CRYPTO'
   if (asset === 'USD' || asset === 'EUR' || asset === 'GBP') return 'FX'
   return 'GOLD'
 }
@@ -76,6 +85,7 @@ function hexWithAlpha(hex: string, a: number): string {
  *  üzerinden GOLD serisini kullanır (canlı ziynet kotasyonu geçmişte yok). */
 export function chartGroupOf(asset: InvestmentAsset): { group: AssetGroup; fundCode?: string } {
   if (isTefasAsset(asset)) return { group: 'TEFAS', fundCode: tefasCode(asset) }
+  if (isMarketAsset(asset)) return { group: 'MARKET', fundCode: asset }
   if (asset === 'USD' || asset === 'EUR' || asset === 'GBP') return { group: asset }
   return { group: 'GOLD' }
 }
@@ -94,6 +104,7 @@ export function prevAssetPrice(
   fundPrices: Record<string, TefasFundPrice>,
 ): number | null {
   if (isTefasAsset(asset)) return fundPrices[tefasCode(asset)]?.prevPrice ?? null
+  if (isMarketAsset(asset)) return fundPrices[asset]?.prevPrice ?? null
   if (!prices) return null
   if (asset === 'GOLD_QUARTER'  && prices.prevGoldQuarterTry) return prices.prevGoldQuarterTry
   if (asset === 'GOLD_HALF'     && prices.prevGoldHalfTry)    return prices.prevGoldHalfTry
@@ -141,7 +152,9 @@ export function buildRows(
     const txs   = transactions.filter(t => t.asset === h.asset)
     const prev  = prevAssetPrice(h.asset, prices, fundPrices)
     const { group, fundCode } = chartGroupOf(h.asset)
-    const hasPrices = isTefasAsset(h.asset) ? !!fundPrices[tefasCode(h.asset)] : !!prices
+    const hasPrices = isTefasAsset(h.asset) ? !!fundPrices[tefasCode(h.asset)]
+      : isMarketAsset(h.asset) ? !!fundPrices[h.asset]
+      : !!prices
     const dayPct = prev && prev > 0 ? ((h.currentPrice - prev) / prev) * 100 : null
     // Altın türevleri geçmişte gram serisinden okunur; canlı ziynet kotasyonunu
     // o seriye ankraj yaparsak grafiğin son noktası sıçrar.
@@ -193,7 +206,9 @@ export function sortRows(rows: AssetRow[], sort: SortId): AssetRow[] {
 /* ── Biçimlendirme ───────────────────────────────────────────────────────── */
 
 export function fmtQty(qty: number, unit: string) {
-  const dec = unit === 'adet' ? 0 : 4
+  // Adet tam sayı (ziynet, BIST payı); 1'in altındaki miktar (kripto, küçük
+  // gram) 8 haneye kadar — 0,00012 BTC "0" görünmesin
+  const dec = unit === 'adet' ? 0 : qty < 1 ? 8 : 4
   return qty.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: dec }) + ' ' + unit
 }
 

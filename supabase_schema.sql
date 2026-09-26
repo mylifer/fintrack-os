@@ -21,12 +21,12 @@
 --
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
--- çalıştırdıktan SONRA supabase/migrations/0001..0016'yı sırayla uygulayın.
+-- çalıştırdıktan SONRA supabase/migrations/0001..0017'yi sırayla uygulayın.
 -- Yalnızca burada olmayan, migration'lara bağlı parçalar:
 --   • user_backups tablosu + RLS'i            → 0005
 --   • restore_user_backup() RPC'si            → 0004, 0009 (0009 önce F1 için
 --                                                düzeltilmiş olmalı)
---   • investment_transactions.asset CHECK'i   → 0003
+--   • investment_transactions.asset CHECK'i   → 0003, 0017 (BIST:/CRYPTO:)
 --   • rls_auto_enable() + ensure_rls trigger  → 0010
 --   • MFA (aal2) kısıtlayıcı politikaları +
 --     delete_my_account() RPC'si              → 0013 — bu dosya TÜM politikaları

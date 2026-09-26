@@ -15,6 +15,7 @@ const COLORS: Record<AssetGroup, string> = {
   EUR:   '#7c3aed',
   GBP:   '#0891b2',
   TEFAS: '#e11d48',
+  MARKET: '#0d9488',
 }
 
 const RAW_PRICE_LABEL: Record<AssetGroup, string> = {
@@ -23,6 +24,7 @@ const RAW_PRICE_LABEL: Record<AssetGroup, string> = {
   EUR:   'EUR/TRY kuru',
   GBP:   'GBP/TRY kuru',
   TEFAS: 'Birim pay fiyatı',
+  MARKET: 'Birim fiyat',
 }
 
 // Each series is independently normalized to its own vertical band on a shared Y-axis.
@@ -99,7 +101,7 @@ export interface QtyPoint {
 
 interface Props {
   asset:            AssetGroup
-  fundCode?:        string   // asset === 'TEFAS' iken zorunlu — fon kodu (örn. AFA)
+  fundCode?:        string   // asset === 'TEFAS' iken fon kodu (AFA); 'MARKET' iken tam varlık ('BIST:THYAO')
   label:            string
   currentValue?:    number
   currentPrice?:    number

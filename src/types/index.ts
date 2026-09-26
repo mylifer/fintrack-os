@@ -296,7 +296,10 @@ export type StaticInvestmentAsset =
 // böylece holdings hesabı fon bazında ayrışır ve DB şeması değişmez.
 export type TefasAsset = `TEFAS:${string}`
 
-export type InvestmentAsset = StaticInvestmentAsset | TefasAsset
+// Borsa İstanbul hissesi / kripto — 'BIST:THYAO', 'CRYPTO:BTC' (bkz. lib/market.ts)
+export type MarketAsset = `BIST:${string}` | `CRYPTO:${string}`
+
+export type InvestmentAsset = StaticInvestmentAsset | TefasAsset | MarketAsset
 
 export interface InvestmentTransaction {
   id: string

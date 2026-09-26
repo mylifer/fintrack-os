@@ -13,6 +13,7 @@ import { useCategoryStore } from './categories.store'
 import { getFundTaxConfig } from './settings.store'
 import { fundTaxRate, taxOnGain } from '@/lib/utils/fund-tax'
 import { isTefasAsset, tefasCode, tefasCodesIn } from '@/lib/tefas'
+import { isMarketAsset, marketKind, marketSymbol, marketAssetsIn, MARKET_KIND_META } from '@/lib/market'
 import type {
   InvestmentTransaction, InvestmentHolding,
   InvestmentAsset, StaticInvestmentAsset, PriceData, Transaction,
@@ -45,9 +46,12 @@ const ASSET_LABELS: Record<StaticInvestmentAsset, string> = {
   GBP:          'GBP',
 }
 
-// TEFAS fonları dinamik olduğundan etiket/ikon sabit map yerine fonksiyonla çözülür
+// TEFAS fonları / hisse / kripto dinamik olduğundan etiket/ikon sabit map yerine
+// fonksiyonla çözülür (hisse ve kripto: sembolün kendisi — 'THYAO', 'BTC')
 export function assetLabel(asset: InvestmentAsset): string {
-  return isTefasAsset(asset) ? tefasCode(asset) : ASSET_LABELS[asset]
+  if (isTefasAsset(asset)) return tefasCode(asset)
+  if (isMarketAsset(asset)) return marketSymbol(asset)
+  return ASSET_LABELS[asset]
 }
 
 export function getAssetPrice(
@@ -56,6 +60,8 @@ export function getAssetPrice(
   fundPrices?: Record<string, TefasFundPrice>,
 ): number {
   if (isTefasAsset(asset)) return fundPrices?.[tefasCode(asset)]?.price ?? 0
+  // Hisse/kripto fiyatı fundPrices'ta TAM varlık anahtarıyla durur (bkz. lib/market.ts)
+  if (isMarketAsset(asset)) return fundPrices?.[asset]?.price ?? 0
   if (!prices) return 0
   // Ziynet altınları (çeyrek/yarım/tam/bilezik) 22 ayar — fiyatları gram altından
   // ayrışır; önce Türkiye kuyum piyasası kotasyonu, yoksa gram karşılığı çarpan
@@ -98,8 +104,12 @@ const ASSET_ICONS: Record<StaticInvestmentAsset, string> = {
   GBP:          '£',
 }
 
+// Bağlı defter satırının icon'u yatırım satırı işaretidir (isInvestmentPrincipalTx
+// icon'a bakar) — her varlık için BOŞ OLMAYAN bir değer dönmeli.
 export function assetIcon(asset: InvestmentAsset): string {
-  return isTefasAsset(asset) ? 'F' : ASSET_ICONS[asset]
+  if (isTefasAsset(asset)) return 'F'
+  if (isMarketAsset(asset)) return MARKET_KIND_META[marketKind(asset)].icon
+  return ASSET_ICONS[asset]
 }
 
 async function createLinkedTx(
@@ -315,6 +325,20 @@ async function fetchFundChunk(codes: string[]): Promise<Record<string, TefasFund
   return data.funds ?? {}
 }
 
+/* ── Hisse / kripto fiyatı ────────────────────────────────────────────
+   Yahoo kaynaklı TL kotasyonu fundPrices'a TAM varlık anahtarıyla yazılır
+   (bkz. lib/market.ts). Route aynı varlığı dakikada en çok bir kez sorar;
+   eşzamanlı çağrılar uçuştaki isteğe bağlanır. */
+let marketFetch: Promise<void> | null = null
+const MARKET_CHUNK = 25
+
+async function fetchMarketChunk(assets: string[]): Promise<Record<string, TefasFundPrice | null>> {
+  const res = await fetch(`/api/prices/market?assets=${assets.join(',')}`, { cache: 'no-store' })
+  if (!res.ok) throw new Error(`${res.status}`)
+  const data: { quotes?: Record<string, TefasFundPrice | null> } = await res.json()
+  return data.quotes ?? {}
+}
+
 /* ── Store ───────────────────────────────────────────────────────── */
 
 interface InvestmentState {
@@ -333,6 +357,7 @@ interface InvestmentState {
   removeTransaction:       (id: string) => Promise<void>
   fetchPrices:             () => Promise<void>
   fetchFundPrices:         (extraCodes?: string[]) => Promise<void>
+  fetchMarketPrices:       () => Promise<void>
   getHoldings:             () => InvestmentHolding[]
   getPortfolioValue:       () => number
 }
@@ -360,6 +385,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     set({ transactions: txs, loading: false })
     // Fon kodları işlemlerden türediği için fiyatları ancak yükleme sonrası çekebiliriz
     void get().fetchFundPrices()
+    void get().fetchMarketPrices()
   },
 
   addTransaction: async (tx) => {
@@ -391,6 +417,9 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     // Yeni bir TEFAS fonu eklendiyse fiyatı hemen çek (portföy değeri güncellensin)
     if (isTefasAsset(tx.asset) && !get().fundPrices[tefasCode(tx.asset)]) {
       void get().fetchFundPrices()
+    }
+    if (isMarketAsset(tx.asset) && !get().fundPrices[tx.asset]) {
+      void get().fetchMarketPrices()
     }
   },
 
@@ -466,6 +495,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     // TEFAS fiyatlarını da tazele — route tarafındaki cache sayesinde 60 sn'lik
     // polling TEFAS'a en fazla ~10 dk'da bir yansır
     void get().fetchFundPrices()
+    void get().fetchMarketPrices()
   },
 
   fetchFundPrices: async (extraCodes = []) => {
@@ -522,6 +552,35 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
       }
     })
     return fundFetchTail
+  },
+  fetchMarketPrices: async () => {
+    if (marketFetch) return marketFetch
+    const assets = marketAssetsIn(get().transactions.map(t => t.asset))
+    if (!assets.length) return
+    marketFetch = (async () => {
+      const chunks: string[][] = []
+      for (let i = 0; i < assets.length; i += MARKET_CHUNK) chunks.push(assets.slice(i, i + MARKET_CHUNK))
+      const results = await Promise.allSettled(chunks.map(fetchMarketChunk))
+      const merged  = { ...get().fundPrices }
+      const missing: string[] = []
+      for (const r of results) {
+        if (r.status !== 'fulfilled') continue
+        for (const [asset, q] of Object.entries(r.value)) {
+          if (q) merged[asset] = q
+          else if (!merged[asset]) missing.push(asset.split(':')[1] ?? asset)
+        }
+      }
+      set({
+        fundPrices: merged,
+        // TEFAS hatasını ezme; yalnız hisse/kripto fiyatı hiç yoksa bildir
+        ...(missing.length && !get().fundPricesError
+          ? { fundPricesError: `Fiyat bulunamadı: ${missing.join(', ')}` }
+          : {}),
+      })
+    })()
+      .catch(() => { /* best-effort; eldeki son fiyat korunur */ })
+      .finally(() => { marketFetch = null })
+    return marketFetch
   },
   getHoldings:       () => computeHoldings(get().transactions, get().prices, get().fundPrices),
   getPortfolioValue: () =>

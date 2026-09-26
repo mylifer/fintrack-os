@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import { fetchTefasSeries, snapPeriod } from '@/lib/server/tefas-api'
 import { BoundedCache } from '@/lib/server/bounded-cache'
+import { fetchMarketHistory } from '@/lib/server/yahoo'
+import { parseMarketAsset } from '@/lib/market'
 
 export const dynamic = 'force-dynamic'
 
-export type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP' | 'TEFAS'
+// MARKET: BIST hissesi / kripto — code tam varlık anahtarıdır ('BIST:THYAO')
+export type AssetGroup = 'GOLD' | 'USD' | 'EUR' | 'GBP' | 'TEFAS' | 'MARKET'
 export interface PricePoint { date: string; price: number }
 
 // ── Date sampling ─────────────────────────────────────────────────────────────
@@ -110,7 +113,7 @@ function cachedUsd(date: string): Promise<Record<string, number> | null> {
   return p
 }
 
-function computePrice(asset: Exclude<AssetGroup, 'TEFAS'>, usd: Record<string, number>): number | null {
+function computePrice(asset: Exclude<AssetGroup, 'TEFAS' | 'MARKET'>, usd: Record<string, number>): number | null {
   const t = usd.try
   if (!t) return null
   switch (asset) {
@@ -142,8 +145,16 @@ export async function GET(request: Request) {
   // `from` feeds new Date(from) → start.toISOString(); a non-date value makes
   // that throw RangeError and surface as an unhandled 500. Validate the shape
   // up front.
-  if (!asset || !from || !['GOLD', 'USD', 'EUR', 'GBP', 'TEFAS'].includes(asset) || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+  if (!asset || !from || !['GOLD', 'USD', 'EUR', 'GBP', 'TEFAS', 'MARKET'].includes(asset) || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
     return NextResponse.json({ error: 'Invalid params' }, { status: 400 })
+  }
+
+  if (asset === 'MARKET') {
+    const market = code ? parseMarketAsset(code) : null
+    if (!market) return NextResponse.json({ error: 'Invalid params' }, { status: 400 })
+    const points = await fetchMarketHistory(market, from)
+    if (!points) return NextResponse.json({ error: 'Fiyat verisi alınamadı' }, { status: 502 })
+    return NextResponse.json(points, { headers: { 'Cache-Control': 'no-store' } })
   }
 
   if (asset === 'TEFAS') {

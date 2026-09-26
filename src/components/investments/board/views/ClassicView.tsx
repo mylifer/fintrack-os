@@ -7,6 +7,7 @@ import { useCountUp } from '@/lib/hooks/useCountUp'
 import { PriceHistoryChart, type BuyPoint } from '@/components/investments/PriceHistoryChart'
 import { GOLD_GRAMS } from '@/store/investment.store'
 import { tefasAsset, tefasCodesIn } from '@/lib/tefas'
+import { marketAssetsIn, marketSymbol } from '@/lib/market'
 import { assetMeta, fmtQty, pnlColor, sortRows, type AssetRow, type SortId } from '../shared'
 import type { QtyPoint } from '../timeline'
 import type { AssetGroup } from '@/app/api/prices/history/route'
@@ -149,6 +150,30 @@ export function ClassicView({
           totalCost: t.quantity * t.pricePerUnit,
         })),
         qtyTimeline: timelineOf(fundTxs),
+      })
+    }
+
+    // ── Hisse / kripto — her varlık kendi grafiği ────────────────────
+    for (const asset of marketAssetsIn(scopedTxs.map(t => t.asset))) {
+      const assetTxs = scopedTxs.filter(t => t.asset === asset)
+      const buyTxs   = assetTxs.filter(t => t.type === 'buy')
+      if (!buyTxs.length) continue
+
+      const q   = fundPrices[asset]
+      const sym = marketSymbol(asset)
+
+      groups.push({
+        key: asset, asset: 'MARKET', fundCode: asset,
+        label: `${sym} Portföyü`,
+        currentValue: q ? (holdingOf(asset)?.currentValue ?? 0) : undefined,
+        currentPrice: q?.price,
+        currentPrevPrice: q?.prevPrice,
+        buyPoints: buyTxs.map(t => ({
+          date: t.date,
+          description: `${t.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 8 })} ${sym}`,
+          totalCost: t.quantity * t.pricePerUnit,
+        })),
+        qtyTimeline: timelineOf(assetTxs),
       })
     }
 
