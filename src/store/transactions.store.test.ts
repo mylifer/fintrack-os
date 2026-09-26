@@ -23,6 +23,8 @@ vi.mock('@/lib/db', () => ({
   db: { transactions: { toArray: async () => [] }, accounts: { get: async () => undefined } },
 }))
 
+// Paylaşım (0021): üyelik sorgusu oturumsuz tamamlanmamış sayılır, hiçbir şey silinmez
+vi.mock('@/lib/supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }))
 vi.mock('@/lib/sync/engine', () => ({
   localUpsert: async (_t: string, e: Record<string, unknown>) => { upserts.push(e) },
   localBulkUpsert: async (_t: string, es: Record<string, unknown>[]) => { upserts.push(...es) },

@@ -3,6 +3,7 @@ import { db } from './db'
 import { getUserId } from './auth'
 import { isLive } from './sync/tombstone'
 import type { BackupData } from './backup-sync'
+import { getMemberWorkspaceIds } from './workspace-context'
 
 /**
  * Otomatik bulut yedekleri.
@@ -68,18 +69,24 @@ export async function readSnapshot(): Promise<BackupData> {
       db.people.toArray(), db.recurringTransactions.toArray(),
       db.paymentPlans.toArray(), db.paymentOccurrences.toArray(), db.savingsGoals.toArray(),
     ])
+  // Üyesi olduğum (sahibi olmadığım) paylaşılan alanların satırları yedeğe
+  // GİRMEZ: veri alan sahibinindir ve kendi yedeğinde durur. Üyenin yedeğinde
+  // olsaydı, geri yükleme ailenin güncel verisini eski haliyle ezerdi (0021).
+  const shared = new Set(getMemberWorkspaceIds())
+  const keep = <T extends { deleted_at?: string | null; workspaceId?: string | null }>(r: T) =>
+    isLive(r) && !(r.workspaceId && shared.has(r.workspaceId))
   return {
-    accounts:               accounts.filter(isLive),
-    transactions:           transactions.filter(isLive),
-    categories:             categories.filter(isLive),
-    budgets:                budgets.filter(isLive),
-    debts:                  debts.filter(isLive),
-    investmentTransactions: investmentTransactions.filter(isLive),
-    people:                 people.filter(isLive),
-    recurringTransactions:  recurringTransactions.filter(isLive),
-    paymentPlans:           paymentPlans.filter(isLive),
-    paymentOccurrences:     paymentOccurrences.filter(isLive),
-    savingsGoals:           savingsGoals.filter(isLive),
+    accounts:               accounts.filter(keep),
+    transactions:           transactions.filter(keep),
+    categories:             categories.filter(keep),
+    budgets:                budgets.filter(keep),
+    debts:                  debts.filter(keep),
+    investmentTransactions: investmentTransactions.filter(keep),
+    people:                 people.filter(keep),
+    recurringTransactions:  recurringTransactions.filter(keep),
+    paymentPlans:           paymentPlans.filter(keep),
+    paymentOccurrences:     paymentOccurrences.filter(keep),
+    savingsGoals:           savingsGoals.filter(keep),
   }
 }
 

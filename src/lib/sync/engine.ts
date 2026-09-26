@@ -8,7 +8,7 @@ import { isLive } from './tombstone'
 import { sanitizeIdRefs } from './sanitize'
 import { useSyncStatusStore } from '@/store/sync-status.store'
 import type { OutboxEntry } from '@/types'
-import { getActiveWorkspaceId, rowInActiveWorkspace } from '@/lib/workspace-context'
+import { getActiveWorkspaceId, getMemberWorkspaceIds, rowInActiveWorkspace } from '@/lib/workspace-context'
 
 /* ────────────────────────────────────────────────────────────────────────
    Sync Engine — P0 remediation for offline data-loss (C1 / C2 / C6)
@@ -499,6 +499,37 @@ export function startAutoSync(): void {
   void retryDeadLetters()
 }
 
+/* ── Paylaşılan alanın yerel verisini temizleme (0021) ───────────────────
+   Üyeliği kalkan (çıkarıldım / ayrıldım / alan silindi) bir alanın satırları
+   buluttaki kümeden kaybolur. reconcilingPull bulutta olmayan yerel satırı
+   silmez, buluta GERİ İTER — bu satırlar için itme RLS'e takılır, kuyruk
+   tıkanır ve veri ekranda kalırdı. Bu yüzden erişimi kalkan alanın yerel
+   satırları ve bekleyen yazmaları bilinçli olarak silinir. Yalnız üyelik
+   listesi buluttan EKSİKSİZ okunduğunda çağrılır (workspace.store). */
+export async function purgeWorkspacesLocal(workspaceIds: string[]): Promise<number> {
+  if (!workspaceIds.length) return 0
+  const ids = new Set(workspaceIds)
+  let removed = 0
+  const tables = Object.keys(DEXIE) as SyncTable[]
+  await db.transaction('rw', [...tables.map(t => DEXIE[t]), db._outbox], async () => {
+    for (const table of tables) {
+      const t = DEXIE[table]
+      const rows = await t.toArray()
+      const doomed = rows
+        .filter(r => ids.has(String(table === 'workspaces' ? r.id : (r as { workspaceId?: string }).workspaceId)))
+        .map(r => r.id)
+      if (doomed.length) { await t.bulkDelete(doomed); removed += doomed.length }
+    }
+    const pending = await db._outbox.toArray()
+    const stale = pending.filter(e => {
+      const snap = e.snapshot as { id?: string; workspaceId?: string }
+      return ids.has(String(e.table === 'workspaces' ? snap.id : snap.workspaceId))
+    })
+    if (stale.length) await db._outbox.bulkDelete(stale.map(e => e.id))
+  })
+  return removed
+}
+
 /* ── Reconciling pull (C2) + pagination (C6) ───────────────────────────── */
 
 const PAGE = 1000
@@ -517,7 +548,13 @@ async function fetchAllRows(
     // Defense-in-depth: scope the read to the current user. RLS already
     // enforces this server-side; the explicit filter is belt-and-suspenders
     // against a future RLS misconfiguration and is a no-op when RLS is correct.
-    let query = supabase.from(table).select('*').eq('user_id', userId)
+    // Paylaşım (0021): üyesi olduğum alanların satırları da (sahipleri alan
+    // sahibidir) — yalnız BİLİNEN üyeliklerle, RLS tek başına bırakılmaz.
+    let query = supabase.from(table).select('*')
+    const shared = getMemberWorkspaceIds()
+    query = shared.length
+      ? query.or(`user_id.eq.${userId},${table === 'workspaces' ? 'id' : 'workspaceId'}.in.(${shared.map(id => `"${id}"`).join(',')})`)
+      : query.eq('user_id', userId)
     // Anahtar tabanlı sayfalama (id > son okunan): ofset/range'de sayfalar
     // arasında başka cihaz satır eklerse sıra kayar ve bir satır İKİ sayfanın
     // arasında kalıp hiç okunmazdı (denetim #23). Burada çekiş başında var olan

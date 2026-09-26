@@ -170,7 +170,11 @@ export async function proxy(request: NextRequest) {
     if (pathname.startsWith('/api')) {
       return withCsp(NextResponse.json({ error: 'unauthorized' }, { status: 401 }))
     }
-    return withCsp(NextResponse.redirect(new URL('/login', request.url)))
+    // Davet bağlantısı girişsiz açıldıysa giriş sonrası oraya dönülür
+    // (login yalnız /davet/<token> biçimini kabul eder — açık yönlendirme yok)
+    const login = new URL('/login', request.url)
+    if (pathname.startsWith('/davet/')) login.searchParams.set('next', pathname)
+    return withCsp(NextResponse.redirect(login))
   }
 
   return withCsp(response)

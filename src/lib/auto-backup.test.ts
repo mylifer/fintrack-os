@@ -92,3 +92,23 @@ describe('readSnapshot — tombstone filtresi', () => {
     expect(snap.transactions[0]).toMatchObject({ id: 't1', amount: 42, description: 'Market', tags: ['a'] })
   })
 })
+
+describe('readSnapshot — paylaşılan alanlar (0021)', () => {
+  it('üyesi olduğum alanın satırları yedeğe girmez; kendi alanlarım ve eski satırlar girer', async () => {
+    const { setMemberWorkspaceIds } = await import('./workspace-context')
+    setMemberWorkspaceIds(['ws-aile'])
+    tables.transactions.rows = [
+      { id: 't-aile', workspaceId: 'ws-aile' },
+      { id: 't-benim', workspaceId: 'ws-benim' },
+      { id: 't-eski' },
+    ]
+    tables.accounts.rows = [{ id: 'a-aile', workspaceId: 'ws-aile' }]
+    try {
+      const snap = await readSnapshot()
+      expect(snap.transactions.map(t => t.id)).toEqual(['t-benim', 't-eski'])
+      expect(snap.accounts).toEqual([])
+    } finally {
+      setMemberWorkspaceIds([])
+    }
+  })
+})

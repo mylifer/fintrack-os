@@ -12,6 +12,7 @@ export function WorkspaceManager() {
   const setActive    = useWorkspaceStore(s => s.setActive)
   const add          = useWorkspaceStore(s => s.add)
   const rename        = useWorkspaceStore(s => s.rename)
+  const sharing       = useWorkspaceStore(s => s.sharing)
 
   const [switchingId, setSwitchingId] = useState<string | null>(null)
   const [editingId, setEditingId]     = useState<string | null>(null)
@@ -88,15 +89,24 @@ export function WorkspaceManager() {
                         Aktif
                       </span>
                     )}
+                    {(sharing.owned.includes(ws.id) || sharing.member.includes(ws.id)) && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-accent text-muted-foreground flex-shrink-0">
+                        {sharing.member.includes(ws.id) ? 'Sizinle paylaşılan' : 'Paylaşılıyor'}
+                      </span>
+                    )}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="flex-shrink-0 rounded-lg h-8 px-3"
-                    onClick={() => startEdit(ws.id, ws.name)}
-                  >
-                    Yeniden Adlandır
-                  </Button>
+                  {/* Paylaşılan alanı yalnız sahibi yeniden adlandırabilir (0021) —
+                      üyenin yazması sunucuda reddedilir ve kuyrukta takılırdı */}
+                  {!sharing.member.includes(ws.id) && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="flex-shrink-0 rounded-lg h-8 px-3"
+                      onClick={() => startEdit(ws.id, ws.name)}
+                    >
+                      Yeniden Adlandır
+                    </Button>
+                  )}
                   {ws.id !== activeId && (
                     <Button
                       size="sm"

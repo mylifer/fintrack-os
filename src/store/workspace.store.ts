@@ -3,17 +3,33 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, reconcilingPull, lastPullWasAuthoritative } from '@/lib/sync/engine'
+import { localUpsert, localPatch, reconcilingPull, lastPullWasAuthoritative, purgeWorkspacesLocal } from '@/lib/sync/engine'
 import {
   getPersistedActiveWorkspaceId, setActiveWorkspaceId, setDefaultWorkspaceId,
+  getMemberWorkspaceIds, setMemberWorkspaceIds,
 } from '@/lib/workspace-context'
+import { fetchMyMemberships, memberWorkspaceIdsOf, removeMember } from '@/lib/sharing'
+import { useSyncStatusStore } from '@/store/sync-status.store'
+import { supabase } from '@/lib/supabase'
 import { reloadAllStores } from '@/lib/reload-stores'
 import type { Workspace } from '@/types'
+
+/** Paylaşım durumu (0021). owned: paylaştığım alanlar; member: üyesi olduklarım. */
+export interface SharingState {
+  available: boolean
+  owned: string[]
+  member: string[]
+}
 
 interface WorkspaceState {
   workspaces: Workspace[]
   activeId: string | null
   ready: boolean
+  sharing: SharingState
+  /** Üyelikleri buluttan tazeler; erişimi kalkan alanların yerel verisini siler. */
+  syncSharing: () => Promise<void>
+  /** Üyesi olduğum alandan ayrılır. */
+  leave: (id: string) => Promise<void>
   load: () => Promise<void>
   add: (name: string) => Promise<Workspace>
   rename: (id: string, name: string) => Promise<void>
@@ -31,8 +47,48 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   workspaces: [],
   activeId: null,
   ready: false,
+  sharing: { available: false, owned: [], member: getMemberWorkspaceIds() },
+
+  syncSharing: async () => {
+    const m = await fetchMyMemberships()
+    if (!m.complete) {
+      // Çevrimdışı / hata: bilinen üyeliklerle devam — hiçbir şey silinmez
+      set(s => ({ sharing: { ...s.sharing, available: m.available, member: getMemberWorkspaceIds() } }))
+      return
+    }
+    const next = memberWorkspaceIdsOf(m.mine)
+    const revoked = getMemberWorkspaceIds().filter(id => !next.includes(id))
+    if (revoked.length) {
+      const names = get().workspaces.filter(w => revoked.includes(w.id)).map(w => w.name)
+      await purgeWorkspacesLocal(revoked)
+      useSyncStatusStore.getState().notify(
+        `${names.length ? names.join(', ') : 'Paylaşılan bir alan'} artık sizinle paylaşılmıyor; bu cihazdaki kopyası kaldırıldı.`,
+      )
+    }
+    setMemberWorkspaceIds(next)
+    set({
+      sharing: {
+        available: true,
+        owned: m.mine.filter(x => x.role === 'owner').map(x => x.workspace_id),
+        member: next,
+      },
+    })
+  },
+
+  leave: async (id) => {
+    const { data } = await supabase.auth.getSession()
+    const uid = data.session?.user.id
+    if (!uid) throw new Error('Oturum yok.')
+    await removeMember(id, uid)
+    await get().syncSharing()
+    await get().load()
+    await reloadAllStores()
+  },
 
   load: async () => {
+    // Üyelikler ÖNCE: çekiş filtresi (engine) paylaşılan alanları bunlardan bilir
+    await get().syncSharing()
+
     let rows: Workspace[]
     try {
       rows = await reconcilingPull<Workspace>('workspaces')

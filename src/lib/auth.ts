@@ -22,6 +22,7 @@ export async function enterApp(
   uid: string | undefined,
   push: (href: string) => void,
   tag: string,
+  next: string = '/dashboard',
 ): Promise<void> {
   const prevUid = localStorage.getItem(LAST_UID_KEY)
   const switched = !!uid && !!prevUid && prevUid !== uid
@@ -37,10 +38,10 @@ export async function enterApp(
   if (uid) localStorage.setItem(LAST_UID_KEY, uid)
 
   if (switched) {
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli HARD reload: soft navigasyon önceki kullanıcının bellekteki verisini taşır (yukarıdaki not)
-    window.location.assign('/dashboard')
+    // Bilinçli HARD reload: soft navigasyon önceki kullanıcının bellekteki verisini taşır (yukarıdaki not)
+    window.location.assign(next)
   } else {
-    push('/dashboard')
+    push(next)
   }
 }
 

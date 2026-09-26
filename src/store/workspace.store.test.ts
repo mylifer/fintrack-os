@@ -14,6 +14,8 @@ let pulled: Workspace[] = []
 let authoritative = true
 const upserts: unknown[] = []
 
+// Paylaşım (0021): üyelik sorgusu oturumsuz tamamlanmamış sayılır, hiçbir şey silinmez
+vi.mock('@/lib/supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }))
 vi.mock('@/lib/sync/engine', () => ({
   reconcilingPull: async () => pulled,
   lastPullWasAuthoritative: () => authoritative,

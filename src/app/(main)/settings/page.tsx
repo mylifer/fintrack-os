@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { BackupManager }  from '@/components/backup/BackupManager'
 import { TransactionImportModal } from '@/components/settings/TransactionImportModal'
 import { WorkspaceManager } from '@/components/settings/WorkspaceManager'
+import { SharingSettings } from '@/components/settings/SharingSettings'
 import { AccountSettings } from '@/components/settings/AccountSettings'
 import { PrivacySettings } from '@/components/settings/PrivacySettings'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
@@ -178,6 +179,7 @@ export default function SettingsPage() {
 
         {/* Çalışma Alanları */}
         <WorkspaceManager />
+        <SharingSettings />
 
         {/* Demo & Reset */}
         <Card>

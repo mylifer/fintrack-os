@@ -21,7 +21,7 @@
 --
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
--- çalıştırdıktan SONRA supabase/migrations/0001..0020'yi sırayla uygulayın.
+-- çalıştırdıktan SONRA supabase/migrations/0001..0021'i sırayla uygulayın.
 -- Yalnızca burada olmayan, migration'lara bağlı parçalar:
 --   • user_backups tablosu + RLS'i            → 0005
 --   • restore_user_backup() RPC'si            → 0004, 0009 (0009 önce F1 için
@@ -33,8 +33,13 @@
 --   • MFA (aal2) kısıtlayıcı politikaları +
 --     delete_my_account() RPC'si              → 0013 — bu dosya TÜM politikaları
 --                                                silip kurduğu için bunu
---                                                çalıştırdıktan sonra 0013 ve
---                                                0015'i YENİDEN çalıştırın
+--                                                çalıştırdıktan sonra 0013,
+--                                                0015 ve 0021'i YENİDEN
+--                                                çalıştırın (0021 olmadan
+--                                                paylaşılan alanlara erişim
+--                                                kalkar)
+--   • Çalışma alanı paylaşımı (üyelik, davet,
+--     sahip-veya-üye politikaları)            → 0021
 --   • categories."matchKeywords"              → 0014 (aşağıda da var)
 --   • savings_goals tablosu                   → 0015 (aşağıda da var)
 --   • "updatedAt" (8 tablo) + keep_newer_row

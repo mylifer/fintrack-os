@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { enterApp, needsMfaStep } from '@/lib/auth'
+import { safeInviteNext } from '@/lib/sharing'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/button'
 import { MfaCodeForm } from '@/components/auth/MfaCodeForm'
@@ -26,6 +27,8 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  // Yalnız /davet/<token> — başka her adres yok sayılır (açık yönlendirme yok)
+  const inviteNext = safeInviteNext(searchParams.get('next'))
   const [step, setStep]         = useState<'password' | 'mfa'>('password')
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
@@ -64,12 +67,12 @@ function LoginForm() {
       return
     }
 
-    await enterApp(data.user?.id, href => router.push(href), 'login')
+    await enterApp(data.user?.id, href => router.push(href), 'login', inviteNext ?? undefined)
   }
 
   async function handleMfaVerified() {
     const { data: { user } } = await supabase.auth.getUser()
-    await enterApp(user?.id, href => router.push(href), 'login')
+    await enterApp(user?.id, href => router.push(href), 'login', inviteNext ?? undefined)
   }
 
   async function handleMfaCancel() {

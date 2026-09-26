@@ -19,6 +19,8 @@ Canlı: https://fintrack-os-ten.vercel.app
 - **Yatırımlar** — altın/döviz, TEFAS ve BES fonları, BIST hisseleri, kripto; gerçekleşen
   K/Z, yıllık getiri (XIRR), fon stopajı.
 - **Raporlar** — dönem kıyası (önceki dönem / geçen yıl), aylık özet, yazdır/PDF.
+- **Aile paylaşımı** — varsayılan olmayan bir çalışma alanı davet bağlantısıyla eşle paylaşılır;
+  iki hesap da aynı veriyi görür ve düzenler (0021).
 - **Güvenlik ve gizlilik** — 2FA (TOTP), tutarları gizle, cihaz PIN kilidi, RLS, özel
   Storage kovası, işlem açıklamaları hiçbir dış servise gönderilmez.
 - **Eşitleme** — outbox + son-yazan-kazanır (`updatedAt`), silinen kaydın dirilmemesi,

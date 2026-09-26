@@ -56,3 +56,30 @@ export function rowInWorkspace(row: { workspaceId?: string | null }, workspaceId
 export function rowInActiveWorkspace(row: { workspaceId?: string | null }): boolean {
   return rowInWorkspace(row, activeWorkspaceId)
 }
+
+/* ── Paylaşılan alanlar (0021) ────────────────────────────────────────────
+   Üyesi olduğum ama SAHİBİ OLMADIĞIM alanlar. Eşitleme motoru buluttan
+   "user_id = ben VEYA workspaceId bu kümede" satırlarını çeker (RLS'e ek
+   savunma katmanı). Çevrimdışı açılışta da bilinsin diye localStorage'da
+   tutulur; çıkışta clearLocalData ile silinir. */
+
+const MEMBER_KEY = 'fintrack.memberWorkspaceIds'
+let memberWorkspaceIds: string[] | null = null
+
+export function getMemberWorkspaceIds(): string[] {
+  if (memberWorkspaceIds) return memberWorkspaceIds
+  if (typeof window === 'undefined') return []
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MEMBER_KEY) ?? '[]')
+    memberWorkspaceIds = Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    memberWorkspaceIds = []
+  }
+  return memberWorkspaceIds
+}
+
+export function setMemberWorkspaceIds(ids: string[]): void {
+  memberWorkspaceIds = [...new Set(ids)].sort()
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem(MEMBER_KEY, JSON.stringify(memberWorkspaceIds)) } catch { /* storage kapalı */ }
+}

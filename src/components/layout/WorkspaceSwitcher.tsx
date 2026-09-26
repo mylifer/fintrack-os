@@ -13,6 +13,7 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
   const activeId    = useWorkspaceStore(s => s.activeId)
   const ready        = useWorkspaceStore(s => s.ready)
   const setActive    = useWorkspaceStore(s => s.setActive)
+  const sharing      = useWorkspaceStore(s => s.sharing)
   const add          = useWorkspaceStore(s => s.add)
 
   const [open, setOpen]           = useState(false)
@@ -113,6 +114,9 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
               ].join(' ')}
             >
               <span className="flex-1 min-w-0 truncate">{ws.name}</span>
+              {(sharing.owned.includes(ws.id) || sharing.member.includes(ws.id)) && (
+                <span className="flex-shrink-0 text-xs" title={sharing.member.includes(ws.id) ? 'Sizinle paylaşılan alan' : 'Paylaştığınız alan'} aria-label="Paylaşılan alan">👥</span>
+              )}
               {ws.id === activeId && (
                 <svg fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" width={14} height={14} className="flex-shrink-0" aria-hidden>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />

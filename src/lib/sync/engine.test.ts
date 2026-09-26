@@ -25,6 +25,7 @@ class FakeTable {
   async count() { return this.rows.size }
   async clear() { this.rows.clear() }
   async delete(id: string) { this.rows.delete(id) }
+  async bulkDelete(ids: string[]) { for (const id of ids) this.rows.delete(id) }
 
   async update(id: string, patch: Record<string, unknown>) {
     const r = this.rows.get(id)
@@ -73,6 +74,7 @@ const tables = {
   accounts: new FakeTable(), transactions: new FakeTable(), categories: new FakeTable(),
   budgets: new FakeTable(), debts: new FakeTable(), investmentTransactions: new FakeTable(),
   people: new FakeTable(), recurringTransactions: new FakeTable(), workspaces: new FakeTable(),
+  paymentPlans: new FakeTable(), paymentOccurrences: new FakeTable(), savingsGoals: new FakeTable(),
   _outbox: new FakeTable(),
 }
 
@@ -92,7 +94,7 @@ vi.mock('@/lib/db', () => ({
 let upsertImpl: (table: string, payload: Record<string, unknown>) => Promise<{ error: { message: string } | null }>
 let selectImpl: (table: string) => Promise<{ data: Row[] | null; error: { message: string } | null }>
 const upsertCalls: { table: string; payload: Record<string, unknown> }[] = []
-const selectCalls: { table: string; afterId: string | null }[] = []
+const selectCalls: { table: string; afterId: string | null; filter?: string }[] = []
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
@@ -106,12 +108,14 @@ vi.mock('@/lib/supabase', () => ({
       // gerçek PostgREST gibi.
       select: () => {
         let afterId: string | null = null
+        let filter: string | undefined
         const q = {
-          eq: () => q,
+          eq: (col: string, v: string) => { filter = `${col}.eq.${v}`; return q },
+          or: (f: string) => { filter = f; return q },
           gt: (_col: string, v: string) => { afterId = v; return q },
           order: () => q,
           limit: async (n: number) => {
-            selectCalls.push({ table, afterId })
+            selectCalls.push({ table, afterId, filter })
             const res = await selectImpl(table)
             if (res.error || !res.data) return res
             const rows = [...res.data]
@@ -143,8 +147,9 @@ vi.mock('@/store/sync-status.store', () => ({
 const {
   localUpsert, localPatch, localPatchMany, localBulkUpsert, localBatch,
   softDelete, flushOutbox, reconcilingPull, pendingCount, retryDeadLetters,
-  MAX_SYNC_ATTEMPTS, lastPullWasAuthoritative,
+  MAX_SYNC_ATTEMPTS, lastPullWasAuthoritative, purgeWorkspacesLocal,
 } = await import('./engine')
+const { setMemberWorkspaceIds } = await import('@/lib/workspace-context')
 
 const outbox = tables._outbox
 const txTable = tables.transactions
@@ -162,6 +167,7 @@ beforeEach(() => {
   currentUid = 'user-1'
   upsertImpl = async () => ({ error: null })
   selectImpl = async () => ({ data: [], error: null })
+  setMemberWorkspaceIds([])
 })
 
 /* ── Yerel mutasyon primitive'leri ──────────────────────────────────────── */
@@ -625,5 +631,39 @@ describe('senkron bütünlüğü — updatedAt, silme/düzenleme çakışması, 
     expect(rows).toHaveLength(2500)
     expect(new Set(rows.map(r => r.id)).size).toBe(2500)
     expect(selectCalls.map(c => c.afterId)).toEqual([null, 'id-00999', 'id-01999'])
+  })
+})
+
+describe('paylaşılan alanlar (0021)', () => {
+  it('çekiş: üyelik yoksa yalnız kendi satırlarım; üyelik varsa kendi + paylaşılan alanlar', async () => {
+    selectCalls.length = 0
+    await reconcilingPull('transactions')
+    expect(selectCalls[0].filter).toBe('user_id.eq.user-1')
+
+    setMemberWorkspaceIds(['ws-aile'])
+    selectCalls.length = 0
+    await reconcilingPull('transactions')
+    await reconcilingPull('workspaces')
+    expect(selectCalls.map(c => c.filter)).toEqual([
+      'user_id.eq.user-1,workspaceId.in.("ws-aile")',
+      'user_id.eq.user-1,id.in.("ws-aile")',
+    ])
+  })
+
+  it('erişimi kalkan alanın yerel satırları ve bekleyen yazmaları silinir, diğerleri kalır', async () => {
+    await localUpsert('transactions', tx('t-aile', { workspaceId: 'ws-aile' }))
+    await localUpsert('transactions', tx('t-benim', { workspaceId: 'ws-benim' }))
+    await tables.workspaces.put({ id: 'ws-aile', name: 'Aile' })
+    await tables.workspaces.put({ id: 'ws-benim', name: 'Genel' })
+    await tables.accounts.put({ id: 'a-aile', workspaceId: 'ws-aile' })
+
+    const removed = await purgeWorkspacesLocal(['ws-aile'])
+
+    expect(removed).toBe(3)
+    expect([...txTable.rows.keys()]).toEqual(['t-benim'])
+    expect([...tables.workspaces.rows.keys()]).toEqual(['ws-benim'])
+    expect(tables.accounts.rows.size).toBe(0)
+    const pending = [...outbox.rows.values()].map(e => (e.snapshot as { id: string }).id)
+    expect(pending).toEqual(['t-benim'])
   })
 })
