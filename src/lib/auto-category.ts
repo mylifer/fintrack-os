@@ -26,7 +26,7 @@ const ASCII_FOLD: Record<string, string> = { ı: 'i', ş: 's', ğ: 'g', ü: 'u',
 /** Eşleştirme biçimi: Türkçe harfler ASCII karşılığına katlanır. Banka
  *  dökümleri büyük harf ve Türkçe karaktersiz gelir ("MIGROS", "SOK MARKET"):
  *  tr-TR küçültmesi "MIGROS"u "mıgros" yapar ve "migros" kuralını kaçırırdı. */
-function foldForMatch(s: string): string {
+export function foldText(s: string): string {
   return normalizeKeyword(s).replace(/[ışğüöçâîû]/g, ch => ASCII_FOLD[ch])
 }
 
@@ -51,13 +51,13 @@ export function keywordCategory(
   type: FlowType,
   categories: Category[],
 ): string | undefined {
-  const text = foldForMatch(description)
+  const text = foldText(description)
   if (!text) return undefined
   let best: { id: string; len: number } | undefined
   for (const c of categories) {
     if (!usable(c, type) || !c.matchKeywords?.length) continue
     for (const k of c.matchKeywords) {
-      const kw = foldForMatch(k)
+      const kw = foldText(k)
       if (kw && text.includes(kw) && (!best || kw.length > best.len)) best = { id: c.id, len: kw.length }
     }
   }

@@ -369,7 +369,7 @@ export default function SettingsPage() {
                 <div>
                   <div className="text-sm font-semibold">İşlemleri İçe Aktar</div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    CSV dosyasından işlem verisi aktarın. Sütunları eşleştirip doğruladıktan sonra içe aktarılır.
+                    Banka dökümü ya da kart ekstresi yükleyin (CSV veya Excel .xlsx). Sütunları eşleştirip satırları gözden geçirdikten sonra içe aktarılır.
                   </div>
                 </div>
                 <Button
@@ -378,7 +378,7 @@ export default function SettingsPage() {
                   onClick={() => setImportOpen(true)}
                   className="flex-shrink-0 rounded-xl px-4 h-9"
                 >
-                  ↑ CSV Yükle
+                  ↑ Dosya Yükle
                 </Button>
               </div>
             </div>
