@@ -295,7 +295,7 @@ function DescriptionAutocomplete({
         onKeyDown={handleKeyDown}
         onFocus={() => {
           if (justMountedRef.current) { justMountedRef.current = false; return }
-          value.trim() && setOpen(true)
+          if (value.trim()) setOpen(true)
         }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Migros, Maaş, Kira..."

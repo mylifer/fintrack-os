@@ -70,6 +70,7 @@ export function AccountAvatar({ account, size = 'md', className = '' }: Props) {
       {/* Overlay: transparent until image loads, so initial shows immediately */}
       {iconSrc && (
         <div className={`absolute inset-0 bg-card flex items-center justify-center ${s.pad} opacity-0`}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- dış/kullanıcı kaynaklı küçük ikon (data: URL ya da favicon); next/image optimizasyonu bu kaynaklara uygulanamaz */}
           <img
             src={iconSrc}
             alt={account.name}

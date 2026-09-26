@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useId } from 'react'
 import { Popover } from 'radix-ui'
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { CategoryIcon } from './CategoryIcon'
@@ -45,6 +45,9 @@ function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
 
 export function CategoryCascadeSelect({ categories, value, onChange, error, placeholder, onCreate, disabledIds }: Props) {
   const [open,      setOpen]      = useState(false)
+  // Tetikleyici combobox rolünde: geçersiz durumu (aria-invalid) ekran okuyucuya
+  // iletebilsin diye; açılır panelle bağı açık id ile kurulur.
+  const listId = useId()
   const [hoveredL0, setHoveredL0] = useState<string | null>(null)
   const [hoveredL1, setHoveredL1] = useState<string | null>(null)
   const [query,     setQuery]     = useState('')
@@ -133,6 +136,9 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
       <Popover.Trigger asChild>
         <button
           type="button"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
           aria-invalid={error || undefined}
           className={cn(
             'flex h-8 w-full items-center justify-between gap-1.5 rounded-md border bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none',
@@ -158,6 +164,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
       {/* ── Portaled content ── */}
       <Popover.Portal>
         <Popover.Content
+          id={listId}
           sideOffset={GAP}
           align="start"
           avoidCollisions

@@ -369,6 +369,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
             {icon ? (
               <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
                 <div className="w-10 h-10 rounded-xl overflow-hidden border border-border bg-card flex items-center justify-center p-1 flex-shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- dış/kullanıcı kaynaklı küçük ikon (data: URL ya da favicon); next/image optimizasyonu bu kaynaklara uygulanamaz */}
                   <img
                     src={icon}
                     alt=""

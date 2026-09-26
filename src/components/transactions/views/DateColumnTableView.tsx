@@ -123,6 +123,7 @@ export function DateColumnTableView({
   const someSelected = !allSelected && eligibleIds.some(id => selectedIds?.has(id))
 
   const parentRef = useRef<HTMLDivElement>(null)
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual; derleyici bu bileşeni atlar, bilinen ve zararsız
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,

@@ -153,8 +153,19 @@ export function BatchEditDrawer({
     `rounded-xl border p-3 transition-colors ${on ? 'border-[var(--batch-accent)] bg-[var(--batch-accent-soft)]' : 'border-border'}`
 
   return (
+    // Modal DEĞİL (liste yanında açık kalır, seçim sürer): role=dialog +
+    // aria-modal=false. Kapalıyken inert — gizli panelin düğmeleri Tab ile
+    // odaklanmasın. Esc paneli kapatır (yalnız odak paneldeyken; portaldaki
+    // onay penceresinin Esc'i DOM'da panelin içinde olmadığı için etkilemez).
     <aside
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="batch-edit-title"
       aria-hidden={!open}
+      inert={!open}
+      onKeyDown={e => {
+        if (e.key === 'Escape' && open && e.currentTarget.contains(e.target as Node)) onClose()
+      }}
       className={[
         'fixed right-0 top-0 bottom-0 z-40 w-[340px] max-w-[90vw]',
         'bg-card border-l border-border shadow-2xl',
@@ -165,12 +176,13 @@ export function BatchEditDrawer({
       {/* Başlık */}
       <div className="flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border flex-shrink-0">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-foreground">Toplu Düzenle</div>
+          <div id="batch-edit-title" className="text-sm font-semibold text-foreground">Toplu Düzenle</div>
           <div className="text-xs font-medium text-[var(--batch-accent)]">{count} işlem seçili</div>
         </div>
         <button
           onClick={onClose}
           title="Kapat"
+          aria-label="Kapat"
           className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
         >
           <XIcon />

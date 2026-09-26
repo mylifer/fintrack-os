@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { formatCurrency } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
 import { SelectField } from '@/components/ui/Select'
+import { Dialog, DialogContent, DialogTitle, DialogClose } from '@/components/ui/dialog'
 import { isTefasAsset, tefasCode, tefasAsset, TEFAS_CODE_RE } from '@/lib/tefas'
 import {
   isMarketAsset, marketKind, marketSymbol, marketAsset, isValidMarketSymbol, MARKET_KIND_META, type MarketKind,
@@ -175,7 +176,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     setPriceFetchFailed(false)
     setTotalDraft('')
     touchedPriceKey.current = null
-  }, [open, editingTx, defaultType])
+  }, [open, editingTx, defaultType, getHoldings])
 
   // Yeni fon / hisse / kripto kodu doğrulama — kod şekli oturunca debounce'la fiyat servisine sor
   const newKind = NEW_KIND[asset] ?? null
@@ -298,6 +299,10 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
       .finally(() => { if (!ctrl.signal.aborted) setFetchingPrice(false) })
 
     return () => ctrl.abort()
+  // Türetilmiş değerler (isTefas, isMarket, newKind, resolvedAsset, priceDecimals,
+  // liveUnitPrice) asset + fundLookup'tan hesaplanır ve her render yeniden
+  // oluşur; onları eklemek efekti her render'da yeniden koşturur (fetch döngüsü).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, date, asset, editingTx, prices, fundLookup, priceKey, totalDraft])
 
   const qtyNum    = parseFloat(qty)   || 0
@@ -448,23 +453,26 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
 
   if (!open) return null
 
+  // Radix Dialog: role="dialog" + aria-modal, odak tuzağı, Esc ile kapanma,
+  // kapanınca odağın açan düğmeye dönmesi (eskiden elle yazılmış katmanda yoktu).
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
       {/* max-h + scroll: TEFAS kod alanı açıkken kısa ekranlarda footer taşmasın */}
-      <div className="w-full max-w-md bg-card rounded-2xl shadow-2xl overflow-y-auto max-h-[calc(100dvh-2rem)] border border-border">
+      <DialogContent
+        showCloseButton={false}
+        aria-describedby={undefined}
+        className="gap-0 p-0 bg-card rounded-2xl shadow-2xl overflow-y-auto max-h-[calc(100dvh-2rem)] sm:max-w-md block"
+      >
 
         {/* Header */}
         <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-          <span className="text-base font-semibold text-foreground">
+          <DialogTitle className="text-base font-semibold text-foreground">
             {isEdit ? 'İşlemi Düzenle' : 'Yatırım İşlemi'}
-          </span>
-          <button
-            onClick={onClose}
+          </DialogTitle>
+          <DialogClose
+            aria-label="Kapat"
             className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          >✕</button>
+          >✕</DialogClose>
         </div>
 
         <div className="p-6 flex flex-col gap-4">
@@ -762,7 +770,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
             {saving ? '...' : isEdit ? 'Kaydet' : txType === 'buy' ? 'Al' : 'Sat'}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

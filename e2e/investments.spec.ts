@@ -6,7 +6,7 @@ import type { Page } from '@playwright/test'
 
 async function trade(page: Page, kind: 'Al' | 'Sat', qty: string, price: string, date: string) {
   await page.getByRole('button', { name: kind, exact: true }).first().click()
-  const m = page.locator('div.fixed.inset-0.z-50').last()
+  const m = page.getByRole('dialog', { name: /Yatırım İşlemi|İşlemi Düzenle/ })
   if (kind === 'Sat') await m.getByRole('button', { name: 'Sat', exact: true }).first().click()
   await m.locator('input[type=date]').fill(date)
   await m.locator('input[type=number]').first().fill(qty)
@@ -16,6 +16,18 @@ async function trade(page: Page, kind: 'Al' | 'Sat', qty: string, price: string,
   await m.getByRole('button', { name: kind, exact: true }).last().click()
   await expect(m).toHaveCount(0)
 }
+
+test('al/sat penceresi: dialog rolü, Esc ile kapanır, odak geri döner', async ({ page }) => {
+  await openApp(page)
+  await page.goto('/investments')
+  const opener = page.getByRole('button', { name: 'Al', exact: true }).first()
+  await opener.click()
+  const m = page.getByRole('dialog', { name: 'Yatırım İşlemi' })
+  await expect(m).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(m).toHaveCount(0)
+  await expect(opener).toBeFocused()
+})
 
 test('altın: geriye tarihli satışta gerçekleşen K/Z ve getiri paneli', async ({ page }) => {
   await openApp(page)

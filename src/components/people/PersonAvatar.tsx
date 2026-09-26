@@ -99,6 +99,7 @@ function RecipientAvatar({
       <div
         className={`${s.box} flex-shrink-0 rounded-md overflow-hidden bg-card border border-border flex items-center justify-center ${s.pad} ${className}`}
       >
+        {/* eslint-disable-next-line @next/next/no-img-element -- dış/kullanıcı kaynaklı küçük ikon (data: URL ya da favicon); next/image optimizasyonu bu kaynaklara uygulanamaz */}
         <img
           src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
           alt={name}

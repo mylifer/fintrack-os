@@ -79,7 +79,7 @@ export default function TransactionsPage() {
     [periodType, periodOffset],
   )
 
-  const filters: TransactionFilters = {
+  const filters = useMemo<TransactionFilters>(() => ({
     search:          search || undefined,
     types:           typeFilter ? [typeFilter as 'expense' | 'income' | 'transfer'] : undefined,
     categoryIds:     categoryFilter ? [categoryFilter] : undefined,
@@ -88,7 +88,7 @@ export default function TransactionsPage() {
     dateTo:          to,
     familyMemberIds: familyFilter    ? [familyFilter.id]    : undefined,
     recipientIds:    recipientFilter ? [recipientFilter.id] : undefined,
-  }
+  }), [search, typeFilter, categoryFilter, accountFilter, from, to, familyFilter, recipientFilter])
 
   // Filtre/dönem değişince seçim sıfırlanır — gizlenen satırları yanlışlıkla
   // toplu düzenlememek için (seçim yalnızca ekranda görünen işlemleri kapsar).
@@ -103,8 +103,10 @@ export default function TransactionsPage() {
 
   const filtered = useMemo(
     () => getFiltered(filters),
-    // people/categories/accounts: arama artık ad eşleşmesi de yaptığı için bağımlı
-    [transactions, search, typeFilter, categoryFilter, accountFilter, from, to, familyFilter, recipientFilter, people, categories, accounts],
+    // getFiltered store'dan okur: transactions değişince yeniden süzülmeli;
+    // people/categories/accounts: arama ad eşleşmesi de yapar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [getFiltered, filters, transactions, people, categories, accounts],
   )
 
   const searchMatcher = useMemo(
@@ -152,7 +154,9 @@ export default function TransactionsPage() {
   // toplamı bu indirgemeyi uygular. getFiltered'a aynı filtreler, ikinci
   // parametre olarak indirgenmiş dizi verilerek tekrar uygulanır.
   const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
-  const reportFiltered = useMemo(() => getFiltered(filters, reportTxs), [reportTxs, search, typeFilter, categoryFilter, accountFilter, from, to, familyFilter, recipientFilter, people, categories, accounts])
+  // people/categories/accounts: yukarıdaki gibi, arama ad eşleşmesi için
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const reportFiltered = useMemo(() => getFiltered(filters, reportTxs), [getFiltered, filters, reportTxs, people, categories, accounts])
 
   // Özet çubuğu ₺ (baz PB) gösterir → TRY-normalize (baseAmount, S2/S3) + kuruş-exact
   // (S8) topla; ham `amount` USD'yi ₺ gibi sayardı. Kapsam Dashboard/Raporlar KPI

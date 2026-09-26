@@ -233,6 +233,7 @@ export const TxIcon = memo(function TxIcon({
 function Favicon({ domain, alt, onError }: { domain: string; alt: string; onError: () => void }) {
   return (
     <span className="w-5 h-5 flex-shrink-0 inline-flex items-center justify-center rounded-md overflow-hidden bg-card border border-border p-[3px]">
+      {/* eslint-disable-next-line @next/next/no-img-element -- dış/kullanıcı kaynaklı küçük ikon (data: URL ya da favicon); next/image optimizasyonu bu kaynaklara uygulanamaz */}
       <img
         src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
         alt={alt}
@@ -869,6 +870,7 @@ export function TransactionList({
   const someSelected = !allSelected && eligibleIds.some(id => selectedIds?.has(id))
 
   const parentRef = useRef<HTMLDivElement>(null)
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual; derleyici bu bileşeni atlar, bilinen ve zararsız
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,

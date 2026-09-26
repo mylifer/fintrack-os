@@ -44,11 +44,6 @@ export function formatSigned(v: number, currency: CurrencyCode = 'TRY'): string 
   return `${v < 0 ? '−' : '+'}${formatCurrency(Math.abs(v), currency)}`
 }
 
-export function formatAmount(amount: number, currency: CurrencyCode = 'TRY'): string {
-  if (amountsHidden) return '•••'
-  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(amount)
-}
-
 // Tutar inputları için canlı maske: yazarken TR biçimi uygular
 // (binlik = nokta, ondalık = virgül). Kural: virgül ondalık ayracıdır
 // (ilk virgül geçerli, en fazla 2 hane); kullanıcının yazdığı noktalar

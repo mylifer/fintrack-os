@@ -39,13 +39,26 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & { showCloseButton?: boolean }) {
+  // Radix kapanışta odağı yalnız <Dialog.Trigger>'a döndürür; uygulamadaki
+  // pencereler düz düğmelerle (state) açıldığından odak <body>'ye düşüyordu —
+  // klavye/ekran okuyucu kullanıcısı sayfanın başına atılıyordu. Açılış anında
+  // odaklı öğe hatırlanır ve kapanınca (hâlâ sayfadaysa) ona dönülür.
+  const [returnTo] = React.useState<HTMLElement | null>(() =>
+    typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null)
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        onCloseAutoFocus={e => {
+          onCloseAutoFocus?.(e)
+          if (e.defaultPrevented || !returnTo?.isConnected) return
+          e.preventDefault()
+          returnTo.focus()
+        }}
         className={cn(
           "bg-background fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border p-6 shadow-lg outline-none sm:max-w-md",
           "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-open:slide-in-from-left-1/2 data-open:slide-in-from-top-[48%]",
