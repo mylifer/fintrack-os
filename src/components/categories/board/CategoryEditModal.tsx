@@ -6,12 +6,18 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/button'
 import { SelectField } from '@/components/ui/Select'
-import { CategoryIconPicker } from '../CategoryIconPicker'
+import dynamic from 'next/dynamic'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import { suggestCategoryIcon, isPlaceholderIcon } from '@/lib/category-icon-suggest'
 import { DEFAULT_COLOR } from '@/lib/category-palette'
 import { parseKeywords } from '@/lib/auto-category'
 import type { Category, CategoryScope } from '@/types'
+
+// Tabler'ın tüm ikon seti (~500 KB gzip) yalnız seçici açıldığında yüklenir
+const CategoryIconPicker = dynamic(
+  () => import('@/components/categories/CategoryIconPicker').then(m => m.CategoryIconPicker),
+  { ssr: false, loading: () => <div className="h-10 rounded-xl border border-border bg-muted/40 animate-pulse" aria-hidden /> },
+)
 
 /* Kategori ekle / düzenle. Her iki görünümün ortak düzenleme yüzeyi: satır içi
    form yerine tek modal, çünkü 32px'lik dizin satırı ikon seçici + iki üst

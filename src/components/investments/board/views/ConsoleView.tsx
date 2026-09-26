@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { formatCurrency } from '@/lib/utils/currency'
 import { Highlight, SortTh } from '@/components/ui/BoardBits'
-import { PriceHistoryChart } from '@/components/investments/PriceHistoryChart'
+import { PriceHistoryChart } from '@/components/investments/LazyCharts'
 import { ClassDot, DayCell, Sparkline, WeightBar } from '../bits'
 import { fmtQty, pnlColor, fmtPct, sortRows, type AssetRow, type SortId } from '../shared'
 import { qtyTimelineFor } from '../timeline'

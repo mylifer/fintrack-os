@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { formatCurrency } from '@/lib/utils/currency'
 import { Highlight, SortTh } from '@/components/ui/BoardBits'
-import { PortfolioValueChart } from '../PortfolioValueChart'
+import { PortfolioValueChart } from '@/components/investments/LazyCharts'
 import { DayCell, WeightBar } from '../bits'
 import {
   CLASS_META, CLASS_ORDER, fmtQty, fmtPct, pctLabel, pnlColor, sortRows,

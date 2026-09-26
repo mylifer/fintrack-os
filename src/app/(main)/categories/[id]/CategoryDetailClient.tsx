@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCategoryStore, useTransactionStore } from '@/store'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
-import { CategoryIconPicker } from '@/components/categories/CategoryIconPicker'
+import dynamic from 'next/dynamic'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
@@ -17,6 +17,12 @@ import { sumByType, isFlowTx } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { subMoney } from '@/lib/utils/money'
 import { expandByCategory, txCategoryIds } from '@/lib/utils/categorySplits'
+
+// Tabler'ın tüm ikon seti (~500 KB gzip) yalnız seçici açıldığında yüklenir
+const CategoryIconPicker = dynamic(
+  () => import('@/components/categories/CategoryIconPicker').then(m => m.CategoryIconPicker),
+  { ssr: false, loading: () => <div className="h-10 rounded-xl border border-border bg-muted/40 animate-pulse" aria-hidden /> },
+)
 
 interface Props { id: string }
 
