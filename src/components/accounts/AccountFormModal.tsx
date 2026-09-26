@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input }  from '@/components/ui/Input'
 import { SelectField as Select } from '@/components/ui/Select'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
-import { useAccountStore, useTransactionStore } from '@/store'
+import { useAccountStore, useTransactionStore, usePaymentsStore } from '@/store'
+import { planIdFor } from '@/lib/payments/ids'
 import { parseCurrencyInput, formatCurrency, formatNumberForInput } from '@/lib/utils/currency'
 import { computeTransactionEffect, excludeFuture } from '@/lib/utils/calculations'
 import type { Account, AccountType, CurrencyCode } from '@/types'
@@ -59,6 +60,14 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
   const [color, setColor]             = useState(() => account?.color ?? '#1A5CA3')
   const [limitStr, setLimitStr]     = useState(() => account?.creditLimit ? formatNumberForInput(account.creditLimit) : '')
   const [stmtDay, setStmtDay]       = useState(() => account?.statementDay ?? 1)
+  // Son ödeme günü kartın ödeme PLANINDA tutulur (Ödeme Takibi ve ekstre ikisi
+  // de oradan okur). account.dueDay güvenilmez: her karta 10 yazılıyordu.
+  const cardPlan = usePaymentsStore(s => account ? s.plans.find(p => p.id === planIdFor('card', account.id)) : undefined)
+  const savePlan = usePaymentsStore(s => s.savePlan)
+  const [dueDayStr, setDueDayStr]   = useState(() => cardPlan?.dayOfMonth ? String(cardPlan.dayOfMonth) : '')
+  // %3 eski formun her karta yazdığı varsayılandı (Türkiye'de oran %20/%40) —
+  // kullanıcı girmiş sayılmaz, alan boş gelir.
+  const [minPctStr, setMinPctStr]   = useState(() => account?.minPayPct && account.minPayPct !== 3 ? String(account.minPayPct) : '')
   const [icon, setIcon]             = useState(() => account?.icon ?? '')
   const [iconUrl, setIconUrl]       = useState('')
   const [loading, setLoading]       = useState(false)
@@ -128,12 +137,20 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
         creditLimit:  parseCurrencyInput(limitStr),
         statementDay: stmtDay,
         dueDay:       account?.dueDay ?? 10,
-        minPayPct:    account?.minPayPct ?? 3,
+        minPayPct:    parseCurrencyInput(minPctStr) || undefined,
       }),
     }
 
     if (account) { await update(account.id, data) }
     else         { await add(data) }
+
+    // Son ödeme günü plana yazılır; değişmediyse (ya da plan yokken boş
+    // bırakıldıysa) plana dokunulmaz — Ödeme Takibi gereksiz plan açmasın.
+    if (isCreditCard) {
+      const day = Math.round(Number(dueDayStr))
+      const nextDay = day >= 1 && day <= 31 ? day : null
+      if (nextDay !== (cardPlan?.dayOfMonth ?? null)) await savePlan('card', data.id, { dayOfMonth: nextDay })
+    }
 
     recomputeBalances(useTransactionStore.getState().transactions)
     onClose()
@@ -219,6 +236,26 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
                   value={stmtDay}
                   onChange={e => setStmtDay(Math.min(28, Math.max(1, Number(e.target.value) || 1)))}
                   className="w-full border border-border px-3 py-2.5 text-sm font-mono bg-background dark:bg-muted focus:border-ink outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Son Ödeme Günü"
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={dueDayStr}
+                  onChange={e => setDueDayStr(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                  placeholder="Örn. 25"
+                  hint="Ekstre ve Ödeme Takibi bu günü kullanır"
+                />
+                <Input
+                  label="Asgari Ödeme (%)"
+                  inputMode="decimal"
+                  value={minPctStr}
+                  onChange={e => setMinPctStr(e.target.value.replace(/[^\d.,]/g, ''))}
+                  placeholder="Örn. 20"
+                  hint="Ekstrenizdeki oran (çoğu kartta %20 ya da %40)"
                 />
               </div>
             </>
