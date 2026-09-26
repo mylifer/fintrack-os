@@ -16,6 +16,7 @@ import { useInvestmentsView } from '@/components/layout/InvestmentsViewProvider'
 import { INVESTMENTS_VIEWS } from '@/lib/investments-view'
 import { TransactionTable } from './TransactionTable'
 import { PriceTicker } from './PriceTicker'
+import { ReturnsPanel } from './ReturnsPanel'
 import {
   SORT_LABELS, assetMeta, buildRows, fmtPct, pnlColor,
   type SortId,
@@ -288,6 +289,9 @@ export function InvestmentBoard() {
             onDeleteTx={removeTransaction}
           />
         )}
+
+        {/* ── Getiri: gerçekleşen K/Z + XIRR — aramadan bağımsız, tüm portföy */}
+        <ReturnsPanel rows={allRows} transactions={transactions} fundPrices={fundPrices} />
 
         {/* ── İşlem geçmişi ─────────────────────────────────────────
             Odak görünümü işlemleri kendi sağ panelinde varlık bazında

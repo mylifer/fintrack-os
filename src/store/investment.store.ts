@@ -13,6 +13,7 @@ import { useCategoryStore } from './categories.store'
 import { getFundTaxConfig } from './settings.store'
 import { fundTaxRate, taxOnGain } from '@/lib/utils/fund-tax'
 import { isTefasAsset, tefasCode, tefasCodesIn } from '@/lib/tefas'
+import { avgCostAt } from '@/lib/utils/investment-returns'
 import { isMarketAsset, marketKind, marketSymbol, marketAssetsIn, MARKET_KIND_META } from '@/lib/market'
 import type {
   InvestmentTransaction, InvestmentHolding,
@@ -399,9 +400,9 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
         tx.sourceAccountId, tx.asset, tx.quantity, total, tx.date, tx.createdAt,
       )
     } else if (tx.type === 'sell' && tx.targetAccountId) {
-      const holdings  = computeHoldings(get().transactions, null)
-      const holding   = holdings.find(h => h.asset === tx.asset)
-      const costBasis = holding ? tx.quantity * holding.avgCostPerUnit : 0
+      // Maliyet bazı SATIŞ ANINDAKİ ortalama maliyet (denetim #7): geriye
+      // tarihli satış, kendisinden sonraki alımların maliyetini görmemeli
+      const costBasis = tx.quantity * avgCostAt(get().transactions, tx.asset, tx)
       const linked = await createSellLinkedTxs(
         tx.targetAccountId, tx.asset, tx.quantity, total, costBasis, tx.date, tx.createdAt,
       )
@@ -441,10 +442,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
         newTx.sourceAccountId, newTx.asset, newTx.quantity, newTotal, newTx.date, newTx.createdAt,
       )
     } else if (newTx.type === 'sell' && newTx.targetAccountId) {
-      const txsWithoutOld = get().transactions.filter(t => t.id !== id)
-      const holdings      = computeHoldings(txsWithoutOld, null)
-      const holding       = holdings.find(h => h.asset === newTx.asset)
-      const costBasis     = holding ? newTx.quantity * holding.avgCostPerUnit : 0
+      const costBasis = newTx.quantity * avgCostAt(get().transactions, newTx.asset, newTx, id)
       const linked = await createSellLinkedTxs(
         newTx.targetAccountId, newTx.asset, newTx.quantity, newTotal, costBasis, newTx.date, newTx.createdAt,
       )

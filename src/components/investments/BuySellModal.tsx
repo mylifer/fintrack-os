@@ -12,6 +12,7 @@ import {
 } from '@/lib/market'
 import { useFundTaxConfig } from '@/store/settings.store'
 import { fundTaxRate, taxOnGain, fmtRate } from '@/lib/utils/fund-tax'
+import { avgCostAt } from '@/lib/utils/investment-returns'
 import type { InvestmentAsset, InvestmentTransaction, TefasFundPrice } from '@/types'
 
 // Varlık seçiminde '*_NEW' sentinel'leri: kod girilerek yeni fon / hisse /
@@ -100,6 +101,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   const prices            = useInvestmentStore(s => s.prices)
   const fundPrices        = useInvestmentStore(s => s.fundPrices)
   const getHoldings       = useInvestmentStore(s => s.getHoldings)
+  const investTxs         = useInvestmentStore(s => s.transactions)
   const accounts = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const fundTax  = useFundTaxConfig()
 
@@ -392,7 +394,12 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
      üzerinden gerçekleşen kâr, sonra kâr üzerinden stopaj. Ayar kapalıysa ya
      da fon TEFAS değilse oran 0 → blok hiç görünmez. */
   const sellRate     = txType === 'sell' && resolvedAsset ? fundTaxRate(resolvedAsset, fundTax) : 0
-  const sellCost     = qtyNum * (currentHolding?.avgCostPerUnit ?? 0)
+  // Store ile aynı: satış tarihindeki ortalama maliyet (geriye tarihli satışta
+  // sonraki alımlar sayılmaz). Yeni kayıt şimdi oluşturulmuş sayılır — store da öyle yazar.
+  const sellAvg      = txType === 'sell' && resolvedAsset
+    ? avgCostAt(investTxs, resolvedAsset, { date, createdAt: editingTx?.createdAt ?? new Date().toISOString() }, editingTx?.id)
+    : 0
+  const sellCost     = qtyNum * sellAvg
   const sellGain     = sellCost > 0.001 ? total - sellCost : 0
   const sellTax      = taxOnGain(sellGain, sellRate)
   const showSellTax  = !sellExceeded && sellRate > 0 && total > 0 && sellCost > 0.001
