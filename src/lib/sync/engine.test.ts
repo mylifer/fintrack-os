@@ -92,6 +92,7 @@ vi.mock('@/lib/db', () => ({
 let upsertImpl: (table: string, payload: Record<string, unknown>) => Promise<{ error: { message: string } | null }>
 let selectImpl: (table: string) => Promise<{ data: Row[] | null; error: { message: string } | null }>
 const upsertCalls: { table: string; payload: Record<string, unknown> }[] = []
+const selectCalls: { table: string; afterId: string | null }[] = []
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
@@ -100,13 +101,28 @@ vi.mock('@/lib/supabase', () => ({
         upsertCalls.push({ table, payload })
         return upsertImpl(table, payload)
       },
-      select: () => ({
-        eq: () => ({
-          order: () => ({
-            range: () => selectImpl(table),
-          }),
-        }),
-      }),
+      // Anahtar tabanlı sayfalama zinciri: eq → (gt) → order → limit. Sahte,
+      // selectImpl'in tüm kümesini id'ye göre sıralar, gt ve limit'i uygular —
+      // gerçek PostgREST gibi.
+      select: () => {
+        let afterId: string | null = null
+        const q = {
+          eq: () => q,
+          gt: (_col: string, v: string) => { afterId = v; return q },
+          order: () => q,
+          limit: async (n: number) => {
+            selectCalls.push({ table, afterId })
+            const res = await selectImpl(table)
+            if (res.error || !res.data) return res
+            const rows = [...res.data]
+              .sort((a, b) => a.id.localeCompare(b.id))
+              .filter(r => afterId === null || r.id > afterId)
+              .slice(0, n)
+            return { data: rows, error: null }
+          },
+        }
+        return q
+      },
     }),
   },
 }))
@@ -377,16 +393,10 @@ describe('reconcilingPull — yerel veriyi yok etmeden birleştirme', () => {
     expect(await pendingCount()).toBe(0)
   })
 
-  it('başka cihazda silinen kayıt, bekleyen düzenleme yüzünden DİRİLİR', async () => {
-    // Denetim bulgusu #22 — karakterizasyon testi (hata değil, ÇÖZÜLMEMİŞ çakışma).
-    // Cihaz A kaydı sildi (bulutta tombstone). Cihaz B'de aynı kayda ait
-    // gönderilmemiş bir düzenleme var. Çekişteki `pending` koruması bulut
-    // satırını TÜMÜYLE atlıyor — silme bilgisi de atlanıyor. B'nin snapshot'ı
-    // `deleted_at: null` taşıdığı için push kaydı buluta geri diriltir.
-    //
-    // "Doğru" davranış bir ÜRÜN kararıdır (silme mi kazanmalı, kullanıcıya mı
-    // sorulmalı), bu yüzden test `it.fails` değil: mevcut davranışı kayda
-    // geçirir. Politika değişirse bu test bilinçli olarak güncellenmelidir.
+  it('silmeden DAHA YENİ bekleyen düzenleme korunur (ör. bu cihazda "Geri al")', async () => {
+    // Denetim #21 politikası: zaman damgası kazanır. Bulut tombstone'u
+    // 2026-03-02 tarihli; yerel düzenleme şimdi damgalandı → daha yeni →
+    // yerel yazma bekler ve push kaydı bilinçli olarak diriltir.
     await localUpsert('transactions', tx('t1', { amount: 2500 }))   // B'nin bekleyen düzenlemesi
     selectImpl = async () => ({ data: [tx('t1', { deleted_at: '2026-03-02T00:00:00Z' }) as Row], error: null })
 
@@ -534,5 +544,86 @@ describe('push sırasında düzenleme — düzeltilen hata #2', () => {
     const entry = (await outbox.get('transactions:t1'))!
     expect(entry.attempts).toBe(0)
     expect((entry.snapshot as Record<string, unknown>).amount).toBe(2500)
+  })
+})
+
+describe('senkron bütünlüğü — updatedAt, silme/düzenleme çakışması, sayfalama', () => {
+  it('her yerel yazma updatedAt damgalar (upsert, patch, batch)', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-09-26T10:00:00.000Z'))
+      await localUpsert('accounts', { id: 'a1', name: 'Kasa' })
+      expect(((await outbox.get('accounts:a1'))!.snapshot as Record<string, unknown>).updatedAt).toBe('2026-09-26T10:00:00.000Z')
+
+      vi.setSystemTime(new Date('2026-09-26T11:00:00.000Z'))
+      await localPatch('accounts', 'a1', { name: 'Kasa 2' })
+      expect((await tables.accounts.get('a1'))!.updatedAt).toBe('2026-09-26T11:00:00.000Z')
+      expect(((await outbox.get('accounts:a1'))!.snapshot as Record<string, unknown>).updatedAt).toBe('2026-09-26T11:00:00.000Z')
+
+      vi.setSystemTime(new Date('2026-09-26T12:00:00.000Z'))
+      await localBatch([{ kind: 'patch', table: 'accounts', id: 'a1', patch: { name: 'Kasa 3' } }])
+      expect(((await outbox.get('accounts:a1'))!.snapshot as Record<string, unknown>).updatedAt).toBe('2026-09-26T12:00:00.000Z')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('başka cihazdaki DAHA YENİ silme, bekleyen eski düzenlemeyi yener (#21)', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-03-01T09:00:00.000Z'))
+      await localUpsert('transactions', tx('t1', { amount: 2500 }))   // çevrimdışı eski düzenleme
+    } finally {
+      vi.useRealTimers()
+    }
+    // Postgres biçiminde (mikrosaniye, +00:00) daha yeni tombstone
+    selectImpl = async () => ({ data: [tx('t1', { deleted_at: '2026-03-02T00:00:00.123456+00:00' }) as Row], error: null })
+
+    const rows = await reconcilingPull<{ id: string }>('transactions')
+
+    expect(rows).toEqual([])                                         // silme uygulandı
+    expect((await txTable.get('t1'))!.deleted_at).toBe('2026-03-02T00:00:00.123456+00:00')
+    expect(await outbox.get('transactions:t1')).toBeUndefined()      // eski düzenleme düştü, diriltmez
+    expect(notifications.some(n => n.includes('başka bir cihazda silinmişti'))).toBe(true)
+  })
+
+  it('bekleyen yazma zaten silme ise tombstone ile çakışma yoktur (dokunulmaz)', async () => {
+    await localUpsert('transactions', tx('t1'))
+    await softDelete('transactions', 't1')
+    selectImpl = async () => ({ data: [tx('t1', { deleted_at: '2099-01-01T00:00:00+00:00' }) as Row], error: null })
+    await reconcilingPull('transactions')
+    expect(await outbox.get('transactions:t1')).toBeDefined()
+  })
+
+  it('"updatedAt" sütunu yoksa (0016 öncesi) alan atılıp yeniden gönderilir, tablo hatırlanır', async () => {
+    const calls: Record<string, unknown>[] = []
+    upsertImpl = async (_t, payload) => {
+      calls.push({ ...payload })
+      return 'updatedAt' in payload
+        ? { error: { code: 'PGRST204', message: "Could not find the 'updatedAt' column of 'people' in the schema cache" } as { message: string } }
+        : { error: null }
+    }
+    await localUpsert('people', { id: 'p1', name: 'Ali' })
+    await flushOutbox()
+    expect(calls.map(c => 'updatedAt' in c)).toEqual([true, false])
+    expect(await pendingCount()).toBe(0)
+
+    // Aynı oturumda ikinci yazma doğrudan alansız gider
+    calls.length = 0
+    await localPatch('people', 'p1', { name: 'Veli' })
+    await flushOutbox()
+    expect(calls.map(c => 'updatedAt' in c)).toEqual([false])
+  })
+
+  it('anahtar tabanlı sayfalama: 2.500 satırın hepsi, her biri bir kez okunur (#23)', async () => {
+    const cloud = Array.from({ length: 2500 }, (_, i) => tx(`id-${String(i).padStart(5, '0')}`) as Row)
+    selectImpl = async () => ({ data: cloud, error: null })
+    selectCalls.length = 0
+
+    const rows = await reconcilingPull<{ id: string }>('transactions')
+
+    expect(rows).toHaveLength(2500)
+    expect(new Set(rows.map(r => r.id)).size).toBe(2500)
+    expect(selectCalls.map(c => c.afterId)).toEqual([null, 'id-00999', 'id-01999'])
   })
 })

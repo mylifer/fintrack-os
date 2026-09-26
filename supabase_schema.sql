@@ -21,7 +21,7 @@
 --
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
--- çalıştırdıktan SONRA supabase/migrations/0001..0015'i sırayla uygulayın.
+-- çalıştırdıktan SONRA supabase/migrations/0001..0016'yı sırayla uygulayın.
 -- Yalnızca burada olmayan, migration'lara bağlı parçalar:
 --   • user_backups tablosu + RLS'i            → 0005
 --   • restore_user_backup() RPC'si            → 0004, 0009 (0009 önce F1 için
@@ -35,6 +35,8 @@
 --                                                0015'i YENİDEN çalıştırın
 --   • categories."matchKeywords"              → 0014 (aşağıda da var)
 --   • savings_goals tablosu                   → 0015 (aşağıda da var)
+--   • "updatedAt" (8 tablo) + keep_newer_row
+--     tetikleyicisi + Realtime yayını       → 0016 (sütunlar aşağıda da var)
 -- Sütunlar aşağıda tutulmaya çalışılıyor ama geçmişte kaydı: `categorySplits`
 -- (0007) uzun süre yalnızca migration'da kaldı. Yeni bir sütun eklerken HEM
 -- migration'a HEM buraya yazın. (Güvenlik denetimi 2026-08-29 → H2.)
@@ -245,6 +247,16 @@ alter table public.debts add column if not exists "workspaceId" text;
 alter table public.investment_transactions add column if not exists "workspaceId" text;
 alter table public.people add column if not exists "workspaceId" text;
 alter table public.recurring_transactions add column if not exists "workspaceId" text;
+
+-- Son yazma zamanı (0016): keep_newer_row tetikleyicisi eski damgalı yazmayı reddeder.
+alter table public.accounts add column if not exists "updatedAt" text;
+alter table public.categories add column if not exists "updatedAt" text;
+alter table public.budgets add column if not exists "updatedAt" text;
+alter table public.debts add column if not exists "updatedAt" text;
+alter table public.investment_transactions add column if not exists "updatedAt" text;
+alter table public.people add column if not exists "updatedAt" text;
+alter table public.recurring_transactions add column if not exists "updatedAt" text;
+alter table public.workspaces add column if not exists "updatedAt" text;
 
 alter table public.accounts add column if not exists "name" text;
 alter table public.accounts add column if not exists "type" text;

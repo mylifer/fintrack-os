@@ -85,6 +85,15 @@ const DEXIE: Record<SyncTable, EntityTable<Row, 'id'>> = {
   savings_goals:           db.savingsGoals as unknown as EntityTable<Row, 'id'>,
 }
 
+export function isSyncTable(name: string): name is SyncTable {
+  return Object.prototype.hasOwnProperty.call(DEXIE, name)
+}
+
+/** Yerel (Dexie) satır — realtime yankı tespiti için. */
+export async function localRowOf(table: SyncTable, id: string): Promise<(Row & { updatedAt?: string }) | undefined> {
+  return DEXIE[table].get(id) as Promise<(Row & { updatedAt?: string }) | undefined>
+}
+
 // Runtime-computed fields that are NOT Supabase columns and must be stripped
 // before a row is pushed. `user_id` is stripped everywhere and re-attached at
 // flush time from the current session.
@@ -125,6 +134,15 @@ function stampWorkspace<T extends { id: string }>(table: SyncTable, entity: T): 
   if (table === 'workspaces') return entity
   const withId = entity as T & { workspaceId?: string | null }
   return { ...entity, workspaceId: withId.workspaceId ?? getActiveWorkspaceId() }
+}
+
+// Her yerel yazma satırın `updatedAt`'ini o anın ISO damgasıyla işaretler — tüm
+// tablolarda. Sunucudaki keep_newer_row tetikleyicisi (0016) daha ESKİ damgalı
+// bir yazmanın daha yeni satırı ezmesini engeller: iki cihaz aynı kaydı
+// düzenlediğinde sonra VARAN değil sonra YAPILAN düzenleme kazanır (denetim #3).
+// Realtime yankı tespiti de bu damgaya bakar (bkz. sync/realtime.ts).
+function stampTime<T extends object>(row: T, ts: string): T {
+  return { ...row, updatedAt: ts }
 }
 
 // Dexie's update() DELETES keys whose value is undefined, so a "clear this
@@ -171,7 +189,7 @@ async function putOutbox(table: SyncTable, row: { id: string }, ownerId: string 
 /** Insert-or-replace a full entity locally and enqueue it for push. */
 export async function localUpsert<T extends { id: string }>(table: SyncTable, entity: T): Promise<void> {
   const t = DEXIE[table]
-  const stamped = stampWorkspace(table, entity)
+  const stamped = stampTime(stampWorkspace(table, entity), now())
   const ownerId = await currentOwnerId()   // capture before the tx (see currentOwnerId)
   await db.transaction('rw', t, db._outbox, async () => {
     await t.put(stamped)
@@ -184,7 +202,8 @@ export async function localUpsert<T extends { id: string }>(table: SyncTable, en
 export async function localBulkUpsert<T extends { id: string }>(table: SyncTable, entities: T[]): Promise<void> {
   if (entities.length === 0) return
   const t = DEXIE[table]
-  const stamped = entities.map(e => stampWorkspace(table, e))
+  const ts = now()
+  const stamped = entities.map(e => stampTime(stampWorkspace(table, e), ts))
   const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
     await t.bulkPut(stamped)
@@ -196,7 +215,7 @@ export async function localBulkUpsert<T extends { id: string }>(table: SyncTable
 /** Apply a partial patch, then enqueue the resulting FULL row snapshot. */
 export async function localPatch(table: SyncTable, id: string, patch: Record<string, unknown>): Promise<void> {
   const t = DEXIE[table]
-  const norm = nullifyPatch(patch)
+  const norm = stampTime(nullifyPatch(patch), now())
   const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
     await t.update(id, norm)
@@ -210,7 +229,7 @@ export async function localPatch(table: SyncTable, id: string, patch: Record<str
 export async function localPatchMany(table: SyncTable, ids: string[], patch: Record<string, unknown>): Promise<void> {
   if (ids.length === 0) return
   const t = DEXIE[table]
-  const norm = nullifyPatch(patch)
+  const norm = stampTime(nullifyPatch(patch), now())
   const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
     await t.where('id').anyOf(ids).modify(norm)
@@ -249,20 +268,21 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
   for (const op of ops) involved.add(DEXIE[op.table])
 
   const ownerId = await currentOwnerId()   // capture before the tx (see currentOwnerId)
+  const ts = now()
   await db.transaction('rw', [...involved], async () => {
     for (const op of ops) {
       const t = DEXIE[op.table]
       if (op.kind === 'upsert') {
-        const stamped = stampWorkspace(op.table, op.entity)
+        const stamped = stampTime(stampWorkspace(op.table, op.entity), ts)
         await t.put(stamped)
         await putOutbox(op.table, stamped, ownerId)
       } else if (op.kind === 'patch') {
-        await t.update(op.id, nullifyPatch(op.patch))
+        await t.update(op.id, stampTime(nullifyPatch(op.patch), ts))
         const full = await t.get(op.id)
         if (full) await putOutbox(op.table, full, ownerId)
       } else {
         if (op.ids.length === 0) continue
-        await t.where('id').anyOf(op.ids).modify(nullifyPatch(op.patch))
+        await t.where('id').anyOf(op.ids).modify(stampTime(nullifyPatch(op.patch), ts))
         const rows = await t.where('id').anyOf(op.ids).toArray()
         for (const r of rows) await putOutbox(op.table, r, ownerId)
       }
@@ -280,6 +300,13 @@ let rerun = false
 let kickTimer: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let failStreak = 0
+
+// "updatedAt" sütunu henüz olmayan tablolar (0016 öncesi) — bkz. flushOutbox.
+const tablesWithoutUpdatedAt = new Set<string>()
+
+function isMissingUpdatedAtColumn(error: { code?: string; message: string }): boolean {
+  return error.code === 'PGRST204' && error.message.includes('updatedAt')
+}
 
 /** Debounced, fire-and-forget trigger to drain the outbox. */
 export function kickSync(): void {
@@ -326,8 +353,17 @@ export async function flushOutbox(): Promise<void> {
         // '' geçerli bir uuid değildir ve satırı kalıcı olarak dead-letter'a
         // düşürür. Burada (enqueue'da değil) yapılır ki kuyrukta ZATEN takılı
         // olan eski satırlar da kendiliğinden düzelsin — bkz. sync/sanitize.ts.
-        const payload = sanitizeIdRefs({ ...e.snapshot, user_id: userId })
-        const { error } = await supabase.from(e.table).upsert(payload, { onConflict: 'id' })
+        const payload: Record<string, unknown> = sanitizeIdRefs({ ...e.snapshot, user_id: userId })
+        if (tablesWithoutUpdatedAt.has(e.table)) delete payload.updatedAt
+        let { error } = await supabase.from(e.table).upsert(payload, { onConflict: 'id' })
+        // Geçiş güvenliği: 0016 uygulanmadan bu istemci yayına girdiyse tabloda
+        // "updatedAt" sütunu yoktur ve PostgREST tüm yazmayı reddeder (PGRST204).
+        // Alan atılıp aynı yazma tekrarlanır; tablo bu oturum için işaretlenir.
+        if (error && isMissingUpdatedAtColumn(error)) {
+          tablesWithoutUpdatedAt.add(e.table)
+          delete payload.updatedAt
+          ;({ error } = await supabase.from(e.table).upsert(payload, { onConflict: 'id' }))
+        }
 
         // Sürüm kapısı: push AĞ üzerinden sürerken kullanıcı aynı kaydı
         // düzenlemiş olabilir. Girdi kimliği sabittir (`table:id`), dolayısıyla
@@ -476,17 +512,18 @@ async function fetchAllRows(
   userId: string,
 ): Promise<{ rows: Record<string, unknown>[]; complete: boolean }> {
   const acc: Record<string, unknown>[] = []
-  let from = 0
+  let lastId: string | null = null
   for (;;) {
     // Defense-in-depth: scope the read to the current user. RLS already
     // enforces this server-side; the explicit filter is belt-and-suspenders
     // against a future RLS misconfiguration and is a no-op when RLS is correct.
-    const { data, error } = await supabase
-      .from(table)
-      .select('*')
-      .eq('user_id', userId)
-      .order('id', { ascending: true })   // stable order across pages
-      .range(from, from + PAGE - 1)
+    let query = supabase.from(table).select('*').eq('user_id', userId)
+    // Anahtar tabanlı sayfalama (id > son okunan): ofset/range'de sayfalar
+    // arasında başka cihaz satır eklerse sıra kayar ve bir satır İKİ sayfanın
+    // arasında kalıp hiç okunmazdı (denetim #23). Burada çekiş başında var olan
+    // hiçbir satır atlanamaz.
+    if (lastId !== null) query = query.gt('id', lastId)
+    const { data, error } = await query.order('id', { ascending: true }).limit(PAGE)
     if (error) {
       console.error(`[sync:pull:${table}]`, error)
       return { rows: acc, complete: false }
@@ -494,7 +531,7 @@ async function fetchAllRows(
     const batch = (data ?? []) as Record<string, unknown>[]
     acc.push(...batch)
     if (batch.length < PAGE) break
-    from += PAGE
+    lastId = batch[batch.length - 1].id as string
   }
   return { rows: acc, complete: true }
 }
@@ -507,6 +544,19 @@ async function fetchAllRows(
    eskiden ağ hatasında buluttaki "Genel"in yanına ikinci bir varsayılan alan ve
    çift kategoriler doğuyordu. */
 const pullAuthoritative = new Map<SyncTable, boolean>()
+
+/** Buluttaki satır bir silme mi ve bekleyen (silme olmayan) yerel yazmadan
+ *  daha mı yeni? Yerel yazmanın zamanı: snapshot'taki updatedAt damgası
+ *  (stampTime), yoksa girdinin kuyruğa giriş zamanı. Tarihler Date.parse ile
+ *  kıyaslanır — Postgres timestamptz "+00:00" ve mikrosaniye biçiminde döner. */
+function deletionIsNewer(cloudRow: Record<string, unknown>, pending: OutboxEntry): boolean {
+  const deletedAt = cloudRow.deleted_at as string | null | undefined
+  if (!deletedAt || pending.snapshot.deleted_at) return false
+  const localAt = (pending.snapshot.updatedAt as string | undefined) ?? pending.updatedAt
+  const d = Date.parse(deletedAt)
+  const l = Date.parse(localAt)
+  return Number.isFinite(d) && Number.isFinite(l) && d > l
+}
 
 export function lastPullWasAuthoritative(table: SyncTable): boolean {
   return pullAuthoritative.get(table) ?? false
@@ -556,6 +606,7 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
   const cloudIds = new Set(cloudRows.map(r => r.id as string))
   const ownerId: string | null = userId   // outbox owner tag (captured pre-tx)
   let requeued = 0
+  let deletionsWon = 0
 
   await db.transaction('rw', t, db._outbox, async () => {
     // pending MUST be read inside this tx: localUpsert commits entity+outbox
@@ -563,12 +614,25 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
     // in localRows yet, or its outbox entry is visible here. Reading pending
     // BEFORE the tx left a window where a just-created row appeared local-only
     // and got re-enqueued/overwritten incorrectly.
-    const pending = new Set(
-      (await db._outbox.where('table').equals(table).toArray()).map(e => e.entityId),
-    )
+    const pendingEntries = await db._outbox.where('table').equals(table).toArray()
+    const pending = new Map(pendingEntries.map(e => [e.entityId, e]))
     const localRows = await t.toArray()
     for (const row of cloudRows) {
-      if (pending.has(row.id as string)) continue       // don't clobber unsynced local write
+      const p = pending.get(row.id as string)
+      if (p) {
+        // Bekleyen yerel yazma genelde kazanır (henüz gönderilmedi). İSTİSNA
+        // (denetim #21): başka cihazda silinmiş bir kaydın bu cihazdaki DAHA
+        // ESKİ bir düzenlemesi silmeyi geri almamalı — "…silinmişken
+        // düzenlenmiş" kayıt buluta dirilirdi. Zaman damgası karşılaştırılır:
+        // silme yerel yazmadan yeniyse silme kazanır ve yerel yazma düşer.
+        // Yerel yazma yeniyse (ör. bu cihazda "Geri al") korunur.
+        if (deletionIsNewer(row, p)) {
+          await t.put(row as unknown as { id: string })
+          await db._outbox.delete(p.id)
+          deletionsWon++
+        }
+        continue                                          // don't clobber unsynced local write
+      }
       await t.put(row as unknown as { id: string })
     }
     for (const lr of localRows) {
@@ -580,6 +644,12 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
   })
 
   pullAuthoritative.set(table, true)
+
+  if (deletionsWon > 0) {
+    useSyncStatusStore.getState().notify(
+      `${deletionsWon} kayıt (${table}) başka bir cihazda silinmişti; bu cihazdaki daha eski düzenlemesi uygulanmadı.`,
+    )
+  }
 
   if (requeued > 0) {
     console.warn(`[sync:requeue] ${table}: ${requeued} local row(s) missing from cloud — re-enqueued for push`)

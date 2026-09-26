@@ -61,7 +61,8 @@ function buildCsp(nonce: string): string {
     // Browser calls: same-origin API, Supabase (direct), speed-insights vitals,
     // and Iconify's icon API. The price CDNs are server-side only, so they are
     // intentionally NOT listed here.
-    `connect-src 'self'${supa ? ` ${supa}` : ''} https://vitals.vercel-insights.com https://api.iconify.design`,
+    // wss: Supabase Realtime (canlı senkron, sync/realtime.ts) aynı host'a WebSocket açar.
+    `connect-src 'self'${supa ? ` ${supa} ${supa.replace(/^https:/, 'wss:')}` : ''} https://vitals.vercel-insights.com https://api.iconify.design`,
     `font-src 'self' data:`,
     `object-src 'none'`,
     `base-uri 'self'`,

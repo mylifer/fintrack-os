@@ -4,7 +4,8 @@ import { useEffect, type ReactNode } from 'react'
 import { useAccountStore, useTransactionStore, useInvestmentStore, useUIStore } from '@/store'
 import { useWorkspaceStore } from '@/store/workspace.store'
 import { startAutoSync, guardUserSwitch, lastPullWasAuthoritative, type SyncTable } from '@/lib/sync/engine'
-import { reloadAllStores } from '@/lib/reload-stores'
+import { reloadAllStores, reloadTable } from '@/lib/reload-stores'
+import { startRealtime } from '@/lib/sync/realtime'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { currentMonthYear, today } from '@/lib/utils/date'
 import { maybeAutoBackup } from '@/lib/auto-backup'
@@ -60,6 +61,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (BACKUP_TABLES.every(t => lastPullWasAuthoritative(t))) {
         maybeAutoBackup().catch(err => console.warn('[auto-backup]', err))
       }
+
+      // Canlı senkron: başka cihazdaki değişiklik ilgili tabloyu yeniden yükler
+      // (bkz. sync/realtime.ts). init sayfa oturumunda bir kez koştuğu için
+      // abonelik de bir kez açılır; çıkış HARD reload olduğundan kapatma gerekmez.
+      startRealtime(table => {
+        reloadTable(table).catch(err => console.error(`[realtime:${table}]`, err))
+      })
 
       // Ask the browser to keep our IndexedDB data across eviction pressure.
       // Without this, Safari can wipe local data after ~7 days of no visits.

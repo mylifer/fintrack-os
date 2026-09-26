@@ -3,9 +3,10 @@
 import {
   useAccountStore, useTransactionStore, useCategoryStore,
   useBudgetStore, useDebtStore, useInvestmentStore, usePeopleStore,
-  useRecurringStore, usePaymentsStore, useGoalsStore,
+  useRecurringStore, usePaymentsStore, useGoalsStore, useWorkspaceStore,
 } from '@/store'
 import { runCategoryRestructurePass } from '@/lib/category-restructure'
+import type { SyncTable } from '@/lib/sync/engine'
 
 /* Tüm veri store'larını (fiyat feed'i / sync altyapısı HARİÇ — bunlar
    workspace'e özgü değil, uygulama ömrü boyunca bir kez kurulur) yeniden
@@ -51,4 +52,38 @@ export async function reloadAllStores(): Promise<void> {
 
   const { transactions } = useTransactionStore.getState()
   recomputeBalances(transactions)
+}
+
+/** Tek bir tablonun store'unu yeniden yükler — canlı senkron (sync/realtime)
+ *  başka cihazdaki bir değişikliği bildirdiğinde. Bakiyeler hesap ya da işlem
+ *  değişince yeniden hesaplanır; aktif çalışma alanı düştüyse hepsi yenilenir. */
+export async function reloadTable(table: SyncTable): Promise<void> {
+  const recompute = () =>
+    useAccountStore.getState().recomputeBalances(useTransactionStore.getState().transactions)
+
+  switch (table) {
+    case 'transactions':
+      await useTransactionStore.getState().load()
+      recompute()
+      break
+    case 'accounts':
+      await useAccountStore.getState().load()
+      recompute()
+      break
+    case 'categories':             await useCategoryStore.getState().load(); break
+    case 'budgets':                await useBudgetStore.getState().load(); break
+    case 'debts':                  await useDebtStore.getState().load(); break
+    case 'investment_transactions': await useInvestmentStore.getState().load(); break
+    case 'people':                 await usePeopleStore.getState().load(); break
+    case 'recurring_transactions': await useRecurringStore.getState().load(); break
+    case 'payment_plans':
+    case 'payment_occurrences':    await usePaymentsStore.getState().load(); break
+    case 'savings_goals':          await useGoalsStore.getState().load(); break
+    case 'workspaces': {
+      const before = useWorkspaceStore.getState().activeId
+      await useWorkspaceStore.getState().load()
+      if (useWorkspaceStore.getState().activeId !== before) await reloadAllStores()
+      break
+    }
+  }
 }
