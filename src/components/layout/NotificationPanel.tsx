@@ -88,8 +88,8 @@ export function NotificationPanel({
   // Aynı öğede çift tık / eşzamanlı aksiyon koruması
   const [busyKey, setBusyKey] = useState<string | null>(null)
 
-  const due = notifications.filter(n => n.kind === 'recurring-due' || n.kind === 'future-tx-due' || n.kind === 'payment-due')
-  const upcoming = notifications.filter(n => n.kind === 'recurring-upcoming' || n.kind === 'future-tx-upcoming' || n.kind === 'payment-upcoming')
+  const due = notifications.filter(n => n.kind === 'recurring-due' || n.kind === 'future-tx-due' || n.kind === 'payment-due' || n.kind === 'deposit-matured')
+  const upcoming = notifications.filter(n => n.kind === 'recurring-upcoming' || n.kind === 'future-tx-upcoming' || n.kind === 'payment-upcoming' || n.kind === 'deposit-upcoming')
   const budgetAlerts = notifications
     .filter((n): n is Extract<AppNotification, { kind: 'budget-alert' }> => n.kind === 'budget-alert')
     .sort((a, b) => b.budget.percentUsed - a.budget.percentUsed)
@@ -265,6 +265,25 @@ export function NotificationPanel({
         )
       }
 
+      case 'deposit-matured':
+        return (
+          <RowShell key={`dm:${n.account.id}`}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-semibold text-foreground truncate">{n.account.name}</span>
+                <Badge variant="amber">Vade doldu</Badge>
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                Vadeli mevduat · vade sonu {fmtDay(n.end)} · net faiz işlenmedi
+              </div>
+              <RowActions>
+                <Link href={`/accounts/${n.account.id}`} onClick={onClose} className={linkBtn}>Hesapta işle</Link>
+              </RowActions>
+            </div>
+            <AmountText type="income" amount={n.net} currency={n.account.currency} />
+          </RowShell>
+        )
+
       default:
         return null
     }
@@ -351,6 +370,20 @@ export function NotificationPanel({
           </RowShell>
         )
       }
+
+      case 'deposit-upcoming':
+        return (
+          <RowShell key={`du:${n.account.id}`}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-medium text-foreground truncate">{n.account.name}</span>
+                <Badge variant="secondary">Vade {fmtDay(n.end)}</Badge>
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5 truncate">Vadeli mevduat · tahmini net faiz</div>
+            </div>
+            <AmountText type="income" amount={n.net} currency={n.account.currency} />
+          </RowShell>
+        )
 
       default:
         return null

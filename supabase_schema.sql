@@ -21,7 +21,7 @@
 --
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
--- çalıştırdıktan SONRA supabase/migrations/0001..0017'yi sırayla uygulayın.
+-- çalıştırdıktan SONRA supabase/migrations/0001..0018'i sırayla uygulayın.
 -- Yalnızca burada olmayan, migration'lara bağlı parçalar:
 --   • user_backups tablosu + RLS'i            → 0005
 --   • restore_user_backup() RPC'si            → 0004, 0009 (0009 önce F1 için
@@ -270,6 +270,11 @@ alter table public.accounts add column if not exists "creditLimit" double precis
 alter table public.accounts add column if not exists "statementDay" double precision;
 alter table public.accounts add column if not exists "dueDay" double precision;
 alter table public.accounts add column if not exists "minPayPct" double precision;
+-- Vadeli mevduat (0018)
+alter table public.accounts add column if not exists "depositRate" double precision;
+alter table public.accounts add column if not exists "depositStart" text;
+alter table public.accounts add column if not exists "depositEnd" text;
+alter table public.accounts add column if not exists "depositTaxPct" double precision;
 
 alter table public.transactions add column if not exists "type" text;
 alter table public.transactions add column if not exists "amount" double precision;

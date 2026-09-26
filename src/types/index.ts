@@ -47,6 +47,13 @@ export interface Account {
   statementDay?: number     // 1–28: billing cycle close day
   dueDay?: number           // Payment due day after statement
   minPayPct?: number        // Minimum payment % (default: 3)
+
+  // Vadeli mevduat (type 'savings') — bkz. lib/utils/deposit.ts. Yalnız koşul
+  // girildiğinde yazılır (0018 migration'ı öncesi hesapları etkilemesin).
+  depositRate?: number | null    // yıllık brüt faiz %
+  depositStart?: string | null   // vade başlangıcı (yyyy-MM-dd)
+  depositEnd?: string | null     // vade sonu (yyyy-MM-dd)
+  depositTaxPct?: number | null  // stopaj %
 }
 
 // ─── Person ────────────────────────────────────────────────────────────────

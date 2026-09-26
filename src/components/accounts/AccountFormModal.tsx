@@ -10,6 +10,9 @@ import { useAccountStore, useTransactionStore, usePaymentsStore } from '@/store'
 import { planIdFor } from '@/lib/payments/ids'
 import { parseCurrencyInput, formatCurrency, formatNumberForInput } from '@/lib/utils/currency'
 import { computeTransactionEffect, excludeFuture } from '@/lib/utils/calculations'
+import { DEFAULT_DEPOSIT_TAX, projectDeposit } from '@/lib/utils/deposit'
+import { today } from '@/lib/utils/date'
+import { addDays, format, parseISO } from 'date-fns'
 import type { Account, AccountType, CurrencyCode } from '@/types'
 
 interface AccountFormModalProps {
@@ -34,6 +37,9 @@ const CURRENCY_OPTIONS = [
   { value: 'EUR', label: '€ Euro' },
   { value: 'GBP', label: '£ İngiliz Sterlini' },
 ]
+
+// Bankaların sık kullandığı vade süreleri (gün)
+const DEPOSIT_TERMS = [32, 92, 181, 365]
 
 const COLORS = ['#111110','#1A5CA3','#1E7A3E','#B83232','#D4A853','#7B3F9B','#C4732A','#6B6B67']
 
@@ -68,6 +74,11 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
   // %3 eski formun her karta yazdığı varsayılandı (Türkiye'de oran %20/%40) —
   // kullanıcı girmiş sayılmaz, alan boş gelir.
   const [minPctStr, setMinPctStr]   = useState(() => account?.minPayPct && account.minPayPct !== 3 ? String(account.minPayPct) : '')
+  // Vadeli mevduat koşulları (yalnız 'savings'); boş bırakılırsa hiç yazılmaz
+  const [depRateStr, setDepRateStr] = useState(() => account?.depositRate ? String(account.depositRate).replace('.', ',') : '')
+  const [depTaxStr, setDepTaxStr]   = useState(() => account?.depositTaxPct != null ? String(account.depositTaxPct).replace('.', ',') : '')
+  const [depStart, setDepStart]     = useState(() => account?.depositStart ?? '')
+  const [depEnd, setDepEnd]         = useState(() => account?.depositEnd ?? '')
   const [icon, setIcon]             = useState(() => account?.icon ?? '')
   const [iconUrl, setIconUrl]       = useState('')
   const [loading, setLoading]       = useState(false)
@@ -76,6 +87,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
   const [confirmText, setConfirmText]         = useState('')
 
   const isCreditCard = type === 'credit_card'
+  const isSavings    = type === 'savings'
   const canDelete    = confirmText === CONFIRM_WORD
 
   const txs            = useTransactionStore(s => s.transactions)
@@ -110,10 +122,26 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
     : parseCurrencyInput(initialBalStr)              // işaret kullanıcının girdiği gibi
   const computedBalance = initialBalNum + txEffect
 
+  const depRate     = parseCurrencyInput(depRateStr)
+  const depTax      = depTaxStr.trim() ? parseCurrencyInput(depTaxStr) : DEFAULT_DEPOSIT_TAX
+  const depositUsed = isSavings && !!(depRateStr.trim() || depStart || depEnd)
+  const depositOk   = depRate > 0 && !!depStart && !!depEnd && depEnd > depStart
+  const depPreview  = depositUsed && depositOk
+    ? projectDeposit(computedBalance, { rate: depRate, start: depStart, end: depEnd, taxPct: depTax }, today())
+    : null
+  const hadDeposit  = !!(account?.depositRate || account?.depositStart || account?.depositEnd)
+
+  function setTermDays(days: number) {
+    const start = depStart || today()
+    setDepStart(start)
+    setDepEnd(format(addDays(parseISO(start), days), 'yyyy-MM-dd'))
+  }
+
   async function handleSubmit() {
     const e: Record<string, string> = {}
     if (!name.trim()) e.name = 'Ad girin'
     if (isCreditCard && !parseCurrencyInput(limitStr)) e.limit = 'Limit girin'
+    if (depositUsed && !depositOk) e.deposit = 'Faiz oranı, vade başlangıcı ve (başlangıçtan sonraki) vade sonu gerekli'
     setErrors(e)
     if (Object.keys(e).length > 0) return
 
@@ -138,6 +166,14 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
         statementDay: stmtDay,
         dueDay:       account?.dueDay ?? 10,
         minPayPct:    parseCurrencyInput(minPctStr) || undefined,
+      }),
+      // Vade sütunları (0018) yalnız koşul girildiğinde ya da eskisi silinirken
+      // yazılır — hiç vade kullanmayan hesap bu sütunlara hiç dokunmaz.
+      ...((depositUsed || hadDeposit) && {
+        depositRate:   depositUsed ? depRate : null,
+        depositStart:  depositUsed ? depStart : null,
+        depositEnd:    depositUsed ? depEnd : null,
+        depositTaxPct: depositUsed ? depTax : null,
       }),
     }
 
@@ -259,6 +295,54 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
                 />
               </div>
             </>
+          )}
+
+          {isSavings && (
+            <div className="flex flex-col gap-3 rounded-xl border border-border/60 p-3">
+              <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground">
+                Vade Koşulları <span className="normal-case font-normal">(isteğe bağlı)</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Yıllık Faiz (%)"
+                  inputMode="decimal"
+                  value={depRateStr}
+                  onChange={e => setDepRateStr(e.target.value.replace(/[^\d.,]/g, ''))}
+                  placeholder="Örn. 42"
+                  hint="Brüt, bankanın verdiği oran"
+                />
+                <Input
+                  label="Stopaj (%)"
+                  inputMode="decimal"
+                  value={depTaxStr}
+                  onChange={e => setDepTaxStr(e.target.value.replace(/[^\d.,]/g, ''))}
+                  placeholder={String(DEFAULT_DEPOSIT_TAX).replace('.', ',')}
+                  hint="Boşsa %17,5"
+                />
+                <Input label="Vade Başlangıcı" type="date" value={depStart} onChange={e => setDepStart(e.target.value)} />
+                <Input label="Vade Sonu" type="date" value={depEnd} onChange={e => setDepEnd(e.target.value)} />
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-muted-foreground mr-1">Süre:</span>
+                {DEPOSIT_TERMS.map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setTermDays(d)}
+                    className="px-2 h-6 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent"
+                  >{d} gün</button>
+                ))}
+              </div>
+              {errors.deposit && <p className="text-xs text-destructive">{errors.deposit}</p>}
+              {depPreview && (
+                <p className="text-xs text-muted-foreground">
+                  {depPreview.days} gün · tahmini net faiz{' '}
+                  <span className="font-semibold text-foreground">{formatCurrency(depPreview.net, currency)}</span>
+                  {' '}(brüt {formatCurrency(depPreview.gross, currency)}, stopaj {formatCurrency(depPreview.tax, currency)}) —
+                  anapara güncel bakiye
+                </p>
+              )}
+            </div>
           )}
 
           {/* Color picker */}

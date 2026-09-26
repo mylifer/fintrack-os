@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { addDays, format, parseISO } from 'date-fns'
-import type { BudgetWithSpent, MonthYear, RecurringTransaction, Transaction } from '@/types'
+import type { Account, BudgetWithSpent, MonthYear, RecurringTransaction, Transaction } from '@/types'
 import { useRecurringStore } from './recurring.store'
 import { useTransactionStore } from './transactions.store'
 import { useAccountStore } from './accounts.store'
@@ -16,6 +16,7 @@ import { recurringOccurrences } from '@/lib/utils/recurrence'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { today, currentMonthYear } from '@/lib/utils/date'
 import { awaitsApproval } from '@/lib/utils/calculations'
+import { depositTerms, projectDeposit } from '@/lib/utils/deposit'
 import { assignCardPayments, buildSchedule, buildTargets, monthOf, type PaymentRow } from '@/lib/payments/schedule'
 
 /* ── Bildirim merkezi ─────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ import { assignCardPayments, buildSchedule, buildTargets, monthOf, type PaymentR
      • ödeme takibi: son günü bugün ya da geçmiş, ödenmemiş kart/borç ödemeleri
        (lib/payments/schedule.ts — sayfadaki "Gecikmiş/Bugün" ile aynı satırlar),
      • yaklaşan (7 gün) pending işlemler + tekrarlayanlar + ödemeler (salt bilgi),
+     • vadesi dolan (aksiyon: faizi işle) ve 7 gün içinde dolacak vadeli mevduat,
      • bu ay uyarı eşiğini geçen ya da aşılan bütçeler (salt bilgi — rozete
        sayılmaz: ay boyunca kapatılamaz, sayaç hep dolu kalırdı. Onun yerine
        zil, GÖRÜLMEMİŞ bir bütçe uyarısında nokta gösterir; bkz. budgetAlertKey).
@@ -43,6 +45,8 @@ export type AppNotification =
   | { kind: 'payment-due'; row: PaymentRow }          // kart/borç ödemesi: son günü bugün ya da geçti
   | { kind: 'payment-upcoming'; row: PaymentRow }     // kart/borç ödemesi: 7 gün içinde
   | { kind: 'budget-alert'; budget: BudgetWithSpent; month: MonthYear } // bu ay: eşik geçildi ya da aşıldı
+  | { kind: 'deposit-matured'; account: Account; end: string; net: number }   // vade doldu, faiz işlenmedi
+  | { kind: 'deposit-upcoming'; account: Account; end: string; net: number }  // vade 7 gün içinde
 
 const UPCOMING_DAYS = 7
 
@@ -131,6 +135,16 @@ export function getNotifications(): AppNotification[] {
     }
   }
 
+  // Vadeli mevduat — faiz işlenince koşullar ileri kayar ya da silinir (bkz.
+  // deposit-actions), bu yüzden dolmuş vade bildirimi kendiliğinden düşer.
+  for (const a of accounts) {
+    if (a.isArchived) continue
+    const terms = depositTerms(a)
+    if (!terms || terms.end > horizon) continue
+    const net = projectDeposit(a.balance, terms, todayStr).net
+    out.push({ kind: terms.end <= todayStr ? 'deposit-matured' : 'deposit-upcoming', account: a, end: terms.end, net })
+  }
+
   // Bütçeler — Bütçeler sayfasıyla AYNI taban (taksitler satın alma ayına
   // toplu yazılır), yoksa sayfa "ok" derken bildirim "aşıldı" diyebilirdi.
   const month = currentMonthYear()
@@ -151,10 +165,10 @@ export function currentBudgetAlertKeys(list: AppNotification[]): string[] {
   return list.flatMap(n => (n.kind === 'budget-alert' ? [budgetAlertKey(n)] : []))
 }
 
-/** Rozet sayısı = aksiyon bekleyenler (recurring-due + future-tx-due + payment-due). */
+/** Rozet sayısı = aksiyon bekleyenler (recurring-due + future-tx-due + payment-due + deposit-matured). */
 export function getActionableCount(list: AppNotification[] = getNotifications()): number {
   return list.reduce(
-    (n, x) => n + (x.kind === 'recurring-due' || x.kind === 'future-tx-due' || x.kind === 'payment-due' ? 1 : 0),
+    (n, x) => n + (x.kind === 'recurring-due' || x.kind === 'future-tx-due' || x.kind === 'payment-due' || x.kind === 'deposit-matured' ? 1 : 0),
     0,
   )
 }

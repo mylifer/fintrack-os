@@ -22,6 +22,7 @@ import { Button }             from '@/components/ui/button'
 import { SelectField }        from '@/components/ui/Select'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
 import { CardStatementPanel } from '@/components/accounts/CardStatementPanel'
+import { DepositPanel } from '@/components/accounts/DepositPanel'
 import { TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import { TxViewsShell } from '@/components/transactions/views/TxViewsShell'
 import { DEFAULT_TX_VIEW, type TxViewId } from '@/lib/tx-view'
@@ -292,6 +293,7 @@ export default function AccountDetailClient({
       </div>
 
       {account.type === 'credit_card' && <CardStatementPanel account={account} />}
+      {account.type === 'savings' && <DepositPanel account={account} />}
 
       {/* Search + filters */}
       <div className="flex items-center flex-wrap gap-2 px-6 py-3 border-b border-border flex-shrink-0">
