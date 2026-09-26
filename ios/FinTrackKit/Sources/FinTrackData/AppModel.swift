@@ -25,6 +25,10 @@ public final class AppModel {
     public private(set) var categories: [Category] = []
     public private(set) var budgets: [Budget] = []
     public private(set) var transactions: [Transaction] = []   // tarih ↓, createdAt ↓
+    /// Analitik toplamlar için: taksitli satın almalar satın alma ayına tek satır
+    /// (web collapseInstallments). Aylık gelir/gider, kategori dağılımı ve bütçeler
+    /// BUNU okur; bakiye/limit ham `transactions`'ı.
+    public private(set) var reportTransactions: [Transaction] = []
     public private(set) var balances: [String: Double] = [:]  // hesap id → kendi para biriminde
     public private(set) var fx = FX()
 
@@ -181,6 +185,7 @@ public final class AppModel {
     }
 
     private func recomputeBalances() {
+        reportTransactions = Installments.collapse(transactions, fx: fx)
         let posted = Calc.excludeFuture(transactions)
         var out: [String: Double] = [:]
         for a in accounts { out[a.id] = Calc.balance(of: a, posted: posted, fx: fx) }
@@ -208,7 +213,7 @@ public final class AppModel {
     }
 
     public func budgetStates(_ my: MonthYear = .current()) -> [Calc.BudgetState] {
-        budgets.map { Calc.enrichBudget($0, transactions, my, categories: categories, fx: fx) }
+        budgets.map { Calc.enrichBudget($0, reportTransactions, my, categories: categories, fx: fx) }
             .sorted { $0.percentUsed > $1.percentUsed }
     }
 

@@ -303,3 +303,51 @@ struct WriteRowTests {
         #expect(Fmt.parseAmount("-12,5") == -12.5)
     }
 }
+
+/* Web installments.test.ts — collapseInstallments ile aynı girdiler. */
+@Suite("taksit indirgeme (collapseInstallments)")
+struct CollapseTests {
+    func group(_ id: String = "g-1", _ amounts: [Double] = [4000, 4000, 4000]) -> [Transaction] {
+        let dates = ["2026-01-15", "2026-02-15", "2026-03-15", "2026-04-15"]
+        return amounts.enumerated().map { i, a in
+            tx(["id": .string("\(id)-\(i + 1)"), "amount": .number(a), "amountTry": .number(a),
+                "date": .string(dates[i]), "categoryId": "cat-ev", "isInstallment": true,
+                "installTotal": .number(Double(amounts.count)), "installIndex": .number(Double(i + 1)),
+                "installGroupId": .string(id)])
+        }
+    }
+
+    @Test func collapsesToPurchaseMonth() {
+        let out = Installments.collapse(group())
+        #expect(out.count == 1)
+        #expect(out[0].date == "2026-01-15")
+        #expect(out[0].amount == 12000)
+        #expect(out[0].amountTry == 12000)
+        #expect(out[0].installTotal == 3)
+        #expect(out[0].installIndex == nil)
+        #expect(out[0].id == "g-1-1")
+    }
+    @Test func keepsKurus() {
+        #expect(Installments.collapse(group("g-2", [333.34, 333.33, 333.33]))[0].amount == 1000)
+    }
+    @Test func reversedOrderStillPicksFirst() {
+        let out = Installments.collapse(group().reversed())
+        #expect(out[0].date == "2026-01-15")
+    }
+    @Test func plainRowsAndOrderKept() {
+        let a = tx(["id": "p1", "date": "2026-01-01"]), b = tx(["id": "p2", "date": "2026-02-01"])
+        let out = Installments.collapse([a] + group() + [b])
+        #expect(out.map(\.id) == ["p1", "g-1-1", "p2"])
+    }
+    @Test func futureInstallmentsCountInPurchaseMonth() {
+        let posted = Calc.excludeFuture(Installments.collapse(group()), asOf: "2026-01-31")
+        #expect(Calc.periodFlow(posted, from: "2026-01-01", to: "2026-01-31", fx: fx, asOf: "2026-01-31").expense == 12000)
+        let raw = Calc.excludeFuture(group(), asOf: "2026-01-31")
+        #expect(Calc.periodFlow(raw, from: "2026-01-01", to: "2026-01-31", fx: fx, asOf: "2026-01-31").expense == 4000)
+    }
+    @Test func refundInstallmentReducesTotal() {
+        let rows = group("g-3", [1000, 1000]) + [tx(["amount": -400, "amountTry": -400, "date": "2026-03-01",
+            "isInstallment": true, "installTotal": 2, "installIndex": 3, "installGroupId": "g-3"])]
+        #expect(Installments.collapse(rows)[0].amount == 1600)
+    }
+}

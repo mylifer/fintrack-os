@@ -10,7 +10,8 @@ struct SummaryView: View {
     @State private var editing: Transaction?
 
     private var month: MonthYear { .current() }
-    private var flow: Calc.Flow { Calc.monthlyFlow(model.transactions, month, fx: model.fx) }
+    /// Web panosuyla aynı: taksitli alım satın alma ayına tam tutarla (collapseInstallments)
+    private var flow: Calc.Flow { Calc.monthlyFlow(model.reportTransactions, month, fx: model.fx) }
 
     var body: some View {
         NavigationStack {
@@ -78,7 +79,7 @@ struct SummaryView: View {
     /// Bu ayın en çok harcanan 3 üst kategorisi (alt kategoriler üstüne toplanır).
     private var topCategories: [(name: String, amount: Double, color: Color)]? {
         let r = DateUtil.monthRange(month)
-        let inMonth = model.transactions.filter {
+        let inMonth = model.reportTransactions.filter {
             Calc.isFlow($0) && DateUtil.isInRange($0.date, r.from, r.to)
         }
         var byTop: [String: Double] = [:]

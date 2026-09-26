@@ -125,14 +125,15 @@ struct BudgetDetailView: View {
     private var txs: [Transaction] {
         let ids = Calc.expandCategoryIds(Calc.budgetCategoryIds(budget), model.categories)
         let r = DateUtil.monthRange(month)
-        return model.transactions.filter { t in
+        return model.reportTransactions.filter { t in
             t.type == .expense && Calc.isFlow(t) && DateUtil.isInRange(t.date, r.from, r.to)
                 && Calc.categorySlices(t).contains { $0.categoryId.map(ids.contains) ?? false }
         }
+        .sorted { $0.date.prefix(10) != $1.date.prefix(10) ? $0.date.prefix(10) > $1.date.prefix(10) : $0.createdAt > $1.createdAt }
     }
 
     var body: some View {
-        let state = Calc.enrichBudget(budget, model.transactions, month, categories: model.categories, fx: model.fx)
+        let state = Calc.enrichBudget(budget, model.reportTransactions, month, categories: model.categories, fx: model.fx)
         TransactionList(transactions: txs, editing: $editing, pendingDelete: $pendingDelete)
             .safeAreaInset(edge: .top) {
                 BudgetProgressRow(state: state)
