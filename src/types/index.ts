@@ -78,6 +78,14 @@ export type TransactionType = 'expense' | 'income' | 'transfer'
 // Tek bir işlemin birden fazla kategoriye bölünmüş payı. Tutarlar işlemin
 // KENDİ para birimindedir (amount ile aynı) ve toplamları amount'a TAM eşit
 // olmak zorundadır — doğrulama lib/utils/categorySplits.ts'te.
+/** Supabase Storage "receipts" kovasındaki dosya (yol: <user_id>/<tx_id>-<rastgele>.<uzantı>). */
+export interface Receipt {
+  path: string
+  name: string   // özgün dosya adı
+  type: string   // MIME
+  size: number   // bayt (yüklenen, küçültülmüş hal)
+}
+
 export interface CategorySplit {
   categoryId: string
   amount: number
@@ -123,6 +131,9 @@ export interface Transaction {
   // yazılmış satırlarda yoktur; açıklama eşleşmesi fallback olarak korunur
   // (bkz. lib/utils/debt-links.ts — 0006'daki P&L bağıyla aynı desen).
   debtPrincipalId?: string
+
+  // Fiş / fatura eki (0019) — dosya Storage'da, burada yalnız yolu. Bkz. lib/receipts.ts
+  receipt?: Receipt | null
   refundOfId?: string       // Set on refund entries → the original transaction they offset (S4)
   systemKind?: 'reconciliation' // First-class marker for system ghost entries (S7); see reconciliation.ts
 

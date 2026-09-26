@@ -308,6 +308,7 @@ const DateColumnRow = memo(function DateColumnRow({
         <span className="truncate text-xs font-medium leading-none text-foreground">
           {tx.description}
         </span>
+        {tx.receipt && <span className="text-[11px] opacity-70" title="Fiş ekli" aria-label="Fiş ekli">📎</span>}
         {tx.isInstallment && <Badge tone="orange">{installmentLabel(tx)}</Badge>}
         {isRefund  && <Badge tone="green">İade</Badge>}
         {projected && <Badge tone="sky">Planlandı</Badge>}

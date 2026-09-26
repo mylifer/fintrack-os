@@ -21,12 +21,13 @@
 --
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
--- çalıştırdıktan SONRA supabase/migrations/0001..0018'i sırayla uygulayın.
+-- çalıştırdıktan SONRA supabase/migrations/0001..0019'u sırayla uygulayın.
 -- Yalnızca burada olmayan, migration'lara bağlı parçalar:
 --   • user_backups tablosu + RLS'i            → 0005
 --   • restore_user_backup() RPC'si            → 0004, 0009 (0009 önce F1 için
 --                                                düzeltilmiş olmalı)
 --   • investment_transactions.asset CHECK'i   → 0003, 0017 (BIST:/CRYPTO:)
+--   • "receipts" Storage kovası + politikaları → 0019 (sütun aşağıda da var)
 --   • rls_auto_enable() + ensure_rls trigger  → 0010
 --   • MFA (aal2) kısıtlayıcı politikaları +
 --     delete_my_account() RPC'si              → 0013 — bu dosya TÜM politikaları
@@ -305,6 +306,7 @@ alter table public.transactions add column if not exists "updatedAt" text;
 -- upsert'i PGRST204 alır ve HER işlem dead-letter'a düşerdi
 -- (güvenlik denetimi 2026-08-29 → H2).
 alter table public.transactions add column if not exists "categorySplits" jsonb;
+alter table public.transactions add column if not exists "receipt" jsonb;  -- 0019
 
 -- ── Onay kapısı (bildirim merkezi) ───────────────────────────────────────────
 -- "approvalStatus": null = legacy satır (tarihi gelince otomatik post — mevcut

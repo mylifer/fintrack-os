@@ -334,6 +334,7 @@ const RulelessRow = memo(function RulelessRow({
         <span className="truncate text-xs font-medium leading-none text-foreground">
           {tx.description}
         </span>
+        {tx.receipt && <span className="text-[11px] opacity-70" title="Fiş ekli" aria-label="Fiş ekli">📎</span>}
         {tx.isInstallment && (
           <Badge tone="orange">{installmentLabel(tx)}</Badge>
         )}

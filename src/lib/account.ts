@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { clearLocalData } from './auth'
+import { removeAllReceipts } from './receipts'
 
 /* ── Hesap yaşam döngüsü (Ayarlar → Hesap) ───────────────────────────────────
    Şifre/e-posta değiştirme ve hesap silme gibi geri dönüşü zor işlemler, kilidi
@@ -32,6 +33,15 @@ export async function verifyCurrentPassword(email: string, password: string): Pr
  *  delete_my_account), ardından cihazdaki kalıntıyı temizleyip giriş
  *  sayfasına HARD navigasyon yapar. Başarısızlıkta hiçbir şey silinmemiştir. */
 export async function deleteMyAccount(): Promise<void> {
+  // Fiş dosyaları ÖNCE: delete_my_account SQL'den Storage'ı silemez; hesap
+  // gittikten sonra bu dosyalara kimse erişip silemezdi (0019).
+  try {
+    await removeAllReceipts()
+  } catch (err) {
+    console.error('[account:delete:receipts]', err)
+    throw new Error('Fiş dosyaları silinemedi — hesabınız silinmedi, tekrar deneyin.')
+  }
+
   const { error } = await supabase.rpc('delete_my_account')
   if (error) {
     // PGRST202: fonksiyon yok → migration henüz uygulanmamış

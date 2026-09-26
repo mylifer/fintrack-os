@@ -411,6 +411,7 @@ const TableTxRow = memo(function TableTxRow({
         <div className="min-w-0 overflow-hidden">
           <div className="text-xs font-medium text-foreground truncate leading-none">
             {tx.description}
+            {tx.receipt && <span className="ml-1 text-[11px] opacity-70" title="Fiş ekli" aria-label="Fiş ekli">📎</span>}
             {tx.isInstallment && (
               <span className="ml-1 font-normal text-orange-500/80">
                 ({installmentLabel(tx)})
@@ -611,6 +612,7 @@ const CardTxRow = memo(function CardTxRow({
       <div className="flex-1 min-w-0">
         <div className="text-[13px] font-medium text-foreground truncate leading-snug">
           {tx.description}
+          {tx.receipt && <span className="ml-1 text-[11px] opacity-70" title="Fiş ekli" aria-label="Fiş ekli">📎</span>}
           {isRefund && (
             <span className="ml-1.5 align-middle rounded-sm bg-green-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-green-600">
               İade

@@ -33,6 +33,7 @@ import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { suggestCategoryIcon } from '@/lib/category-icon-suggest'
 import { keywordCategory, recipientCategory } from '@/lib/auto-category'
 import { TagInput } from '@/components/transactions/TagInput'
+import { ReceiptField } from '@/components/transactions/ReceiptField'
 import { useTags } from '@/lib/hooks/useTags'
 import { dedupeTags, tagColor, tagKey } from '@/lib/utils/tags'
 import { SUBSCRIPTION_TAG, isSubscriptionTag, detectBrand } from '@/lib/subscriptions/brands'
@@ -1827,6 +1828,13 @@ export function TransactionFormModal() {
               placeholder="Ek bilgi..."
             />
           </Field>
+
+          {/* Fiş / fatura — yalnız KAYITLI işlemde (dosya yolu işlem kimliğine bağlı) */}
+          {editingTx && !isPlannedEdit && !isRecurring && (
+            <Field label="Fiş / fatura" optional>
+              <ReceiptField tx={editingTx} />
+            </Field>
+          )}
 
           {/* Tags — not on the recurring model (needs a Supabase column first) */}
           {!isRecurring && (
