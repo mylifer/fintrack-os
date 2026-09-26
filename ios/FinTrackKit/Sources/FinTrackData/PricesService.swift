@@ -3,7 +3,8 @@ import FinTrackCore
 
 /// Piyasa fiyatları — web'in sunucu rotalarıyla AYNI ücretsiz, anahtarsız kaynaklar:
 ///   • kurlar: fawazahmed0 currency-api (bugün + önceki gün)       — /api/prices
-///   • altın: truncgil (Kapalıçarşı ALIŞ), yoksa Yahoo GC=F spot   — /api/prices
+///   • altın: Yahoo GC=F spot → gram = ons / 31,1035 × USD/TRY; ziynetler gramdan
+///     çarpanla (canlı sitenin fiilen gösterdiği değer — aşağıdaki nota bakın) — /api/prices
 ///   • TEFAS fonları: tefas.gov.tr fonFiyatBilgiGetir               — /api/prices/tefas
 ///   • BIST / kripto: Yahoo Finance chart (kripto USD × USD/TRY)   — /api/prices/market
 /// Web rotaları tarayıcı oturum çerezi istediği için iOS kaynaklara doğrudan gider.
@@ -57,20 +58,13 @@ public enum PricesService {
     }
 
     // MARK: Altın
-
-    struct TrQuote { var current: Double; var prev: Double }
-
-    static func turkishGold() async -> [String: TrQuote] {
-        guard let o = await getJSON("https://finans.truncgil.com/v4/today.json") as? [String: Any] else { return [:] }
-        var out: [String: TrQuote] = [:]
-        for key in ["GRA", "CEYREKALTIN", "YARIMALTIN", "TAMALTIN", "YIA"] {
-            guard let q = o[key] as? [String: Any], let cur = q["Buying"] as? Double, cur > 0 else { continue }
-            let change = q["Change"] as? Double
-            let prev = change.map { $0 > -100 ? cur / (1 + $0 / 100) : cur } ?? cur
-            out[key] = TrQuote(current: cur, prev: prev)
-        }
-        return out
-    }
+    //
+    // Web /api/prices önce truncgil (Kapalıçarşı ALIŞ) kotasyonunu dener, alamazsa
+    // spot fiyattan türetir. Canlı sitede (Vercel sunucusu) truncgil'e ulaşılamıyor
+    // ve web fiilen spot türetmeyi gösteriyor; kullanıcı web'deki değerleri doğru
+    // kabul etti (2026-09-27). iOS bu yüzden truncgil'i HİÇ kullanmaz — cihazdan
+    // truncgil'e ulaşılabildiği için kullansaydı web ile ~%1,7 farklı çıkardı.
+    // Web'in altın kaynağı değişirse burası da birlikte değişmeli.
 
     static func goldUsd() async -> (current: Double, prev: Double)? {
         guard let o = await getJSON("https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=2d") as? [String: Any],
@@ -86,9 +80,8 @@ public enum PricesService {
         async let curR = firstRates(["latest", isoDate(0), isoDate(1)])
         async let prevR = firstRates([isoDate(1), isoDate(2), isoDate(3)])
         async let goldR = goldUsd()
-        async let trR = turkishGold()
         guard let cur = await curR, let tryR = cur["try"], let eur = cur["eur"], let gbp = cur["gbp"] else { return nil }
-        let prev = await prevR, gold = await goldR, tr = await trR
+        let prev = await prevR, gold = await goldR
 
         var b = PriceBook()
         b.usdTry = tryR
@@ -99,24 +92,22 @@ public enum PricesService {
         }
         func gram(_ oz: Double, _ usdTry: Double) -> Double { oz / 31.1035 * usdTry }
 
-        if let g = tr["GRA"] { b.goldGramTry = g.current }
-        else if let g = gold { b.goldGramTry = gram(g.current, tryR) }
+        if let g = gold { b.goldGramTry = gram(g.current, tryR) }
         else if let xau = cur["xau"], xau > 0 { b.goldGramTry = tryR / (xau * 31.1035) }
 
-        if let g = tr["GRA"] { b.prevGoldGramTry = g.prev }
-        else if let g = gold, let pu = b.prevUsdTry { b.prevGoldGramTry = gram(g.prev, pu) }
+        if let g = gold, let pu = b.prevUsdTry { b.prevGoldGramTry = gram(g.prev, pu) }
         else if let p = prev, let xau = p["xau"], xau > 0, let pt = p["try"] { b.prevGoldGramTry = pt / (xau * 31.1035) }
 
         func fromGram(_ m: Double) -> Double? { b.goldGramTry > 0 ? b.goldGramTry * m : nil }
         func prevFromGram(_ m: Double) -> Double? { b.prevGoldGramTry.map { $0 * m } }
-        b.goldQuarterTry = tr["CEYREKALTIN"]?.current ?? fromGram(1.6067)
-        b.prevGoldQuarterTry = tr["CEYREKALTIN"]?.prev ?? prevFromGram(1.6067)
-        b.goldHalfTry = tr["YARIMALTIN"]?.current ?? fromGram(3.2133)
-        b.prevGoldHalfTry = tr["YARIMALTIN"]?.prev ?? prevFromGram(3.2133)
-        b.goldFullTry = tr["TAMALTIN"]?.current ?? fromGram(6.4267)
-        b.prevGoldFullTry = tr["TAMALTIN"]?.prev ?? prevFromGram(6.4267)
-        b.bilezikGramTry = tr["YIA"]?.current ?? fromGram(0.916)
-        b.prevBilezikGramTry = tr["YIA"]?.prev ?? prevFromGram(0.916)
+        b.goldQuarterTry = fromGram(1.6067)
+        b.prevGoldQuarterTry = prevFromGram(1.6067)
+        b.goldHalfTry = fromGram(3.2133)
+        b.prevGoldHalfTry = prevFromGram(3.2133)
+        b.goldFullTry = fromGram(6.4267)
+        b.prevGoldFullTry = prevFromGram(6.4267)
+        b.bilezikGramTry = fromGram(0.916)
+        b.prevBilezikGramTry = prevFromGram(0.916)
         return b
     }
 
