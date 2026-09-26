@@ -96,5 +96,7 @@ audit/                güvenlik ve hata denetim raporları
   `engine.ts` kuyruğu Supabase'e iter. Silme her zaman `deleted_at` (tombstone).
 - **Okuma yolu:** `reconcilingPull` bulut + yerel kopyayı birleştirir; çakışmada
   `updatedAt` yeni olan kazanır (sunucuda `keep_newer_row` tetikleyicisi, 0016).
+- **Hata kaydı:** üretimde yakalanmamış hatalar ve hata sınırı `error_logs` tablosuna yazılır
+  (0020, kullanıcı yalnız ekler; Supabase panelinden okunur, 30 gün tutulur).
 - **Hesap kuralları** `lib/utils`'tedir (akış toplamı, bütçe, ekstre, getiri…) ve
   sayfalar arası tutarlılık için tek yerden çağrılır.

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { reportError } from '@/lib/error-reporter'
 
 export default function GlobalError({
   error,
@@ -12,6 +13,7 @@ export default function GlobalError({
   useEffect(() => {
     // Log the real error for debugging; never surface it to the user.
     console.error('Global application error:', error, error.digest ? `(digest: ${error.digest})` : '')
+    void reportError('boundary', error)
   }, [error])
 
   // global-error replaces the root layout, so it must render its own

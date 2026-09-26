@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { reportError } from '@/lib/error-reporter'
 
 export default function Error({
   error,
@@ -12,6 +13,7 @@ export default function Error({
   useEffect(() => {
     // Log the real error for debugging; never surface it to the user.
     console.error('Application error:', error, error.digest ? `(digest: ${error.digest})` : '')
+    void reportError('boundary', error)
   }, [error])
 
   return (

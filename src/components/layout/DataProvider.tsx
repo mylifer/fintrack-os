@@ -9,6 +9,7 @@ import { startRealtime } from '@/lib/sync/realtime'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { currentMonthYear, today } from '@/lib/utils/date'
 import { maybeAutoBackup } from '@/lib/auto-backup'
+import { installErrorReporter } from '@/lib/error-reporter'
 
 // Otomatik yedeğin kapsadığı tablolar (auto-backup.ts readSnapshot ile aynı küme).
 const BACKUP_TABLES: SyncTable[] = [
@@ -24,6 +25,9 @@ let initPromise: Promise<void> | null = null
 export function DataProvider({ children }: { children: ReactNode }) {
   const loadWorkspaces            = useWorkspaceStore(s => s.load)
   const fetchPrices               = useInvestmentStore(s => s.fetchPrices)
+
+  // Yakalanmamış hatalar Supabase error_logs'a (yalnız üretimde, bkz. error-reporter)
+  useEffect(() => { installErrorReporter() }, [])
 
   useEffect(() => {
     async function init() {
