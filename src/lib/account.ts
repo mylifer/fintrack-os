@@ -51,7 +51,7 @@ export async function deleteMyAccount(): Promise<void> {
   } catch (err) {
     console.error('[account:delete:signOut]', err)
   } finally {
-    // HARD reload: bellekteki store'lar silinen hesabın verisini taşır
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli HARD reload: bellekteki store'lar silinen hesabın verisini taşır
     window.location.assign('/login')
   }
 }

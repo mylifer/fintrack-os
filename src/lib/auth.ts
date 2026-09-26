@@ -37,6 +37,7 @@ export async function enterApp(
   if (uid) localStorage.setItem(LAST_UID_KEY, uid)
 
   if (switched) {
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli HARD reload: soft navigasyon önceki kullanıcının bellekteki verisini taşır (yukarıdaki not)
     window.location.assign('/dashboard')
   } else {
     push('/dashboard')
