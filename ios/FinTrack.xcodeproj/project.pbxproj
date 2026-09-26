@@ -1,0 +1,290 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		F1A000000000000000000011 /* FinTrackCore in Frameworks */ = {isa = PBXBuildFile; productRef = F1A000000000000000000021 /* FinTrackCore */; };
+		F1A000000000000000000012 /* FinTrackData in Frameworks */ = {isa = PBXBuildFile; productRef = F1A000000000000000000022 /* FinTrackData */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		F1A000000000000000000031 /* FinTrack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FinTrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1A000000000000000000032 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		F1A000000000000000000033 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F1A000000000000000000034 /* Secrets.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.example.xcconfig; sourceTree = "<group>"; };
+		F1A000000000000000000035 /* FinTrackKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = FinTrackKit; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		F1A000000000000000000041 /* FinTrack */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FinTrack;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F1A000000000000000000051 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F1A000000000000000000011 /* FinTrackCore in Frameworks */,
+				F1A000000000000000000012 /* FinTrackData in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		F1A000000000000000000061 = {
+			isa = PBXGroup;
+			children = (
+				F1A000000000000000000041 /* FinTrack */,
+				F1A000000000000000000035 /* FinTrackKit */,
+				F1A000000000000000000062 /* Config */,
+				F1A000000000000000000063 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F1A000000000000000000062 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				F1A000000000000000000032 /* Base.xcconfig */,
+				F1A000000000000000000034 /* Secrets.example.xcconfig */,
+				F1A000000000000000000033 /* Info.plist */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		F1A000000000000000000063 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F1A000000000000000000031 /* FinTrack.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F1A000000000000000000071 /* FinTrack */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F1A000000000000000000091 /* Build configuration list for PBXNativeTarget "FinTrack" */;
+			buildPhases = (
+				F1A000000000000000000072 /* Sources */,
+				F1A000000000000000000051 /* Frameworks */,
+				F1A000000000000000000073 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F1A000000000000000000041 /* FinTrack */,
+			);
+			name = FinTrack;
+			packageProductDependencies = (
+				F1A000000000000000000021 /* FinTrackCore */,
+				F1A000000000000000000022 /* FinTrackData */,
+			);
+			productName = FinTrack;
+			productReference = F1A000000000000000000031 /* FinTrack.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F1A000000000000000000081 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					F1A000000000000000000071 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+				};
+			};
+			buildConfigurationList = F1A000000000000000000092 /* Build configuration list for PBXProject "FinTrack" */;
+			developmentRegion = tr;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				tr,
+				Base,
+			);
+			mainGroup = F1A000000000000000000061;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F1A000000000000000000023 /* XCLocalSwiftPackageReference "FinTrackKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F1A000000000000000000063 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F1A000000000000000000071 /* FinTrack */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F1A000000000000000000073 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F1A000000000000000000072 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		F1A000000000000000000101 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		F1A000000000000000000102 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		F1A000000000000000000103 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F1A000000000000000000032 /* Base.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = FinTrack;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "FinTrack'i Face ID ile kilitlemek ve açmak için.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mylifer.fintrack;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		F1A000000000000000000104 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F1A000000000000000000032 /* Base.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = FinTrack;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "FinTrack'i Face ID ile kilitlemek ve açmak için.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mylifer.fintrack;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F1A000000000000000000091 /* Build configuration list for PBXNativeTarget "FinTrack" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F1A000000000000000000103 /* Debug */,
+				F1A000000000000000000104 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F1A000000000000000000092 /* Build configuration list for PBXProject "FinTrack" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F1A000000000000000000101 /* Debug */,
+				F1A000000000000000000102 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F1A000000000000000000023 /* XCLocalSwiftPackageReference "FinTrackKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = FinTrackKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F1A000000000000000000021 /* FinTrackCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F1A000000000000000000023 /* XCLocalSwiftPackageReference "FinTrackKit" */;
+			productName = FinTrackCore;
+		};
+		F1A000000000000000000022 /* FinTrackData */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F1A000000000000000000023 /* XCLocalSwiftPackageReference "FinTrackKit" */;
+			productName = FinTrackData;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = F1A000000000000000000081 /* Project object */;
+}

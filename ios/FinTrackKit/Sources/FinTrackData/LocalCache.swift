@@ -1,0 +1,50 @@
+import Foundation
+import FinTrackCore
+
+/// Son başarılı çekişin ham satırları — uygulama çevrimdışı açılınca ekran boş
+/// kalmasın diye. Yalnız OKUMA önbelleği: yazmalar her zaman önce buluta gider.
+/// Dosya cihaz kilitliyken okunamaz (complete file protection); çıkışta silinir.
+struct LocalCache {
+    private struct Stored: Codable {
+        var workspaces: [JSONObject]
+        var accounts: [JSONObject]
+        var categories: [JSONObject]
+        var budgets: [JSONObject]
+        var transactions: [JSONObject]
+    }
+
+    private func url(_ userId: String) -> URL? {
+        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else { return nil }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("cache-\(userId).json")
+    }
+
+    func save(_ s: Snapshot, userId: String) {
+        guard let url = url(userId) else { return }
+        let stored = Stored(workspaces: s.workspaces.map(\.raw), accounts: s.accounts.map(\.raw),
+                            categories: s.categories.map(\.raw), budgets: s.budgets.map(\.raw),
+                            transactions: s.transactions.map(\.raw))
+        guard let data = try? JSONEncoder().encode(stored) else { return }
+        #if os(iOS)
+        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+        #else
+        try? data.write(to: url, options: .atomic)
+        #endif
+    }
+
+    func load(userId: String) -> Snapshot? {
+        guard let url = url(userId), let data = try? Data(contentsOf: url),
+              let s = try? JSONDecoder().decode(Stored.self, from: data) else { return nil }
+        return Snapshot(workspaces: s.workspaces.map(Workspace.init(raw:)),
+                        accounts: s.accounts.map(Account.init(raw:)),
+                        categories: s.categories.map(Category.init(raw:)),
+                        budgets: s.budgets.map(Budget.init(raw:)),
+                        transactions: s.transactions.map(Transaction.init(raw:)))
+    }
+
+    func clear(userId: String) {
+        guard let url = url(userId) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+}
