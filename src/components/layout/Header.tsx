@@ -2,6 +2,7 @@
 
 import { useUIStore } from '@/store'
 import { NotificationBell } from '@/components/layout/NotificationBell'
+import { PrivacyToggle } from '@/components/layout/PrivacyToggle'
 
 interface HeaderProps {
   title: string
@@ -20,6 +21,7 @@ export function Header({ title, action }: HeaderProps) {
 
       <div className="flex items-center gap-2">
         {/* Bildirim merkezi — Header her sayfada olduğundan zil tek noktadan gelir */}
+        <PrivacyToggle className="w-11 h-11 lg:w-9 lg:h-9 rounded-xl" />
         <NotificationBell />
         {/* h-11 (44px) dokunmatikte; masaüstünde eski h-9 yoğunluğu korunur. */}
         {action && (

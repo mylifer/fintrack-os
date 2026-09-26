@@ -8,6 +8,7 @@ import { BackupManager }  from '@/components/backup/BackupManager'
 import { TransactionImportModal } from '@/components/settings/TransactionImportModal'
 import { WorkspaceManager } from '@/components/settings/WorkspaceManager'
 import { AccountSettings } from '@/components/settings/AccountSettings'
+import { PrivacySettings } from '@/components/settings/PrivacySettings'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
 import { InvestmentsViewSettings } from '@/components/settings/InvestmentsViewSettings'
 import { FundTaxSettings } from '@/components/settings/FundTaxSettings'
@@ -162,6 +163,9 @@ export default function SettingsPage() {
 
         {/* Hesap — şifre, e-posta, iki adımlı doğrulama, hesap silme */}
         <AccountSettings />
+
+        {/* Gizlilik — tutarları gizle, çevrimiçi logo, PIN kilidi */}
+        <PrivacySettings />
 
         {/* Görünüm — kenar çubuğu varyantı */}
         <AppearanceSettings />

@@ -11,6 +11,8 @@ import { ReconcileBalanceModal } from '@/components/accounts/ReconcileBalanceMod
 import { UndoToaster } from '@/components/layout/UndoToaster'
 import { SyncStatusBanner } from '@/components/layout/SyncStatusBanner'
 import { useUIStore } from '@/store'
+import { AppLockGate } from '@/components/layout/AppLockGate'
+import { PrivacyProvider } from '@/components/layout/PrivacyToggle'
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   // Atomic selectors — avoid re-rendering the layout on unrelated UI changes
@@ -21,6 +23,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <DataProvider>
+      <AppLockGate>
+      <PrivacyProvider>
       <div className="flex min-h-screen bg-background">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
@@ -42,6 +46,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <UndoToaster />
         <SyncStatusBanner />
       </div>
+      </PrivacyProvider>
+      </AppLockGate>
     </DataProvider>
   )
 }

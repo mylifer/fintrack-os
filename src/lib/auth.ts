@@ -67,7 +67,9 @@ export async function needsMfaStep(): Promise<boolean> {
    (Güvenlik denetimi 2026-08-29, bulgu F3.) */
 
 /** Cihaz seviyesinde, kiracıdan bağımsız olduğu için korunan anahtarlar. */
-const DEVICE_KEYS = ['fintrack-theme'] as const
+// fintrack-privacy: gizlilik tercihleri (tutarları gizle, çevrimiçi logo) — çıkışta
+// varsayılana (açığa) dönmesin. PIN (fintrack-app-lock) bilerek burada DEĞİL.
+const DEVICE_KEYS = ['fintrack-theme', 'fintrack-privacy'] as const
 
 /** localStorage + sessionStorage'ı temizler, cihaz tercihlerini geri yazar.
  *  Depo kapalıysa (private mode, storage engelli) sessizce hiçbir şey yapmaz. */

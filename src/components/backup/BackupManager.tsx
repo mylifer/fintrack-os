@@ -4,7 +4,10 @@ import { useState, useRef, useEffect } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { db } from '@/lib/db'
 import { getUserId } from '@/lib/auth'
-import { cloudReplaceAll, replaceOutboxTables, OUTBOX_RESTORED_TABLES, type BackupData } from '@/lib/backup-sync'
+import {
+  cloudReplaceAll, replaceOutboxTables, OUTBOX_RESTORED_TABLES, externalIconHosts, stripExternalIcons,
+  type BackupData,
+} from '@/lib/backup-sync'
 import {
   createCloudBackup, listCloudBackups, fetchCloudBackupPayload,
   readSnapshot, totalRecords, BACKUP_KIND_LABELS, type CloudBackupMeta,
@@ -173,6 +176,8 @@ export function BackupManager() {
   // 'idle' | 'local' (writing Dexie) | 'cloud' (bulk-syncing Supabase)
   const [importPhase, setImportPhase] = useState<'idle' | 'local' | 'cloud'>('idle')
   const [preview,     setPreview]     = useState<BackupFile | null>(null)
+  // F6: dış adresli hesap ikonları varsayılan olarak ayıklanır (bkz. backup-sync)
+  const [keepExternalIcons, setKeepExternalIcons] = useState(false)
   const [fileName,    setFileName]    = useState('')
   const [error,       setError]       = useState('')
   const [success,     setSuccess]     = useState('')
@@ -260,6 +265,7 @@ export function BackupManager() {
     try {
       const backup = validateBackup(await fetchCloudBackupPayload(b.id))
       setPreview(backup)
+      setKeepExternalIcons(false)
       setFileName(`Bulut yedeği — ${cloudDate(b.created_at)}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Bulut yedeği okunamadı.')
@@ -311,6 +317,7 @@ export function BackupManager() {
       try {
         const backup = validateBackup(JSON.parse(ev.target?.result as string))
         setPreview(backup)
+      setKeepExternalIcons(false)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Dosya okunamadı.')
       }
@@ -376,7 +383,9 @@ export function BackupManager() {
       return
     }
 
-    const data = preview.data as BackupData
+    const data = keepExternalIcons
+      ? preview.data as BackupData
+      : stripExternalIcons(preview.data as BackupData)
 
     let snapshot: BackupData
     try {
@@ -553,6 +562,29 @@ export function BackupManager() {
                   )
                 })}
               </div>
+
+              {/* F6 — dış adresli ikonlar */}
+              {(() => {
+                const hosts = externalIconHosts(preview.data as BackupData)
+                if (hosts.length === 0) return null
+                return (
+                  <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
+                    <p className="text-[11px] text-foreground">
+                      Bu yedekteki hesap ikonları dış adreslerden yükleniyor: <span className="font-semibold">{hosts.join(', ')}</span>.
+                      Güvenlik için bu ikonlar geri yüklemede kaldırılacak.
+                    </p>
+                    <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={keepExternalIcons}
+                        onChange={e => setKeepExternalIcons(e.target.checked)}
+                        className="rounded accent-primary"
+                      />
+                      Kaldırma — bu yedeği ben oluşturdum
+                    </label>
+                  </div>
+                )
+              })()}
 
               {/* Warning + confirm */}
               <div className="px-4 py-3 border-t border-border bg-destructive/[0.06] flex flex-col gap-2">

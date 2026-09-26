@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { getBrandDomain } from '@/lib/people/brands'
+import { usePrivacyStore } from '@/store/privacy.store'
 
 const FAMILY_COLORS = [
   '#6366F1', '#8B5CF6', '#EC4899', '#14B8A6', '#F59E0B',
@@ -84,6 +85,8 @@ function RecipientAvatar({
   initials: string
 }) {
   const [failed, setFailed] = useState(false)
+  // Favicon isteği alan adını Google'a gönderir — gizlilik tercihi kapalıysa hiç istenmez
+  const onlineLogos = usePrivacyStore(s => s.onlineLogos)
 
   // 3-tier favicon resolution — NEVER guess a domain from the raw name:
   //   1. explicit URL the user provided
@@ -91,7 +94,7 @@ function RecipientAvatar({
   //   3. (below) initials fallback
   const domain = recipientIconDomain({ name, url })
 
-  if (domain && !failed) {
+  if (onlineLogos && domain && !failed) {
     return (
       <div
         className={`${s.box} flex-shrink-0 rounded-md overflow-hidden bg-card border border-border flex items-center justify-center ${s.pad} ${className}`}

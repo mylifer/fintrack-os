@@ -1,6 +1,7 @@
 'use client'
 
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher'
+import { PrivacyToggle } from '@/components/layout/PrivacyToggle'
 
 /* Kenar çubuğu lg altında gizlendiği için çalışma alanı geçişi mobilde buradan
    gelir. Header her sayfada kullanılmadığından (Yatırımlar, detay sayfaları)
@@ -15,6 +16,8 @@ export function MobileTopBar() {
       <div className="flex-1 min-w-0 max-w-64">
         <WorkspaceSwitcher />
       </div>
+      <span className="flex-1" />
+      <PrivacyToggle className="w-9 h-9" />
     </div>
   )
 }

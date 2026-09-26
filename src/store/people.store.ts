@@ -10,6 +10,7 @@ import { loadEntities } from './entity-helpers'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 import { getBrandDomain } from '@/lib/people/brands'
 import { resolveBrandDomain } from '@/lib/people/brand-logo'
+import { onlineLogosAllowed } from './privacy.store'
 
 interface PeopleState {
   people: Person[]
@@ -28,7 +29,8 @@ interface PeopleState {
 // liste zaten eşleşiyorsa atlanır — avatar onu kullanır ve online sonuç
 // (ör. migros.ch) yereldeki daha doğru domain'i (migros.com.tr) ezmesin.
 function autoResolveRecipientLogo(id: string, name: string) {
-  if (getBrandDomain(name)) return
+  // Gizlilik tercihi: alıcı adı dış servislere (Clearbit/Wikidata) gitmesin
+  if (!onlineLogosAllowed() || getBrandDomain(name)) return
   resolveBrandDomain(name)
     .then(domain => {
       if (!domain) return
@@ -43,7 +45,7 @@ function autoResolveRecipientLogo(id: string, name: string) {
 // Oturum başına bir kez: URL'siz mevcut alıcılar için arka planda logo ara.
 let backfillStarted = false
 async function backfillRecipientLogos(people: Person[]) {
-  if (backfillStarted || typeof window === 'undefined') return
+  if (backfillStarted || typeof window === 'undefined' || !onlineLogosAllowed()) return
   backfillStarted = true
   const targets = people.filter(p => p.role === 'recipient' && !p.url && !p.isArchived)
   // Sıralı: dış servisleri yoklamamak için (negatif sonuçlar localStorage'da

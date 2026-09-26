@@ -14,7 +14,26 @@ const COMPACT_FORMATTERS: Record<CurrencyCode, Intl.NumberFormat> = {
   GBP: new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 2 }),
 }
 
+/* ── Tutarları gizle (gizlilik modu) ───────────────────────────────────────
+   Açıkken TÜM para biçimlendiricileri tutar yerine "₺•••" döndürür — kalabalık
+   bir yerde ekranı açarken ya da ekran paylaşırken. Tek nokta: bileşenler
+   tutarı bu fonksiyonlarla bastığı için ayrı ayrı gizlenmeleri gerekmez.
+   Bayrak modül düzeyindedir; değişince uygulama gövdesi yeniden kurulur ki
+   bellekteki (useMemo) biçimlenmiş değerler de yenilensin (PrivacyProvider). */
+let amountsHidden = false
+
+export function setAmountsHidden(hidden: boolean): void {
+  amountsHidden = hidden
+}
+
+export function areAmountsHidden(): boolean {
+  return amountsHidden
+}
+
+const masked = (currency: CurrencyCode) => `${getCurrencySymbol(currency)}•••`
+
 export function formatCurrency(amount: number, currency: CurrencyCode = 'TRY'): string {
+  if (amountsHidden) return masked(currency)
   // NaN/Infinity guard: bozuk bir hesaplama UI'da "₺NaN" olarak görünmesin
   return FORMATTERS[currency].format(Number.isFinite(amount) ? amount : 0)
 }
@@ -26,6 +45,7 @@ export function formatSigned(v: number, currency: CurrencyCode = 'TRY'): string 
 }
 
 export function formatAmount(amount: number, currency: CurrencyCode = 'TRY'): string {
+  if (amountsHidden) return '•••'
   return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(amount)
 }
 
@@ -80,10 +100,12 @@ const WHOLE_FORMATTERS: Record<CurrencyCode, Intl.NumberFormat> = {
 }
 
 export function formatWhole(amount: number, currency: CurrencyCode = 'TRY'): string {
+  if (amountsHidden) return masked(currency)
   return WHOLE_FORMATTERS[currency].format(Number.isFinite(amount) ? amount : 0)
 }
 
 export function formatCompact(amount: number, currency: CurrencyCode = 'TRY'): string {
+  if (amountsHidden) return masked(currency)
   if (Math.abs(amount) >= 1_000_000) {
     const numStr = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(amount / 1_000_000)
     return `${getCurrencySymbol(currency)}${numStr} Mn`
@@ -95,6 +117,7 @@ export function formatCompact(amount: number, currency: CurrencyCode = 'TRY'): s
 // ör. 125.000 → "₺125B", 1.200.000 → "₺1,2Mn". (formatCompact <1M'de tam
 // biçime düştüğü ve eksende kırpıldığı için ayrı bir fonksiyon.)
 export function formatAxisCompact(v: number, currency: CurrencyCode = 'TRY'): string {
+  if (amountsHidden) return '•••'
   const sym = getCurrencySymbol(currency)
   const abs = Math.abs(v)
   const sign = v < 0 ? '-' : ''

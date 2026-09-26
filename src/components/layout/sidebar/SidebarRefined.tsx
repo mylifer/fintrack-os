@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
+import { PrivacyToggle } from '@/components/layout/PrivacyToggle'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { resolveBudgetCategories } from '@/lib/utils/calculations'
@@ -219,6 +220,7 @@ export function SidebarRefined() {
             <span>Ayarlar</span>
           </Link>
           <ThemeToggle />
+          <PrivacyToggle />
         </div>
         <button
           onClick={handleSignOut}

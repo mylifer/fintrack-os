@@ -1,3 +1,7 @@
+'use client'
+
+import { usePrivacyStore } from '@/store/privacy.store'
+
 const BANKS: { pattern: RegExp; domain: string }[] = [
   { pattern: /garanti|bbva/i,                        domain: 'garantibbva.com.tr' },
   { pattern: /iş bank|işbank|isbank/i,               domain: 'isbank.com.tr' },
@@ -45,10 +49,13 @@ export function AccountAvatar({ account, size = 'md', className = '' }: Props) {
   const s       = SIZES[size]
   const initial = account.name.trim()[0]?.toUpperCase() ?? '?'
 
-  const iconSrc = account.icon
-    ?? (getBankDomain(account.name)
-        ? `https://www.google.com/s2/favicons?domain=${getBankDomain(account.name)}&sz=64`
-        : null)
+  // Gizlilik tercihi kapalıyken dış adres yüklenmez: yalnız cihazda gömülü
+  // (data:) ikon kalır; banka favicon'u ve kullanıcının girdiği URL atlanır.
+  const onlineLogos = usePrivacyStore(s => s.onlineLogos)
+  const ownIcon = account.icon && (onlineLogos || account.icon.startsWith('data:')) ? account.icon : null
+  const bankDomain = onlineLogos ? getBankDomain(account.name) : null
+  const iconSrc = ownIcon
+    ?? (bankDomain ? `https://www.google.com/s2/favicons?domain=${bankDomain}&sz=64` : null)
 
   return (
     <div className={`${s.box} flex-shrink-0 relative overflow-hidden rounded-md ${className}`}>

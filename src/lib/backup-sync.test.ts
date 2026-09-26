@@ -91,3 +91,21 @@ describe('replaceOutboxTables', () => {
     ])
   })
 })
+
+describe('dış ikon adresleri (F6)', () => {
+  it('http(s) ikonların alan adları bulunur ve ayıklanır; data: ikon ve emoji kalır', async () => {
+    const { externalIconHosts, stripExternalIcons } = await import('./backup-sync')
+    const data = {
+      accounts: [
+        { id: 'a', icon: 'https://evil.example/px.png?u=1' },
+        { id: 'b', icon: 'HTTP://Other.example/x' },
+        { id: 'c', icon: 'data:image/png;base64,AAAA' },
+        { id: 'd', icon: '🏦' },
+        { id: 'e' },
+      ],
+    } as never
+    expect(externalIconHosts(data).sort()).toEqual(['evil.example', 'other.example'])
+    const stripped = stripExternalIcons(data) as { accounts: { id: string; icon?: string }[] }
+    expect(stripped.accounts.map(a => a.icon)).toEqual([undefined, undefined, 'data:image/png;base64,AAAA', '🏦', undefined])
+  })
+})

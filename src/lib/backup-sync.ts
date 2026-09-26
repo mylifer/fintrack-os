@@ -92,3 +92,31 @@ export async function replaceOutboxTables(data: BackupData): Promise<void> {
   if (data.savingsGoals) collect('savings_goals', await db.savingsGoals.toArray(), data.savingsGoals)
   await localBatch(ops)
 }
+
+/* ── Dış ikon adresleri (güvenlik denetimi F6) ────────────────────────────────
+   Hesap ikonu bir URL olabilir ve AccountAvatar onu doğrudan yükler. Kötü
+   niyetli bir yedek dosyası ("verini taşıdım, bunu içe aktar") ikon alanına
+   izleme pikseli koyup kullanıcının her açılışta dış bir sunucuya istek
+   atmasını sağlayabilir. Geri yüklemede bu adresler varsayılan olarak
+   ayıklanır; kullanıcı dosyayı kendisi oluşturduysa korumayı seçebilir.
+   Cihazda gömülü (data:) ikonlar dokunulmadan kalır. */
+
+const isExternalUrl = (v: unknown): v is string => typeof v === 'string' && /^https?:\/\//i.test(v.trim())
+
+/** Yedekteki dış adresli hesap ikonlarının alan adları (tekil). */
+export function externalIconHosts(data: Pick<BackupData, 'accounts'>): string[] {
+  const hosts = new Set<string>()
+  for (const a of data.accounts ?? []) {
+    if (!isExternalUrl(a.icon)) continue
+    try { hosts.add(new URL(a.icon.trim()).hostname) } catch { hosts.add(a.icon.trim().slice(0, 60)) }
+  }
+  return [...hosts]
+}
+
+/** Dış adresli hesap ikonları kaldırılmış kopya. */
+export function stripExternalIcons<T extends Pick<BackupData, 'accounts'>>(data: T): T {
+  return {
+    ...data,
+    accounts: (data.accounts ?? []).map(a => (isExternalUrl(a.icon) ? { ...a, icon: undefined } : a)),
+  }
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { AlertDialog } from 'radix-ui'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -21,7 +21,7 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { detectBrand } from '@/lib/subscriptions/brands'
 import { getBrandDomain } from '@/lib/people/brands'
-import { resolveBrandDomain } from '@/lib/people/brand-logo'
+import { usePrivacyStore } from '@/store/privacy.store'
 
 type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
@@ -182,13 +182,17 @@ const colsFor = (selectable: boolean) => (selectable ? SELECT_COL + TABLE_COLS :
 
 type MetaItem = { text: string; href?: string }
 
-// İşlem ikonu önce açıklamadan türetilir, sırasıyla:
+// İşlem ikonu, sırasıyla:
 //   1. küratörlü marka eşleşmesi (gömülü SVG logo)
 //   2. açıklamadaki marka deseninden bilinen domain → favicon
-//   3. çevrimiçi birebir isim çözümü (/api/brand-logo) → favicon
-//   4. açıklamadan ikon ÇIKMIYORSA işlemin alıcısının ikonu (alıcı avatarıyla
-//      aynı kaynak: kayıtlı URL veya küratörlü marka listesi) → favicon
-//   5. baş harf monogramı
+//   3. işlemin alıcısının ikonu (alıcı avatarıyla aynı kaynak: kayıtlı URL veya
+//      küratörlü marka listesi) → favicon
+//   4. baş harf monogramı
+// Serbest metin AÇIKLAMA hiçbir dış servise gönderilmez (güvenlik denetimi F2:
+// eskiden tanınmayan her açıklama /api/brand-logo üzerinden Clearbit ve
+// Wikidata'ya gidiyordu — açıklamalar kişi adları, sağlık harcamaları, borç
+// notları taşıyabilir). Favicon isteği alan adını Google'a gönderdiği için
+// gizlilik tercihi kapalıyken hiç yapılmaz (usePrivacyStore.onlineLogos).
 export const TxIcon = memo(function TxIcon({
   description,
   recipient,
@@ -196,41 +200,22 @@ export const TxIcon = memo(function TxIcon({
   description: string
   recipient?: { name: string; url?: string }
 }) {
+  const onlineLogos = usePrivacyStore(s => s.onlineLogos)
   const brand  = useMemo(() => detectBrand(description), [description])
   const known  = useMemo(() => (brand ? null : getBrandDomain(description)), [brand, description])
-  const [resolved, setResolved] = useState<{ for: string; domain: string | null } | null>(null)
   const [failedDomain, setFailedDomain] = useState<string | null>(null)
   const [recipientFailed, setRecipientFailed] = useState(false)
-
-  useEffect(() => {
-    // Küratörlü eşleşme varken dış servise sorulmaz; uzun serbest metinler de
-    // (API'nin 64 karakter sınırı) birebir marka adı olamayacağı için atlanır.
-    const name = description.trim()
-    if (brand || known || name.length < 2 || name.length > 64) return
-    let alive = true
-    resolveBrandDomain(name).then(d => { if (alive) setResolved({ for: description, domain: d }) })
-    return () => { alive = false }
-  }, [brand, known, description])
 
   const recipientDomain = useMemo(
     () => (recipient ? recipientIconDomain(recipient) : null),
     [recipient],
   )
 
-  const domain = known ?? (resolved?.for === description ? resolved.domain : null)
-  if (!brand && domain && failedDomain !== domain) {
-    return <Favicon domain={domain} alt={description} onError={() => setFailedDomain(domain)} />
+  if (onlineLogos && !brand && known && failedDomain !== known) {
+    return <Favicon domain={known} alt={description} onError={() => setFailedDomain(known)} />
   }
 
-  // Açıklama tarafı ikon üretemedi. Çevrimiçi çözüm hâlâ uçuyorsa alıcıya
-  // geçilmez — yoksa satır önce alıcı ikonunu, saniyeler sonra ürün ikonunu
-  // gösterip titrer. Bekleyen tek durum: marka/known yok ve sonuç gelmedi.
-  const lookupPending =
-    !brand && !known &&
-    description.trim().length >= 2 && description.trim().length <= 64 &&
-    resolved?.for !== description
-
-  if (!lookupPending && recipientDomain && !recipientFailed) {
+  if (onlineLogos && !brand && recipientDomain && !recipientFailed) {
     return (
       <Favicon
         domain={recipientDomain}
