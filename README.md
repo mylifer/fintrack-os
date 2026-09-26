@@ -1,37 +1,100 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FinTrack OS
 
-## Getting Started
+Kişisel finans uygulaması: hesaplar, işlemler, bütçeler, borçlar, yatırımlar, raporlar.
+Çevrimdışı öncelikli (offline-first) bir PWA'dır — veri önce tarayıcıdaki IndexedDB'ye
+yazılır, bağlantı olduğunda Supabase'e eşitlenir. Arayüz Türkçedir.
 
-First, run the development server:
+Canlı: https://fintrack-os-ten.vercel.app
+
+## Özellikler
+
+- **İşlemler** — gelir/gider/transfer, taksit, çoklu kategori, etiket, alıcı/aile üyesi,
+  iade, fiş/fatura eki, otomatik kategori (alıcı geçmişi + anahtar kelime).
+- **İçe aktarma** — banka dökümü / kart ekstresi (CSV, `;`/Windows-1254, XLSX), Borç/Alacak
+  sütunları, satır bazlı önizleme, mükerrer tespiti, geri alma.
+- **Hesaplar** — kredi kartı ekstresi (kesim, son ödeme, asgari), vadeli mevduat (faiz,
+  stopaj, vade sonu işleme), bakiye eşitleme.
+- **Planlama** — bütçe (devir dahil), birikim hedefleri, borç takibi, ödeme takibi,
+  tekrarlayan işlemler (geçmişten öneri), abonelikler (zam tespiti), nakit akışı tahmini.
+- **Yatırımlar** — altın/döviz, TEFAS ve BES fonları, BIST hisseleri, kripto; gerçekleşen
+  K/Z, yıllık getiri (XIRR), fon stopajı.
+- **Raporlar** — dönem kıyası (önceki dönem / geçen yıl), aylık özet, yazdır/PDF.
+- **Güvenlik ve gizlilik** — 2FA (TOTP), tutarları gizle, cihaz PIN kilidi, RLS, özel
+  Storage kovası, işlem açıklamaları hiçbir dış servise gönderilmez.
+- **Eşitleme** — outbox + son-yazan-kazanır (`updatedAt`), silinen kaydın dirilmemesi,
+  Realtime ile cihazlar arası canlı güncelleme.
+
+## Teknoloji
+
+Next.js 16 (App Router, `src/proxy.ts` middleware) · React 19 · TypeScript · Tailwind v4 ·
+Zustand · Dexie (IndexedDB) · Supabase (Auth, Postgres + RLS, Realtime, Storage) ·
+Recharts · Vitest · Playwright.
+
+> Next.js 16 önceki sürümlerden farklıdır; kod yazmadan önce `node_modules/next/dist/docs/`
+> altındaki ilgili rehbere bakın (bkz. `AGENTS.md`).
+
+Ücretli servis kullanılmaz. Fiyat kaynakları ücretsiz ve anahtarsızdır: fawazahmed0
+currency-api (kurlar), Truncgil (Kapalıçarşı altını), TEFAS (fonlar), Yahoo Finance
+(altın vadelisi, BIST, kripto). Hepsi sunucu tarafında (`src/app/api/prices/*`) çağrılır.
+
+## Kurulum
+
+Gereksinim: Node 22, bir Supabase projesi.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+cp .env.example .env.local   # değerleri doldurun
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Supabase
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. SQL Editor'de `supabase_schema.sql`'i çalıştırın (tablolar, `deleted_at`, RLS).
+2. Ardından `supabase/migrations/` altındaki dosyaları **numara sırasıyla** çalıştırın
+   (0001 → son). Hepsi idempotenttir; tekrar çalıştırmak güvenlidir.
+3. Authentication → URL Configuration:
+   - Site URL: uygulamanın adresi
+   - Redirect URLs: `https://<adres>/auth/callback**` (şifre sıfırlama ve e-posta onayı)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Yeni migration'ı her zaman koddan ÖNCE uygulayın.** İstemci yeni sütunları yazmaya
+başladığında sütun yoksa bulut yazımı reddedilir ve kayıt yalnız o cihazda kalır.
 
-## Learn More
+### Giriş yapmadan yerel deneme
 
-To learn more about Next.js, take a look at the following resources:
+`.env.local`'a `AUTH_BYPASS=1` eklenirse uygulama girişsiz açılır; veri yalnız o
+tarayıcının IndexedDB'sinde kalır. Uçtan uca testler bu kipte çalışır. Üretimde yok sayılır.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Komutlar
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Komut | Ne yapar |
+| --- | --- |
+| `npm run dev` | Geliştirme sunucusu |
+| `npm run build` / `npm start` | Üretim derlemesi / sunucusu |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint |
+| `npm test` | Vitest birim testleri |
+| `npm run test:e2e` | Playwright uçtan uca testleri (`e2e/`) |
 
-## Deploy on Vercel
+CI (`.github/workflows/ci.yml`) her push ve PR'da tip kontrolü, lint, birim testleri,
+üretim derlemesi ve uçtan uca testleri çalıştırır. Vercel deploy'u bundan bağımsızdır.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Mimari
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
- 
+```
+src/
+  app/(main)/…        sayfalar (giriş gerektirir)      app/api/…  sunucu rotaları
+  components/…        arayüz                           proxy.ts   oturum + CSP
+  store/…             Zustand store'ları (sayfaların tek veri kaynağı)
+  lib/db              Dexie şeması (yerel kopya)
+  lib/sync            outbox eşitleme motoru, realtime, onarım
+  lib/utils           SAF hesaplar — store/DB bilmez, birim testli
+supabase/migrations   sıralı, idempotent SQL
+audit/                güvenlik ve hata denetim raporları
+```
+
+- **Yazma yolu:** store → `localUpsert/localPatch/localBatch` (Dexie + outbox) →
+  `engine.ts` kuyruğu Supabase'e iter. Silme her zaman `deleted_at` (tombstone).
+- **Okuma yolu:** `reconcilingPull` bulut + yerel kopyayı birleştirir; çakışmada
+  `updatedAt` yeni olan kazanır (sunucuda `keep_newer_row` tetikleyicisi, 0016).
+- **Hesap kuralları** `lib/utils`'tedir (akış toplamı, bütçe, ekstre, getiri…) ve
+  sayfalar arası tutarlılık için tek yerden çağrılır.
