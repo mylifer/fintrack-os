@@ -7,7 +7,8 @@ import { useAccountStore, usePaymentsStore, useTransactionStore } from '@/store'
 import { buildCardStatements, type CardStatement, type StatementStatus } from '@/lib/utils/card-statement'
 import { assignCardPayments } from '@/lib/payments/schedule'
 import { planIdFor } from '@/lib/payments/ids'
-import { cardCycle, dayOf, shiftMonthKey, type CardDays, type CycleOverride, type MonthKey } from '@/lib/payments/card-cycles'
+import { cardCycle, shiftMonthKey, type CycleOverride, type MonthKey } from '@/lib/payments/card-cycles'
+import { MAX_GAP, MIN_GAP, nominalDueDay, resolveCardDays } from '@/lib/payments/bank-rules'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import type { Account, PaymentOccurrence } from '@/types'
@@ -101,7 +102,9 @@ function CardRow({ card, months }: { card: Account; months: MonthKey[] }) {
   const accounts    = useAccountStore(s => s.accounts)
   const transactions = useTransactionStore(s => s.transactions)
 
-  const days: CardDays = { statementDay: card.statementDay ?? null, dueDay: plan?.dayOfMonth ?? null }
+  // Fark (kesim → son ödeme) ve tatil kuralı: kartta kayıtlıysa o, yoksa banka kuralı
+  const { days, rule, inconsistent } = resolveCardDays(card, plan)
+  const gap = days.gapDays ?? null
   // %3 eski formun her karta yazdığı değerdi — girilmemiş sayılır
   const minPct = card.minPayPct && card.minPayPct !== 3 ? card.minPayPct : null
   const overrides = useMemo(() => overrideMap(occurrences, card.id), [occurrences, card.id])
@@ -110,15 +113,35 @@ function CardRow({ card, months }: { card: Account; months: MonthKey[] }) {
   const byClosing = useMemo(() => {
     const r = buildCardStatements(card, transactions, {
       payments: assignCardPayments(accounts, transactions).get(card.id) ?? [],
-      dueDay: days.dueDay, minPayPct: minPct, todayStr, count: 12, overrides,
+      dueDay: days.dueDay, minPayPct: minPct, todayStr, count: 12, overrides, days,
     })
     const map = new Map<string, CardStatement | { open: true; total: number }>()
     for (const s of r.statements) map.set(s.period.to, s)
     map.set(r.open.period.to, { open: true, total: r.open.total })
     return map
-  }, [card, transactions, accounts, days.dueDay, minPct, todayStr, overrides])
+    // days: statementDay/dueDay/gapDays/holidayRule değerlerinden türer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card, transactions, accounts, days.statementDay, days.dueDay, days.gapDays, days.holidayRule, minPct, todayStr, overrides])
 
   const money = (n: number) => formatCurrency(n, card.currency)
+
+  /** Kesim girilince son ödeme kendiliğinden: kesim + fark (bankada 10 gün). */
+  async function setStatementDay(v: number | null) {
+    await updateAcc(card.id, { statementDay: v ?? undefined })
+    if (v === null) return
+    const g = gap ?? rule.gapDays
+    await updateAcc(card.id, { dueGapDays: g })
+    await savePlan('card', card.id, { dayOfMonth: nominalDueDay(v, g) })
+  }
+  async function setGap(v: number | null) {
+    await updateAcc(card.id, { dueGapDays: v })
+    if (v !== null && days.statementDay) await savePlan('card', card.id, { dayOfMonth: nominalDueDay(days.statementDay, v) })
+  }
+  /** Son ödeme günü elle: sabit gün modu (fark silinir). */
+  async function setDueDay(v: number | null) {
+    await updateAcc(card.id, { dueGapDays: null })
+    await savePlan('card', card.id, { dayOfMonth: v })
+  }
 
   return (
     <tr className="border-b border-border/40 align-top">
@@ -127,18 +150,41 @@ function CardRow({ card, months }: { card: Account; months: MonthKey[] }) {
           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: card.color }} />
           <span className="truncate">{card.name}</span>
         </Link>
-        <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <DayInput label="Kesim" value={card.statementDay ?? null} max={31}
-            onCommit={v => updateAcc(card.id, { statementDay: v ?? undefined })} />
-          <DayInput label="Son ödeme" value={days.dueDay} max={31}
-            onCommit={v => savePlan('card', card.id, { dayOfMonth: v })} />
-          <DayInput label="Asgari %" value={minPct} max={100} decimal
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <DayInput label="Kesim günü" value={card.statementDay ?? null} min={1} max={31} onCommit={setStatementDay} />
+          <DayInput label="Fark (gün)" value={gap} min={MIN_GAP} max={MAX_GAP} onCommit={setGap}
+            hint={gap === null ? 'sabit gün' : undefined} />
+          <DayInput label="Son ödeme günü" value={days.dueDay} min={1} max={31} onCommit={setDueDay}
+            hint={gap !== null ? 'kendiliğinden' : undefined} />
+          <DayInput label="Asgari %" value={minPct} min={0} max={100} decimal
             onCommit={v => updateAcc(card.id, { minPayPct: v ?? undefined })} />
         </div>
-        {!days.dueDay && (
-          <p className="mt-1.5 text-[11px] text-amber-600">Son ödeme gününü girin — ay ay düzenleme ve Ödeme Takibi bununla açılır.</p>
+        <label className="mt-2 flex flex-col gap-0.5">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Tatil / hafta sonu</span>
+          <select
+            value={days.holidayRule ?? 'due'}
+            onChange={e => updateAcc(card.id, { holidayRule: e.target.value as 'due' | 'both' })}
+            className="h-7 rounded-md border border-border bg-background px-1 text-xs"
+          >
+            <option value="due">Son ödeme ilk iş gününe kayar</option>
+            <option value="both">Kesim de kayar (fark sabit)</option>
+          </select>
+        </label>
+        <p className="mt-1 text-[10px] text-muted-foreground" title={rule.note}>
+          {rule.label} kuralı: {rule.note}
+        </p>
+        {inconsistent && (
+          <div className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+            Son ödeme kesimden {inconsistent.gap} gün sonra görünüyor — yasal en az 10 gün, bankanızda 10.
+            <div className="mt-1 flex flex-wrap gap-1">
+              <button type="button" onClick={() => setStatementDay(card.statementDay ?? null).then(() => undefined)}
+                className="px-1.5 h-6 rounded border border-amber-500/40 hover:bg-amber-500/10">Son ödeme {inconsistent.suggestDue} olsun</button>
+              <button type="button" onClick={() => setStatementDay(inconsistent.suggestClosing)}
+                className="px-1.5 h-6 rounded border border-amber-500/40 hover:bg-amber-500/10">Kesim {inconsistent.suggestClosing} olsun</button>
+            </div>
+          </div>
         )}
-        {card.statementDay === 1 && !days.dueDay && (
+        {card.statementDay === 1 && !plan?.dayOfMonth && (
           <p className="mt-0.5 text-[11px] text-muted-foreground">Kesim günü 1 görünüyor; hiç girilmemiş olabilir.</p>
         )}
       </td>
@@ -147,22 +193,21 @@ function CardRow({ card, months }: { card: Account; months: MonthKey[] }) {
         const prevOv = overrides.get(shiftMonthKey(m, -1)) ?? null
         const c = cardCycle(days, m, ov, prevOv)
         // Bu ayın özel tarihleri olmasaydı hesaplanacak değerler (varsayılana eşitlenen tarih özel sayılmaz)
-        const defaultDue = days.dueDay ? dayOf(m, days.dueDay) : null
-        const defaultClosing = cardCycle(days, m, { dueDate: c.dueDate }, prevOv).closing
-        const editable = !!days.dueDay
+        const def = cardCycle(days, m, null, prevOv)
+        const editable = def.dueDate !== null
         const st = byClosing.get(c.closing)
 
         const setClosing = (v: string) =>
-          saveOcc('card', card.id, m, { statementDate: !v || v === defaultClosing ? null : v })
+          saveOcc('card', card.id, m, { statementDate: !v || v === def.closing ? null : v })
         const setDue = (v: string) =>
-          saveOcc('card', card.id, m, { dueDate: !v || v === defaultDue ? null : v })
+          saveOcc('card', card.id, m, { dueDate: !v || v === def.dueDate ? null : v })
 
         return (
           <td key={m} className="px-3 py-3">
             <div className="flex flex-col gap-1.5">
-              <DateField label="Kesim" value={c.closing} custom={c.closingCustom} invalid={c.invalid}
+              <DateField label="Kesim" value={c.closing} custom={c.closingCustom} shifted={c.closingShifted} invalid={c.invalid}
                 disabled={!editable} onChange={setClosing} />
-              <DateField label="Son ödeme" value={c.dueDate ?? ''} custom={c.dueCustom} invalid={c.invalid}
+              <DateField label="Son ödeme" value={c.dueDate ?? ''} custom={c.dueCustom} shifted={c.dueShifted} invalid={c.invalid}
                 disabled={!editable} onChange={setDue} />
               {c.invalid && <span className="text-[10px] text-destructive">Kesim, son ödemeden önce olmalı</span>}
               <div className="text-[11px] tabular-nums min-h-4">
@@ -186,8 +231,8 @@ function CardRow({ card, months }: { card: Account; months: MonthKey[] }) {
   )
 }
 
-function DateField({ label, value, custom, invalid, disabled, onChange }: {
-  label: string; value: string; custom: boolean; invalid: boolean; disabled: boolean
+function DateField({ label, value, custom, shifted, invalid, disabled, onChange }: {
+  label: string; value: string; custom: boolean; shifted: boolean; invalid: boolean; disabled: boolean
   onChange: (v: string) => void
 }) {
   return (
@@ -204,6 +249,9 @@ function DateField({ label, value, custom, invalid, disabled, onChange }: {
           invalid ? 'border-destructive' : custom ? 'border-primary text-primary font-semibold' : 'border-border',
         ].join(' ')}
       />
+      {shifted && !custom && (
+        <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Hafta sonu / resmi tatil: ilk iş gününe kaydı" aria-label="Tatil nedeniyle kaydı">↷ tatil</span>
+      )}
       {custom && !disabled && (
         <button type="button" onClick={() => onChange('')} title="Varsayılana döndür" aria-label={`${label}: varsayılana döndür`}
           className="text-xs text-muted-foreground hover:text-foreground">↺</button>
@@ -212,8 +260,8 @@ function DateField({ label, value, custom, invalid, disabled, onChange }: {
   )
 }
 
-function DayInput({ label, value, max, decimal, onCommit }: {
-  label: string; value: number | null; max: number; decimal?: boolean
+function DayInput({ label, value, min, max, decimal, hint, onCommit }: {
+  label: string; value: number | null; min: number; max: number; decimal?: boolean; hint?: string
   onCommit: (v: number | null) => void
 }) {
   const shown = value === null ? '' : String(value).replace('.', ',')
@@ -224,15 +272,16 @@ function DayInput({ label, value, max, decimal, onCommit }: {
     const raw = draft.trim().replace(',', '.')
     setDraft(null)
     const n = raw === '' ? null : Number(raw)
-    if (n !== null && (!Number.isFinite(n) || n < (decimal ? 0 : 1) || n > max)) return   // geçersiz: eski değer kalır
+    if (n !== null && (!Number.isFinite(n) || n < min || n > max)) return   // geçersiz: eski değer kalır
     const next = n === null ? null : decimal ? n : Math.round(n)
     if (next !== value) onCommit(next)
   }
 
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}{hint && <span className="normal-case ml-1 opacity-70">· {hint}</span>}</span>
       <input
+        aria-label={label}
         inputMode={decimal ? 'decimal' : 'numeric'}
         value={draft ?? shown}
         placeholder="—"

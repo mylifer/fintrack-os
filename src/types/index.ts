@@ -47,6 +47,10 @@ export interface Account {
   statementDay?: number     // 1–28: billing cycle close day
   dueDay?: number           // Payment due day after statement
   minPayPct?: number        // Minimum payment % (default: 3)
+  /** Kesimden son ödemeye gün (0023; bankalarda 10). null = banka kuralı / girilen son ödeme gününden. */
+  dueGapDays?: number | null
+  /** Son ödeme tatile denk gelirse (0023): 'due' yalnız son ödeme kayar, 'both' kesim de kayar; null = banka kuralı */
+  holidayRule?: 'due' | 'both' | null
 
   // Vadeli mevduat (type 'savings') — bkz. lib/utils/deposit.ts. Yalnız koşul
   // girildiğinde yazılır (0018 migration'ı öncesi hesapları etkilemesin).

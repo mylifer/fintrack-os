@@ -2,7 +2,7 @@ import type { Account, Transaction } from '@/types'
 import { isPosted } from './calculations'
 import { baseAmount, fromBaseTry } from './fx'
 import { roundMoney, sumBy } from './money'
-import { cardCycles, shiftMonthKey, type CycleOverride, type MonthKey } from '@/lib/payments/card-cycles'
+import { cardCycles, shiftMonthKey, type CardDays, type CycleOverride, type MonthKey } from '@/lib/payments/card-cycles'
 
 /* ── Kredi kartı ekstresi ─────────────────────────────────────────────────────
    Saf modül: dönemleri kart döngülerinden (lib/payments/card-cycles — varsayılan
@@ -70,12 +70,15 @@ export function buildCardStatements(
     count?: number
     /** Kart Takvimi'nde aya özel girilen kesim/son ödeme (ödeme ayı → tarih) */
     overrides?: ReadonlyMap<MonthKey, CycleOverride>
+    /** Kartın çözümlenmiş günleri (resolveCardDays: fark + tatil kuralı). Yoksa
+     *  statementDay + dueDay sabit günleriyle, tatil kaydırması olmadan. */
+    days?: CardDays
   },
 ): CardStatementResult {
   const count = opts.count ?? 6
   const month = opts.todayStr.slice(0, 7)
   const cycles = cardCycles(
-    { statementDay: account.statementDay ?? null, dueDay: opts.dueDay },
+    opts.days ?? { statementDay: account.statementDay ?? null, dueDay: opts.dueDay },
     opts.overrides ?? new Map(),
     shiftMonthKey(month, -(count + 2)),
     shiftMonthKey(month, 3),

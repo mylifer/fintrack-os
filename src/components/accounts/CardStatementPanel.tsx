@@ -6,6 +6,7 @@ import { useAccountStore, usePaymentsStore, useTransactionStore } from '@/store'
 import { buildCardStatements, type StatementStatus } from '@/lib/utils/card-statement'
 import { assignCardPayments } from '@/lib/payments/schedule'
 import { planIdFor } from '@/lib/payments/ids'
+import { resolveCardDays } from '@/lib/payments/bank-rules'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import { Badge } from '@/components/ui/Badge'
@@ -32,7 +33,10 @@ export function CardStatementPanel({ account }: { account: Account }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const todayStr = today()
+  // Kesim + fark ve tatil kuralı (Kart Takvimi ile aynı — bank-rules)
+  const resolved = resolveCardDays(account, plan)
   const result = useMemo(() => buildCardStatements(account, transactions, {
+    days: resolved.days,
     payments: assignCardPayments(accounts, transactions).get(account.id) ?? [],
     dueDay: plan?.dayOfMonth ?? null,
     minPayPct: account.minPayPct && account.minPayPct !== 3 ? account.minPayPct : null,
@@ -41,6 +45,8 @@ export function CardStatementPanel({ account }: { account: Account }) {
     overrides: new Map(occurrences
       .filter(o => o.targetKind === 'card' && o.targetId === account.id && !o.deleted_at)
       .map(o => [o.month, { statementDate: o.statementDate ?? null, dueDate: o.dueDate ?? null }])),
+    // resolved.days: account + plan değerlerinden türer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [account, accounts, transactions, plan?.dayOfMonth, todayStr, occurrences])
 
   const money = (n: number) => formatCurrency(n, account.currency)
@@ -52,7 +58,9 @@ export function CardStatementPanel({ account }: { account: Account }) {
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ekstre</div>
         <div className="text-xs text-muted-foreground">
           Kesim her ayın {account.statementDay ?? 1}&apos;i
-          {plan?.dayOfMonth ? ` · son ödeme ${plan.dayOfMonth}'i` : ''}
+          {resolved.days.gapDays
+            ? ` · son ödeme kesimden ${resolved.days.gapDays} gün sonra`
+            : plan?.dayOfMonth ? ` · son ödeme ${plan.dayOfMonth}'i` : ''}
           {' · '}<Link href="/kart-takvimi" className="text-primary hover:underline">Kart Takvimi</Link>
         </div>
       </div>

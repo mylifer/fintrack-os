@@ -15,7 +15,7 @@ describe('cardCycle — varsayılan günler', () => {
   it('kesim 24, son ödeme 4: Ekim ödemesi 24 Eylül kesimli', () => {
     expect(cardCycle({ statementDay: 24, dueDay: 4 }, '2026-10')).toEqual({
       month: '2026-10', from: '2026-08-25', closing: '2026-09-24', dueDate: '2026-10-04',
-      closingCustom: false, dueCustom: false, invalid: false,
+      closingCustom: false, dueCustom: false, closingShifted: false, dueShifted: false, invalid: false,
     })
   })
 

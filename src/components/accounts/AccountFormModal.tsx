@@ -8,6 +8,7 @@ import { SelectField as Select } from '@/components/ui/Select'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { useAccountStore, useTransactionStore, usePaymentsStore } from '@/store'
 import { planIdFor } from '@/lib/payments/ids'
+import { bankRuleFor, nominalDueDay } from '@/lib/payments/bank-rules'
 import { parseCurrencyInput, formatCurrency, formatNumberForInput } from '@/lib/utils/currency'
 import { computeTransactionEffect, excludeFuture } from '@/lib/utils/calculations'
 import { DEFAULT_DEPOSIT_TAX, projectDeposit } from '@/lib/utils/deposit'
@@ -71,6 +72,8 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
   const cardPlan = usePaymentsStore(s => account ? s.plans.find(p => p.id === planIdFor('card', account.id)) : undefined)
   const savePlan = usePaymentsStore(s => s.savePlan)
   const [dueDayStr, setDueDayStr]   = useState(() => cardPlan?.dayOfMonth ? String(cardPlan.dayOfMonth) : '')
+  // Kesim → son ödeme farkı: kartta kayıtlıysa o, yoksa bankanın kuralı (10 gün, bank-rules)
+  const cardGap = account?.dueGapDays ?? bankRuleFor(name).gapDays
   // %3 eski formun her karta yazdığı varsayılandı (Türkiye'de oran %20/%40) —
   // kullanıcı girmiş sayılmaz, alan boş gelir.
   const [minPctStr, setMinPctStr]   = useState(() => account?.minPayPct && account.minPayPct !== 3 ? String(account.minPayPct) : '')
@@ -166,6 +169,9 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
         statementDay: stmtDay,
         dueDay:       account?.dueDay ?? 10,
         minPayPct:    parseCurrencyInput(minPctStr) || undefined,
+        // Son ödeme günü kesim + fark ise her ay kesimden hesaplanır (ay uzunluğu,
+        // tatil); elle başka bir gün girildiyse o gün sabit kalır (0023)
+        dueGapDays:   dueDayStr === String(nominalDueDay(stmtDay, cardGap)) ? cardGap : null,
       }),
       // Vade sütunları (0018) yalnız koşul girildiğinde ya da eskisi silinirken
       // yazılır — hiç vade kullanmayan hesap bu sütunlara hiç dokunmaz.
@@ -270,7 +276,15 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
                 <input
                   type="number" min={1} max={31}
                   value={stmtDay}
-                  onChange={e => setStmtDay(Math.min(31, Math.max(1, Number(e.target.value) || 1)))}
+                  onChange={e => {
+                    const next = Math.min(31, Math.max(1, Number(e.target.value) || 1))
+                    // Son ödeme boşsa ya da önceki kesimden kendiliğinden hesaplanmışsa
+                    // yeni kesime göre yeniden doldur: kesim + banka farkı (10 gün)
+                    if (dueDayStr === '' || dueDayStr === String(nominalDueDay(stmtDay, cardGap))) {
+                      setDueDayStr(String(nominalDueDay(next, cardGap)))
+                    }
+                    setStmtDay(next)
+                  }}
                   className="w-full border border-border px-3 py-2.5 text-sm font-mono bg-background dark:bg-muted focus:border-ink outline-none"
                 />
               </div>
@@ -283,7 +297,7 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
                   value={dueDayStr}
                   onChange={e => setDueDayStr(e.target.value.replace(/\D/g, '').slice(0, 2))}
                   placeholder="Örn. 25"
-                  hint="Ekstre ve Ödeme Takibi bu günü kullanır"
+                  hint={`Kesimden ${cardGap} gün sonra (${bankRuleFor(name).label}); tatile denk gelirse ilk iş günü`}
                 />
                 <Input
                   label="Asgari Ödeme (%)"

@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import { usePaymentsStore } from '@/store'
 import { occurrenceIdFor } from '@/lib/payments/ids'
-import { shiftMonthKey } from '@/lib/payments/card-cycles'
+import { cardCycle, shiftMonthKey } from '@/lib/payments/card-cycles'
+import { resolveCardDays } from '@/lib/payments/bank-rules'
+import { addDaysIso } from '@/lib/payments/tr-holidays'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/Input'
@@ -93,7 +95,15 @@ function EditForm({ row, accounts, transactions, onClose, onPay, onSettings }: O
   const validDue = /^\d{4}-\d{2}-\d{2}$/.test(dueDate)
   // Kart Takvimi'nde bu aya / önceki aya özel kesim girildiyse ekstre penceresi ondan
   const prevOcc = usePaymentsStore(s => s.occurrences.find(o => o.id === occurrenceIdFor(target.kind, target.id, shiftMonthKey(row.month, -1))))
-  const customClosing = { closing: row.occurrence?.statementDate ?? null, prevClosing: prevOcc?.statementDate ?? null }
+  // Ekstre penceresi kart döngüsünden (kesim + fark, tatil kuralı, aya özel tarihler)
+  const cyc = target.account && validDue
+    ? cardCycle(resolveCardDays(target.account, target.plan).days, row.month,
+        { statementDate: row.occurrence?.statementDate ?? null, dueDate },
+        prevOcc ? { statementDate: prevOcc.statementDate ?? null, dueDate: prevOcc.dueDate ?? null } : null)
+    : null
+  const customClosing = cyc
+    ? { closing: cyc.closing, prevClosing: addDaysIso(cyc.from, -1) }
+    : { closing: row.occurrence?.statementDate ?? null, prevClosing: prevOcc?.statementDate ?? null }
   const window_ = target.account && validDue ? statementWindow(target.account, dueDate, customClosing) : null
   const spent = target.account && validDue ? estimateStatement(target.account, dueDate, transactions, customClosing) : null
   const spentWindow = window_ ? `(${dayMonth(window_.from)} – ${dayMonth(window_.to)})` : null

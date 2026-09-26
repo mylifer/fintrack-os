@@ -37,7 +37,8 @@ import type {
 import { roundMoney, sumBy } from '@/lib/utils/money'
 import { baseAmount, fromBaseTry, toBaseTry } from '@/lib/utils/fx'
 import { isPosted } from '@/lib/utils/calculations'
-import { lastClosingBefore } from './card-cycles'
+import { cardCycle, lastClosingBefore } from './card-cycles'
+import { resolveCardDays } from './bank-rules'
 
 export { planIdFor, occurrenceIdFor } from './ids'
 
@@ -409,6 +410,17 @@ export function buildSchedule(input: ScheduleInput): PaymentRow[] {
   for (const target of targets) {
     const day = target.dayOfMonth
     if (!target.isActive || day === null) continue
+    // Kart: son ödeme her ay kesim + fark'tan, tatil kuralıyla (Kart Takvimi ile
+    // aynı — lib/payments/card-cycles). Borç: plandaki sabit gün.
+    const cardDays = target.kind === 'card' && target.account
+      ? resolveCardDays(target.account, target.plan).days
+      : null
+    const dueOf = (m: MonthKey): string => {
+      const o = occBy.get(occKey(target.kind, target.id, m))
+      if (!cardDays) return o?.dueDate ?? dueDateFor(m, day)
+      const prevO = occBy.get(occKey(target.kind, target.id, shiftMonth(m, -1)))
+      return cardCycle(cardDays, m, o, prevO).dueDate ?? o?.dueDate ?? dueDateFor(m, day)
+    }
     // Yalnız işlenmiş ödemeler "ödendi" sayılır — ileri tarihli planlı transfer
     // henüz ödeme değildir.
     const candidates = target.kind === 'card'
@@ -423,9 +435,8 @@ export function buildSchedule(input: ScheduleInput): PaymentRow[] {
     for (const month of monthKeys(walkFrom, to)) {
       const occ = occBy.get(occKey(target.kind, target.id, month)) ?? null
       const prev = shiftMonth(month, -1)
-      const dueDate = occ?.dueDate ?? dueDateFor(month, day)
-      const prevDue = occBy.get(occKey(target.kind, target.id, prev))?.dueDate
-        ?? dueDateFor(prev, day)
+      const dueDate = dueOf(month)
+      const prevDue = dueOf(prev)
       const tracked = month >= target.startMonth
         && (target.endMonth === null || month <= target.endMonth)
 

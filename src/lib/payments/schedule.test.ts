@@ -168,12 +168,13 @@ describe('buildSchedule — kart', () => {
 
   it('günü girilmiş, tutarı girilmemiş kart "tutar yok" açık satır üretir — harcamalardan tahmin YAPMAZ', () => {
     const [row] = schedule({ accounts: [card()], plans: [cardPlan()], transactions: [charge], from: '2026-10' })
-    expect(row.dueDate).toBe('2026-10-10')
+    // Son ödeme günü 10; 10 Ekim 2026 Cumartesi → bankalar gibi ilk iş günü 12 Ekim
+    expect(row.dueDate).toBe('2026-10-12')
     expect(row.amount).toBeNull()
     expect(row.amountSource).toBeNull()
     expect(row.state).toBe('open')
     expect(row.timing).toBe('soon')
-    expect(row.daysLeft).toBe(5)
+    expect(row.daysLeft).toBe(7)
     expect(row.remaining).toBe(0)
     expect(row.occurrence).toBeNull()
   })
