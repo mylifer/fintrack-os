@@ -12,6 +12,7 @@ import { useTransactionStore, useInvestmentStore } from '@/store'
 import { summarize }         from '@/lib/utils/subscriptions'
 import { formatCurrency }    from '@/lib/utils/currency'
 import { formatDate, daysUntil } from '@/lib/utils/date'
+import { toBaseTry }         from '@/lib/utils/fx'
 
 /* ── Sort control ──────────────────────────────────────────────────── */
 
@@ -45,6 +46,15 @@ export default function SubscriptionsPage() {
     () => summarize(transactions),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [transactions, prices],
+  )
+
+  // Son 90 günde gelen zamlar — satırlarda rozet, üstte toplu uyarı
+  const recentRises = useMemo(
+    () => groups.filter(g => g.priceChange && daysUntil(g.priceChange.date) >= -90),
+    [groups],
+  )
+  const riseMonthlyTry = recentRises.reduce(
+    (s, g) => s + toBaseTry(g.priceChange!.to - g.priceChange!.from, g.currency), 0,
   )
 
   const sorted = useMemo(() => {
@@ -82,6 +92,18 @@ export default function SubscriptionsPage() {
               <StatCard label="Aylık tahmini" value={formatCurrency(monthlyEstimateTry)} />
               <StatCard label="Abonelik sayısı" value={String(serviceCount)} />
             </div>
+
+            {recentRises.length > 0 && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+                <span className="font-semibold text-foreground">
+                  Son 3 ayda {recentRises.length} aboneliğe zam geldi
+                </span>
+                <span className="text-muted-foreground">
+                  {' '}— aylık +{formatCurrency(riseMonthlyTry)}:{' '}
+                  {recentRises.map(g => `${g.name} +%${Math.round(g.priceChange!.pct)}`).join(', ')}
+                </span>
+              </div>
+            )}
 
             {/* ── Geçmiş aylar ──────────────────────────────────────── */}
             <SubscriptionHistory transactions={transactions} />
@@ -127,6 +149,14 @@ export default function SubscriptionsPage() {
                         {g.count > 1 && (
                           <span className="text-[11px] font-medium text-muted-foreground px-1.5 py-0.5 rounded-md bg-accent tabular-nums">
                             {g.count} ödeme
+                          </span>
+                        )}
+                        {g.priceChange && (
+                          <span
+                            className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-md bg-amber-500/10 tabular-nums flex-shrink-0"
+                            title={`${formatCurrency(g.priceChange.from, g.currency)} → ${formatCurrency(g.priceChange.to, g.currency)} (${formatDate(g.priceChange.date)})`}
+                          >
+                            Zam +%{Math.round(g.priceChange.pct)}
                           </span>
                         )}
                       </div>

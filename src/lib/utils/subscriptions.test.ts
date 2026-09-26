@@ -215,3 +215,31 @@ describe('subscriptions — subscriptionMonthlyHistory', () => {
     expect(subscriptionMonthlyHistory([], { months: 'all', endMonth: '2026-07' })).toEqual([])
   })
 })
+
+describe('subscriptions — price change (zam)', () => {
+  it('son ödeme öncekinden yüksekse zam; düşüş ve %1 altı sayılmaz', () => {
+    const [g] = groupSubscriptions([
+      tx({ id: '1', amount: 199.99, date: '2026-07-05' }),
+      tx({ id: '2', amount: 229.99, date: '2026-08-05' }),
+    ])
+    expect(g.priceChange).toMatchObject({ from: 199.99, to: 229.99, date: '2026-08-05' })
+    expect(g.priceChange!.pct).toBeCloseTo(15, 0)
+
+    expect(groupSubscriptions([
+      tx({ id: '1', amount: 229.99, date: '2026-07-05' }),
+      tx({ id: '2', amount: 199.99, date: '2026-08-05' }),
+    ])[0].priceChange).toBeNull()
+    expect(groupSubscriptions([
+      tx({ id: '1', amount: 100, date: '2026-07-05' }),
+      tx({ id: '2', amount: 100.5, date: '2026-08-05' }),
+    ])[0].priceChange).toBeNull()
+  })
+
+  it('tek ödeme ya da farklı para birimi: kıyas yok', () => {
+    expect(groupSubscriptions([tx()])[0].priceChange).toBeNull()
+    expect(groupSubscriptions([
+      tx({ id: '1', amount: 10, currency: 'USD', date: '2026-07-05' }),
+      tx({ id: '2', amount: 400, date: '2026-08-05' }),
+    ])[0].priceChange).toBeNull()
+  })
+})

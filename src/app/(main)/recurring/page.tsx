@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { Header }             from '@/components/layout/Header'
@@ -10,8 +10,10 @@ import { EmptyState }         from '@/components/ui/EmptyState'
 import { Badge }              from '@/components/ui/Badge'
 import { Card, CardContent }  from '@/components/ui/card'
 import {
-  useRecurringStore, useAccountStore, useCategoryStore, useUIStore,
+  useRecurringStore, useAccountStore, useCategoryStore, useUIStore, useTransactionStore,
 } from '@/store'
+import { useRecurringSuggestionsStore } from '@/store/recurring-suggestions.store'
+import { detectRecurring, suggestionToRecurring, type RecurringSuggestion } from '@/lib/utils/recurring-detect'
 import { approveRecurring }   from '@/lib/utils/recurring-actions'
 import { formatCurrency }     from '@/lib/utils/currency'
 import { today }              from '@/lib/utils/date'
@@ -38,8 +40,31 @@ export default function RecurringPage() {
   const accounts        = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const categories      = useCategoryStore(s => s.categories)
   const openModal       = useUIStore(s => s.openModal)
+  const addRecurring    = useRecurringStore(s => s.add)
+  const transactions    = useTransactionStore(s => s.transactions)
+  const dismissed       = useRecurringSuggestionsStore(s => s.dismissed)
+  const dismiss         = useRecurringSuggestionsStore(s => s.dismiss)
 
   const todayStr = today()
+
+  // Geçmişten öneriler: şablonu olmayan aylık düzenli gelir/giderler
+  const suggestions = useMemo(
+    () => detectRecurring(transactions, recurring, { asOf: todayStr, dismissed }),
+    [transactions, recurring, todayStr, dismissed],
+  )
+  const [addingKey, setAddingKey] = useState<string | null>(null)
+
+  async function handleAddSuggestion(s: RecurringSuggestion) {
+    if (addingKey) return
+    setAddingKey(s.key)
+    try {
+      await addRecurring(suggestionToRecurring(s, crypto.randomUUID(), new Date().toISOString()))
+    } catch (err) {
+      console.error('[recurring:suggest-add]', err)
+    } finally {
+      setAddingKey(null)
+    }
+  }
 
   const [generatingId, setGeneratingId]   = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -91,6 +116,30 @@ export default function RecurringPage() {
                   isGenerating={generatingId === r.id}
                   onGenerate={() => handleGenerate(r)}
                   onSkip={() => skip(r.id, todayStr)}
+                />
+              ))}
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* ── Suggestions (geçmişten) ───────────────────────────────── */}
+        {suggestions.length > 0 && (
+          <section>
+            <div className="text-xs font-medium tracking-wide uppercase text-primary font-semibold mb-2">
+              Önerilen — geçmişinizde her ay tekrarlayan {suggestions.length} işlem
+            </div>
+            <Card className="gap-0 py-0">
+              <CardContent className="p-0 divide-y divide-border">
+              {suggestions.map(s => (
+                <SuggestionRow
+                  key={s.key}
+                  s={s}
+                  accounts={accounts}
+                  categories={categories}
+                  isAdding={addingKey === s.key}
+                  onAdd={() => handleAddSuggestion(s)}
+                  onDismiss={() => dismiss(s.key)}
                 />
               ))}
               </CardContent>
@@ -215,6 +264,61 @@ function DueRow({
         </button>
         <Button size="sm" onClick={onGenerate} loading={isGenerating}>
           Kaydet
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/* ── Suggestion row ─────────────────────────────────────────────────── */
+
+function SuggestionRow({
+  s, accounts, categories, isAdding, onAdd, onDismiss,
+}: {
+  s: RecurringSuggestion
+  accounts: { id: string; name: string; color: string }[]
+  categories: { id: string; name: string; icon: string; color: string }[]
+  isAdding: boolean
+  onAdd: () => void
+  onDismiss: () => void
+}) {
+  const account  = accounts.find(a => a.id === s.accountId)
+  const category = categories.find(c => c.id === s.categoryId)
+
+  return (
+    <div className="flex items-center gap-4 px-5 py-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          {category && <CategoryIcon icon={category.icon} color={category.color} size={16} />}
+          <span className="font-semibold text-sm text-foreground truncate">{s.name}</span>
+          <Badge variant="secondary">{s.count} ay</Badge>
+        </div>
+        <div className="text-xs font-medium text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+          {account && (
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: account.color }} />
+              {account.name}
+            </span>
+          )}
+          <span>·</span>
+          <span>her ayın ~{s.dayOfMonth}. günü</span>
+          <span>·</span>
+          <span>sıradaki {format(new Date(s.nextDate + 'T00:00:00'), 'd MMMM', { locale: tr })}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <span className={`font-medium tabular-nums text-lg ${s.type === 'income' ? 'text-green-600' : 'text-destructive'}`}>
+          {s.amountVaries ? '~' : ''}{s.type === 'income' ? '+' : '−'}{formatCurrency(s.amount, s.currency)}
+        </span>
+        <button
+          onClick={onDismiss}
+          className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-1 border border-border rounded-xl"
+          title="Bu öneriyi bir daha gösterme"
+        >
+          Gizle
+        </button>
+        <Button size="sm" onClick={onAdd} loading={isAdding}>
+          Tekrarlayana ekle
         </Button>
       </div>
     </div>

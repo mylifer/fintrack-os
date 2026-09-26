@@ -34,7 +34,28 @@ export interface SubscriptionGroup {
   count: number              // number of charges in the group
   totalTry: number           // sum of all charges, normalized to TRY
   monthlyEstimateTry: number // latest charge treated as the monthly price, in TRY
+  /** Son ödeme bir öncekinden (aynı para birimi) yüksekse: zam. */
+  priceChange: PriceChange | null
   txs: Transaction[]
+}
+
+export interface PriceChange {
+  from: number
+  to: number
+  pct: number
+  date: string   // zamlı ilk ödemenin tarihi
+}
+
+// Kur/yuvarlama oynamasını zam saymamak için alt sınır (%1)
+const PRICE_UP_MIN_PCT = 1
+
+/** En yeni ödeme ile bir önceki ödeme arasındaki artış (newest-first sıralı). */
+export function detectPriceChange(ordered: readonly Transaction[]): PriceChange | null {
+  const [latest, prev] = ordered
+  if (!latest || !prev || latest.currency !== prev.currency || !(prev.amount > 0)) return null
+  const pct = ((latest.amount - prev.amount) / prev.amount) * 100
+  if (pct < PRICE_UP_MIN_PCT) return null
+  return { from: prev.amount, to: latest.amount, pct, date: latest.date }
 }
 
 /** Detect the brand + grouping key for a single subscription charge. Charges
@@ -83,6 +104,7 @@ export function groupSubscriptions(transactions: readonly Transaction[]): Subscr
       count: ordered.length,
       totalTry: sumBy(ordered, baseAmount),
       monthlyEstimateTry: toBaseTry(latest.amount, latest.currency),
+      priceChange: detectPriceChange(ordered),
       txs: ordered,
     })
   }
