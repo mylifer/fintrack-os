@@ -169,7 +169,7 @@ public enum BudgetStatus: String, Sendable { case ok, warning, exceeded }
 
 public struct Budget: SyncRecord, Hashable {
     public static let table = "budgets"
-    public let raw: JSONObject
+    public var raw: JSONObject
     public let id: String
     /// Düz kimlik YA DA çok kategorili bütçede JSON dizisi ('["a","b"]').
     public var categoryId: String
@@ -194,7 +194,68 @@ public struct Budget: SyncRecord, Hashable {
         categoryName = raw.str("categoryName")
     }
 
-    public func ownedColumns() -> JSONObject { [:] }
+    /// Web bütçe formunun yazdığı alanlar — yalnız değişenler (ya da satırda
+    /// olmayanlar); eski year/month alanlarına dokunulmaz.
+    public func ownedColumns() -> JSONObject {
+        let before = Budget(raw: raw)
+        var out: JSONObject = ["id": .string(id)]
+        func put(_ key: String, _ value: JSONValue, _ changed: Bool) {
+            if changed || raw[key] == nil { out[key] = value }
+        }
+        put("categoryId", .string(categoryId), categoryId != before.categoryId)
+        put("categoryName", JSONValue(categoryName), categoryName != before.categoryName)
+        put("amount", .number(amount), amount != before.amount)
+        put("period", .string(period), period != before.period)
+        put("rollover", .bool(rollover), rollover != before.rollover)
+        put("alertThreshold", .number(alertThreshold), alertThreshold != before.alertThreshold)
+        return out
+    }
+}
+
+/// Bütçe formu — web budgets/page.tsx handleSave. Tek kategori düz kimlik, çok
+/// kategori JSON dizisi; categoryName seçilen canlı kategorilerin adları.
+public struct BudgetDraft: Equatable, Sendable {
+    public var categoryIds: [String] = []
+    public var amountText = ""
+    public var alertThreshold = 80
+    public var rollover = false
+
+    public init() {}
+
+    public init(editing b: Budget) {
+        categoryIds = Calc.budgetCategoryIds(b)
+        amountText = Fmt.amountInput(b.amount)
+        alertThreshold = Int(b.alertThreshold)
+        rollover = b.rollover
+    }
+
+    public var amount: Double { Fmt.parseAmount(amountText) }
+
+    public func validationError() -> String? {
+        if categoryIds.isEmpty { return "En az bir kategori seçin." }
+        if amount <= 0 { return "Tutar girin." }
+        return nil
+    }
+
+    public func build(editing: Budget?, categories: [Category], workspaceId: String?,
+                      id: String = UUID().uuidString.lowercased()) -> Budget {
+        var b = editing ?? Budget(raw: ["id": .string(id), "period": "monthly", "deleted_at": .null,
+                                        "workspaceId": JSONValue(workspaceId)])
+        b.categoryId = categoryIds.count == 1 ? categoryIds[0] : Self.jsonArray(categoryIds)
+        let names = categoryIds.compactMap { id in categories.first { $0.id == id }?.name }
+        b.categoryName = names.joined(separator: ", ")
+        b.amount = amount
+        b.alertThreshold = Double(alertThreshold > 0 ? alertThreshold : 80)
+        b.rollover = rollover
+        if editing == nil { b.period = "monthly" }
+        return b
+    }
+
+    /// JS JSON.stringify(["a","b"]) → '["a","b"]' (boşluksuz)
+    static func jsonArray(_ ids: [String]) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: ids, options: [.withoutEscapingSlashes])) ?? Data("[]".utf8)
+        return String(decoding: data, as: UTF8.self)
+    }
 }
 
 // MARK: - Transaction

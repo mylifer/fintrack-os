@@ -24,7 +24,7 @@ struct BudgetsContent: View {
         .overlay {
             if model.budgets.isEmpty {
                 ContentUnavailableView("Bütçe yok", systemImage: "chart.pie",
-                                       description: Text("Bütçeler web'den eklenir."))
+                                       description: Text("Sağ üstteki + ile bir kategoriye aylık sınır koyun."))
             }
         }
     }
@@ -117,8 +117,14 @@ struct BudgetDetailView: View {
     @State private var editing: Transaction?
     @State private var pendingDelete: Transaction?
     @State private var errorMessage: String?
+    @State private var editingBudget = false
+    @Environment(\.dismiss) private var dismiss
+
+    /// Güncel hali (düzenleme sonrası)
+    private var current: Budget { model.budgets.first { $0.id == budget.id } ?? budget }
 
     private var txs: [Transaction] {
+        let budget = current
         let ids = Calc.expandCategoryIds(Calc.budgetCategoryIds(budget), model.categories)
         let r = DateUtil.monthRange(month)
         return model.reportTransactions.filter { t in
@@ -129,6 +135,7 @@ struct BudgetDetailView: View {
     }
 
     var body: some View {
+        let budget = current
         let state = Calc.enrichBudget(budget, model.reportTransactions, month, categories: model.categories, fx: model.fx)
         TransactionList(transactions: txs, editing: $editing, pendingDelete: $pendingDelete)
             .safeAreaInset(edge: .top) {
@@ -142,6 +149,11 @@ struct BudgetDetailView: View {
             }
             .navigationTitle(Calc.budgetLabel(budget, model.categories).label)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Düzenle") { editingBudget = true } } }
+            .sheet(isPresented: $editingBudget) { BudgetFormView(editing: budget) }
+            .onChange(of: model.budgets.contains { $0.id == self.budget.id }) { _, exists in
+                if !exists { dismiss() }
+            }
             .sheet(item: $editing) { TransactionFormView(editing: $0) }
             .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
     }

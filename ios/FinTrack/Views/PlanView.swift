@@ -22,6 +22,7 @@ struct PlanView: View {
     @State private var month = MonthYear.current()
     @State private var newGoal = false
     @State private var newRecurring = false
+    @State private var newBudget = false
 
     var body: some View {
         @Bindable var router = router
@@ -55,6 +56,12 @@ struct PlanView: View {
                             .accessibilityLabel("Hedef ekle")
                     }
                 }
+                if router.planSection == .budgets {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { newBudget = true } label: { Image(systemName: "plus") }
+                            .accessibilityLabel("Bütçe ekle")
+                    }
+                }
                 if router.planSection == .recurring {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { newRecurring = true } label: { Image(systemName: "plus") }
@@ -67,9 +74,11 @@ struct PlanView: View {
             .navigationDestination(for: SubscriptionKey.self) { SubscriptionDetailView(key: $0.key) }
             .sheet(isPresented: $newGoal) { GoalFormView(editing: nil) }
             .sheet(isPresented: $newRecurring) { RecurringFormView(editing: nil) }
+            .sheet(isPresented: $newBudget) { BudgetFormView(editing: nil) }
             .onAppear {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-newrecurring") { newRecurring = true }
+                if ProcessInfo.processInfo.arguments.contains("-newbudget") { newBudget = true }
                 #endif
             }
         }

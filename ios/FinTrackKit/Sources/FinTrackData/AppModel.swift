@@ -366,7 +366,9 @@ public final class AppModel {
     }
 
     public func budgetStates(_ my: MonthYear = .current()) -> [Calc.BudgetState] {
-        budgets.map { Calc.enrichBudget($0, reportTransactions, my, categories: categories, fx: fx) }
+        // Web bütçe sayfası yalnız aylık bütçeleri gösterir (eski yıllıklar hariç)
+        budgets.filter { $0.period == "monthly" }
+            .map { Calc.enrichBudget($0, reportTransactions, my, categories: categories, fx: fx) }
             .sorted { $0.percentUsed > $1.percentUsed }
     }
 
@@ -635,6 +637,26 @@ public final class AppModel {
         var raw = r.raw
         raw["deleted_at"] = .string(Self.nowISO())
         try await write(RecurringTransaction(raw: raw), in: \.recurring)
+    }
+
+    // MARK: Bütçeler
+
+    public func saveBudget(_ draft: BudgetDraft, editing: Budget?) async throws {
+        if let e = draft.validationError() { throw ServiceError.message(e) }
+        let b = draft.build(editing: editing, categories: categories,
+                            workspaceId: editing?.workspaceId ?? activeWorkspaceId)
+        try await write(b, in: \.budgets)
+    }
+
+    public func deleteBudget(_ b: Budget) async throws {
+        var out = b
+        out.raw["deleted_at"] = .string(Self.nowISO())
+        try await write(out, in: \.budgets)
+    }
+
+    /// Başka bütçede kullanılan kategoriler (formda seçilemez — web ile aynı)
+    public func categoriesUsedByOtherBudgets(except id: String?) -> Set<String> {
+        Set(budgets.filter { $0.id != id }.flatMap(Calc.budgetCategoryIds))
     }
 
     // MARK: Hedefler
