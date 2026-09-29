@@ -26,8 +26,9 @@ struct FinTrackApp: App {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background:
-                lock.lockIfNeeded()
+                lock.didEnterBackground()
             case .active:
+                lock.willBecomeActive()
                 // Başka cihazdaki değişiklikler — açılışta tazele
                 if model.userId != nil { Task { await model.refresh() } }
             default:
@@ -52,8 +53,12 @@ struct RootView: View {
 
             // Kilit yalnız oturum açıkken anlamlı; uygulama değiştiricide
             // (inactive) içerik de gizlenir.
-            if model.userId != nil && (lock.isLocked || scenePhase != .active) {
-                LockView().transition(.opacity)
+            if model.userId != nil {
+                if lock.isLocked {
+                    LockView().transition(.opacity)
+                } else if scenePhase != .active {
+                    PrivacyCover().transition(.opacity)
+                }
             }
         }
         .onChange(of: amountsHidden, initial: true) { _, v in

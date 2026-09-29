@@ -109,6 +109,7 @@ struct SmallView: View {
             Text(money(s.expense, s))
                 .font(.system(size: 26, weight: .bold).monospacedDigit())
                 .minimumScaleFactor(0.5).lineLimit(1)
+                .privacySensitive()
             Spacer(minLength: 0)
             if s.budgetLimit > 0 {
                 HStack {
@@ -122,6 +123,7 @@ struct SmallView: View {
                 Text("Net \(signedWhole(s.net, s))")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(s.net >= 0 ? incomeGreen : expenseRed)
+                    .privacySensitive()
             }
             StaleNote(s: s)
         }
@@ -137,15 +139,17 @@ struct MediumView: View {
                 Text(money(s.expense, s))
                     .font(.system(size: 24, weight: .bold).monospacedDigit())
                     .minimumScaleFactor(0.5).lineLimit(1)
+                    .privacySensitive()
                 HStack(spacing: 4) {
                     Text("Gelir").foregroundStyle(.secondary)
-                    Text(money(s.income, s)).foregroundStyle(incomeGreen)
+                    Text(money(s.income, s)).foregroundStyle(incomeGreen).privacySensitive()
                 }
                 .font(.caption.monospacedDigit()).lineLimit(1)
                 HStack(spacing: 4) {
                     Text("Net").foregroundStyle(.secondary)
                     Text(signedWhole(s.net, s))
                         .foregroundStyle(s.net >= 0 ? incomeGreen : expenseRed)
+                        .privacySensitive()
                 }
                 .font(.caption.monospacedDigit()).lineLimit(1)
                 Spacer(minLength: 0)
@@ -197,6 +201,7 @@ struct RectangularView: View {
         VStack(alignment: .leading, spacing: 1) {
             Text("\(s.monthName) harcaması").font(.caption2).widgetAccentable()
             Text(money(s.expense, s)).font(.headline.monospacedDigit()).minimumScaleFactor(0.6)
+                .privacySensitive()
             if s.budgetLimit > 0 {
                 ProgressView(value: s.budgetRatio)
                 Text("Bütçe %\(s.budgetPercent)").font(.caption2).foregroundStyle(.secondary)
@@ -229,7 +234,7 @@ struct WidgetRoot: View {
                 case .accessoryRectangular: RectangularView(s: s)
                 case .accessoryCircular: CircularView(s: s)
                 case .accessoryInline:
-                    Text("\(s.monthName): \(money(s.expense, s)) harcandı")
+                    Text("\(s.monthName): \(money(s.expense, s)) harcandı").privacySensitive()
                 default: SmallView(s: s)
                 }
             } else {

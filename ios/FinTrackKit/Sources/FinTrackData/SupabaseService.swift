@@ -53,16 +53,65 @@ public final class SupabaseService: Sendable {
         client = SupabaseClient(
             supabaseURL: config.supabaseURL,
             supabaseKey: config.anonKey,
-            options: SupabaseClientOptions(auth: .init(emitLocalSessionAsInitialSession: true))
+            options: SupabaseClientOptions(auth: .init(storage: DeviceKeychainStorage(),
+                                                       emitLocalSessionAsInitialSession: true))
         )
     }
 
     // MARK: Oturum
 
     public func currentAuthState() async -> AuthState {
-        guard let session = try? await client.auth.session else { return .signedOut }
+        let session: Session
+        do {
+            session = try await client.auth.session
+        } catch {
+            // Çevrimdışı açılış: süresi dolan belirteç yenilenemedi ama oturum
+            // cihazda duruyor — çıkış sayma, önbellekle aç. Yalnız aal2 (MFA'sı
+            // tamamlanmış) oturum; aksi halde kod ekranı çevrimiçi gerektirir.
+            guard Self.isNetworkError(error), let local = client.auth.currentSession,
+                  Self.assuranceLevel(local.accessToken) == "aal2" || !Self.hasTOTP(local.user)
+            else { return .signedOut }
+            return .signedIn(userId: local.user.id.uuidString.lowercased(), email: local.user.email)
+        }
         if let factor = await pendingMFAFactor() { return .needsMFA(factorId: factor) }
         return .signedIn(userId: session.user.id.uuidString.lowercased(), email: session.user.email)
+    }
+
+    /// Oturum hâlâ geçerli mi? (Yenileme belirteci başka cihazdan iptal edildiyse
+    /// ya da şifre değiştiyse false.) Ağ hatasında belirsiz → true.
+    public func hasValidSession() async -> Bool {
+        do {
+            _ = try await client.auth.session
+            return true
+        } catch {
+            return Self.isNetworkError(error)
+        }
+    }
+
+    static func isNetworkError(_ error: Error) -> Bool {
+        if error is URLError { return true }
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain { return true }
+        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError, underlying.domain == NSURLErrorDomain {
+            return true
+        }
+        return false
+    }
+
+    /// JWT'nin "aal" iddiası (imza doğrulanmaz — yalnız yerel durum kararı).
+    static func assuranceLevel(_ jwt: String) -> String? {
+        let parts = jwt.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b64 = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        guard let data = Data(base64Encoded: b64),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return obj["aal"] as? String
+    }
+
+    private static func hasTOTP(_ user: User) -> Bool {
+        (user.factors ?? []).contains { $0.factorType == "totp" && $0.status == .verified }
     }
 
     public func signIn(email: String, password: String) async throws -> AuthState {
@@ -138,11 +187,14 @@ public final class SupabaseService: Sendable {
         let decoder = JSONDecoder()
         while true {
             var query = client.from(T.table).select("*")
-            if memberIds.isEmpty {
+            // PostgREST `or` filtresi metinle kurulur: yalnız UUID biçimli kimlikler
+            // girer (sunucudan gelse de sözdizimi enjeksiyonuna kapı bırakma).
+            let ids = memberIds.filter(Self.isUUID)
+            if ids.isEmpty || !Self.isUUID(userId) {
                 query = query.eq("user_id", value: userId)
             } else {
                 let col = T.table == "workspaces" ? "id" : "workspaceId"
-                let list = memberIds.map { "\"\($0)\"" }.joined(separator: ",")
+                let list = ids.map { "\"\($0)\"" }.joined(separator: ",")
                 query = query.or("user_id.eq.\(userId),\(col).in.(\(list))")
             }
             if let lastId { query = query.gt("id", value: lastId) }
@@ -155,6 +207,10 @@ public final class SupabaseService: Sendable {
             if lastId == nil { break }
         }
         return acc
+    }
+
+    static func isUUID(_ s: String) -> Bool {
+        s.count == 36 && UUID(uuidString: s) != nil
     }
 
     // MARK: Yazma

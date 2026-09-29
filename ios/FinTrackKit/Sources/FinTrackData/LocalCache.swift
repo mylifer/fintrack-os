@@ -3,7 +3,8 @@ import FinTrackCore
 
 /// Son başarılı çekişin ham satırları — uygulama çevrimdışı açılınca ekran boş
 /// kalmasın diye. Yalnız OKUMA önbelleği: yazmalar her zaman önce buluta gider.
-/// Dosya cihaz kilitliyken okunamaz (complete file protection); çıkışta silinir.
+/// Dosya cihaz kilitliyken okunamaz (complete file protection), yedeğe girmez;
+/// çıkışta silinir.
 struct LocalCache {
     private struct Stored: Codable {
         var workspaces: [JSONObject]
@@ -34,6 +35,11 @@ struct LocalCache {
         #else
         try? data.write(to: url, options: .atomic)
         #endif
+        // Buluttan yeniden çekilebilir: finans verisi cihaz yedeğine (iCloud) girmesin
+        var u = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? u.setResourceValues(values)
     }
 
     func load(userId: String) -> Snapshot? {

@@ -157,6 +157,13 @@ public final class AppModel {
             lastError = nil
         } catch {
             if (error as NSError).code == NSURLErrorCancelled { return }
+            // Oturum başka yerden kapatıldıysa (şifre değişti, web'den tüm
+            // cihazlardan çıkış) sessizce eski veriyle kalma — giriş ekranına dön.
+            if !(await service.hasValidSession()) {
+                await signOut()
+                lastError = "Oturumunuz sona erdi. Yeniden giriş yapın."
+                return
+            }
             lastError = "Veriler güncellenemedi. Bağlantınızı kontrol edin."
         }
 

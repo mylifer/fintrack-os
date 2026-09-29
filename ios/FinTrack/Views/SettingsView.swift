@@ -28,11 +28,16 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("\(lock.biometryName) kilidi", isOn: $lock.isEnabled)
+                    if lock.isEnabled {
+                        Picker("Kilitle", selection: $lock.graceSeconds) {
+                            ForEach(AppLock.graceOptions, id: \.seconds) { Text($0.label).tag($0.seconds) }
+                        }
+                    }
                     Toggle("Tutarları gizle", isOn: $amountsHidden)
                 } header: {
                     Text("Gizlilik")
                 } footer: {
-                    Text("Kilit açıkken uygulama arka plana geçince kilitlenir.")
+                    Text("Uygulama arka planda seçilen süreden uzun kalınca kilitlenir. Uygulama değiştiricide içerik her zaman gizlenir.")
                 }
 
                 Section("Eşitleme") {

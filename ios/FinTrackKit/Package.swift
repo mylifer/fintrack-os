@@ -26,5 +26,6 @@ let package = Package(
             ]
         ),
         .testTarget(name: "FinTrackCoreTests", dependencies: ["FinTrackCore"]),
+        .testTarget(name: "FinTrackDataTests", dependencies: ["FinTrackData"]),
     ]
 )
