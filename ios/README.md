@@ -64,6 +64,8 @@ Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|acc
   `amountTry` yazılmaz (web ile aynı).
 - Tekrarlayan onayı: kaçırılan her dönem için `deterministicUuid("recur:<şablon>:<tarih>")`
   kimlikli işlem, sonra şablonun `nextDueDate` / `lastGeneratedDate`'i. Atla yalnız imleci ilerletir.
+- Tekrarlayan şablon ve bütçe ekleme/düzenleme web formlarının kurallarıyla (`RecurringDraft`,
+  `BudgetDraft`); yazmada yalnız değişen alanlar ham satırın üstüne konur.
 - Hedefler: iOS tüm alanları yazar; "Ekle/Çıkar" yalnız `savedAmount` (işlem oluşturmaz).
 - Abonelik = gider üzerinde `abonelik` etiketi; diğer etiketler korunur.
 - Çevrimdışı: ağ yoksa satır cihazdaki kuyruğa (`Outbox`) girer, bağlantı gelince gönderilir;
