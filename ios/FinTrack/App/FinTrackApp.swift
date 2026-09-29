@@ -6,7 +6,7 @@ import FinTrackData
 struct FinTrackApp: App {
     @State private var model = AppModel()
     @State private var lock = AppLock()
-    @State private var router = Router()
+    @State private var router = Router.shared
     @Environment(\.scenePhase) private var scenePhase
 
     init() {

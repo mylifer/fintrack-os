@@ -5,6 +5,9 @@ import FinTrackCore
 @MainActor
 @Observable
 final class Router {
+    /// Tek örnek: App Intent'ler (Siri / Kestirmeler) de buradan yönlendirir.
+    static let shared = Router()
+
     var tab: MainTabView.Tab = Router.debugTab ?? .summary
     var quickAdd = Router.debugFlag("-quickadd") {
         didSet { if !quickAdd { quickAddTemplate = nil } }

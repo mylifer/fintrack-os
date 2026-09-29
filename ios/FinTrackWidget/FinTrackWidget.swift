@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 import FinTrackCore
 
 /* ── Ana ekran / kilit ekranı widget'ları ─────────────────────────────────
@@ -89,6 +90,19 @@ struct EmptyState: View {
     }
 }
 
+/// "N onay bekliyor" — dokununca Özet'teki onay kartı.
+struct PendingNote: View {
+    let s: WidgetSnapshot
+    var body: some View {
+        if s.pendingCount > 0 {
+            Label("\(s.pendingCount) onay bekliyor", systemImage: "bell.badge.fill")
+                .font(.caption2.bold())
+                .foregroundStyle(warn)
+                .lineLimit(1)
+        }
+    }
+}
+
 struct StaleNote: View {
     let s: WidgetSnapshot
     var body: some View {
@@ -105,7 +119,18 @@ struct SmallView: View {
     let s: WidgetSnapshot
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(s.monthName) harcaması").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 4) {
+                Text("\(s.monthName) harcaması").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 0)
+                if s.pendingCount > 0 {
+                    Text("\(s.pendingCount)")
+                        .font(.caption2.bold().monospacedDigit())
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background(warn, in: Circle())
+                        .accessibilityLabel("\(s.pendingCount) onay bekliyor")
+                }
+            }
             Text(money(s.expense, s))
                 .font(.system(size: 26, weight: .bold).monospacedDigit())
                 .minimumScaleFactor(0.5).lineLimit(1)
@@ -154,7 +179,7 @@ struct MediumView: View {
                 .font(.caption.monospacedDigit()).lineLimit(1)
                 Spacer(minLength: 0)
                 HStack {
-                    StaleNote(s: s)
+                    if s.pendingCount > 0 { PendingNote(s: s) } else { StaleNote(s: s) }
                     Spacer()
                     Link(destination: URL(string: "fintrack://add")!) {
                         Image(systemName: "plus")
@@ -258,9 +283,26 @@ struct FinTrackSummaryWidget: Widget {
     }
 }
 
+/// Denetim Merkezi / kilit ekranı / Eylem düğmesi: tek dokunuşla hızlı ekleme (iOS 18).
+@available(iOS 18.0, *)
+struct QuickAddControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "FinTrackQuickAdd") {
+            ControlWidgetButton(action: OpenURLIntent(URL(string: "fintrack://add")!)) {
+                Label("İşlem ekle", systemImage: "plus.circle.fill")
+            }
+        }
+        .displayName("FinTrack: İşlem ekle")
+        .description("FinTrack'i yeni işlem sayfasıyla açar.")
+    }
+}
+
 @main
 struct FinTrackWidgets: WidgetBundle {
-    var body: some Widget { FinTrackSummaryWidget() }
+    var body: some Widget {
+        FinTrackSummaryWidget()
+        if #available(iOS 18.0, *) { QuickAddControl() }
+    }
 }
 
 #Preview(as: .systemMedium) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }

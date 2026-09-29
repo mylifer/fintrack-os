@@ -283,7 +283,8 @@ public final class AppModel {
             month: String(format: "%04d-%02d", my.year, my.month), monthTitle: DateUtil.monthTitle(my),
             expense: flow.expense, income: flow.income, net: flow.net, netWorth: netWorth,
             budgetSpent: Money.sum(states) { $0.spent }, budgetLimit: Money.sum(states) { $0.limit },
-            budgets: Array(lines), amountsHidden: Fmt.amountsHidden, updatedAt: Date())
+            budgets: Array(lines), amountsHidden: Fmt.amountsHidden, updatedAt: Date(),
+            pendingCount: dueApprovals.count + dueRecurring.count)
         let changed = snap.withoutDate != WidgetSnapshot.load()?.withoutDate
         snap.save()
         if changed { reloadWidgets() }
