@@ -23,6 +23,18 @@ final class Router {
     /// Hızlı ekleme bir işlemin kopyasıyla açılacaksa doldurulmuş taslak.
     var quickAddTemplate: TransactionDraft?
 
+    /// Kart ödemesi: bankadan karta transfer, tutar ekstre kalanı.
+    func payCard(_ card: Account, amount: Double, from accountId: String?) {
+        var d = TransactionDraft()
+        d.type = .transfer
+        d.accountId = accountId
+        d.toAccountId = card.id
+        d.amountText = amount > 0 ? Fmt.amountInput(amount) : ""
+        d.description = "Kredi Kartı Ödemesi"
+        quickAddTemplate = d
+        quickAdd = true
+    }
+
     /// Var olan işlemin kopyası: aynı alanlar, bugünün tarihi.
     func duplicate(_ t: Transaction) {
         var d = TransactionDraft(editing: t)

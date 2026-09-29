@@ -32,10 +32,38 @@ private func periodText(_ p: StatementPeriod) -> String {
 /// Uygulamadaki işlemlerden hesaplanır (bankanın ekstresi değil).
 struct CardStatementSummary: View {
     @Environment(AppModel.self) private var model
+    @Environment(Router.self) private var router
     let account: Account
 
     var body: some View {
         let r = model.cardStatements(account)
+        VStack(alignment: .leading, spacing: 10) {
+            summaryLink(r)
+            if let last = r.statements.first, last.status == .open || last.status == .partial || last.status == .overdue {
+                let due = max(0, Money.sub(last.total, last.paid))
+                Button {
+                    router.payCard(account, amount: due, from: defaultPayer)
+                } label: {
+                    Label("Ekstreyi öde · \(Fmt.currency(due, account.currency))", systemImage: "arrow.right.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.tint)
+            }
+        }
+    }
+
+    /// Ödeme hesabı: son kullanılan, yoksa ilk TL vadesiz/nakit (kart dışı)
+    private var defaultPayer: String? {
+        let last = UserDefaults.standard.string(forKey: "fintrack.lastAccountId")
+        let payers = model.activeAccounts.filter { $0.type != .credit_card }
+        return payers.first { $0.id == last }?.id
+            ?? payers.first { $0.currency == .TRY && ($0.type == .checking || $0.type == .cash) }?.id
+            ?? payers.first?.id
+    }
+
+    private func summaryLink(_ r: CardStatementResult) -> some View {
         NavigationLink(value: CardStatementsRoute(accountId: account.id)) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
