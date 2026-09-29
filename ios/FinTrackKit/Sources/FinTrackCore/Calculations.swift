@@ -135,6 +135,30 @@ public enum Calc {
         return periodFlow(txs, from: r.from, to: r.to, fx: fx, asOf: asOf)
     }
 
+    /// `my` dahil geriye doğru `count` ayın akışı (eskiden yeniye).
+    public static func monthlySeries(_ txs: [Transaction], endingAt my: MonthYear, count: Int, fx: FX,
+                                     asOf: String = DateUtil.today()) -> [(month: MonthYear, flow: Flow)] {
+        var months: [MonthYear] = [my]
+        while months.count < count { months.insert(months[0].previous, at: 0) }
+        return months.map { ($0, monthlyFlow(txs, $0, fx: fx, asOf: asOf)) }
+    }
+
+    /// Ay başından bugüne gider ile geçen ayın AYNI dönemi (1…aynı gün; geçen ay
+    /// daha kısaysa son günü). Karşılaştırma yalnız bugünün ayı için anlamlı.
+    public static func monthToDateExpense(_ txs: [Transaction], fx: FX,
+                                          today: String = DateUtil.today()) -> (current: Double, previous: Double) {
+        guard let d = DateUtil.parseDay(today) else { return (0, 0) }
+        let my = MonthYear.current(d)
+        let dayOfMonth = DateUtil.calendar.component(.day, from: d)
+        let cur = DateUtil.monthRange(my)
+        let prevRange = DateUtil.monthRange(my.previous)
+        let prevLastDay = Int(prevRange.to.suffix(2)) ?? 28
+        let prevTo = String(prevRange.from.prefix(8)) + String(format: "%02d", min(dayOfMonth, prevLastDay))
+        let current = periodFlow(txs, from: cur.from, to: today, fx: fx, asOf: today).expense
+        let previous = periodFlow(txs, from: prevRange.from, to: prevTo, fx: fx, asOf: today).expense
+        return (current, previous)
+    }
+
     // MARK: Kategori payları
 
     /// Bölünmüş işlemi kategori başına sanal satırlara açar (yalnız TOPLAMA için).

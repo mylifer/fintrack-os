@@ -38,6 +38,10 @@ public final class AppModel {
     public private(set) var debts: [Debt] = []
     public private(set) var holdings: [Holding] = []
     public private(set) var prices = PriceBook()
+    public private(set) var recurring: [RecurringTransaction] = []
+    public private(set) var goals: [SavingsGoal] = []
+    public private(set) var paymentPlans: [PaymentPlan] = []
+    public private(set) var paymentOccurrences: [PaymentOccurrence] = []
 
     // Tüm alanlar (çalışma alanı değişince yeniden süzmek için)
     private var all = Snapshot()
@@ -148,9 +152,19 @@ public final class AppModel {
             async let tx = service.fetchAll(Transaction.self, userId: uid, memberIds: members)
             async let iv = service.fetchAll(InvestmentTransaction.self, userId: uid, memberIds: members)
             async let de = service.fetchAll(Debt.self, userId: uid, memberIds: members)
-            let snap = Snapshot(workspaces: try await ws, accounts: try await ac, categories: try await ca,
+            // Planlama tabloları: okunamazsa (ağ / eksik migration) eldeki kalır,
+            // çekirdek veriyi bekletmez
+            async let re = try? service.fetchAll(RecurringTransaction.self, userId: uid, memberIds: members)
+            async let go = try? service.fetchAll(SavingsGoal.self, userId: uid, memberIds: members)
+            async let pp = try? service.fetchAll(PaymentPlan.self, userId: uid, memberIds: members)
+            async let po = try? service.fetchAll(PaymentOccurrence.self, userId: uid, memberIds: members)
+            var snap = Snapshot(workspaces: try await ws, accounts: try await ac, categories: try await ca,
                                 budgets: try await bu, transactions: try await tx,
                                 investments: try await iv, debts: try await de)
+            snap.recurring = await re ?? all.recurring
+            snap.goals = await go ?? all.goals
+            snap.paymentPlans = await pp ?? all.paymentPlans
+            snap.paymentOccurrences = await po ?? all.paymentOccurrences
             apply(snap)
             cache.save(snap, userId: uid)
             lastSync = Date()
@@ -211,6 +225,11 @@ public final class AppModel {
         transactions = all.transactions.filter(inActive).sorted(by: Self.txOrder)
         investments = all.investments.filter(inActive)
         debts = all.debts.filter(inActive)
+        recurring = all.recurring.filter(inActive)
+            .sorted { $0.name.compare($1.name, locale: Locale(identifier: "tr_TR")) == .orderedAscending }
+        goals = all.goals.filter(inActive)
+        paymentPlans = all.paymentPlans.filter(inActive)
+        paymentOccurrences = all.paymentOccurrences.filter(inActive)
         recomputeBalances()
     }
 
@@ -367,6 +386,10 @@ struct Snapshot {
     var transactions: [Transaction] = []
     var investments: [InvestmentTransaction] = []
     var debts: [Debt] = []
+    var recurring: [RecurringTransaction] = []
+    var goals: [SavingsGoal] = []
+    var paymentPlans: [PaymentPlan] = []
+    var paymentOccurrences: [PaymentOccurrence] = []
 }
 
 extension WidgetSnapshot {

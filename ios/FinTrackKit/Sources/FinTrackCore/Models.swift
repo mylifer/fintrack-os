@@ -100,7 +100,14 @@ public struct Account: SyncRecord, Hashable {
     public var createdAt: String
     public var creditLimit: Double?
     public var statementDay: Int?
+    /// Eski form her karta 10 yazdı — web YOK SAYAR; son ödeme günü payment_plans'ta.
     public var dueDay: Int?
+    /// Asgari ödeme %. 3 = eski varsayılan → "girilmemiş" sayılır (web).
+    public var minPayPct: Double?
+    /// Kesimden son ödemeye gün farkı (0023)
+    public var dueGapDays: Int?
+    /// 'due' | 'both' (0023) — tatilde yalnız son ödeme mi, kesim de mi kayar
+    public var holidayRule: String?
 
     public init(raw: JSONObject) {
         self.raw = raw
@@ -115,8 +122,11 @@ public struct Account: SyncRecord, Hashable {
         isArchived = raw.flag("isArchived") ?? false
         createdAt = raw.str("createdAt") ?? ""
         creditLimit = raw.num("creditLimit")
-        statementDay = raw.int("statementDay")
+        statementDay = raw.num("statementDay").map { Int($0.rounded()) }
         dueDay = raw.int("dueDay")
+        minPayPct = raw.num("minPayPct")
+        dueGapDays = raw.num("dueGapDays").map { Int($0.rounded()) }
+        holidayRule = raw.str("holidayRule")
     }
 
     public func ownedColumns() -> JSONObject { [:] }   // ilk aşamada hesaplar salt okunur

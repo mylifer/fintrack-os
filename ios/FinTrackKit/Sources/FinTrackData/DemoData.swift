@@ -21,7 +21,7 @@ enum DemoData {
             if let limit { raw["creditLimit"] = .number(limit) }
             return Account(raw: raw)
         }
-        let accounts = [
+        var accounts = [
             account("acc-bank", "Garanti Vadesiz", "checking", "TRY", 42_500, "#14B8A6"),
             account("acc-card", "Bonus Kart", "credit_card", "TRY", 0, "#8B5CF6", limit: 60_000),
             account("acc-cash", "Nakit", "cash", "TRY", 1_850, "#22C55E"),
@@ -63,6 +63,7 @@ enum DemoData {
         func tx(_ type: String, _ amount: Double, _ offset: Int, _ account: String, _ cat: String?,
                 _ desc: String, to: String? = nil, extra: JSONObject = [:]) -> Transaction {
             n += 1
+            let amount = Money.round(amount)
             var raw: JSONObject = ["id": .string("t\(n)"), "type": .string(type), "amount": .number(amount),
                                    "amountTry": .number(amount), "currency": "TRY", "date": .string(day(offset)),
                                    "accountId": .string(account), "toAccountId": JSONValue(to),
@@ -72,7 +73,32 @@ enum DemoData {
             for (k, v) in extra { raw[k] = v }
             return Transaction(raw: raw)
         }
-        let transactions = [
+        // Geçmiş 5 ay: grafikler ve karşılaştırmalar boş görünmesin
+        var history: [Transaction] = []
+        var bankNet = 0.0
+        for k in 1...5 {
+            let m = cal.date(byAdding: .month, value: -k, to: today)!
+            func on(_ d: Int) -> Int {
+                var c = cal.dateComponents([.year, .month], from: m); c.day = d
+                return cal.dateComponents([.day], from: today, to: cal.date(from: c)!).day!
+            }
+            let wobble = Double((k * 37) % 9) * 350
+            history += [
+                tx("income", 65_000, on(1), "acc-bank", "c-maas", "Maaş"),
+                tx("expense", 22_000, on(2), "acc-bank", "c-kira", "Kira"),
+                tx("expense", 3_800 + wobble, on(8), "acc-card", "c-market", "Migros"),
+                tx("expense", 1_600 + wobble / 2, on(14), "acc-card", "c-yakit", "Shell"),
+                tx("expense", 1_900 - wobble / 3, on(19), "acc-card", "c-yemek", "Yemeksepeti"),
+                tx("expense", 1_050, on(21), "acc-bank", "c-fatura", "Elektrik faturası"),
+                tx("expense", 380, on(24), "acc-card", "c-kahve", "Starbucks"),
+            ]
+            let card = 3_800 + wobble + 1_600 + wobble / 2 + 1_900 - wobble / 3 + 380
+            history.append(tx("transfer", Money.round(card), on(26), "acc-bank", nil, "Kart ödemesi", to: "acc-card"))
+            bankNet += 65_000 - 22_000 - 1_050 - Money.round(card)
+        }
+        // Bugünkü demo bakiyeleri değişmesin: geçmişin etkisi açılış bakiyesinden düşülür
+        accounts[0] = account("acc-bank", "Garanti Vadesiz", "checking", "TRY", 42_500 - bankNet, "#14B8A6")
+        let transactions = history + [
             tx("income", 68_000, -25, "acc-bank", "c-maas", "Eylül maaşı"),
             tx("expense", 22_000, -24, "acc-bank", "c-kira", "Kira"),
             tx("expense", 1_240.5, -20, "acc-card", "c-market", "Migros"),
@@ -89,8 +115,6 @@ enum DemoData {
             tx("expense", 2_000, 15, "acc-card", "c-abonelik", "Kulaklık",
                extra: ["isInstallment": .bool(true), "installGroupId": "g1", "installIndex": 2, "installTotal": 6]),
             tx("expense", 1_150, 4, "acc-bank", "c-fatura", "Elektrik faturası", extra: ["approvalStatus": "pending"]),
-            tx("expense", 250, -40, "acc-card", "c-kahve", "Geçen ay kahve"),
-            tx("expense", 4_200, -38, "acc-card", "c-market", "Geçen ay market"),
         ]
 
         func inv(_ id: String, _ type: String, _ asset: String, _ qty: Double, _ price: Double, _ offset: Int) -> InvestmentTransaction {

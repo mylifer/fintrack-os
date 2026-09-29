@@ -19,6 +19,7 @@ struct SummaryView: View {
                 VStack(spacing: 16) {
                     SyncErrorBanner()
                     monthCard
+                    if hasHistory { trendCard }
                     netWorthCard
                     budgetsCard
                     recentCard
@@ -55,29 +56,69 @@ struct SummaryView: View {
                 .font(.system(size: 34, weight: .bold).monospacedDigit())
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
+                .contentTransition(.numericText())
+            comparison
             HStack(spacing: 20) {
                 stat("Gelir", Fmt.currency(flow.income), Theme.income)
                 stat("Net", Fmt.signed(flow.net), flow.net >= 0 ? Theme.income : Theme.expense)
             }
-            if let top = topCategories, !top.isEmpty {
+            let slices = categorySlices
+            if !slices.isEmpty {
                 Divider()
-                ForEach(top, id: \.name) { item in
-                    HStack {
-                        Circle().fill(item.color).frame(width: 8, height: 8)
-                        Text(item.name).font(.subheadline)
-                        Spacer()
-                        Text(Fmt.currency(item.amount)).font(.subheadline.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                CategoryDonut(slices: slices, total: Money.sum(slices) { $0.amount })
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
     }
 
-    /// Bu ayın en çok harcanan 3 üst kategorisi (alt kategoriler üstüne toplanır).
-    private var topCategories: [(name: String, amount: Double, color: Color)]? {
+    /// Geçen ayın aynı dönemine göre (1…bugünün günü) gider değişimi.
+    @ViewBuilder private var comparison: some View {
+        let c = Calc.monthToDateExpense(model.reportTransactions, fx: model.fx)
+        if c.previous > 0 {
+            let pct = (c.current - c.previous) / c.previous * 100
+            let up = pct >= 0
+            HStack(spacing: 4) {
+                Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
+                    .font(.caption.bold())
+                Text("%\(Int(abs(pct).rounded()))")
+                    .font(.caption.bold().monospacedDigit())
+                Text("geçen ayın aynı dönemine göre")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(up ? Theme.expense : Theme.income)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Geçen ayın aynı dönemine göre yüzde \(Int(abs(pct).rounded())) \(up ? "fazla" : "az") harcama")
+        }
+    }
+
+    private var trendCard: some View {
+        let series = Calc.monthlySeries(model.reportTransactions, endingAt: month, count: 6, fx: model.fx)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Son 6 ay").font(.headline)
+                Spacer()
+                let past = series.dropLast().map(\.flow.expense).filter { $0 > 0 }
+                if !past.isEmpty {
+                    Text("Ort. gider \(Fmt.whole(Money.sum(past) / Double(past.count)))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            TrendChart(series: series)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    private var hasHistory: Bool {
+        let from = DateUtil.monthRange(month.previous).from
+        return model.reportTransactions.contains { String($0.date.prefix(10)) < from || $0.date.prefix(7) == from.prefix(7) }
+    }
+
+    /// Bu ayın giderleri üst kategoriye toplanmış; en büyük 4 + "Diğer".
+    private var categorySlices: [CategorySlice] {
         let r = DateUtil.monthRange(month)
         let inMonth = model.reportTransactions.filter {
             Calc.isFlow($0) && DateUtil.isInRange($0.date, r.from, r.to)
@@ -88,13 +129,18 @@ struct SummaryView: View {
             while let p = c?.parentId, let parent = model.category(p) { c = parent }
             byTop[c?.id ?? "", default: 0] = Money.add(byTop[c?.id ?? "", default: 0], amount)
         }
-        return byTop.filter { $0.value > 0 }
-            .sorted { $0.value > $1.value }
-            .prefix(3)
-            .map { id, amount in
-                let c = model.category(id)
-                return (c?.name ?? "Kategorisiz", amount, c.map { Color(hex: $0.color) } ?? .gray)
-            }
+        let sorted = byTop.filter { $0.value > 0 }.sorted { $0.value > $1.value }
+        var out = sorted.prefix(4).map { id, amount in
+            let c = model.category(id)
+            return CategorySlice(id: id.isEmpty ? "none" : id, name: c?.name ?? "Kategorisiz",
+                                 amount: amount, color: c.map { Color(hex: $0.color) } ?? .gray)
+        }
+        let rest = sorted.dropFirst(4)
+        if !rest.isEmpty {
+            out.append(CategorySlice(id: "other", name: "Diğer", amount: Money.sum(rest) { $0.value },
+                                     color: Color(.systemGray3)))
+        }
+        return out
     }
 
     private func stat(_ label: String, _ value: String, _ color: Color) -> some View {

@@ -14,6 +14,10 @@ struct LocalCache {
         var transactions: [JSONObject]
         var investments: [JSONObject]?
         var debts: [JSONObject]?
+        var recurring: [JSONObject]?
+        var goals: [JSONObject]?
+        var paymentPlans: [JSONObject]?
+        var paymentOccurrences: [JSONObject]?
     }
 
     private func url(_ userId: String) -> URL? {
@@ -28,7 +32,10 @@ struct LocalCache {
         let stored = Stored(workspaces: s.workspaces.map(\.raw), accounts: s.accounts.map(\.raw),
                             categories: s.categories.map(\.raw), budgets: s.budgets.map(\.raw),
                             transactions: s.transactions.map(\.raw),
-                            investments: s.investments.map(\.raw), debts: s.debts.map(\.raw))
+                            investments: s.investments.map(\.raw), debts: s.debts.map(\.raw),
+                            recurring: s.recurring.map(\.raw), goals: s.goals.map(\.raw),
+                            paymentPlans: s.paymentPlans.map(\.raw),
+                            paymentOccurrences: s.paymentOccurrences.map(\.raw))
         guard let data = try? JSONEncoder().encode(stored) else { return }
         #if os(iOS)
         try? data.write(to: url, options: [.atomic, .completeFileProtection])
@@ -51,7 +58,11 @@ struct LocalCache {
                         budgets: s.budgets.map(Budget.init(raw:)),
                         transactions: s.transactions.map(Transaction.init(raw:)),
                         investments: (s.investments ?? []).map(InvestmentTransaction.init(raw:)),
-                        debts: (s.debts ?? []).map(Debt.init(raw:)))
+                        debts: (s.debts ?? []).map(Debt.init(raw:)),
+                        recurring: (s.recurring ?? []).map(RecurringTransaction.init(raw:)),
+                        goals: (s.goals ?? []).map(SavingsGoal.init(raw:)),
+                        paymentPlans: (s.paymentPlans ?? []).map(PaymentPlan.init(raw:)),
+                        paymentOccurrences: (s.paymentOccurrences ?? []).map(PaymentOccurrence.init(raw:)))
     }
 
     func clear(userId: String) {

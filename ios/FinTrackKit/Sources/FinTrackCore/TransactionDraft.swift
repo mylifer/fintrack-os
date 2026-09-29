@@ -105,3 +105,15 @@ extension Transaction {
         return out
     }
 }
+
+extension Transaction {
+    /// Onay (web NotificationPanel.approveTx): yalnız approvalStatus + approvedAt
+    /// (+ updatedAt yazmada). Tarih DEĞİŞMEZ — erken onaylanan gelecek satır
+    /// tarihinde bakiyeye girer. Yan etkisi yok; bağlı satırlar da onaylanabilir.
+    public func approved(at now: String) -> Transaction {
+        var out = self
+        out.approvalStatus = .approved
+        out.approvedAt = now
+        return out
+    }
+}
