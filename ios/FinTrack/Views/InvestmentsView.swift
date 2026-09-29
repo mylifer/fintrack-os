@@ -20,6 +20,14 @@ struct InvestmentsView: View {
             List {
                 if !model.holdings.isEmpty {
                     Section { summary } footer: { pricesFooter }
+                    if groups.count > 1 {
+                        Section("Dağılım") {
+                            CategoryDonut(slices: groups.map {
+                                CategorySlice(id: $0.kind.rawValue, name: $0.kind.label, amount: $0.value, color: $0.kind.color)
+                            }, total: model.investValue)
+                            .padding(.vertical, 4)
+                        }
+                    }
                     ForEach(groups, id: \.kind) { g in
                         Section {
                             ForEach(g.items, id: \.asset) { h in
@@ -108,17 +116,30 @@ func formatQuantity(_ q: Double) -> String {
     return f.string(from: NSNumber(value: q)) ?? "\(q)"
 }
 
+extension AssetKind {
+    var color: Color {
+        switch self {
+        case .gold: Color(hex: "#D4A017")
+        case .currency: Color(hex: "#3B82F6")
+        case .fund: Color(hex: "#8B5CF6")
+        case .stock: Color(hex: "#EF4444")
+        case .crypto: Color(hex: "#F59E0B")
+        }
+    }
+}
+
 struct AssetBadge: View {
     let asset: String
     var size: CGFloat = 36
 
     private var style: (text: String, color: Color) {
-        switch Asset.kind(asset) {
-        case .gold: ("Au", Color(hex: "#D4A017"))
-        case .currency: (asset == "USD" ? "$" : asset == "EUR" ? "€" : "£", Color(hex: "#3B82F6"))
-        case .fund: ("F", Color(hex: "#8B5CF6"))
-        case .stock: ("H", Color(hex: "#EF4444"))
-        case .crypto: ("₿", Color(hex: "#F59E0B"))
+        let kind = Asset.kind(asset)
+        switch kind {
+        case .gold: return ("Au", kind.color)
+        case .currency: return (asset == "USD" ? "$" : asset == "EUR" ? "€" : "£", kind.color)
+        case .fund: return ("F", kind.color)
+        case .stock: return ("H", kind.color)
+        case .crypto: return ("₿", kind.color)
         }
     }
 
