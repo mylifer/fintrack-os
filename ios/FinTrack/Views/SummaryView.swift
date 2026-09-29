@@ -40,6 +40,11 @@ struct SummaryView: View {
                 ToolbarItem(placement: .topBarTrailing) { AddButton(isPresented: $quickAdd) }
             }
             .sheet(isPresented: $settings) { SettingsView() }
+            .onAppear {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-settings") { settings = true }
+                #endif
+            }
             .sheet(item: $editing) { TransactionFormView(editing: $0) }
         }
     }
