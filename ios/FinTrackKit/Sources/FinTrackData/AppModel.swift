@@ -367,14 +367,107 @@ public final class AppModel {
         replaceLocal(Transaction(raw: dead.rowForWrite(updatedAt: now)))
     }
 
-    private func replaceLocal(_ t: Transaction) {
-        if let i = all.transactions.firstIndex(where: { $0.id == t.id }) {
-            all.transactions[i] = t
+    private func replaceLocal(_ t: Transaction) { replaceLocal(t, in: \.transactions) }
+
+    /// Yerel kopyayı güncelle (yazma bulutta başarılı olduktan sonra) ve önbelleğe al.
+    private func replaceLocal<T: SyncRecord>(_ r: T, in kp: WritableKeyPath<Snapshot, [T]>) {
+        if let i = all[keyPath: kp].firstIndex(where: { $0.id == r.id }) {
+            all[keyPath: kp][i] = r
         } else {
-            all.transactions.append(t)
+            all[keyPath: kp].append(r)
         }
         rescope()
         if !isDemo, let uid = userId { cache.save(all, userId: uid) }
+    }
+
+    /// Tek kayıt yaz: buluta upsert, sonra yerel kopya (user_id oturumdan).
+    private func write<T: SyncRecord>(_ record: T, in kp: WritableKeyPath<Snapshot, [T]>) async throws {
+        guard let uid = userId else { throw ServiceError.notSignedIn }
+        let now = Self.nowISO()
+        if !isDemo {
+            guard let service else { throw ServiceError.notSignedIn }
+            try await service.upsert(record, userId: uid, now: now)
+        }
+        var raw = record.rowForWrite(updatedAt: now)
+        raw["user_id"] = .string(uid)
+        replaceLocal(T(raw: raw), in: kp)
+    }
+
+    // MARK: Onay bekleyenler
+
+    /// Tarihi gelmiş (≤ bugün) onay bekleyen işlemler — web "future-tx-due".
+    public var dueApprovals: [Transaction] {
+        let today = DateUtil.today()
+        return transactions.filter { Calc.awaitsApproval($0) && String($0.date.prefix(10)) <= today }
+    }
+
+    /// Önümüzdeki 7 gün içinde onay bekleyecek olanlar — web "future-tx-upcoming".
+    public var upcomingApprovals: [Transaction] {
+        let today = DateUtil.today()
+        guard let t = DateUtil.parseDay(today),
+              let h = DateUtil.calendar.date(byAdding: .day, value: 7, to: t) else { return [] }
+        let horizon = DateUtil.day(h)
+        return transactions.filter {
+            let d = String($0.date.prefix(10))
+            return Calc.awaitsApproval($0) && d > today && d <= horizon
+        }
+    }
+
+    /// Onayla (erken onay dahil). Yalnız approvalStatus + approvedAt değişir;
+    /// yan etkisi yok, bağlı satırlar da onaylanabilir (web approveTx).
+    public func approve(_ t: Transaction) async throws {
+        guard Calc.awaitsApproval(t) else { return }
+        try await write(t.approved(at: Self.nowISO()), in: \.transactions)
+    }
+
+    // MARK: Tekrarlayanlar
+
+    public var dueRecurring: [RecurringTransaction] { recurring.filter { Recurrence.isDue($0) } }
+
+    /// Kaçırılan tüm dönemler için işlem yaz, sonra imleci ilerlet (web approveRecurring).
+    /// Kimlikler deterministik: aynı dönem web'de de onaylandıysa kopya oluşmaz.
+    public func approveRecurring(_ r: RecurringTransaction) async throws {
+        let today = DateUtil.today()
+        let existing = Set(all.transactions.filter(\.isLive).map(\.id))
+        let out = Recurrence.approve(r, asOf: today, existingIds: existing,
+                                     workspaceId: r.workspaceId ?? activeWorkspaceId, fx: fx, now: Self.nowISO())
+        for t in out.transactions { try await write(t, in: \.transactions) }
+        try await write(out.template, in: \.recurring)
+    }
+
+    public func skipRecurring(_ r: RecurringTransaction) async throws {
+        try await write(Recurrence.skip(r, asOf: DateUtil.today()), in: \.recurring)
+    }
+
+    /// Duraklat / sürdür — imleç değişmez (sürdürünce birikmiş dönemler onaya düşer, web ile aynı).
+    public func setRecurringActive(_ r: RecurringTransaction, _ active: Bool) async throws {
+        var t = r
+        t.isActive = active
+        try await write(t, in: \.recurring)
+    }
+
+    // MARK: Hedefler
+
+    public func goalProgress(_ g: SavingsGoal) -> Goals.Progress {
+        Goals.progress(g, accounts: accounts, balances: balances, fx: fx)
+    }
+
+    /// Yeni hedef ya da düzenleme (tüm alanlar). Yeni hedef aktif alana yazılır.
+    public func saveGoal(_ g: SavingsGoal) async throws {
+        var out = g
+        if out.raw["workspaceId"] == nil { out.raw["workspaceId"] = JSONValue(activeWorkspaceId) }
+        if out.createdAt.isEmpty { out.createdAt = Self.nowISO() }
+        try await write(out, in: \.goals)
+    }
+
+    public func adjustGoal(_ g: SavingsGoal, by delta: Double) async throws {
+        try await write(Goals.adjusted(g, by: delta), in: \.goals)
+    }
+
+    public func deleteGoal(_ g: SavingsGoal) async throws {
+        var raw = g.raw
+        raw["deleted_at"] = .string(Self.nowISO())
+        try await write(SavingsGoal(raw: raw), in: \.goals)
     }
 }
 

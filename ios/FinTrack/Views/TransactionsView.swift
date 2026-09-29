@@ -89,6 +89,10 @@ struct TransactionList: View {
                             .tint(Theme.planned)
                         }
                         .swipeActions(edge: .leading) {
+                            if Calc.awaitsApproval(t) {
+                                Button { approve(t) } label: { Label("Onayla", systemImage: "checkmark") }
+                                    .tint(Theme.accent)
+                            }
                             if !t.isLinked {
                                 Button { router.duplicate(t) } label: {
                                     Label("Kopyala", systemImage: "plus.square.on.square")
@@ -97,6 +101,9 @@ struct TransactionList: View {
                             }
                         }
                         .contextMenu {
+                            if Calc.awaitsApproval(t) {
+                                Button { approve(t) } label: { Label("Onayla", systemImage: "checkmark") }
+                            }
                             Button { editing = t } label: {
                                 Label(t.isLinked ? "Görüntüle" : "Düzenle", systemImage: t.isLinked ? "eye" : "pencil")
                             }
@@ -114,6 +121,17 @@ struct TransactionList: View {
             }
         }
         .listStyle(.insetGrouped)
+    }
+
+    private func approve(_ t: Transaction) {
+        Task {
+            do {
+                try await model.approve(t)
+                Haptics.success()
+            } catch {
+                Haptics.warning()
+            }
+        }
     }
 }
 

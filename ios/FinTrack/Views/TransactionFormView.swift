@@ -35,100 +35,118 @@ struct TransactionFormView: View {
                     }
                 }
 
-                Section {
-                    Picker("Tür", selection: $draft.type) {
-                        ForEach(TransactionType.allCases, id: \.self) { Text($0.label).tag($0) }
+                Group {
+                    Section {
+                        Picker("Tür", selection: $draft.type) {
+                            ForEach(TransactionType.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
                     }
-                    .pickerStyle(.segmented)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets())
-                }
 
-                Section {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(account?.currency.symbol ?? "₺")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        TextField("0", text: $draft.amountText)
-                            .keyboardType(.decimalPad)
-                            .font(.system(size: 40, weight: .bold).monospacedDigit())
-                            .focused($amountFocused)
-                            .onChange(of: draft.amountText) { _, v in
-                                // Ondalık ayraç virgül (TR); nokta yazılırsa virgüle çevrilir
-                                let fixed = v.replacingOccurrences(of: ".", with: ",")
-                                if fixed != v { draft.amountText = fixed }
-                            }
-                    }
-                    .padding(.vertical, 4)
-                    TextField("Açıklama", text: $draft.description)
-                        .focused($descriptionFocused)
-                        .submitLabel(.done)
-                    if !suggestions.isEmpty {
-                        suggestionChips
-                    }
-                }
-
-                Section {
-                    Picker(draft.type == .transfer ? "Kaynak hesap" : "Hesap", selection: $draft.accountId) {
-                        Text("Seçin").tag(String?.none)
-                        ForEach(model.activeAccounts) { a in
-                            Text("\(a.name) · \(a.currency.rawValue)").tag(Optional(a.id))
+                    Section {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(account?.currency.symbol ?? "₺")
+                                .font(.system(size: 28, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            TextField("0", text: $draft.amountText)
+                                .keyboardType(.decimalPad)
+                                .font(.system(size: 40, weight: .bold).monospacedDigit())
+                                .focused($amountFocused)
+                                .onChange(of: draft.amountText) { _, v in
+                                    // Ondalık ayraç virgül (TR); nokta yazılırsa virgüle çevrilir
+                                    let fixed = v.replacingOccurrences(of: ".", with: ",")
+                                    if fixed != v { draft.amountText = fixed }
+                                }
+                        }
+                        .padding(.vertical, 4)
+                        TextField("Açıklama", text: $draft.description)
+                            .focused($descriptionFocused)
+                            .submitLabel(.done)
+                        if !suggestions.isEmpty {
+                            suggestionChips
                         }
                     }
-                    if draft.type == .transfer {
-                        Picker("Hedef hesap", selection: $draft.toAccountId) {
+
+                    Section {
+                        Picker(draft.type == .transfer ? "Kaynak hesap" : "Hesap", selection: $draft.accountId) {
                             Text("Seçin").tag(String?.none)
-                            ForEach(model.activeAccounts.filter { $0.id != draft.accountId }) { a in
+                            ForEach(model.activeAccounts) { a in
                                 Text("\(a.name) · \(a.currency.rawValue)").tag(Optional(a.id))
                             }
                         }
-                    } else {
-                        NavigationLink {
-                            CategoryPicker(type: draft.type, selection: Binding(
-                                get: { draft.categoryId },
-                                set: { draft.categoryId = $0; categoryTouched = true }
-                            ))
-                        } label: {
-                            HStack {
-                                Text("Kategori")
-                                Spacer()
-                                if let c = model.category(draft.categoryId) {
-                                    let i = Icons.category(c.icon)
-                                    IconBadge(symbol: i.symbol, emoji: i.emoji, color: Color(hex: c.color), size: 24)
-                                    Text(c.name).foregroundStyle(.secondary)
-                                } else {
-                                    Text("Yok").foregroundStyle(.secondary)
+                        if draft.type == .transfer {
+                            Picker("Hedef hesap", selection: $draft.toAccountId) {
+                                Text("Seçin").tag(String?.none)
+                                ForEach(model.activeAccounts.filter { $0.id != draft.accountId }) { a in
+                                    Text("\(a.name) · \(a.currency.rawValue)").tag(Optional(a.id))
+                                }
+                            }
+                        } else {
+                            NavigationLink {
+                                CategoryPicker(type: draft.type, selection: Binding(
+                                    get: { draft.categoryId },
+                                    set: { draft.categoryId = $0; categoryTouched = true }
+                                ))
+                            } label: {
+                                HStack {
+                                    Text("Kategori")
+                                    Spacer()
+                                    if let c = model.category(draft.categoryId) {
+                                        let i = Icons.category(c.icon)
+                                        IconBadge(symbol: i.symbol, emoji: i.emoji, color: Color(hex: c.color), size: 24)
+                                        Text(c.name).foregroundStyle(.secondary)
+                                    } else {
+                                        Text("Yok").foregroundStyle(.secondary)
+                                    }
                                 }
                             }
                         }
+                        DatePicker("Tarih", selection: $draft.date, displayedComponents: .date)
+                            .environment(\.locale, Locale(identifier: "tr_TR"))
                     }
-                    DatePicker("Tarih", selection: $draft.date, displayedComponents: .date)
-                        .environment(\.locale, Locale(identifier: "tr_TR"))
-                }
 
-                Section {
-                    TextField("Not", text: $draft.notes, axis: .vertical)
-                        .lineLimit(1...4)
-                }
-
-                if DateUtil.day(draft.date) > DateUtil.today() && editing == nil {
                     Section {
-                        Label("Gelecek tarihli işlem onay bekleyerek kaydedilir; tarihi gelince bildirim merkezinden (web) onaylanınca bakiyeye girer.",
-                              systemImage: "clock")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        TextField("Not", text: $draft.notes, axis: .vertical)
+                            .lineLimit(1...4)
+                    }
+
+                    if DateUtil.day(draft.date) > DateUtil.today() && editing == nil {
+                        Section {
+                            Label("Gelecek tarihli işlem onay bekleyerek kaydedilir; tarihi gelince Özet'teki \"Onay bekliyor\" kartından onaylayın.",
+                                  systemImage: "clock")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                }
+                .disabled(readOnly || saving)
+
+                if let editing, Calc.awaitsApproval(editing) {
+                    Section {
+                        Button {
+                            approve(editing)
+                        } label: {
+                            Label(DateUtil.day(draft.date) > DateUtil.today() ? "Şimdi onayla" : "Onayla",
+                                  systemImage: "checkmark.circle.fill")
+                        }
+                        .disabled(saving)
+                    } footer: {
+                        Text("Onaylanan işlem tarihi gelince bakiyeye girer.")
                     }
                 }
 
                 if let editing, !readOnly {
                     Section {
                         Button("İşlemi sil", role: .destructive) { confirmDelete = true }
+                            .disabled(saving)
                     } footer: {
                         Text("Eklenme: \(DateUtil.display(editing.createdAt))")
                     }
                 }
             }
-            .disabled(readOnly || saving)
             .navigationTitle(editing == nil ? "Yeni işlem" : (readOnly ? "İşlem" : "İşlemi düzenle"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -248,6 +266,20 @@ struct TransactionFormView: View {
             do {
                 try await model.save(draft, editing: editing)
                 if editing == nil { UserDefaults.standard.set(draft.accountId, forKey: Self.lastAccountKey) }
+                Haptics.success()
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            saving = false
+        }
+    }
+
+    private func approve(_ t: Transaction) {
+        saving = true
+        Task {
+            do {
+                try await model.approve(t)
                 Haptics.success()
                 dismiss()
             } catch {

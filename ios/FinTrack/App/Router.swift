@@ -9,6 +9,14 @@ final class Router {
     var quickAdd = Router.debugFlag("-quickadd") {
         didSet { if !quickAdd { quickAddTemplate = nil } }
     }
+    /// Plan sekmesinde açık bölüm
+    var planSection: PlanSection = Router.debugPlan ?? .budgets
+
+    func openPlan(_ s: PlanSection) {
+        planSection = s
+        tab = .budgets
+    }
+
     /// Hızlı ekleme bir işlemin kopyasıyla açılacaksa doldurulmuş taslak.
     var quickAddTemplate: TransactionDraft?
 
@@ -25,7 +33,9 @@ final class Router {
         guard url.scheme == "fintrack" else { return }
         switch url.host {
         case "add": quickAdd = true
-        case "budgets": tab = .budgets
+        case "budgets": openPlan(.budgets)
+        case "goals": openPlan(.goals)
+        case "recurring": openPlan(.recurring)
         case "investments": tab = .investments
         case "accounts": tab = .accounts
         case "transactions": tab = .transactions
@@ -38,6 +48,14 @@ final class Router {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-tab"), i + 1 < args.count { return MainTabView.Tab(rawValue: args[i + 1]) }
+        #endif
+        return nil
+    }
+
+    private static var debugPlan: PlanSection? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-plan"), i + 1 < args.count { return PlanSection(rawValue: args[i + 1]) }
         #endif
         return nil
     }

@@ -2,34 +2,30 @@ import SwiftUI
 import FinTrackCore
 import FinTrackData
 
-struct BudgetsView: View {
+/// Plan sekmesinin Bütçeler bölümü (gezinme kabı PlanView'de).
+struct BudgetsContent: View {
     @Environment(AppModel.self) private var model
-    @State private var month = MonthYear.current()
+    @Binding var month: MonthYear
 
     var body: some View {
-        NavigationStack {
-            let states = model.budgetStates(month)
-            List {
-                Section {
-                    monthSwitcher
-                    if !states.isEmpty { totals(states) }
-                }
-                Section {
-                    ForEach(states, id: \.budget.id) { s in
-                        NavigationLink(value: s.budget) { BudgetProgressRow(state: s) }
-                    }
+        let states = model.budgetStates(month)
+        List {
+            Section {
+                monthSwitcher
+                if !states.isEmpty { totals(states) }
+            }
+            Section {
+                ForEach(states, id: \.budget.id) { s in
+                    NavigationLink(value: s.budget) { BudgetProgressRow(state: s) }
                 }
             }
-            .listStyle(.insetGrouped)
-            .overlay {
-                if model.budgets.isEmpty {
-                    ContentUnavailableView("Bütçe yok", systemImage: "chart.pie",
-                                           description: Text("Bütçeler web'den eklenir."))
-                }
+        }
+        .listStyle(.insetGrouped)
+        .overlay {
+            if model.budgets.isEmpty {
+                ContentUnavailableView("Bütçe yok", systemImage: "chart.pie",
+                                       description: Text("Bütçeler web'den eklenir."))
             }
-            .refreshable { await model.refresh() }
-            .navigationTitle("Bütçeler")
-            .navigationDestination(for: Budget.self) { BudgetDetailView(budget: $0, month: month) }
         }
     }
 

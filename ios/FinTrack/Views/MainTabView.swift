@@ -23,8 +23,9 @@ struct MainTabView: View {
             InvestmentsView()
                 .tabItem { Label("Yatırımlar", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(Tab.investments)
-            BudgetsView()
-                .tabItem { Label("Bütçeler", systemImage: "chart.pie") }
+            PlanView()
+                .tabItem { Label("Plan", systemImage: "chart.pie") }
+                .badge(model.dueRecurring.count)
                 .tag(Tab.budgets)
         }
         .sheet(isPresented: $router.quickAdd) {

@@ -115,6 +115,7 @@ enum DemoData {
             tx("expense", 2_000, 15, "acc-card", "c-abonelik", "Kulaklık",
                extra: ["isInstallment": .bool(true), "installGroupId": "g1", "installIndex": 2, "installTotal": 6]),
             tx("expense", 1_150, 4, "acc-bank", "c-fatura", "Elektrik faturası", extra: ["approvalStatus": "pending"]),
+            tx("expense", 385, -1, "acc-bank", "c-fatura", "Su faturası", extra: ["approvalStatus": "pending"]),
         ]
 
         func inv(_ id: String, _ type: String, _ asset: String, _ qty: Double, _ price: Double, _ offset: Int) -> InvestmentTransaction {
@@ -152,8 +153,41 @@ enum DemoData {
             debt("d4", "Eski kart borcu", "credit_card_debt", "owe", 10_000, 10_000),
         ]
 
-        return Snapshot(workspaces: workspaces, accounts: accounts, categories: categories,
-                        budgets: budgets, transactions: transactions, investments: investments, debts: debts)
+        func recurring(_ id: String, _ name: String, _ type: String, _ amount: Double, _ freq: String,
+                       start: Int, next: Int, _ account: String, _ cat: String?, active: Bool = true) -> RecurringTransaction {
+            RecurringTransaction(raw: ["id": .string(id), "name": .string(name), "type": .string(type),
+                                       "amount": .number(amount), "currency": "TRY", "accountId": .string(account),
+                                       "categoryId": JSONValue(cat), "description": .string(name),
+                                       "frequency": .string(freq), "startDate": .string(day(start)),
+                                       "nextDueDate": .string(day(next)), "isActive": .bool(active),
+                                       "createdAt": .string(day(start)), "workspaceId": .string(ws)])
+        }
+        let recurringList = [
+            recurring("r-kira", "Kira", "expense", 22_000, "monthly", start: -150, next: 2, "acc-bank", "c-kira"),
+            recurring("r-maas", "Maaş", "income", 68_000, "monthly", start: -150, next: 5, "acc-bank", "c-maas"),
+            recurring("r-netflix", "Netflix", "expense", 229.99, "monthly", start: -90, next: -2, "acc-card", "c-abonelik"),
+            recurring("r-spor", "Spor salonu", "expense", 1_500, "monthly", start: -200, next: -40, "acc-card", nil, active: false),
+            recurring("r-sigorta", "Kasko", "expense", 14_500, "yearly", start: -300, next: 65, "acc-bank", "c-ulasim"),
+        ]
+
+        func goal(_ id: String, _ name: String, _ target: Double, date: Int?, saved: Double? = nil,
+                  account: String? = nil, _ color: String) -> SavingsGoal {
+            SavingsGoal(raw: ["id": .string(id), "name": .string(name), "targetAmount": .number(target),
+                              "targetDate": JSONValue(date.map(day)), "accountId": JSONValue(account),
+                              "savedAmount": JSONValue(saved), "color": .string(color),
+                              "createdAt": .string(day(-100)), "workspaceId": .string(ws)])
+        }
+        let goals = [
+            goal("g-tatil", "Yaz tatili", 60_000, date: 270, saved: 18_500, "#3B82F6"),
+            goal("g-acil", "Acil durum fonu", 50_000, date: nil, account: "acc-usd", "#10B981"),
+            goal("g-telefon", "Yeni telefon", 45_000, date: -5, saved: 45_000, "#8B5CF6"),
+        ]
+
+        var snap = Snapshot(workspaces: workspaces, accounts: accounts, categories: categories,
+                            budgets: budgets, transactions: transactions, investments: investments, debts: debts)
+        snap.recurring = recurringList
+        snap.goals = goals
+        return snap
     }
 
     static func prices() -> PriceBook {

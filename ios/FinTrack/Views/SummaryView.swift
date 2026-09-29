@@ -4,6 +4,7 @@ import FinTrackData
 
 struct SummaryView: View {
     @Environment(AppModel.self) private var model
+    @Environment(Router.self) private var router
     @Binding var quickAdd: Bool
     var openTab: (MainTabView.Tab) -> Void
     @State private var settings = false
@@ -18,6 +19,7 @@ struct SummaryView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     SyncErrorBanner()
+                    PendingCard(editing: $editing, openRecurring: { router.openPlan(.recurring) })
                     monthCard
                     if hasHistory { trendCard }
                     netWorthCard
