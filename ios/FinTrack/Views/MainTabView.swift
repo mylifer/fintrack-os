@@ -28,7 +28,7 @@ struct MainTabView: View {
                 .tag(Tab.budgets)
         }
         .sheet(isPresented: $router.quickAdd) {
-            TransactionFormView(editing: nil)
+            TransactionFormView(editing: nil, template: router.quickAddTemplate)
         }
     }
 }

@@ -41,6 +41,7 @@ struct TransactionsView: View {
 /// Günlere bölünmüş işlem listesi; satırı kaydırarak düzenle / sil.
 struct TransactionList: View {
     @Environment(AppModel.self) private var model
+    @Environment(Router.self) private var router
     let transactions: [Transaction]
     var perspectiveAccountId: String?
     @Binding var editing: Transaction?
@@ -87,6 +88,27 @@ struct TransactionList: View {
                             }
                             .tint(Theme.planned)
                         }
+                        .swipeActions(edge: .leading) {
+                            if !t.isLinked {
+                                Button { router.duplicate(t) } label: {
+                                    Label("Kopyala", systemImage: "plus.square.on.square")
+                                }
+                                .tint(Theme.income)
+                            }
+                        }
+                        .contextMenu {
+                            Button { editing = t } label: {
+                                Label(t.isLinked ? "Görüntüle" : "Düzenle", systemImage: t.isLinked ? "eye" : "pencil")
+                            }
+                            if !t.isLinked {
+                                Button { router.duplicate(t) } label: {
+                                    Label("Kopyasını ekle", systemImage: "plus.square.on.square")
+                                }
+                                Button(role: .destructive) { pendingDelete = t } label: {
+                                    Label("Sil", systemImage: "trash")
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -114,7 +136,12 @@ private struct DeleteConfirmation: ViewModifier {
             ), titleVisibility: .visible, presenting: item) { t in
                 Button("Sil", role: .destructive) {
                     Task {
-                        do { try await model.delete(t) } catch { errorMessage = error.localizedDescription }
+                        do {
+                            try await model.delete(t)
+                            Haptics.success()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
                     }
                 }
             } message: { t in

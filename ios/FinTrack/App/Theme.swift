@@ -104,3 +104,11 @@ extension View {
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
+
+/// Dokunsal geri bildirim (kaydet / sil / hata).
+@MainActor
+enum Haptics {
+    static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+    static func warning() { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+    static func tap() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+}

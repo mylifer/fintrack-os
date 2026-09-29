@@ -1,11 +1,24 @@
 import SwiftUI
+import FinTrackCore
 
 /// Sekme ve hızlı ekleme durumu — widget bağlantıları (fintrack://…) buradan yönlenir.
 @MainActor
 @Observable
 final class Router {
     var tab: MainTabView.Tab = Router.debugTab ?? .summary
-    var quickAdd = Router.debugFlag("-quickadd")
+    var quickAdd = Router.debugFlag("-quickadd") {
+        didSet { if !quickAdd { quickAddTemplate = nil } }
+    }
+    /// Hızlı ekleme bir işlemin kopyasıyla açılacaksa doldurulmuş taslak.
+    var quickAddTemplate: TransactionDraft?
+
+    /// Var olan işlemin kopyası: aynı alanlar, bugünün tarihi.
+    func duplicate(_ t: Transaction) {
+        var d = TransactionDraft(editing: t)
+        d.date = Date()
+        quickAddTemplate = d
+        quickAdd = true
+    }
 
     /// fintrack://add · fintrack://budgets · fintrack://summary
     func open(_ url: URL) {

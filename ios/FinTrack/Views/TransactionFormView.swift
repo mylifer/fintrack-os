@@ -8,8 +8,12 @@ struct TransactionFormView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let editing: Transaction?
+    /// Yeni işlem bir şablonla (kopya) açılıyorsa
+    var template: TransactionDraft? = nil
 
     @State private var draft = TransactionDraft()
+    @State private var categoryTouched = false
+    @FocusState private var descriptionFocused: Bool
     @State private var saving = false
     @State private var errorMessage: String?
     @State private var confirmDelete = false
@@ -56,6 +60,12 @@ struct TransactionFormView: View {
                             }
                     }
                     .padding(.vertical, 4)
+                    TextField("Açıklama", text: $draft.description)
+                        .focused($descriptionFocused)
+                        .submitLabel(.done)
+                    if !suggestions.isEmpty {
+                        suggestionChips
+                    }
                 }
 
                 Section {
@@ -74,7 +84,10 @@ struct TransactionFormView: View {
                         }
                     } else {
                         NavigationLink {
-                            CategoryPicker(type: draft.type, selection: $draft.categoryId)
+                            CategoryPicker(type: draft.type, selection: Binding(
+                                get: { draft.categoryId },
+                                set: { draft.categoryId = $0; categoryTouched = true }
+                            ))
                         } label: {
                             HStack {
                                 Text("Kategori")
@@ -94,7 +107,6 @@ struct TransactionFormView: View {
                 }
 
                 Section {
-                    TextField("Açıklama", text: $draft.description)
                     TextField("Not", text: $draft.notes, axis: .vertical)
                         .lineLimit(1...4)
                 }
@@ -143,6 +155,15 @@ struct TransactionFormView: View {
         }
         .presentationDetents([.large])
         .onAppear(perform: setUp)
+        .onChange(of: draft.description) { _, d in
+            // Daha önce aynı açıklamayla girilmiş işlemin kategorisi (kullanıcı
+            // kategoriyi kendisi seçmediyse)
+            guard editing == nil, !categoryTouched, draft.type != .transfer,
+                  let c = Suggestions.exactCategory(d, type: draft.type, in: model.transactions),
+                  model.category(c).map({ !$0.isArchived }) ?? false
+            else { return }
+            draft.categoryId = c
+        }
         .onChange(of: draft.type) { _, newType in
             // Tür değişince uymayan kategori düşer
             if let c = model.category(draft.categoryId),
@@ -155,16 +176,70 @@ struct TransactionFormView: View {
     private func setUp() {
         if let editing {
             draft = TransactionDraft(editing: editing)
+        } else if let template {
+            draft = template
+            if model.account(draft.accountId).map({ $0.isArchived }) ?? true { draft.accountId = defaultAccountId }
+            categoryTouched = true
+            amountFocused = true
         } else {
             // Son kullanılan hesap; yoksa ilk TL nakit/vadesiz hesap
-            let last = UserDefaults.standard.string(forKey: Self.lastAccountKey)
-            let accounts = model.activeAccounts
-            draft.accountId = accounts.first { $0.id == last }?.id
-                ?? accounts.first { $0.currency == .TRY && ($0.type == .checking || $0.type == .cash) }?.id
-                ?? accounts.first { $0.currency == .TRY }?.id
-                ?? accounts.first?.id
+            draft.accountId = defaultAccountId
             amountFocused = true
         }
+    }
+
+    private var defaultAccountId: String? {
+        let last = UserDefaults.standard.string(forKey: Self.lastAccountKey)
+        let accounts = model.activeAccounts
+        return accounts.first { $0.id == last }?.id
+            ?? accounts.first { $0.currency == .TRY && ($0.type == .checking || $0.type == .cash) }?.id
+            ?? accounts.first { $0.currency == .TRY }?.id
+            ?? accounts.first?.id
+    }
+
+    private var suggestions: [Suggestions.Item] {
+        guard editing == nil, descriptionFocused else { return [] }
+        return Suggestions.matching(draft.description, in: model.transactions)
+    }
+
+    /// Geçmiş işlemlerden öneriler: dokununca açıklama, tür, kategori ve hesap dolar.
+    private var suggestionChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(suggestions, id: \.self) { item in
+                    Button { apply(item) } label: {
+                        HStack(spacing: 6) {
+                            if let c = model.category(item.categoryId) {
+                                let i = Icons.category(c.icon)
+                                IconBadge(symbol: i.symbol, emoji: i.emoji, color: Color(hex: c.color), size: 20)
+                            }
+                            Text(item.description).lineLimit(1)
+                        }
+                        .font(.subheadline)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color(.tertiarySystemFill), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Önerilen işlemi uygular")
+                }
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+    }
+
+    private func apply(_ item: Suggestions.Item) {
+        draft.description = item.description
+        draft.type = item.type
+        if model.category(item.categoryId).map({ !$0.isArchived }) ?? false {
+            draft.categoryId = item.categoryId
+        }
+        if model.activeAccounts.contains(where: { $0.id == item.accountId }) {
+            draft.accountId = item.accountId
+        }
+        categoryTouched = true
+        descriptionFocused = false
+        if draft.amountText.isEmpty { amountFocused = true }
     }
 
     private func save() {
@@ -173,6 +248,7 @@ struct TransactionFormView: View {
             do {
                 try await model.save(draft, editing: editing)
                 if editing == nil { UserDefaults.standard.set(draft.accountId, forKey: Self.lastAccountKey) }
+                Haptics.success()
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
@@ -187,6 +263,7 @@ struct TransactionFormView: View {
         Task {
             do {
                 try await model.delete(editing)
+                Haptics.success()
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
