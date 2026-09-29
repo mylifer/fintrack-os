@@ -1,4 +1,6 @@
 import SwiftUI
+import CoreTransferable
+import UniformTypeIdentifiers
 import FinTrackCore
 import FinTrackData
 
@@ -119,10 +121,20 @@ struct TransactionsView: View {
                 Divider()
                 Button("Süzgeci temizle", role: .destructive) { filter = TxFilter() }
             }
+            Divider()
+            ShareLink(item: CSVFile(transactions: filtered, categories: model.categories,
+                                    accounts: model.accounts, name: csvName),
+                      preview: SharePreview("FinTrack işlemleri (\(filtered.count))")) {
+                Label("CSV olarak paylaş (\(filtered.count))", systemImage: "square.and.arrow.up")
+            }
         } label: {
             Image(systemName: filter.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
         }
         .accessibilityLabel(filter.isActive ? "Süzgeç açık" : "Süz")
+    }
+
+    private var csvName: String {
+        "fintrack-islemler-\(DateUtil.today())"
     }
 
     /// Görünen işlemlerin toplamı (gelir/gider akışı: mutabakat ve anapara hariç, web ile aynı).
@@ -286,5 +298,23 @@ private struct DeleteConfirmation: ViewModifier {
             } message: {
                 Text(errorMessage ?? "")
             }
+    }
+}
+
+/// Paylaşılacak CSV dosyası (UTF-8 BOM: Excel Türkçe karakterleri doğru açar).
+/// Metin yalnız paylaşım anında üretilir (menü her çizildiğinde değil).
+struct CSVFile: Transferable {
+    let transactions: [Transaction]
+    let categories: [FinTrackCore.Category]
+    let accounts: [Account]
+    let name: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .commaSeparatedText) { file in
+            let text = CSVExport.transactions(file.transactions, categories: file.categories, accounts: file.accounts)
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(file.name).csv")
+            try (Data([0xEF, 0xBB, 0xBF]) + Data(text.utf8)).write(to: url, options: [.atomic, .completeFileProtection])
+            return SentTransferredFile(url)
+        }
     }
 }
