@@ -45,8 +45,13 @@ public final class AppModel {
     public private(set) var goals: [SavingsGoal] = []
     public private(set) var paymentPlans: [PaymentPlan] = []
     public private(set) var paymentOccurrences: [PaymentOccurrence] = []
-    /// Arka planda hesaplanan türetimler (nil: ilk hesap sürüyor → ekranlar anında hesaplar)
-    public private(set) var derived: Derived?
+    /// Arka planda hesaplanan türetimler (nil: ilk hesap sürüyor → ekranlar anında hesaplar).
+    /// Ay dönünce eskisi kullanılmaz.
+    public var derived: Derived? {
+        guard let d = derivedStore, d.month == MonthYear.current() else { return nil }
+        return d
+    }
+    private var derivedStore: Derived?
     private var derivedGeneration = 0
 
     // Tüm alanlar (çalışma alanı değişince yeniden süzmek için)
@@ -252,6 +257,7 @@ public final class AppModel {
 
     public func setActiveWorkspace(_ id: String) {
         activeWorkspaceId = id
+        derivedStore = nil   // eski alanın özeti bir an bile görünmesin
         UserDefaults.standard.set(id, forKey: Self.activeKey)
         rescope()
     }
@@ -315,7 +321,7 @@ public final class AppModel {
             let d = Derived.compute(input)
             await MainActor.run {
                 guard let self, self.derivedGeneration == gen else { return }
-                self.derived = d
+                self.derivedStore = d
                 self.writeWidgetSnapshot()
             }
         }
