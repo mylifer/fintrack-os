@@ -90,12 +90,24 @@ final class AppLock {
 struct LockView: View {
     @Environment(AppLock.self) private var lock
 
+    private var icon: String {
+        switch lock.biometryName {
+        case "Face ID": "faceid"
+        case "Touch ID": "touchid"
+        case "Optic ID": "opticid"
+        default: "lock.fill"
+        }
+    }
+
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 18) {
             Spacer()
-            Image(systemName: "lock.fill")
-                .font(.system(size: 44, weight: .semibold))
-                .foregroundStyle(Theme.accent)
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 30, weight: .bold))
+                .foregroundStyle(Theme.onAccent)
+                .frame(width: 72, height: 72)
+                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .accessibilityHidden(true)
             Text("FinTrack kilitli").font(.title2.bold())
             if let e = lock.errorMessage {
                 Text(e).font(.footnote).foregroundStyle(.secondary)
@@ -104,13 +116,15 @@ struct LockView: View {
             Button {
                 Task { await lock.unlock() }
             } label: {
-                Label("\(lock.biometryName) ile aç", systemImage: "faceid")
+                Label("\(lock.biometryName) ile aç", systemImage: icon)
+                    .font(.headline)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
             .foregroundStyle(Theme.onAccent)
+            .disabled(lock.isAuthenticating)
             .padding(.horizontal, 32)
             .padding(.bottom, 40)
         }
