@@ -67,6 +67,9 @@ Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|acc
 - Tekrarlayan şablon ve bütçe ekleme/düzenleme web formlarının kurallarıyla (`RecurringDraft`,
   `BudgetDraft`); yazmada yalnız değişen alanlar ham satırın üstüne konur.
 - Hedefler: iOS tüm alanları yazar; "Ekle/Çıkar" yalnız `savedAmount` (işlem oluşturmaz).
+- Borç ödemesi: tek bacaklı transfer (`debtId`, `toAccountId` yok, "<ad> ödemesi") + borç satırı
+  (`paidAmount` += TRY değeri, `paidInstallments` +1, `isSettled`). Düz borç ödemesi silinince borç
+  geri alınır; düzenlemesi web'de.
 - Abonelik = gider üzerinde `abonelik` etiketi; diğer etiketler korunur.
 - Çevrimdışı: ağ yoksa satır cihazdaki kuyruğa (`Outbox`) girer, bağlantı gelince gönderilir;
   sunucudaki `keep_newer_row` sırayı korur.
