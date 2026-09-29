@@ -2,39 +2,147 @@ import SwiftUI
 import FinTrackCore
 import FinTrackData
 
+/// İşlem listesi süzgeci: tür, hesap, dönem.
+struct TxFilter: Equatable {
+    enum Period: String, CaseIterable {
+        case all, thisMonth, lastMonth, last3
+        var label: String {
+            switch self {
+            case .all: "Tüm zamanlar"
+            case .thisMonth: "Bu ay"
+            case .lastMonth: "Geçen ay"
+            case .last3: "Son 3 ay"
+            }
+        }
+    }
+
+    var type: TransactionType?
+    var accountId: String?
+    var period: Period = .all
+    var pendingOnly = false
+
+    var isActive: Bool { type != nil || accountId != nil || period != .all || pendingOnly }
+
+    /// Dönemin [başlangıç, bitiş] günleri; tüm zamanlar için nil.
+    var range: (from: String, to: String)? {
+        let now = MonthYear.current()
+        switch period {
+        case .all: return nil
+        case .thisMonth: return DateUtil.monthRange(now)
+        case .lastMonth: return DateUtil.monthRange(now.previous)
+        case .last3: return (DateUtil.monthRange(now.previous.previous).from, DateUtil.monthRange(now).to)
+        }
+    }
+
+    func matches(_ t: Transaction) -> Bool {
+        if let type, t.type != type { return false }
+        if let a = accountId, !Calc.touchesAccount(t, a) { return false }
+        if pendingOnly && !Calc.awaitsApproval(t) { return false }
+        if let r = range, !DateUtil.isInRange(t.date, r.from, r.to) { return false }
+        return true
+    }
+}
+
 struct TransactionsView: View {
     @Environment(AppModel.self) private var model
     @Binding var quickAdd: Bool
     @State private var query = ""
+    @State private var filter = TxFilter()
     @State private var editing: Transaction?
     @State private var pendingDelete: Transaction?
     @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
-            TransactionList(transactions: filtered, editing: $editing, pendingDelete: $pendingDelete)
+            let list = filtered
+            TransactionList(transactions: list, editing: $editing, pendingDelete: $pendingDelete,
+                            header: (filter.isActive || !query.isEmpty) && !list.isEmpty ? AnyView(totals(list)) : nil)
                 .overlay {
-                    if filtered.isEmpty {
-                        if query.isEmpty {
+                    if list.isEmpty {
+                        if !query.isEmpty {
+                            ContentUnavailableView.search(text: query)
+                        } else if filter.isActive {
+                            ContentUnavailableView {
+                                Label("Eşleşen işlem yok", systemImage: "line.3.horizontal.decrease.circle")
+                            } actions: {
+                                Button("Süzgeci temizle") { filter = TxFilter() }
+                            }
+                        } else {
                             ContentUnavailableView("Henüz işlem yok", systemImage: "list.bullet.rectangle",
                                                    description: Text("Sağ üstteki + ile ilk işlemi ekleyin."))
-                        } else {
-                            ContentUnavailableView.search(text: query)
                         }
                     }
                 }
                 .searchable(text: $query, prompt: "Açıklama, kategori, hesap, tutar")
                 .refreshable { await model.refresh() }
                 .navigationTitle("İşlemler")
-                .toolbar { ToolbarItem(placement: .topBarTrailing) { AddButton(isPresented: $quickAdd) } }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) { filterMenu }
+                    ToolbarItem(placement: .topBarTrailing) { AddButton(isPresented: $quickAdd) }
+                }
                 .sheet(item: $editing) { TransactionFormView(editing: $0) }
                 .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
+                .onAppear {
+                    #if DEBUG
+                    // `-search <metin>` (simülatör ekran doğrulaması)
+                    let args = ProcessInfo.processInfo.arguments
+                    if query.isEmpty, let i = args.firstIndex(of: "-search"), i + 1 < args.count { query = args[i + 1] }
+                    #endif
+                }
         }
     }
 
     private var filtered: [Transaction] {
         let match = TxSearch.matcher(query, categories: model.categories, accounts: model.accounts)
-        return model.transactions.filter(match)
+        return model.transactions.filter { filter.matches($0) && match($0) }
+    }
+
+    private var filterMenu: some View {
+        Menu {
+            Picker("Tür", selection: $filter.type) {
+                Text("Tüm türler").tag(TransactionType?.none)
+                ForEach(TransactionType.allCases, id: \.self) { Text($0.label).tag(Optional($0)) }
+            }
+            Picker("Dönem", selection: $filter.period) {
+                ForEach(TxFilter.Period.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            Menu {
+                Picker("Hesap", selection: $filter.accountId) {
+                    Text("Tüm hesaplar").tag(String?.none)
+                    ForEach(model.activeAccounts) { Text($0.name).tag(Optional($0.id)) }
+                }
+            } label: {
+                Label(model.account(filter.accountId)?.name ?? "Hesap", systemImage: "building.columns")
+            }
+            Toggle("Yalnız onay bekleyenler", isOn: $filter.pendingOnly)
+            if filter.isActive {
+                Divider()
+                Button("Süzgeci temizle", role: .destructive) { filter = TxFilter() }
+            }
+        } label: {
+            Image(systemName: filter.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+        }
+        .accessibilityLabel(filter.isActive ? "Süzgeç açık" : "Süz")
+    }
+
+    /// Görünen işlemlerin toplamı (gelir/gider akışı: mutabakat ve anapara hariç, web ile aynı).
+    private func totals(_ list: [Transaction]) -> some View {
+        let flow = Calc.periodFlow(list, from: "0000-01-01", to: "9999-12-31", fx: model.fx)
+        return HStack(spacing: 14) {
+            Text("\(list.count) işlem").font(.subheadline.bold())
+            Spacer()
+            if flow.expense > 0 {
+                Label(Fmt.currency(flow.expense), systemImage: "arrow.up.right")
+                    .foregroundStyle(Theme.expense)
+            }
+            if flow.income > 0 {
+                Label(Fmt.currency(flow.income), systemImage: "arrow.down.left")
+                    .foregroundStyle(Theme.income)
+            }
+        }
+        .font(.subheadline.monospacedDigit())
+        .labelStyle(.titleAndIcon)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -46,6 +154,8 @@ struct TransactionList: View {
     var perspectiveAccountId: String?
     @Binding var editing: Transaction?
     @Binding var pendingDelete: Transaction?
+    /// Listenin üstünde ayrı bölüm (ör. arama/süzgeç toplamı)
+    var header: AnyView? = nil
 
     /// Gelecek/onay bekleyen satırlar en üstte ayrı bölümde.
     private var sections: [(title: String, items: [Transaction])] {
@@ -70,6 +180,7 @@ struct TransactionList: View {
 
     var body: some View {
         List {
+            if let header { Section { header } }
             ForEach(sections, id: \.title) { section in
                 Section(section.title) {
                     ForEach(section.items) { t in
