@@ -111,3 +111,37 @@ struct TrendChart: View {
         return s.replacingOccurrences(of: ".", with: ",") + suffix
     }
 }
+
+/// Hesap bakiyesinin son 90 günü — eksensiz mini çizgi. Tutarlar gizliyse çizilmez.
+struct BalanceSparkline: View {
+    @Environment(AppModel.self) private var model
+    let account: Account
+    var days = 90
+
+    var body: some View {
+        if !Fmt.amountsHidden {
+            let current = model.balances[account.id] ?? account.initialBalance
+            let points = Calc.balanceHistory(account, current: current, posted: Calc.excludeFuture(model.transactions),
+                                             fx: model.fx, days: days)
+            let values = points.map(\.balance)
+            if let lo = values.min(), let hi = values.max(), hi > lo {
+                let color = (values.last ?? 0) >= (values.first ?? 0) ? Theme.income : Theme.expense
+                Chart(Array(points.enumerated()), id: \.offset) { i, p in
+                    AreaMark(x: .value("Gün", i), yStart: .value("Alt", lo), yEnd: .value("Bakiye", p.balance))
+                        .foregroundStyle(LinearGradient(colors: [color.opacity(0.25), color.opacity(0.02)],
+                                                        startPoint: .top, endPoint: .bottom))
+                        .interpolationMethod(.stepEnd)
+                    LineMark(x: .value("Gün", i), y: .value("Bakiye", p.balance))
+                        .foregroundStyle(color)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5))
+                        .interpolationMethod(.stepEnd)
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .chartYScale(domain: lo...hi)
+                .frame(height: 44)
+                .accessibilityLabel("Son \(days) günde bakiye \(Fmt.currency(values.first ?? 0, account.currency)) → \(Fmt.currency(values.last ?? 0, account.currency))")
+            }
+        }
+    }
+}

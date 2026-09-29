@@ -63,7 +63,10 @@ struct TransactionRow: View {
                 parts.append("\(model.account(t.accountId)?.name ?? "?") → \(model.account(t.toAccountId)?.name ?? "?")")
             }
         } else {
-            if let c = category, !t.description.isEmpty { parts.append(c.name) }
+            if let c = category, !t.description.isEmpty,
+               c.name.lowercased(with: Locale(identifier: "tr_TR")) != t.description.lowercased(with: Locale(identifier: "tr_TR")) {
+                parts.append(c.name)
+            }
             if perspectiveAccountId == nil, let a = model.account(t.accountId) { parts.append(a.name) }
         }
         if let i = t.installIndex, let n = t.installTotal { parts.append("\(i)/\(n) taksit") }

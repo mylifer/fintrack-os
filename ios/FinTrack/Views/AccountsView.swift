@@ -182,6 +182,7 @@ struct AccountDetailView: View {
                     Text(Fmt.currency(balance, account.currency))
                         .font(.system(size: 30, weight: .bold).monospacedDigit())
                         .foregroundStyle(balance < 0 ? Theme.expense : .primary)
+                    if account.type != .credit_card { BalanceSparkline(account: account) }
                     if account.type == .credit_card, let limit = account.creditLimit {
                         let avail = Calc.availableCredit(account, balance: balance, model.transactions)
                         ProgressView(value: min(max(limit - avail, 0), limit), total: max(limit, 1))

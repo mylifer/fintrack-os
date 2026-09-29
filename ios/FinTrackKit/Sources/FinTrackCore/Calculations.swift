@@ -293,3 +293,25 @@ public enum Calc {
         return minor.mapValues(Money.toMajor)
     }
 }
+
+extension Calc {
+    /// Hesabın gün sonu bakiyeleri, `days` gün geriye (eskiden yeniye; son nokta
+    /// bugün = güncel bakiye). Bugünkü bakiyeden geriye doğru her günün işlem
+    /// etkisi düşülerek bulunur — yalnız işlenmiş (tarihi gelmiş, onaylı) satırlar.
+    public static func balanceHistory(_ a: Account, current: Double, posted: [Transaction], fx: FX,
+                                      days: Int, today: String = DateUtil.today()) -> [(date: String, balance: Double)] {
+        guard days > 0, let t = DateUtil.parseDay(today) else { return [] }
+        var byDay: [String: [Transaction]] = [:]
+        for tx in posted where touchesAccount(tx, a.id) { byDay[String(tx.date.prefix(10)), default: []].append(tx) }
+        var out: [(String, Double)] = []
+        var balance = current
+        for i in 0...days {
+            let day = DateUtil.day(DateUtil.calendar.date(byAdding: .day, value: -i, to: t)!)
+            out.append((day, balance))
+            if let txs = byDay[day] {
+                balance = Money.sub(balance, transactionEffect(accountId: a.id, currency: a.currency, txs, fx: fx))
+            }
+        }
+        return out.reversed()
+    }
+}
