@@ -112,3 +112,47 @@ enum Haptics {
     static func warning() { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
     static func tap() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
 }
+
+/// Yan yana öğeler; erişilebilirlik yazı boyutlarında alt alta (tutarlar
+/// bölünemediği için yan yana satır ekrandan taşmasın).
+struct AdaptiveStack<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var size
+    var spacing: CGFloat = 20
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        if size.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: spacing / 2, content: content)
+        } else {
+            HStack(alignment: .top, spacing: spacing, content: content)
+        }
+    }
+}
+
+/// Satır: solda başlık bloğu, sağda tutar; erişilebilirlik boyutlarında tutar alta iner.
+struct AmountRow<Leading: View, Title: View, Trailing: View>: View {
+    @Environment(\.dynamicTypeSize) private var size
+    var spacing: CGFloat = 12
+    @ViewBuilder var leading: () -> Leading
+    @ViewBuilder var title: () -> Title
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        if size.isAccessibilitySize {
+            HStack(alignment: .top, spacing: spacing) {
+                leading()
+                VStack(alignment: .leading, spacing: 4) {
+                    title()
+                    trailing()
+                }
+            }
+        } else {
+            HStack(spacing: spacing) {
+                leading()
+                title()
+                Spacer(minLength: 8)
+                trailing()
+            }
+        }
+    }
+}

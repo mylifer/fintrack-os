@@ -485,7 +485,7 @@ struct RecurringContent: View {
         let missed = Recurrence.occurrences(r, asOf: DateUtil.today()).count
         return VStack(alignment: .leading, spacing: 10) {
             NavigationLink(value: r) { RecurringRow(r: r, subtitleOverride: missed > 1 ? "\(missed) dönem birikti" : nil) }
-            HStack(spacing: 10) {
+            AdaptiveStack(spacing: 10) {
                 Button { run(r.id) { try await model.approveRecurring(r) } } label: {
                     Label(missed > 1 ? "\(missed) dönemi kaydet" : "Kaydet", systemImage: "checkmark")
                         .frame(maxWidth: .infinity)
@@ -519,16 +519,18 @@ struct RecurringRow: View {
     var subtitleOverride: String?
 
     var body: some View {
-        HStack(spacing: 12) {
+        AmountRow {
             RecurringIcon(r: r)
+        } title: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(r.name).lineLimit(1)
-                Text(subtitleOverride ?? subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(r.name).lineLimit(2)
+                Text(subtitleOverride ?? subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
-            Spacer(minLength: 8)
+        } trailing: {
             Text(r.signedAmountText)
                 .font(.body.monospacedDigit().weight(.semibold))
                 .foregroundStyle(r.type == .income ? Theme.income : .primary)
+                .lineLimit(1)
         }
         .opacity(r.isActive ? 1 : 0.6)
     }

@@ -61,7 +61,7 @@ struct SummaryView: View {
                 .lineLimit(1)
                 .contentTransition(.numericText())
             comparison
-            HStack(spacing: 20) {
+            AdaptiveStack {
                 stat("Gelir", Fmt.currency(flow.income), Theme.income)
                 stat("Net", Fmt.signed(flow.net), flow.net >= 0 ? Theme.income : Theme.expense)
             }

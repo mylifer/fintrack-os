@@ -9,8 +9,9 @@ struct TransactionRow: View {
     var perspectiveAccountId: String?
 
     var body: some View {
-        HStack(spacing: 12) {
+        AmountRow {
             icon
+        } title: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.body).lineLimit(1)
                 HStack(spacing: 4) {
@@ -23,7 +24,7 @@ struct TransactionRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 8)
+        } trailing: {
             Text(amountText)
                 .font(.body.monospacedDigit().weight(.semibold))
                 .foregroundStyle(amountColor)

@@ -71,18 +71,20 @@ struct PendingCard: View {
         let missed = Recurrence.occurrences(r, asOf: DateUtil.today()).count
         return HStack(spacing: 8) {
             Button(action: openRecurring) {
-                HStack(spacing: 12) {
+                AmountRow {
                     RecurringIcon(r: r)
+                } title: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(r.name).lineLimit(1)
                         Text(missed > 1 ? "\(missed) dönem birikti · \(DateUtil.display(r.nextDueDate, "d MMM")) itibarıyla"
                                         : "Tekrarlayan · \(DateUtil.display(r.nextDueDate, "d MMM"))")
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
-                    Spacer(minLength: 4)
+                } trailing: {
                     Text(r.signedAmountText)
                         .font(.subheadline.monospacedDigit().weight(.semibold))
                         .foregroundStyle(r.type == .income ? Theme.income : .primary)
+                        .lineLimit(1)
                 }
             }
             .buttonStyle(.plain)

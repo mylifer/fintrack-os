@@ -62,7 +62,7 @@ struct InvestmentsView: View {
             Text(Fmt.currency(value))
                 .font(.system(size: 32, weight: .bold).monospacedDigit())
                 .minimumScaleFactor(0.6).lineLimit(1)
-            HStack(spacing: 20) {
+            AdaptiveStack {
                 stat("Maliyet", Fmt.currency(cost), .primary)
                 stat("Kâr/Zarar", "\(Fmt.signed(pnl)) \(percent(pnl, of: cost))", pnl >= 0 ? Theme.income : Theme.expense)
             }
