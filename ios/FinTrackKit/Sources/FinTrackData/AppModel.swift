@@ -500,6 +500,49 @@ public final class AppModel {
         try await write(t, in: \.recurring)
     }
 
+    // MARK: Yaklaşanlar
+
+    public struct Upcoming: Identifiable, Hashable, Sendable {
+        public enum Kind: Hashable, Sendable { case recurring, planned, cardDue }
+        public var id: String
+        public var kind: Kind
+        public var title: String
+        public var date: String
+        public var amount: Double
+        public var currency: CurrencyCode
+        public var type: TransactionType
+        public var refId: String
+    }
+
+    /// Önümüzdeki `days` gün (bugün hariç): sırası gelecek tekrarlayanlar, onay
+    /// bekleyecek planlı işlemler, ödenmemiş kart ekstrelerinin son ödeme günleri.
+    public func upcoming(days: Int = 7) -> [Upcoming] {
+        let today = DateUtil.today()
+        guard let t = DateUtil.parseDay(today),
+              let h = DateUtil.calendar.date(byAdding: .day, value: days, to: t) else { return [] }
+        let horizon = DateUtil.day(h)
+        var out: [Upcoming] = []
+        for r in recurring where r.isActive {
+            for d in Recurrence.occurrences(r, asOf: horizon) where d > today {
+                out.append(.init(id: "r:\(r.id):\(d)", kind: .recurring, title: r.name, date: d,
+                                 amount: r.amount, currency: r.currency, type: r.type, refId: r.id))
+            }
+        }
+        for tx in upcomingApprovals {
+            out.append(.init(id: "t:\(tx.id)", kind: .planned,
+                             title: tx.description.isEmpty ? (category(tx.categoryId)?.name ?? tx.type.label) : tx.description,
+                             date: String(tx.date.prefix(10)), amount: tx.amount, currency: tx.currency,
+                             type: tx.type, refId: tx.id))
+        }
+        for a in activeAccounts where a.type == .credit_card {
+            guard let s = cardStatements(a, count: 1).statements.first, let due = s.dueDate,
+                  due >= today, due <= horizon, s.status == .open || s.status == .partial else { continue }
+            out.append(.init(id: "c:\(a.id):\(due)", kind: .cardDue, title: "\(a.name) son ödeme", date: due,
+                             amount: max(0, Money.sub(s.total, s.paid)), currency: a.currency, type: .transfer, refId: a.id))
+        }
+        return out.sorted { $0.date != $1.date ? $0.date < $1.date : $0.title < $1.title }
+    }
+
     // MARK: Kart ekstresi
 
     /// Kredi kartının açık dönemi ve son `count` ekstresi (web CardStatementPanel).

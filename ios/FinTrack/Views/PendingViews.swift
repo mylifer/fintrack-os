@@ -151,3 +151,84 @@ extension RecurringTransaction {
         }
     }
 }
+
+/// Önümüzdeki 7 gün: tekrarlayanlar, planlı işlemler, kart son ödemeleri.
+struct UpcomingCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(Router.self) private var router
+    @Binding var editing: Transaction?
+
+    var body: some View {
+        let items = model.upcoming()
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Yaklaşanlar").font(.headline)
+                    Spacer()
+                    Text("7 gün").font(.caption).foregroundStyle(.secondary)
+                }
+                ForEach(items.prefix(5)) { item in
+                    Button { open(item) } label: { row(item) }
+                        .buttonStyle(.plain)
+                    if item.id != items.prefix(5).last?.id { Divider() }
+                }
+                if items.count > 5 {
+                    Text("+\(items.count - 5) daha").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card()
+        }
+    }
+
+    private func row(_ u: AppModel.Upcoming) -> some View {
+        HStack(spacing: 12) {
+            VStack(spacing: 0) {
+                Text(DateUtil.display(u.date, "d")).font(.headline.monospacedDigit())
+                Text(DateUtil.display(u.date, "MMM")).font(.caption2).foregroundStyle(.secondary)
+            }
+            .frame(width: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(u.title).lineLimit(1)
+                Text(kindLabel(u)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Text(amountText(u))
+                .font(.subheadline.monospacedDigit().weight(.semibold))
+                .foregroundStyle(u.type == .income ? Theme.income : .primary)
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    private func kindLabel(_ u: AppModel.Upcoming) -> String {
+        let days = daysUntil(u.date)
+        let when = days == 1 ? "yarın" : "\(days) gün sonra"
+        switch u.kind {
+        case .recurring: return "Tekrarlayan · \(when)"
+        case .planned: return "Planlı · \(when)"
+        case .cardDue: return days == 0 ? "Kart ekstresi · bugün" : "Kart ekstresi · \(when)"
+        }
+    }
+
+    private func amountText(_ u: AppModel.Upcoming) -> String {
+        switch u.type {
+        case .income: Fmt.signed(u.amount, u.currency)
+        case .expense: Fmt.signed(-u.amount, u.currency)
+        case .transfer: Fmt.currency(u.amount, u.currency)
+        }
+    }
+
+    private func daysUntil(_ d: String) -> Int {
+        guard let a = DateUtil.parseDay(DateUtil.today()), let b = DateUtil.parseDay(d) else { return 0 }
+        return DateUtil.calendar.dateComponents([.day], from: a, to: b).day ?? 0
+    }
+
+    private func open(_ u: AppModel.Upcoming) {
+        switch u.kind {
+        case .recurring: router.openPlan(.recurring)
+        case .planned: editing = model.transactions.first { $0.id == u.refId }
+        case .cardDue: router.tab = .accounts
+        }
+    }
+}

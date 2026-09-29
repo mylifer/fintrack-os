@@ -21,6 +21,7 @@ struct SummaryView: View {
                     SyncErrorBanner()
                     PendingCard(editing: $editing, openRecurring: { router.openPlan(.recurring) })
                     monthCard
+                    UpcomingCard(editing: $editing)
                     if hasHistory { trendCard }
                     netWorthCard
                     budgetsCard
