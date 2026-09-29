@@ -13,6 +13,7 @@ struct TransactionFormView: View {
 
     @State private var draft = TransactionDraft()
     @State private var categoryTouched = false
+    @State private var savedCount = 0
     @FocusState private var descriptionFocused: Bool
     @State private var saving = false
     @State private var errorMessage: String?
@@ -117,6 +118,21 @@ struct TransactionFormView: View {
                             .lineLimit(1...4)
                     }
 
+                    if editing == nil {
+                        Section {
+                            Button {
+                                save(another: true)
+                            } label: {
+                                Label("Kaydet ve yenisini ekle", systemImage: "plus.circle")
+                            }
+                            .disabled(draft.validationError() != nil)
+                        } footer: {
+                            if savedCount > 0 {
+                                Text("Bu oturumda \(savedCount) işlem kaydedildi.")
+                            }
+                        }
+                    }
+
                     if DateUtil.day(draft.date) > DateUtil.today() && editing == nil {
                         Section {
                             Label("Gelecek tarihli işlem onay bekleyerek kaydedilir; tarihi gelince Özet'teki \"Onay bekliyor\" kartından onaylayın.",
@@ -161,7 +177,7 @@ struct TransactionFormView: View {
                 if !readOnly {
                     ToolbarItem(placement: .confirmationAction) {
                         if saving { ProgressView() } else {
-                            Button("Kaydet", action: save).bold()
+                            Button("Kaydet") { save() }.bold()
                                 .disabled(draft.validationError() != nil)
                         }
                     }
@@ -265,13 +281,27 @@ struct TransactionFormView: View {
         if draft.amountText.isEmpty { amountFocused = true }
     }
 
-    private func save() {
+    /// `another`: kaydettikten sonra formu kapatma; tür, hesap ve tarih kalsın.
+    private func save(another: Bool = false) {
         saving = true
         Task {
             do {
                 try await model.save(draft, editing: editing)
                 if editing == nil { UserDefaults.standard.set(draft.accountId, forKey: Self.lastAccountKey) }
                 Haptics.success()
+                if another {
+                    savedCount += 1
+                    var next = TransactionDraft()
+                    next.type = draft.type
+                    next.accountId = draft.accountId
+                    next.toAccountId = draft.toAccountId
+                    next.date = draft.date
+                    draft = next
+                    categoryTouched = false
+                    amountFocused = true
+                    saving = false
+                    return
+                }
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
