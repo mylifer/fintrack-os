@@ -218,11 +218,16 @@ public final class SupabaseService: Sendable {
     /// Satırın TAMAMI upsert edilir; user_id oturumdan eklenir. Sunucudaki
     /// keep_newer_row (0016) eski damgalı yazmayı sessizce yok sayar.
     public func upsert<T: SyncRecord>(_ record: T, userId: String, now: String) async throws {
-        var row = record.rowForWrite(updatedAt: now)
+        try await upsertRow(T.table, record.rowForWrite(updatedAt: now), userId: userId)
+    }
+
+    /// Hazır (damgalı) satırı yaz — çevrimdışı kuyruğun gönderimi de bunu kullanır.
+    func upsertRow(_ table: String, _ row: JSONObject, userId: String) async throws {
+        var row = row
         row["user_id"] = .string(userId)
         // Boş kimlik referansı ('' geçerli değil) → null (web sanitizeIdRefs)
         for (k, v) in row where k.hasSuffix("Id") && v == .string("") { row[k] = .null }
-        try await client.from(T.table).upsert(row, onConflict: "id", returning: .minimal).execute()
+        try await client.from(table).upsert(row, onConflict: "id", returning: .minimal).execute()
     }
 }
 

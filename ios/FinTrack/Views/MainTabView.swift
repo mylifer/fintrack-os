@@ -49,19 +49,32 @@ struct AddButton: View {
     }
 }
 
-/// Bağlantı / eşitleme hatası şeridi.
+/// Bağlantı / eşitleme durumu şeridi: hata ya da gönderilmeyi bekleyen değişiklikler.
 struct SyncErrorBanner: View {
     @Environment(AppModel.self) private var model
     var body: some View {
         if let e = model.lastError {
-            HStack(spacing: 8) {
-                Image(systemName: "wifi.exclamationmark")
-                Text(e).font(.footnote)
-                Spacer()
+            banner(icon: "wifi.exclamationmark", text: e, color: Theme.warning)
+        } else if model.pendingWrites > 0 {
+            banner(icon: "icloud.and.arrow.up",
+                   text: "\(model.pendingWrites) değişiklik bağlantı gelince gönderilecek.",
+                   color: Theme.planned)
+        }
+    }
+
+    private func banner(icon: String, text: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+            Text(text).font(.footnote)
+            Spacer()
+            if model.isRefreshing {
+                ProgressView().controlSize(.small)
+            } else {
                 Button("Tekrar dene") { Task { await model.refresh() } }.font(.footnote.bold())
             }
-            .padding(12)
-            .background(Theme.warning.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
         }
+        .padding(12)
+        .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
     }
 }

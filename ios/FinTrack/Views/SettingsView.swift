@@ -41,6 +41,9 @@ struct SettingsView: View {
                 }
 
                 Section("Eşitleme") {
+                    if model.pendingWrites > 0 {
+                        LabeledContent("Gönderilmeyi bekleyen", value: "\(model.pendingWrites) değişiklik")
+                    }
                     LabeledContent("Son güncelleme") {
                         if let d = model.lastSync {
                             Text(d.formatted(.relative(presentation: .named).locale(Locale(identifier: "tr_TR"))))
@@ -79,7 +82,11 @@ struct SettingsView: View {
                     }
                 }
             } message: {
-                Text("Bu cihazdaki önbellek silinir. Verileriniz bulutta kalır.")
+                if model.pendingWrites > 0 {
+                    Text("\(model.pendingWrites) değişiklik henüz buluta gönderilmedi ve çıkışta kaybolur. Önce internete bağlanıp \"Şimdi güncelle\"ye dokunun.")
+                } else {
+                    Text("Bu cihazdaki önbellek silinir. Verileriniz bulutta kalır.")
+                }
             }
         }
     }

@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Observation
 import FinTrackCore
 #if canImport(WidgetKit)
@@ -17,6 +18,8 @@ public final class AppModel {
     public private(set) var isRefreshing = false
     public private(set) var lastSync: Date?
     public var lastError: String?
+    /// Çevrimdışıyken yazılıp henüz buluta gitmemiş değişiklik sayısı
+    public private(set) var pendingWrites = 0
 
     public private(set) var workspaces: [Workspace] = []
     public private(set) var activeWorkspaceId: String?
@@ -48,6 +51,9 @@ public final class AppModel {
 
     private var service: SupabaseService?
     private let cache = LocalCache()
+    private var outbox: Outbox?
+    private var isFlushing = false
+    private let pathMonitor = NWPathMonitor()
     /// DEBUG örnek veri modu (simülatörde ekran doğrulama): buluta hiçbir şey yazılmaz.
     private var isDemo = false
     private static let activeKey = "fintrack.activeWorkspaceId"
@@ -91,7 +97,9 @@ public final class AppModel {
         self.service = service
         auth = await service.currentAuthState()
         phase = .ready
+        startPathMonitor()
         if let uid = userId {
+            openOutbox(uid)
             if let snap = cache.load(userId: uid) { apply(snap) }   // çevrimdışı açılış
             await refresh()
         }
@@ -102,7 +110,7 @@ public final class AppModel {
         lastError = nil
         do {
             auth = try await service.signIn(email: email, password: password)
-            if userId != nil { await refresh() }
+            if let uid = userId { openOutbox(uid); await refresh() }
         } catch {
             lastError = error.localizedDescription
         }
@@ -113,14 +121,19 @@ public final class AppModel {
         lastError = nil
         do {
             auth = try await service.verifyMFA(factorId: factorId, code: code)
-            if userId != nil { await refresh() }
+            if let uid = userId { openOutbox(uid); await refresh() }
         } catch {
             lastError = error.localizedDescription
         }
     }
 
-    public func signOut() async {
+    /// `discardPending`: kullanıcı kendisi çıkıyorsa gönderilmemiş değişiklikler
+    /// de silinir; oturum kendiliğinden düştüyse kuyruk yeniden girişi bekler.
+    public func signOut(discardPending: Bool = true) async {
         if !isDemo, let uid = userId { cache.clear(userId: uid) }
+        if discardPending { outbox?.clear() }
+        outbox = nil
+        pendingWrites = 0
         await service?.signOut()
         auth = .signedOut
         all = Snapshot()
@@ -138,6 +151,8 @@ public final class AppModel {
         guard !isDemo, let service, let uid = userId, !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
+        if outbox == nil { openOutbox(uid) }
+        let rejected = await flushOutbox()
 
         // Üyelikler ÖNCE: çekiş filtresi paylaşılan alanları bunlardan bilir
         let m = await service.memberWorkspaceIds(userId: uid)
@@ -165,16 +180,18 @@ public final class AppModel {
             snap.goals = await go ?? all.goals
             snap.paymentPlans = await pp ?? all.paymentPlans
             snap.paymentOccurrences = await po ?? all.paymentOccurrences
+            // Hâlâ gönderilemeyen yerel değişiklikler buluttaki eski halin üstüne
+            for e in outbox?.entries ?? [] { snap.overlay(table: e.table, row: e.row) }
             apply(snap)
             cache.save(snap, userId: uid)
             lastSync = Date()
-            lastError = nil
+            lastError = rejected > 0 ? "\(rejected) çevrimdışı değişiklik sunucu tarafından kabul edilmedi." : nil
         } catch {
             if (error as NSError).code == NSURLErrorCancelled { return }
             // Oturum başka yerden kapatıldıysa (şifre değişti, web'den tüm
             // cihazlardan çıkış) sessizce eski veriyle kalma — giriş ekranına dön.
             if !(await service.hasValidSession()) {
-                await signOut()
+                await signOut(discardPending: false)
                 lastError = "Oturumunuz sona erdi. Yeniden giriş yapın."
                 return
             }
@@ -336,40 +353,25 @@ public final class AppModel {
 
     /// Yeni işlem ya da var olan işlemin düzenlemesi.
     public func save(_ draft: TransactionDraft, editing: Transaction?) async throws {
-        guard let uid = userId else { throw ServiceError.notSignedIn }
+        guard userId != nil else { throw ServiceError.notSignedIn }
         if let e = draft.validationError() { throw ServiceError.message(e) }
         guard let account = account(draft.accountId) else { throw ServiceError.message("Hesap bulunamadı.") }
         if let editing, editing.isLinked {
             throw ServiceError.message("Bu işlem başka kayıtlara bağlı; web'den düzenleyin.")
         }
-        let now = Self.nowISO()
         let record = editing.map { draft.applying(to: $0, account: account, fx: fx) }
-            ?? draft.makeNew(account: account, workspaceId: activeWorkspaceId, fx: fx, now: now)
-        if !isDemo {
-            guard let service else { throw ServiceError.notSignedIn }
-            try await service.upsert(record, userId: uid, now: now)
-        }
-        var raw = record.rowForWrite(updatedAt: now)
-        raw["user_id"] = .string(uid)
-        replaceLocal(Transaction(raw: raw))
+            ?? draft.makeNew(account: account, workspaceId: activeWorkspaceId, fx: fx, now: Self.nowISO())
+        try await write(record, in: \.transactions)
     }
 
     /// Silme = tombstone (deleted_at), gerçek DELETE yok.
     public func delete(_ t: Transaction) async throws {
-        guard let uid = userId else { throw ServiceError.notSignedIn }
+        guard userId != nil else { throw ServiceError.notSignedIn }
         if t.isLinked { throw ServiceError.message("Bu işlem başka kayıtlara bağlı; web'den silin.") }
-        let now = Self.nowISO()
-        let dead = t.tombstoned(at: now)
-        if !isDemo {
-            guard let service else { throw ServiceError.notSignedIn }
-            try await service.upsert(dead, userId: uid, now: now)
-        }
-        replaceLocal(Transaction(raw: dead.rowForWrite(updatedAt: now)))
+        try await write(t.tombstoned(at: Self.nowISO()), in: \.transactions)
     }
 
-    private func replaceLocal(_ t: Transaction) { replaceLocal(t, in: \.transactions) }
-
-    /// Yerel kopyayı güncelle (yazma bulutta başarılı olduktan sonra) ve önbelleğe al.
+    /// Yerel kopyayı güncelle (bulut yazması ya da kuyruğa alma sonrası) ve önbelleğe al.
     private func replaceLocal<T: SyncRecord>(_ r: T, in kp: WritableKeyPath<Snapshot, [T]>) {
         if let i = all[keyPath: kp].firstIndex(where: { $0.id == r.id }) {
             all[keyPath: kp][i] = r
@@ -381,16 +383,67 @@ public final class AppModel {
     }
 
     /// Tek kayıt yaz: buluta upsert, sonra yerel kopya (user_id oturumdan).
+    /// Ağ yoksa satır çevrimdışı kuyruğa girer ve yerelde hemen görünür; bağlantı
+    /// gelince gönderilir. Sunucu reddederse (yetki, doğrulama) hata fırlatılır.
     private func write<T: SyncRecord>(_ record: T, in kp: WritableKeyPath<Snapshot, [T]>) async throws {
         guard let uid = userId else { throw ServiceError.notSignedIn }
-        let now = Self.nowISO()
+        let row = record.rowForWrite(updatedAt: Self.nowISO())
         if !isDemo {
             guard let service else { throw ServiceError.notSignedIn }
-            try await service.upsert(record, userId: uid, now: now)
+            do {
+                try await service.upsertRow(T.table, row, userId: uid)
+            } catch where SupabaseService.isNetworkError(error) {
+                if outbox == nil { openOutbox(uid) }
+                outbox?.enqueue(table: T.table, row: row)
+                pendingWrites = outbox?.count ?? 0
+            }
         }
-        var raw = record.rowForWrite(updatedAt: now)
+        var raw = row
         raw["user_id"] = .string(uid)
         replaceLocal(T(raw: raw), in: kp)
+    }
+
+    // MARK: Çevrimdışı kuyruk
+
+    private func openOutbox(_ uid: String) {
+        guard !isDemo else { return }
+        outbox = Outbox(userId: uid)
+        pendingWrites = outbox?.count ?? 0
+    }
+
+    /// Bekleyenleri sırayla gönder. Ağ hatasında durur (sonra yeniden denenir);
+    /// sunucu reddettiyse satır kuyruktan düşer — çekiş bulut halini geri getirir.
+    @discardableResult
+    public func flushOutbox() async -> Int {
+        guard !isDemo, !isFlushing, let service, let uid = userId, let entries = outbox?.entries, !entries.isEmpty
+        else { return 0 }
+        isFlushing = true
+        defer { isFlushing = false; pendingWrites = outbox?.count ?? 0 }
+        var rejected = 0
+        for e in entries.sorted(by: { $0.seq < $1.seq }) {
+            do {
+                try await service.upsertRow(e.table, e.row, userId: uid)
+                outbox?.remove(e)
+            } catch where SupabaseService.isNetworkError(error) {
+                return rejected
+            } catch {
+                outbox?.remove(e)
+                rejected += 1
+            }
+        }
+        return rejected
+    }
+
+    /// Bağlantı gelince bekleyenleri gönder.
+    private func startPathMonitor() {
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.pendingWrites > 0 else { return }
+                await self.refresh()
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "fintrack.path"))
     }
 
     // MARK: Onay bekleyenler
