@@ -60,7 +60,13 @@ struct LoginView: View {
                 .foregroundStyle(Theme.onAccent)
                 .disabled(busy || email.isEmpty || password.isEmpty)
 
-                Text("Hesap oluşturma, şifre sıfırlama ve iki adımlı doğrulama ayarları web'de.")
+                HStack {
+                    Link("Şifremi unuttum", destination: WebLinks.forgotPassword)
+                    Spacer()
+                    Link("Hesap oluştur", destination: WebLinks.register)
+                }
+                .font(.footnote.weight(.semibold))
+                Text("Şifre sıfırlama, hesap oluşturma ve iki adımlı doğrulama ayarları web'de açılır.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

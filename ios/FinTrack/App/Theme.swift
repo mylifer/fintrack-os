@@ -156,3 +156,12 @@ struct AmountRow<Leading: View, Title: View, Trailing: View>: View {
         }
     }
 }
+
+/// Web uygulamasının adresleri (hesap oluşturma, şifre sıfırlama ve web'e özel işler).
+enum WebLinks {
+    static let base = URL(string: "https://fintrack-os-ten.vercel.app")!
+    static let forgotPassword = base.appendingPathComponent("forgot-password")
+    static let register = base.appendingPathComponent("register")
+    static let cardCalendar = base.appendingPathComponent("kart-takvimi")
+    static let payments = base.appendingPathComponent("payments")
+}

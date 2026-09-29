@@ -84,6 +84,10 @@ struct CardStatementsView: View {
                 Section {
                     Text(cycleText(model.cardDays(account)))
                         .font(.footnote).foregroundStyle(.secondary)
+                    Link(destination: WebLinks.cardCalendar) {
+                        Label("Kesim / son ödeme günlerini düzenle (web)", systemImage: "safari")
+                            .font(.footnote)
+                    }
                 }
                 Section {
                     DisclosureGroup(isExpanded: binding("open")) {
@@ -173,7 +177,7 @@ struct CardStatementsView: View {
         let due: String
         if let g = d.gapDays, d.statementDay != nil { due = "son ödeme kesimden \(g) gün sonra" }
         else if let day = d.dueDay { due = "son ödeme her ayın \(day)'i" }
-        else { due = "son ödeme günü girilmemiş (web → Kart Takvimi)" }
+        else { due = "son ödeme günü girilmemiş" }
         return "\(closing) · \(due). Tutarlar uygulamadaki işlemlerden hesaplanır."
     }
 }

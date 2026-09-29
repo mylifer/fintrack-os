@@ -86,10 +86,24 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Link(destination: WebLinks.base) {
+                        Label("Web'de aç", systemImage: "safari")
+                    }
+                    Link(destination: WebLinks.payments) {
+                        Label("Ödeme Takibi (web)", systemImage: "calendar.badge.checkmark")
+                    }
+                    Link(destination: WebLinks.cardCalendar) {
+                        Label("Kart Takvimi (web)", systemImage: "creditcard")
+                    }
+                } header: {
+                    Text("Web")
+                } footer: {
+                    Text("Toplu içe aktarma, yedekleme, raporlar, kart kesim/son ödeme günleri ve Ödeme Takibi web'de.")
+                }
+
+                Section {
                     if let e = model.email { LabeledContent("Hesap", value: e) }
                     Button("Çıkış yap", role: .destructive) { confirmSignOut = true }
-                } footer: {
-                    Text("Toplu içe aktarma, yedekleme, raporlar ve diğer ayarlar web'de.")
                 }
             }
             .navigationTitle("Ayarlar")
