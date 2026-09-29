@@ -105,6 +105,11 @@ struct TransactionFormView: View {
                         }
                         DatePicker("Tarih", selection: $draft.date, displayedComponents: .date)
                             .environment(\.locale, Locale(identifier: "tr_TR"))
+                        if draft.type == .expense {
+                            Toggle(isOn: $draft.isSubscription) {
+                                Label("Abonelik", systemImage: "repeat.circle")
+                            }
+                        }
                     }
 
                     Section {

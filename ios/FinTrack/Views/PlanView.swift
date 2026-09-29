@@ -3,18 +3,19 @@ import FinTrackCore
 import FinTrackData
 
 enum PlanSection: String, CaseIterable {
-    case budgets, goals, recurring
+    case budgets, goals, recurring, subscriptions
 
     var label: String {
         switch self {
-        case .budgets: "Bütçeler"
-        case .goals: "Hedefler"
+        case .budgets: "Bütçe"
+        case .goals: "Hedef"
         case .recurring: "Tekrarlayan"
+        case .subscriptions: "Abonelik"
         }
     }
 }
 
-/// Plan sekmesi: bütçeler, birikim hedefleri, tekrarlayan işlemler.
+/// Plan sekmesi: bütçeler, birikim hedefleri, tekrarlayan işlemler, abonelikler.
 struct PlanView: View {
     @Environment(AppModel.self) private var model
     @Environment(Router.self) private var router
@@ -29,12 +30,13 @@ struct PlanView: View {
                 case .budgets: BudgetsContent(month: $month)
                 case .goals: GoalsContent()
                 case .recurring: RecurringContent()
+                case .subscriptions: SubscriptionsContent()
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 Picker("Bölüm", selection: $router.planSection) {
                     ForEach(PlanSection.allCases, id: \.self) { s in
-                        Text(badged(s)).tag(s)
+                        Text(s.label).tag(s)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -55,13 +57,9 @@ struct PlanView: View {
             }
             .navigationDestination(for: Budget.self) { BudgetDetailView(budget: $0, month: month) }
             .navigationDestination(for: RecurringTransaction.self) { RecurringDetailView(template: $0) }
+            .navigationDestination(for: SubscriptionKey.self) { SubscriptionDetailView(key: $0.key) }
             .sheet(isPresented: $newGoal) { GoalFormView(editing: nil) }
         }
-    }
-
-    private func badged(_ s: PlanSection) -> String {
-        if s == .recurring, !model.dueRecurring.isEmpty { return "\(s.label) (\(model.dueRecurring.count))" }
-        return s.label
     }
 }
 

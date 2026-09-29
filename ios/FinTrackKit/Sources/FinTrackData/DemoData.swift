@@ -25,7 +25,7 @@ enum DemoData {
             account("acc-bank", "Garanti Vadesiz", "checking", "TRY", 42_500, "#14B8A6"),
             account("acc-card", "Bonus Kart", "credit_card", "TRY", 0, "#8B5CF6", limit: 60_000),
             account("acc-cash", "Nakit", "cash", "TRY", 1_850, "#22C55E"),
-            account("acc-usd", "Dolar Hesabı", "savings", "USD", 1_200, "#3B82F6"),
+            account("acc-usd", "Dolar Hesabı", "savings", "USD", 1_264.95, "#3B82F6"),
         ]
 
         func cat(_ id: String, _ name: String, _ icon: String, _ color: String, _ order: Double,
@@ -91,8 +91,11 @@ enum DemoData {
                 tx("expense", 1_900 - wobble / 3, on(19), "acc-card", "c-yemek", "Yemeksepeti"),
                 tx("expense", 1_050, on(21), "acc-bank", "c-fatura", "Elektrik faturası"),
                 tx("expense", 380, on(24), "acc-card", "c-kahve", "Starbucks"),
+                tx("expense", k >= 3 ? 199.99 : 229.99, on(28), "acc-card", "c-abonelik", "Netflix", extra: ["tags": .array(["abonelik"])]),
+                tx("expense", 99.99, on(12), "acc-card", "c-abonelik", "Spotify Premium", extra: ["tags": .array(["abonelik"])]),
+                tx("expense", 12.99, on(3), "acc-usd", "c-abonelik", "iCloud+", extra: ["tags": .array(["abonelik"]), "currency": "USD", "amountTry": 535]),
             ]
-            let card = 3_800 + wobble + 1_600 + wobble / 2 + 1_900 - wobble / 3 + 380
+            let card = 3_800 + wobble + 1_600 + wobble / 2 + 1_900 - wobble / 3 + 380 + (k >= 3 ? 199.99 : 229.99) + 99.99
             history.append(tx("transfer", Money.round(card), on(26), "acc-bank", nil, "Kart ödemesi", to: "acc-card"))
             bankNet += 65_000 - 22_000 - 1_050 - Money.round(card)
         }

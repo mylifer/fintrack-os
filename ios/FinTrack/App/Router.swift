@@ -36,6 +36,7 @@ final class Router {
         case "budgets": openPlan(.budgets)
         case "goals": openPlan(.goals)
         case "recurring": openPlan(.recurring)
+        case "subscriptions": openPlan(.subscriptions)
         case "investments": tab = .investments
         case "accounts": tab = .accounts
         case "transactions": tab = .transactions

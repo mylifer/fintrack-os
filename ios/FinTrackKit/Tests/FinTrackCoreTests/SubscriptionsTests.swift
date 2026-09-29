@@ -266,3 +266,31 @@ struct SubscriptionsNormalizeTests {
         #expect(Subscriptions.shiftMonth("2026-07", -11) == "2025-08")
     }
 }
+
+@Suite("abonelik etiketi (form)")
+struct SubscriptionTagDraftTests {
+    let account = Account(raw: ["id": "a", "name": "Kart", "type": "credit_card", "currency": "TRY"])
+
+    @Test func yeniGiderEtiketlenir() {
+        var d = TransactionDraft()
+        d.amountText = "229,99"; d.accountId = "a"; d.isSubscription = true
+        let t = d.makeNew(account: account, workspaceId: nil, fx: fx, now: "n", today: "2026-09-30")
+        #expect(t.tags == ["abonelik"])
+        d.type = .income
+        #expect(d.makeNew(account: account, workspaceId: nil, fx: fx, now: "n", today: "2026-09-30").tags == [])
+    }
+
+    @Test func duzenlemedeDigerEtiketlerKorunur() {
+        let t = tx(["tags": .array(["iş", "ABONELİK"]), "accountId": "a", "amount": 10])
+        var d = TransactionDraft(editing: t)
+        #expect(d.isSubscription)
+        d.isSubscription = false
+        #expect(d.applying(to: t, account: account, fx: fx).raw["tags"] == .array(["iş"]))
+        let plain = tx(["tags": .array(["iş", "iş"]), "accountId": "a", "amount": 10])
+        var d2 = TransactionDraft(editing: plain)
+        d2.isSubscription = true
+        #expect(d2.applying(to: plain, account: account, fx: fx).raw["tags"] == .array(["iş", "abonelik"]))
+        // Değişmediyse etikete dokunulmaz
+        #expect(TransactionDraft(editing: plain).applying(to: plain, account: account, fx: fx).raw["tags"] == .array(["iş", "iş"]))
+    }
+}

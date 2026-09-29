@@ -14,6 +14,8 @@ public struct TransactionDraft: Equatable, Sendable {
     public var categoryId: String?
     public var description: String = ""
     public var notes: String = ""
+    /// Gider için "abonelik" etiketi (web ödeme türü segmenti "Abonelik")
+    public var isSubscription = false
 
     public init() {}
 
@@ -26,6 +28,15 @@ public struct TransactionDraft: Equatable, Sendable {
         categoryId = t.categoryId
         description = t.description
         notes = t.notes ?? ""
+        isSubscription = Subscriptions.hasSubscriptionTag(t.tags)
+    }
+
+    /// Etiketlere abonelik etiketini ekle / kaldır; diğer etiketler korunur, tekrar yok.
+    static func tags(_ current: [String]?, subscription: Bool) -> [String] {
+        var out: [String] = []
+        for t in current ?? [] where !Subscriptions.isSubscriptionTag(t) && !out.contains(t) { out.append(t) }
+        if subscription { out.append(Subscriptions.tag) }
+        return out
     }
 
     public var amount: Double { Fmt.parseAmount(amountText) }
@@ -66,7 +77,7 @@ public struct TransactionDraft: Equatable, Sendable {
             "categoryId": JSONValue(type == .transfer ? nil : categoryId),
             "description": .string(descriptionOrDefault),
             "notes": JSONValue(notesOrNil),
-            "tags": .array([]),
+            "tags": .array(type == .expense && isSubscription ? [.string(Subscriptions.tag)] : []),
             "isInstallment": .bool(false),
             "createdAt": .string(now),
             "updatedAt": .string(now),
@@ -90,6 +101,10 @@ public struct TransactionDraft: Equatable, Sendable {
         out.categoryId = type == .transfer ? nil : categoryId
         out.description = descriptionOrDefault
         out.notes = notesOrNil
+        let wantsTag = type == .expense && isSubscription
+        if wantsTag != Subscriptions.hasSubscriptionTag(t.tags) {
+            out.raw["tags"] = .array(Self.tags(t.tags, subscription: wantsTag).map { .string($0) })
+        }
         if t.amount != out.amount || t.currency != out.currency {
             out.amountTry = fx.baseSnapshot(out.amount, out.currency)
         }
