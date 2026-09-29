@@ -54,7 +54,9 @@ struct SyncErrorBanner: View {
     @Environment(AppModel.self) private var model
     var body: some View {
         if let e = model.lastError {
-            banner(icon: "wifi.exclamationmark", text: e, color: Theme.warning)
+            banner(icon: "wifi.exclamationmark",
+                   text: model.pendingWrites > 0 ? "\(e) \(model.pendingWrites) değişiklik gönderilmeyi bekliyor." : e,
+                   color: Theme.warning)
         } else if model.pendingWrites > 0 {
             banner(icon: "icloud.and.arrow.up",
                    text: "\(model.pendingWrites) değişiklik bağlantı gelince gönderilecek.",

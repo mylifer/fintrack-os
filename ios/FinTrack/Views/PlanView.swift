@@ -579,8 +579,8 @@ struct RecurringDetailView: View {
                 Toggle("Etkin", isOn: Binding(get: { r.isActive }, set: { v in
                     run { try await model.setRecurringActive(r, v) }
                 }))
-                if r.isActive {
-                    Button("Sıradaki dönemi atla (\(DateUtil.display(r.nextDueDate, "d MMM")))") {
+                if Recurrence.isDue(r) {
+                    Button("Bekleyen dönemi atla (\(DateUtil.display(r.nextDueDate, "d MMM")))") {
                         run { try await model.skipRecurring(r) }
                     }
                 }

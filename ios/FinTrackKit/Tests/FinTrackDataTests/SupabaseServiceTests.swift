@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import FinTrackData
+import Supabase
 
 @Suite("oturum yardımcıları")
 struct SessionHelperTests {
@@ -29,5 +30,30 @@ struct SessionHelperTests {
         #expect(SupabaseService.isNetworkError(URLError(.notConnectedToInternet)))
         #expect(SupabaseService.isNetworkError(NSError(domain: NSURLErrorDomain, code: -1009)))
         #expect(!SupabaseService.isNetworkError(NSError(domain: "auth", code: 400)))
+    }
+}
+
+@Suite("yazma hatası sınıfları")
+struct WriteErrorTests {
+    private func http(_ code: Int) -> HTTPError {
+        HTTPError(data: Data(), response: HTTPURLResponse(url: URL(string: "https://x")!, statusCode: code,
+                                                          httpVersion: nil, headerFields: nil)!)
+    }
+
+    @Test func kaliciVeGecici() {
+        #expect(SupabaseService.isPermanentWriteError(PostgrestError(code: "23502", message: "not null")))
+        #expect(SupabaseService.isPermanentWriteError(PostgrestError(code: "22P02", message: "invalid input")))
+        #expect(SupabaseService.isPermanentWriteError(PostgrestError(code: "PGRST102", message: "bad body")))
+        #expect(!SupabaseService.isPermanentWriteError(PostgrestError(code: "42501", message: "rls")))
+        #expect(!SupabaseService.isPermanentWriteError(http(503)))
+        #expect(!SupabaseService.isPermanentWriteError(http(429)))
+        #expect(!SupabaseService.isPermanentWriteError(URLError(.timedOut)))
+    }
+
+    @Test func yetki() {
+        #expect(SupabaseService.isAuthError(PostgrestError(code: "42501", message: "rls")))
+        #expect(SupabaseService.isAuthError(PostgrestError(code: "PGRST301", message: "jwt")))
+        #expect(SupabaseService.isAuthError(http(401)))
+        #expect(!SupabaseService.isAuthError(PostgrestError(code: "23505", message: "dup")))
     }
 }

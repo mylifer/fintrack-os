@@ -284,7 +284,13 @@ struct TransactionFormView: View {
         saving = true
         Task {
             do {
-                try await model.approve(t)
+                // Formda kaydedilmemiş düzenleme varsa önce onu yaz (onay kaybettirmesin)
+                var target = t
+                if !readOnly, draft != TransactionDraft(editing: t) {
+                    try await model.save(draft, editing: t)
+                    target = model.transactions.first { $0.id == t.id } ?? t
+                }
+                try await model.approve(target)
                 Haptics.success()
                 dismiss()
             } catch {

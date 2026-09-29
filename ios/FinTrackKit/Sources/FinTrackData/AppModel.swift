@@ -53,6 +53,11 @@ public final class AppModel {
     private let cache = LocalCache()
     private var outbox: Outbox?
     private var isFlushing = false
+    private var refreshAgain = false
+    /// Çekiş sürerken yazılan satırlar — eski görüntü bunları geri almasın
+    private var writesDuringRefresh: [(table: String, row: JSONObject)] = []
+    private var retryTask: Task<Void, Never>?
+    private var retryDelay: UInt64 = 15
     private let pathMonitor = NWPathMonitor()
     /// DEBUG örnek veri modu (simülatörde ekran doğrulama): buluta hiçbir şey yazılmaz.
     private var isDemo = false
@@ -134,6 +139,8 @@ public final class AppModel {
         if discardPending { outbox?.clear() }
         outbox = nil
         pendingWrites = 0
+        retryTask?.cancel()
+        retryTask = nil
         await service?.signOut()
         auth = .signedOut
         all = Snapshot()
@@ -147,10 +154,37 @@ public final class AppModel {
     // MARK: Çekiş
 
     /// Buluttan tam okuma. Bir tablo bile okunamazsa mevcut veri korunur.
+    /// Çekiş sürerken gelen yenileme isteği kaybolmasın: bitince bir tur daha.
     public func refresh() async {
-        guard !isDemo, let service, let uid = userId, !isRefreshing else { return }
+        guard !isDemo, service != nil, userId != nil else { return }
+        if isRefreshing { refreshAgain = true; return }
         isRefreshing = true
         defer { isRefreshing = false }
+        repeat {
+            refreshAgain = false
+            await refreshOnce()
+        } while refreshAgain && userId != nil
+    }
+
+    private func refreshOnce() async {
+        guard let service, let uid = userId else { return }
+        writesDuringRefresh = []
+
+        // Oturum önce doğrulanır: yenilenemeyen belirteçle istekler anon gider,
+        // RLS boş liste döner — boş görüntüyü önbelleğe yazma, kuyruğu silme.
+        switch await service.sessionStatus() {
+        case .invalid:
+            await signOut(discardPending: false)
+            lastError = "Oturumunuz sona erdi. Yeniden giriş yapın."
+            return
+        case .offline:
+            lastError = "Bağlantı yok. Son eşitlenen veriler gösteriliyor."
+            scheduleRetry()
+            return
+        case .valid:
+            break
+        }
+
         if outbox == nil { openOutbox(uid) }
         let rejected = await flushOutbox()
 
@@ -180,22 +214,23 @@ public final class AppModel {
             snap.goals = await go ?? all.goals
             snap.paymentPlans = await pp ?? all.paymentPlans
             snap.paymentOccurrences = await po ?? all.paymentOccurrences
-            // Hâlâ gönderilemeyen yerel değişiklikler buluttaki eski halin üstüne
+            guard userId == uid else { return }   // çekiş sürerken çıkış yapıldı
+            // Görüntü alındıktan SONRA yapılan yazmalar ve hâlâ gönderilemeyenler üste
             for e in outbox?.entries ?? [] { snap.overlay(table: e.table, row: e.row) }
+            for w in writesDuringRefresh { snap.overlay(table: w.table, row: w.row) }
             apply(snap)
             cache.save(snap, userId: uid)
             lastSync = Date()
             lastError = rejected > 0 ? "\(rejected) çevrimdışı değişiklik sunucu tarafından kabul edilmedi." : nil
         } catch {
             if (error as NSError).code == NSURLErrorCancelled { return }
-            // Oturum başka yerden kapatıldıysa (şifre değişti, web'den tüm
-            // cihazlardan çıkış) sessizce eski veriyle kalma — giriş ekranına dön.
-            if !(await service.hasValidSession()) {
+            if await service.sessionStatus() == .invalid {
                 await signOut(discardPending: false)
                 lastError = "Oturumunuz sona erdi. Yeniden giriş yapın."
                 return
             }
             lastError = "Veriler güncellenemedi. Bağlantınızı kontrol edin."
+            scheduleRetry()
         }
 
         await refreshPrices()
@@ -393,12 +428,21 @@ public final class AppModel {
             guard let service else { throw ServiceError.notSignedIn }
             do {
                 try await service.upsertRow(T.table, row, userId: uid)
-            } catch where SupabaseService.isNetworkError(error) {
+            } catch where SupabaseService.isNetworkError(error) || SupabaseService.isAuthError(error) {
+                guard userId == uid else { return }   // beklerken çıkış yapıldı: kuyruğa alma
                 if outbox == nil { openOutbox(uid) }
                 outbox?.enqueue(table: T.table, row: row)
                 pendingWrites = outbox?.count ?? 0
+                if SupabaseService.isAuthError(error) {
+                    // Oturumu doğrula: düştüyse giriş ekranı, değişiklik kuyrukta bekler
+                    Task { await refresh() }
+                } else {
+                    scheduleRetry()
+                }
             }
+            guard userId == uid else { return }
         }
+        if isRefreshing { writesDuringRefresh.append((T.table, row)) }
         var raw = row
         raw["user_id"] = .string(uid)
         replaceLocal(T(raw: raw), in: kp)
@@ -425,14 +469,31 @@ public final class AppModel {
             do {
                 try await service.upsertRow(e.table, e.row, userId: uid)
                 outbox?.remove(e)
-            } catch where SupabaseService.isNetworkError(error) {
-                return rejected
-            } catch {
+            } catch where SupabaseService.isPermanentWriteError(error) {
+                // Veri hatası: tekrar denemek düzeltmez — düşür, çekiş bulut halini getirir
                 outbox?.remove(e)
                 rejected += 1
+            } catch {
+                // Ağ, yetki, sunucu, hız sınırı: kuyrukta kalsın, sonra yeniden
+                scheduleRetry()
+                return rejected
             }
         }
+        retryDelay = 15
         return rejected
+    }
+
+    /// Bekleyen varken artan aralıkla yeniden dene (15 sn → 5 dk; web scheduleRetry).
+    private func scheduleRetry() {
+        guard !isDemo, retryTask == nil, pendingWrites > 0 || outbox?.isEmpty == false else { return }
+        let delay = retryDelay
+        retryDelay = min(retryDelay * 2, 300)
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.retryTask = nil
+            if self.pendingWrites > 0 { await self.refresh() }
+        }
     }
 
     /// Bağlantı gelince bekleyenleri gönder.

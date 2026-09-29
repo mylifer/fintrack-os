@@ -77,15 +77,40 @@ public final class SupabaseService: Sendable {
         return .signedIn(userId: session.user.id.uuidString.lowercased(), email: session.user.email)
     }
 
-    /// Oturum hâlâ geçerli mi? (Yenileme belirteci başka cihazdan iptal edildiyse
-    /// ya da şifre değiştiyse false.) Ağ hatasında belirsiz → true.
-    public func hasValidSession() async -> Bool {
+    public enum SessionStatus { case valid, offline, invalid }
+
+    /// Çekişten/gönderimden ÖNCE: supabase-swift belirteç yenilenemezse isteği
+    /// oturumsuz (anon) gönderir — RLS boş liste döner, yazmalar reddedilir.
+    /// Bunu ayırt etmek için oturumu önce kendimiz doğrularız.
+    public func sessionStatus() async -> SessionStatus {
         do {
             _ = try await client.auth.session
-            return true
+            return .valid
         } catch {
-            return Self.isNetworkError(error)
+            return Self.isNetworkError(error) ? .offline : .invalid
         }
+    }
+
+    /// Kuyruktaki satır KALICI olarak mı reddedildi (veri hatası: 22xxx/23xxx,
+    /// PGRST1xx)? Yetki (42501, 401/403), sunucu (5xx) ve hız sınırı (429)
+    /// geçicidir — satır kuyrukta kalır.
+    static func isPermanentWriteError(_ error: Error) -> Bool {
+        if let pg = error as? PostgrestError, let code = pg.code {
+            return code.hasPrefix("22") || code.hasPrefix("23") || code.hasPrefix("PGRST1")
+        }
+        if let http = error as? HTTPError {
+            return http.response.statusCode == 400 || http.response.statusCode == 422
+        }
+        return false
+    }
+
+    /// Oturum/yetki kaynaklı mı (belirteç yenilenemedi → anon istek RLS'e takıldı)?
+    static func isAuthError(_ error: Error) -> Bool {
+        if let pg = error as? PostgrestError, let code = pg.code {
+            return code == "42501" || code.hasPrefix("PGRST3")
+        }
+        if let http = error as? HTTPError { return http.response.statusCode == 401 || http.response.statusCode == 403 }
+        return false
     }
 
     static func isNetworkError(_ error: Error) -> Bool {
