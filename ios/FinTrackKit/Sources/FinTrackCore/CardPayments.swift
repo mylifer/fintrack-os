@@ -25,6 +25,9 @@ public enum CardPayments {
     /// "kredi karti odeme", "Kredi Kartı Ödemesi - Bonus" gibi varyantlar dahil).
     public static func isCardPaymentText(_ text: String?) -> Bool {
         guard let text, !text.isEmpty else { return false }
+        // Ucuz ön süzgeç: katlanmış eşleşme "kred" içermek zorunda (K/k, İ/ı farkı
+        // ilk dört harfte yok) — işlemlerin çoğu burada eler, sonuç değişmez
+        guard text.range(of: "kred", options: .caseInsensitive) != nil else { return false }
         return trFold(text).range(of: "kredi ?karti? ?odeme", options: .regularExpression) != nil
     }
 

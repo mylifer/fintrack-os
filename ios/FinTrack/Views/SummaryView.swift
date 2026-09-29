@@ -12,7 +12,7 @@ struct SummaryView: View {
 
     private var month: MonthYear { .current() }
     /// Web panosuyla aynı: taksitli alım satın alma ayına tam tutarla (collapseInstallments)
-    private var flow: Calc.Flow { Calc.monthlyFlow(model.reportTransactions, month, fx: model.fx) }
+    private var flow: Calc.Flow { model.derived?.monthFlow ?? Calc.monthlyFlow(model.reportTransactions, month, fx: model.fx) }
 
     var body: some View {
         NavigationStack {
@@ -77,7 +77,7 @@ struct SummaryView: View {
 
     /// Geçen ayın aynı dönemine göre (1…bugünün günü) gider değişimi.
     @ViewBuilder private var comparison: some View {
-        let c = Calc.monthToDateExpense(model.reportTransactions, fx: model.fx)
+        let c = model.derived?.monthToDate ?? Calc.monthToDateExpense(model.reportTransactions, fx: model.fx)
         if c.previous > 0 {
             let pct = (c.current - c.previous) / c.previous * 100
             let up = pct >= 0
@@ -97,7 +97,8 @@ struct SummaryView: View {
     }
 
     private var trendCard: some View {
-        let series = Calc.monthlySeries(model.reportTransactions, endingAt: month, count: 6, fx: model.fx)
+        let series = model.derived?.series.map { ($0.month, $0.flow) }
+            ?? Calc.monthlySeries(model.reportTransactions, endingAt: month, count: 6, fx: model.fx)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Son 6 ay").font(.headline)
@@ -122,12 +123,17 @@ struct SummaryView: View {
 
     /// Bu ayın giderleri üst kategoriye toplanmış; en büyük 4 + "Diğer".
     private var categorySlices: [CategorySlice] {
-        let r = DateUtil.monthRange(month)
-        let inMonth = model.reportTransactions.filter {
-            Calc.isFlow($0) && DateUtil.isInRange($0.date, r.from, r.to)
+        let byCategory: [String: Double]
+        if let d = model.derived {
+            byCategory = d.expenseByCategory
+        } else {
+            let r = DateUtil.monthRange(month)
+            byCategory = Calc.expenseByCategory(model.reportTransactions.filter {
+                Calc.isFlow($0) && DateUtil.isInRange($0.date, r.from, r.to)
+            }, fx: model.fx)
         }
         var byTop: [String: Double] = [:]
-        for (catId, amount) in Calc.expenseByCategory(inMonth, fx: model.fx) {
+        for (catId, amount) in byCategory {
             var c = model.category(catId)
             while let p = c?.parentId, let parent = model.category(p) { c = parent }
             byTop[c?.id ?? "", default: 0] = Money.add(byTop[c?.id ?? "", default: 0], amount)
@@ -230,11 +236,11 @@ struct SummaryView: View {
                 Spacer()
                 Button("Tümü") { openTab(.transactions) }.font(.subheadline)
             }
-            let recent = model.transactions.filter { Calc.isPosted($0) }.prefix(5)
+            let recent = Array(model.transactions.lazy.filter { Calc.isPosted($0) }.prefix(5))
             if recent.isEmpty {
                 Text("Henüz işlem yok.").font(.subheadline).foregroundStyle(.secondary)
             }
-            ForEach(Array(recent)) { t in
+            ForEach(recent) { t in
                 Button { editing = t } label: { TransactionRow(t: t) }
                     .buttonStyle(.plain)
                 if t.id != recent.last?.id { Divider() }

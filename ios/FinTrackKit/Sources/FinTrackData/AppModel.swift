@@ -45,6 +45,9 @@ public final class AppModel {
     public private(set) var goals: [SavingsGoal] = []
     public private(set) var paymentPlans: [PaymentPlan] = []
     public private(set) var paymentOccurrences: [PaymentOccurrence] = []
+    /// Arka planda hesaplanan türetimler (nil: ilk hesap sürüyor → ekranlar anında hesaplar)
+    public private(set) var derived: Derived?
+    private var derivedGeneration = 0
 
     // Tüm alanlar (çalışma alanı değişince yeniden süzmek için)
     private var all = Snapshot()
@@ -298,7 +301,24 @@ public final class AppModel {
         balances = out
         holdings = Portfolio.holdings(investments, prices: prices)
             .sorted { $0.currentValue > $1.currentValue }
-        writeWidgetSnapshot()
+        scheduleDerived()
+    }
+
+    /// Pahalı türetimleri arka planda yeniden hesapla; en son isteğin sonucu kalır.
+    private func scheduleDerived() {
+        derivedGeneration += 1
+        let gen = derivedGeneration
+        let input = Derived.Input(transactions: transactions, reportTransactions: reportTransactions,
+                                  accounts: accounts, categories: categories, budgets: budgets,
+                                  plans: paymentPlans, occurrences: paymentOccurrences, fx: fx)
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let d = Derived.compute(input)
+            await MainActor.run {
+                guard let self, self.derivedGeneration == gen else { return }
+                self.derived = d
+                self.writeWidgetSnapshot()
+            }
+        }
     }
 
     // MARK: Widget
@@ -307,7 +327,7 @@ public final class AppModel {
     private func writeWidgetSnapshot() {
         guard userId != nil, !isDemo else { return }   // örnek veri gerçek widget'ın üzerine yazmasın
         let my = MonthYear.current()
-        let flow = Calc.monthlyFlow(reportTransactions, my, fx: fx)
+        let flow = derived?.monthFlow ?? Calc.monthlyFlow(reportTransactions, my, fx: fx)
         let states = budgetStates(my)
         let lines = states.prefix(3).map { s -> WidgetSnapshot.BudgetLine in
             let info = Calc.budgetLabel(s.budget, categories)
@@ -366,9 +386,15 @@ public final class AppModel {
     }
 
     public func budgetStates(_ my: MonthYear = .current()) -> [Calc.BudgetState] {
-        // Web bütçe sayfası yalnız aylık bütçeleri gösterir (eski yıllıklar hariç)
+        if let d = derived, d.month == my { return d.budgetStates }
+        return Self.budgetStates(budgets, reportTransactions, my, categories: categories, fx: fx)
+    }
+
+    /// Web bütçe sayfası yalnız aylık bütçeleri gösterir (eski yıllıklar hariç)
+    nonisolated static func budgetStates(_ budgets: [Budget], _ report: [Transaction], _ my: MonthYear,
+                                         categories: [FinTrackCore.Category], fx: FX) -> [Calc.BudgetState] {
         budgets.filter { $0.period == "monthly" }
-            .map { Calc.enrichBudget($0, reportTransactions, my, categories: categories, fx: fx) }
+            .map { Calc.enrichBudget($0, report, my, categories: categories, fx: fx) }
             .sorted { $0.percentUsed > $1.percentUsed }
     }
 
@@ -616,8 +642,12 @@ public final class AppModel {
 
     /// Kredi kartının açık dönemi ve son `count` ekstresi (web CardStatementPanel).
     public func cardStatements(_ a: Account, count: Int = 6) -> CardStatementResult {
-        CardStatements.forCard(a, accounts: accounts, transactions: transactions,
-                               plans: paymentPlans, occurrences: paymentOccurrences, fx: fx, count: count)
+        if count <= 12, var r = derived?.cards[a.id] {
+            r.statements = Array(r.statements.prefix(count))
+            return r
+        }
+        return CardStatements.forCard(a, accounts: accounts, transactions: transactions,
+                                      plans: paymentPlans, occurrences: paymentOccurrences, fx: fx, count: count)
     }
 
     public func cardDays(_ a: Account) -> CardDays {
