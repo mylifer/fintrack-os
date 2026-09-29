@@ -144,13 +144,27 @@ struct AccountRow: View {
     @Environment(AppModel.self) private var model
     let account: Account
 
+    /// Ödenmemiş ekstrenin son ödemesi 7 gün içindeyse (ya da geçtiyse) kısa not.
+    private var dueNote: String? {
+        guard let st = model.cardStatements(account, count: 1).statements.first, let due = st.dueDate,
+              st.status == .open || st.status == .partial || st.status == .overdue,
+              let a = DateUtil.parseDay(DateUtil.today()), let b = DateUtil.parseDay(due),
+              let days = DateUtil.calendar.dateComponents([.day], from: a, to: b).day, days <= 7 else { return nil }
+        let left = Fmt.currency(max(0, Money.sub(st.total, st.paid)), account.currency)
+        if days < 0 { return "Son ödeme geçti · \(left)" }
+        if days == 0 { return "Son ödeme bugün · \(left)" }
+        return "Son ödeme \(DateUtil.display(due, "d MMM")) · \(left)"
+    }
+
     var body: some View {
         let balance = model.balances[account.id] ?? account.initialBalance
         HStack(spacing: 12) {
             IconBadge(symbol: Icons.account(account.type), color: Color(hex: account.color))
             VStack(alignment: .leading, spacing: 2) {
                 Text(account.name).lineLimit(1)
-                if account.type == .credit_card, account.creditLimit != nil {
+                if account.type == .credit_card, let due = dueNote {
+                    Text(due).font(.caption.weight(.semibold)).foregroundStyle(Theme.warning)
+                } else if account.type == .credit_card, account.creditLimit != nil {
                     let avail = Calc.availableCredit(account, balance: balance, model.transactions)
                     Text("Kullanılabilir \(Fmt.currency(avail, account.currency))")
                         .font(.caption).foregroundStyle(.secondary)
