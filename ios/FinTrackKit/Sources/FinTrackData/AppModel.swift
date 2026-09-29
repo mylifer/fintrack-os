@@ -446,6 +446,18 @@ public final class AppModel {
         try await write(t, in: \.recurring)
     }
 
+    // MARK: Kart ekstresi
+
+    /// Kredi kartının açık dönemi ve son `count` ekstresi (web CardStatementPanel).
+    public func cardStatements(_ a: Account, count: Int = 6) -> CardStatementResult {
+        CardStatements.forCard(a, accounts: accounts, transactions: transactions,
+                               plans: paymentPlans, occurrences: paymentOccurrences, fx: fx, count: count)
+    }
+
+    public func cardDays(_ a: Account) -> CardDays {
+        BankRules.resolveCardDays(account: a, plan: CardStatements.plan(for: a, in: paymentPlans)).days
+    }
+
     // MARK: Hedefler
 
     public func goalProgress(_ g: SavingsGoal) -> Goals.Progress {

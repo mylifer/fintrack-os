@@ -6,6 +6,7 @@ struct AccountsView: View {
     @Environment(AppModel.self) private var model
     @State private var showArchived = false
     @State private var showSettled = false
+    @State private var path = NavigationPath()
 
     private var openOwe: [Debt] { model.debts.filter { $0.owe && !$0.isSettled }.sorted { $0.remaining > $1.remaining } }
     private var openOwed: [Debt] { model.debts.filter { !$0.owe && !$0.isSettled }.sorted { $0.remaining > $1.remaining } }
@@ -20,7 +21,7 @@ struct AccountsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
                     NetWorthBreakdown()
@@ -66,6 +67,8 @@ struct AccountsView: View {
             .navigationTitle("Hesaplar")
             .navigationDestination(for: Account.self) { AccountDetailView(account: $0) }
             .navigationDestination(for: Debt.self) { DebtDetailView(debt: $0) }
+            .navigationDestination(for: CardStatementsRoute.self) { CardStatementsView(accountId: $0.accountId) }
+            .onAppear(perform: openDebugAccount)
             .toolbar {
                 if model.accounts.contains(where: \.isArchived) {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -76,6 +79,19 @@ struct AccountsView: View {
                 }
             }
         }
+    }
+}
+
+extension AccountsView {
+    /// DEBUG: `-account <id>` hesap detayını açar (simülatör ekran doğrulaması)
+    fileprivate func openDebugAccount() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard path.isEmpty, let i = args.firstIndex(of: "-account"), i + 1 < args.count,
+              let a = model.account(args[i + 1]) else { return }
+        path.append(a)
+        if args.contains("-statements") { path.append(CardStatementsRoute(accountId: a.id)) }
+        #endif
     }
 }
 
@@ -172,6 +188,10 @@ struct AccountDetailView: View {
                             .tint(Theme.accent)
                         Text("Limit \(Fmt.currency(limit, account.currency)) · Kullanılabilir \(Fmt.currency(avail, account.currency))")
                             .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if account.type == .credit_card {
+                        Divider().padding(.vertical, 4)
+                        CardStatementSummary(account: account)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

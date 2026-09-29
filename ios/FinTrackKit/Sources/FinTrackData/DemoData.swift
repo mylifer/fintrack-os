@@ -19,6 +19,7 @@ enum DemoData {
                                    "color": .string(color), "isArchived": .bool(false),
                                    "createdAt": .string("2026-01-0\(id.count % 9 + 1)"), "workspaceId": .string(ws)]
             if let limit { raw["creditLimit"] = .number(limit) }
+            if type == "credit_card" { raw["statementDay"] = 20 }
             return Account(raw: raw)
         }
         var accounts = [
