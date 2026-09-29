@@ -335,7 +335,7 @@ public final class AppModel {
         let my = MonthYear.current()
         let flow = derived?.monthFlow ?? Calc.monthlyFlow(reportTransactions, my, fx: fx)
         let states = budgetStates(my)
-        let lines = states.prefix(3).map { s -> WidgetSnapshot.BudgetLine in
+        let lines = states.prefix(6).map { s -> WidgetSnapshot.BudgetLine in
             let info = Calc.budgetLabel(s.budget, categories)
             return .init(name: info.label, colorHex: info.cats.first?.color ?? "#6B7280", spent: s.spent,
                          limit: s.limit, percent: s.percentUsed, status: s.status.rawValue)

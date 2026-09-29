@@ -197,7 +197,7 @@ struct MediumView: View {
                 if s.budgets.isEmpty {
                     Text("Bütçe yok").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    ForEach(s.budgets, id: \.name) { b in
+                    ForEach(s.budgets.prefix(3), id: \.name) { b in
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 4) {
                                 Circle().fill(hex(b.colorHex)).frame(width: 6, height: 6)
@@ -217,6 +217,114 @@ struct MediumView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .widgetURL(URL(string: "fintrack://budgets"))
         }
+    }
+}
+
+struct LargeView: View {
+    let s: WidgetSnapshot
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(s.monthName) harcaması").font(.caption).foregroundStyle(.secondary)
+                    Text(money(s.expense, s))
+                        .font(.system(size: 30, weight: .bold).monospacedDigit())
+                        .minimumScaleFactor(0.5).lineLimit(1)
+                        .privacySensitive()
+                }
+                Spacer()
+                Link(destination: URL(string: "fintrack://add")!) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(red: 0.02, green: 0.15, blue: 0.15))
+                        .frame(width: 34, height: 34)
+                        .background(accent, in: Circle())
+                }
+                .accessibilityLabel("İşlem ekle")
+            }
+            HStack(spacing: 16) {
+                stat("Gelir", money(s.income, s), incomeGreen)
+                stat("Net", signedWhole(s.net, s), s.net >= 0 ? incomeGreen : expenseRed)
+                stat("Net değer", money(s.netWorth, s), .primary)
+            }
+            Divider()
+            if s.budgets.isEmpty {
+                Text("Bütçe yok").font(.caption).foregroundStyle(.secondary)
+            } else {
+                ForEach(s.budgets.prefix(5), id: \.name) { b in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Circle().fill(hex(b.colorHex)).frame(width: 7, height: 7)
+                            Text(b.name).font(.caption).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text("\(money(b.spent, s)) / \(money(b.limit, s))")
+                                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                                .privacySensitive()
+                            Text("%\(Int(b.percent.rounded()))")
+                                .font(.caption2.bold().monospacedDigit())
+                                .foregroundStyle(b.status == "ok" ? Color.secondary : statusColor(b.status))
+                        }
+                        ProgressView(value: b.limit > 0 ? min(1, b.spent / b.limit) : 0).tint(statusColor(b.status))
+                    }
+                    .widgetURL(URL(string: "fintrack://budgets"))
+                }
+            }
+            Spacer(minLength: 0)
+            if s.pendingCount > 0 { PendingNote(s: s) } else { StaleNote(s: s) }
+        }
+    }
+
+    private func stat(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+            Text(value).font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(color)
+                .lineLimit(1).minimumScaleFactor(0.7).privacySensitive()
+        }
+    }
+}
+
+/// Net değer: hesaplar + yatırımlar − borç; altında bu ayın neti.
+struct NetWorthView: View {
+    @Environment(\.widgetFamily) private var family
+    let s: WidgetSnapshot
+    var body: some View {
+        if family == .accessoryRectangular {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Net değer").font(.caption2).widgetAccentable()
+                Text(money(s.netWorth, s)).font(.headline.monospacedDigit()).minimumScaleFactor(0.6).privacySensitive()
+                Text("Bu ay \(signedWhole(s.net, s))").font(.caption2).foregroundStyle(.secondary).privacySensitive()
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Net değer", systemImage: "chart.line.uptrend.xyaxis").font(.caption).foregroundStyle(.secondary)
+                Text(money(s.netWorth, s))
+                    .font(.system(size: 24, weight: .bold).monospacedDigit())
+                    .minimumScaleFactor(0.5).lineLimit(1)
+                    .privacySensitive()
+                Spacer(minLength: 0)
+                HStack(spacing: 4) {
+                    Text("\(s.monthName) neti").foregroundStyle(.secondary)
+                    Text(signedWhole(s.net, s)).foregroundStyle(s.net >= 0 ? incomeGreen : expenseRed).privacySensitive()
+                }
+                .font(.caption.monospacedDigit()).lineLimit(1)
+                StaleNote(s: s)
+            }
+            .widgetURL(URL(string: "fintrack://accounts"))
+        }
+    }
+}
+
+struct FinTrackNetWorthWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "FinTrackNetWorth", provider: Provider()) { entry in
+            Group {
+                if let s = entry.snapshot { NetWorthView(s: s) } else { EmptyState() }
+            }
+            .containerBackground(for: .widget) { Color(.systemBackground) }
+        }
+        .configurationDisplayName("Net değer")
+        .description("Hesaplar + yatırımlar − borç ve bu ayın neti.")
+        .supportedFamilies([.systemSmall, .accessoryRectangular])
     }
 }
 
@@ -256,6 +364,7 @@ struct WidgetRoot: View {
             if let s = entry.snapshot {
                 switch family {
                 case .systemMedium: MediumView(s: s)
+                case .systemLarge: LargeView(s: s)
                 case .accessoryRectangular: RectangularView(s: s)
                 case .accessoryCircular: CircularView(s: s)
                 case .accessoryInline:
@@ -279,7 +388,7 @@ struct FinTrackSummaryWidget: Widget {
         StaticConfiguration(kind: "FinTrackSummary", provider: Provider()) { WidgetRoot(entry: $0) }
             .configurationDisplayName("Bu ay")
             .description("Bu ayın harcaması, geliri ve bütçe durumu.")
-            .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryCircular, .accessoryInline])
+            .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryCircular, .accessoryInline])
     }
 }
 
@@ -301,9 +410,11 @@ struct QuickAddControl: ControlWidget {
 struct FinTrackWidgets: WidgetBundle {
     var body: some Widget {
         FinTrackSummaryWidget()
+        FinTrackNetWorthWidget()
         if #available(iOS 18.0, *) { QuickAddControl() }
     }
 }
 
 #Preview(as: .systemMedium) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }
 #Preview(as: .systemSmall) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }
+#Preview(as: .systemLarge) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }

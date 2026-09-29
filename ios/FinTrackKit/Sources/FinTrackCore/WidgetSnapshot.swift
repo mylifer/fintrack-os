@@ -24,7 +24,7 @@ public struct WidgetSnapshot: Codable, Hashable, Sendable {
     public var netWorth: Double
     public var budgetSpent: Double
     public var budgetLimit: Double
-    public var budgets: [BudgetLine]    // en dolu ilk 3
+    public var budgets: [BudgetLine]    // en dolu ilk 6 (orta boy ilk 3ünü gösterir)
     public var amountsHidden: Bool
     public var updatedAt: Date
     /// Onay bekleyen (tarihi gelmiş işlem + vadesi gelen tekrarlayan) sayısı.
