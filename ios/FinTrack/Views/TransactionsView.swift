@@ -189,7 +189,7 @@ struct TransactionList: View {
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            if !t.isLinked {
+                            if t.canDeleteOnIOS {
                                 Button(role: .destructive) { pendingDelete = t } label: {
                                     Label("Sil", systemImage: "trash")
                                 }
@@ -222,6 +222,8 @@ struct TransactionList: View {
                                 Button { router.duplicate(t) } label: {
                                     Label("Kopyasını ekle", systemImage: "plus.square.on.square")
                                 }
+                            }
+                            if t.canDeleteOnIOS {
                                 Button(role: .destructive) { pendingDelete = t } label: {
                                     Label("Sil", systemImage: "trash")
                                 }
@@ -274,7 +276,8 @@ private struct DeleteConfirmation: ViewModifier {
                     }
                 }
             } message: { t in
-                Text("\(t.description.isEmpty ? t.type.label : t.description) · \(Fmt.currency(t.amount, t.currency))")
+                Text("\(t.description.isEmpty ? t.type.label : t.description) · \(Fmt.currency(t.amount, t.currency))"
+                     + (t.isPlainDebtPayment ? "\nBorcun ödenen tutarından da düşülür." : ""))
             }
             .alert("Silinemedi", isPresented: Binding(
                 get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }

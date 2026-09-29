@@ -29,7 +29,9 @@ struct TransactionFormView: View {
             Form {
                 if readOnly {
                     Section {
-                        Label("Bu işlem başka kayıtlara bağlı (taksit, borç, yatırım ya da bölünmüş kategori). Düzenlemek ve silmek için web'i kullanın.",
+                        Label(editing?.isPlainDebtPayment == true
+                              ? "Borç ödemesi: düzenleme web'de. Silerseniz borcun ödenen tutarından da düşülür."
+                              : "Bu işlem başka kayıtlara bağlı (taksit, borç, yatırım ya da bölünmüş kategori). Düzenlemek ve silmek için web'i kullanın.",
                               systemImage: "link")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -159,7 +161,7 @@ struct TransactionFormView: View {
                     }
                 }
 
-                if let editing, !readOnly {
+                if let editing, editing.canDeleteOnIOS {
                     Section {
                         Button("İşlemi sil", role: .destructive) { confirmDelete = true }
                             .disabled(saving)

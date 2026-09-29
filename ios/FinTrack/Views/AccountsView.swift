@@ -87,6 +87,11 @@ extension AccountsView {
     fileprivate func openDebugAccount() {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
+        if path.isEmpty, let i = args.firstIndex(of: "-debt"), i + 1 < args.count,
+           let d = model.debts.first(where: { $0.id == args[i + 1] }) {
+            path.append(d)
+            return
+        }
         guard path.isEmpty, let i = args.firstIndex(of: "-account"), i + 1 < args.count,
               let a = model.account(args[i + 1]) else { return }
         path.append(a)

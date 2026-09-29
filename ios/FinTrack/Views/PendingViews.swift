@@ -61,7 +61,7 @@ struct PendingCard: View {
         .contextMenu {
             Button { run(t.id) { try await model.approve(t) } } label: { Label("Onayla", systemImage: "checkmark") }
             Button { editing = t } label: { Label(t.isLinked ? "Görüntüle" : "Düzenle", systemImage: "pencil") }
-            if !t.isLinked {
+            if t.canDeleteOnIOS {
                 Button(role: .destructive) { rejecting = t } label: { Label("Reddet", systemImage: "xmark") }
             }
         }

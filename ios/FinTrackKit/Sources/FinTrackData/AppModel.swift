@@ -429,10 +429,23 @@ public final class AppModel {
     }
 
     /// Silme = tombstone (deleted_at), gerçek DELETE yok.
+    /// Borç ödemesi silinirse borcun ödenen tutarı ve taksit sayacı geri alınır (web).
     public func delete(_ t: Transaction) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }
-        if t.isLinked { throw ServiceError.message("Bu işlem başka kayıtlara bağlı; web'den silin.") }
+        guard t.canDeleteOnIOS else { throw ServiceError.message("Bu işlem başka kayıtlara bağlı; web'den silin.") }
+        let debt = t.isPlainDebtPayment ? all.debts.first { $0.id == t.debtId && $0.isLive } : nil
         try await write(t.tombstoned(at: Self.nowISO()), in: \.transactions)
+        if let debt { try await write(DebtPayments.revert(debt, payment: t, fx: fx), in: \.debts) }
+    }
+
+    /// Borç ödemesi (web debts/page handlePay): işlem + borç satırı.
+    public func payDebt(_ debt: Debt, accountId: String?, amount: Double, date: Date) async throws {
+        guard let account = account(accountId), !account.isArchived else { throw ServiceError.message("Hesap seçin.") }
+        let latest = all.debts.first { $0.id == debt.id } ?? debt
+        let out = try DebtPayments.pay(latest, from: account, amount: amount, date: DateUtil.day(date), fx: fx,
+                                       workspaceId: activeWorkspaceId, now: Self.nowISO())
+        try await write(out.transaction, in: \.transactions)
+        try await write(out.debt, in: \.debts)
     }
 
     /// Yerel kopyayı güncelle (bulut yazması ya da kuyruğa alma sonrası) ve önbelleğe al.
