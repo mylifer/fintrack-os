@@ -512,6 +512,12 @@ public final class AppModel {
         public var currency: CurrencyCode
         public var type: TransactionType
         public var refId: String
+
+        public init(id: String, kind: Kind, title: String, date: String, amount: Double,
+                    currency: CurrencyCode, type: TransactionType, refId: String) {
+            self.id = id; self.kind = kind; self.title = title; self.date = date
+            self.amount = amount; self.currency = currency; self.type = type; self.refId = refId
+        }
     }
 
     /// Önümüzdeki `days` gün (bugün hariç): sırası gelecek tekrarlayanlar, onay

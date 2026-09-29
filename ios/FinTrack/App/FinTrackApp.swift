@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 import FinTrackCore
 import FinTrackData
 
@@ -11,6 +12,7 @@ struct FinTrackApp: App {
 
     init() {
         Fmt.amountsHidden = UserDefaults.standard.bool(forKey: "fintrack.amountsHidden")
+        UNUserNotificationCenter.current().delegate = NotificationRouter.shared
     }
 
     var body: some Scene {
@@ -27,6 +29,8 @@ struct FinTrackApp: App {
             switch phase {
             case .background:
                 lock.didEnterBackground()
+                // Yerel değişiklikler (onay, yeni işlem) hatırlatmalara yansısın
+                Task { await Reminders.reschedule(model) }
             case .active:
                 lock.willBecomeActive()
                 // Başka cihazdaki değişiklikler — açılışta tazele
@@ -65,6 +69,8 @@ struct RootView: View {
             Fmt.amountsHidden = v
             model.amountsHiddenChanged()
         }
+        .onChange(of: model.lastSync) { Task { await Reminders.reschedule(model) } }
+        .onChange(of: model.userId) { _, id in if id == nil { Task { await Reminders.clear() } } }
     }
 
     @ViewBuilder private var content: some View {

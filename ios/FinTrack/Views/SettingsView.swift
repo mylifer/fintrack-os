@@ -8,6 +8,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("fintrack.amountsHidden") private var amountsHidden = false
     @State private var confirmSignOut = false
+    @State private var remindersOn = Reminders.isEnabled
+    @State private var remindersDenied = false
 
     var body: some View {
         @Bindable var lock = lock
@@ -38,6 +40,27 @@ struct SettingsView: View {
                     Text("Gizlilik")
                 } footer: {
                     Text("Uygulama arka planda seçilen süreden uzun kalınca kilitlenir. Uygulama değiştiricide içerik her zaman gizlenir.")
+                }
+
+                Section {
+                    Toggle("Hatırlatmalar", isOn: Binding(get: { remindersOn }, set: { v in
+                        Task {
+                            if v {
+                                remindersOn = await Reminders.enable()
+                                remindersDenied = !remindersOn
+                                if remindersOn { await Reminders.reschedule(model) }
+                            } else {
+                                await Reminders.disable()
+                                remindersOn = false
+                            }
+                        }
+                    }))
+                } header: {
+                    Text("Bildirimler")
+                } footer: {
+                    Text(remindersDenied
+                         ? "Bildirim izni verilmedi. iPhone Ayarlar → FinTrack → Bildirimler'den açabilirsiniz."
+                         : "Kart son ödeme günü (bir gün önce ve günü), tekrarlayan ve planlı işlemler için sabah 9'da hatırlatır. \"Tutarları gizle\" açıksa tutar yazılmaz.")
                 }
 
                 Section("Eşitleme") {
