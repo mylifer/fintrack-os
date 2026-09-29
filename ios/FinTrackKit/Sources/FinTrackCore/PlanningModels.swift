@@ -65,10 +65,34 @@ public struct RecurringTransaction: SyncRecord, Hashable {
         createdAt = raw.str("createdAt") ?? ""
     }
 
-    /// iOS yalnız imleci (onay / atla) ve duraklatmayı yazar.
+    /// Web formunun yazdığı alanlar + imleç — YALNIZ değişenler (ya da satırda hiç
+    /// olmayanlar) ham satırın üstüne yazılır: iOS'un tanımadığı bir değer (ör.
+    /// listede olmayan para birimi) ayrıştırma varsayılanıyla ezilmez.
+    /// (familyMemberId / recipientId iOS'ta düzenlenmez; ham satırla gider.)
     public func ownedColumns() -> JSONObject {
-        ["id": .string(id), "nextDueDate": .string(nextDueDate),
-         "lastGeneratedDate": JSONValue(lastGeneratedDate), "isActive": .bool(isActive)]
+        let before = RecurringTransaction(raw: raw)
+        var out: JSONObject = ["id": .string(id)]
+        func put(_ key: String, _ value: JSONValue, _ changed: Bool) {
+            if changed || raw[key] == nil { out[key] = value }
+        }
+        put("name", .string(name), name != before.name)
+        put("type", .string(type.rawValue), type != before.type)
+        put("amount", .number(amount), amount != before.amount)
+        put("currency", .string(currency.rawValue), currency != before.currency)
+        put("accountId", .string(accountId), accountId != before.accountId)
+        put("toAccountId", JSONValue(toAccountId), toAccountId != before.toAccountId)
+        put("categoryId", JSONValue(categoryId), categoryId != before.categoryId)
+        put("description", .string(description), description != before.description)
+        put("notes", JSONValue(notes), notes != before.notes)
+        put("frequency", .string(frequency.rawValue), frequency != before.frequency)
+        put("dayOfMonth", JSONValue(dayOfMonth.map(Double.init)), dayOfMonth != before.dayOfMonth)
+        put("startDate", .string(startDate), startDate != before.startDate)
+        put("endDate", JSONValue(endDate), endDate != before.endDate)
+        put("nextDueDate", .string(nextDueDate), nextDueDate != before.nextDueDate)
+        put("lastGeneratedDate", JSONValue(lastGeneratedDate), lastGeneratedDate != before.lastGeneratedDate)
+        put("isActive", .bool(isActive), isActive != before.isActive)
+        put("createdAt", JSONValue(createdAt.isEmpty ? nil : createdAt), createdAt != before.createdAt)
+        return out
     }
 }
 

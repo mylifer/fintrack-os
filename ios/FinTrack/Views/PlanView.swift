@@ -21,6 +21,7 @@ struct PlanView: View {
     @Environment(Router.self) private var router
     @State private var month = MonthYear.current()
     @State private var newGoal = false
+    @State private var newRecurring = false
 
     var body: some View {
         @Bindable var router = router
@@ -54,11 +55,23 @@ struct PlanView: View {
                             .accessibilityLabel("Hedef ekle")
                     }
                 }
+                if router.planSection == .recurring {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { newRecurring = true } label: { Image(systemName: "plus") }
+                            .accessibilityLabel("Tekrarlayan ekle")
+                    }
+                }
             }
             .navigationDestination(for: Budget.self) { BudgetDetailView(budget: $0, month: month) }
             .navigationDestination(for: RecurringTransaction.self) { RecurringDetailView(template: $0) }
             .navigationDestination(for: SubscriptionKey.self) { SubscriptionDetailView(key: $0.key) }
             .sheet(isPresented: $newGoal) { GoalFormView(editing: nil) }
+            .sheet(isPresented: $newRecurring) { RecurringFormView(editing: nil) }
+            .onAppear {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-newrecurring") { newRecurring = true }
+                #endif
+            }
         }
     }
 }
@@ -450,7 +463,7 @@ struct RecurringContent: View {
         .overlay {
             if model.recurring.isEmpty {
                 ContentUnavailableView("Tekrarlayan işlem yok", systemImage: "arrow.triangle.2.circlepath",
-                                       description: Text("Kira, maaş, fatura gibi düzenli işlemler web'den tanımlanır; onayı buradan da yapılır."))
+                                       description: Text("Kira, maaş, fatura gibi düzenli işlemleri sağ üstteki + ile ekleyin; sırası gelince tek dokunuşla kaydedilir."))
             }
         }
         .alert("İşlem yapılamadı", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -545,6 +558,8 @@ struct RecurringDetailView: View {
     let template: RecurringTransaction
     @State private var busy = false
     @State private var errorMessage: String?
+    @State private var editingTemplate = false
+    @Environment(\.dismiss) private var dismiss
 
     /// Güncel hali (onay/duraklatma sonrası)
     private var r: RecurringTransaction { model.recurring.first { $0.id == template.id } ?? template }
@@ -611,6 +626,13 @@ struct RecurringDetailView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(r.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { Button("Düzenle") { editingTemplate = true } }
+        }
+        .sheet(isPresented: $editingTemplate) { RecurringFormView(editing: r) }
+        .onChange(of: model.recurring.contains { $0.id == template.id }) { _, exists in
+            if !exists { dismiss() }   // silindi
+        }
         .alert("İşlem yapılamadı", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("Tamam", role: .cancel) {}
         } message: { Text(errorMessage ?? "") }

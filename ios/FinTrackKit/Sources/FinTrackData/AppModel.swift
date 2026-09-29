@@ -622,6 +622,21 @@ public final class AppModel {
         BankRules.resolveCardDays(account: a, plan: CardStatements.plan(for: a, in: paymentPlans)).days
     }
 
+    public func saveRecurring(_ draft: RecurringDraft, editing: RecurringTransaction?) async throws {
+        if let e = draft.validationError() { throw ServiceError.message(e) }
+        guard let account = account(draft.accountId) else { throw ServiceError.message("Hesap bulunamadı.") }
+        let r = draft.build(editing: editing, account: account,
+                            workspaceId: editing?.workspaceId ?? activeWorkspaceId, now: Self.nowISO())
+        try await write(r, in: \.recurring)
+    }
+
+    /// Şablonu sil (tombstone). Daha önce üretilmiş işlemler yerinde kalır (web ile aynı).
+    public func deleteRecurring(_ r: RecurringTransaction) async throws {
+        var raw = r.raw
+        raw["deleted_at"] = .string(Self.nowISO())
+        try await write(RecurringTransaction(raw: raw), in: \.recurring)
+    }
+
     // MARK: Hedefler
 
     public func goalProgress(_ g: SavingsGoal) -> Goals.Progress {
