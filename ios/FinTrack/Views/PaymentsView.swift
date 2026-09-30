@@ -149,10 +149,8 @@ struct PaymentRowView: View {
             IconBadge(symbol: row.target.kind == .card ? "creditcard" : "building.columns",
                       color: Color(hex: row.target.color), size: 36)
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(row.target.name).lineLimit(1)
-                    pill
-                }
+                Text(row.target.name).lineLimit(1)
+                pill
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 if let note = amountNote {
                     Text(note).font(.caption2).foregroundStyle(.secondary)
