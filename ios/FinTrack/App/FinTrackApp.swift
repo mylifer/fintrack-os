@@ -60,7 +60,8 @@ struct RootView: View {
             Fmt.amountsHidden = v
             model.amountsHiddenChanged()
         }
-        .onChange(of: model.lastSync) { Task { await Reminders.reschedule(model) } }
+        // Türetim (kart ekstreleri dahil) tamamlanınca: bayat ekstreden hatırlatma kurulmasın
+        .onChange(of: model.derivedStamp) { Task { await Reminders.reschedule(model) } }
         .onChange(of: model.userId) { _, id in if id == nil { Task { await Reminders.clear() } } }
     }
 

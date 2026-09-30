@@ -28,7 +28,7 @@ public struct RecurringDraft: Equatable, Sendable {
         accountId = r.accountId
         toAccountId = r.toAccountId
         categoryId = r.categoryId
-        description = r.description == r.name ? "" : r.description
+        description = r.description   // web: ad değişse de eski açıklama kalır
         notes = r.notes ?? ""
         frequency = r.frequency
         startDate = DateUtil.parseDay(r.startDate) ?? Date()
@@ -38,7 +38,7 @@ public struct RecurringDraft: Equatable, Sendable {
     public var amount: Double { Fmt.parseAmount(amountText) }
 
     public func validationError() -> String? {
-        if name.trimmingCharacters(in: .whitespaces).isEmpty { return "Ad girin." }
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Ad girin." }
         if amount <= 0 { return "Tutar girin." }
         guard let accountId else { return "Hesap seçin." }
         if type == .transfer {

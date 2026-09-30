@@ -48,9 +48,11 @@ public final class AppModel {
     /// Arka planda hesaplanan türetimler (nil: ilk hesap sürüyor → ekranlar anında hesaplar).
     /// Ay dönünce eskisi kullanılmaz.
     public var derived: Derived? {
-        guard let d = derivedStore, d.month == MonthYear.current() else { return nil }
+        guard let d = derivedStore, d.month == MonthYear.current(), d.workspaceId == activeWorkspaceId else { return nil }
         return d
     }
+    /// Türetim her tamamlandığında artar (hatırlatmalar güncel ekstreden kurulsun)
+    public private(set) var derivedStamp = 0
     private var derivedStore: Derived?
     private var derivedGeneration = 0
 
@@ -65,6 +67,7 @@ public final class AppModel {
     /// Çekiş sürerken yazılan satırlar — eski görüntü bunları geri almasın
     private var writesDuringRefresh: [(table: String, row: JSONObject)] = []
     private var retryTask: Task<Void, Never>?
+    private var debtOpChain: Task<Void, Error>?
     private var retryDelay: UInt64 = 15
     private let pathMonitor = NWPathMonitor()
     /// DEBUG örnek veri modu (simülatörde ekran doğrulama): buluta hiçbir şey yazılmaz.
@@ -144,6 +147,7 @@ public final class AppModel {
     /// de silinir; oturum kendiliğinden düştüyse kuyruk yeniden girişi bekler.
     public func signOut(discardPending: Bool = true) async {
         if !isDemo, let uid = userId { cache.clear(userId: uid) }
+        derivedStore = nil
         if discardPending { outbox?.clear() }
         outbox = nil
         pendingWrites = 0
@@ -316,12 +320,14 @@ public final class AppModel {
         let gen = derivedGeneration
         let input = Derived.Input(transactions: transactions, reportTransactions: reportTransactions,
                                   accounts: accounts, categories: categories, budgets: budgets,
-                                  plans: paymentPlans, occurrences: paymentOccurrences, fx: fx)
+                                  plans: paymentPlans, occurrences: paymentOccurrences, fx: fx,
+                                  workspaceId: activeWorkspaceId)
         Task.detached(priority: .userInitiated) { [weak self] in
             let d = Derived.compute(input)
             await MainActor.run {
                 guard let self, self.derivedGeneration == gen else { return }
                 self.derivedStore = d
+                self.derivedStamp += 1
                 self.writeWidgetSnapshot()
             }
         }
@@ -392,7 +398,7 @@ public final class AppModel {
     }
 
     public func budgetStates(_ my: MonthYear = .current()) -> [Calc.BudgetState] {
-        if let d = derived, d.month == my { return d.budgetStates }
+        if let d = derived, d.month == my, d.budgetsSignature == Derived.signature(budgets) { return d.budgetStates }
         return Self.budgetStates(budgets, reportTransactions, my, categories: categories, fx: fx)
     }
 
@@ -439,19 +445,63 @@ public final class AppModel {
     public func delete(_ t: Transaction) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }
         guard t.canDeleteOnIOS else { throw ServiceError.message("Bu işlem başka kayıtlara bağlı; web'den silin.") }
-        let debt = t.isPlainDebtPayment ? all.debts.first { $0.id == t.debtId && $0.isLive } : nil
-        try await write(t.tombstoned(at: Self.nowISO()), in: \.transactions)
-        if let debt { try await write(DebtPayments.revert(debt, payment: t, fx: fx), in: \.debts) }
+        guard t.isPlainDebtPayment, let debtId = t.debtId else {
+            try await write(t.tombstoned(at: Self.nowISO()), in: \.transactions)
+            return
+        }
+        try await serializedDebtOp {
+            try await self.write(t.tombstoned(at: Self.nowISO()), in: \.transactions)
+            // Borcun EN GÜNCEL hali, işlem yazıldıktan sonra okunur
+            if let debt = self.all.debts.first(where: { $0.id == debtId && $0.isLive }) {
+                await self.writeFollowUp(DebtPayments.revert(debt, payment: t, fx: self.fx), in: \.debts)
+            }
+        }
     }
 
     /// Borç ödemesi (web debts/page handlePay): işlem + borç satırı.
     public func payDebt(_ debt: Debt, accountId: String?, amount: Double, date: Date) async throws {
         guard let account = account(accountId), !account.isArchived else { throw ServiceError.message("Hesap seçin.") }
-        let latest = all.debts.first { $0.id == debt.id } ?? debt
-        let out = try DebtPayments.pay(latest, from: account, amount: amount, date: DateUtil.day(date), fx: fx,
-                                       workspaceId: activeWorkspaceId, now: Self.nowISO())
-        try await write(out.transaction, in: \.transactions)
-        try await write(out.debt, in: \.debts)
+        try await serializedDebtOp {
+            let latest = self.all.debts.first { $0.id == debt.id } ?? debt
+            let out = try DebtPayments.pay(latest, from: account, amount: amount, date: DateUtil.day(date), fx: self.fx,
+                                           workspaceId: self.activeWorkspaceId, now: Self.nowISO())
+            try await self.write(out.transaction, in: \.transactions)
+            let fresh = self.all.debts.first { $0.id == debt.id } ?? latest
+            await self.writeFollowUp(fresh.applyingPayment(out.transaction.amountTry ?? 0, installments: 1), in: \.debts)
+        }
+    }
+
+    /// Borcu etkileyen işlemler sırayla: iki işlem aynı eski paidAmount'tan
+    /// hesaplayıp birbirinin artışını ezmesin.
+    private func serializedDebtOp(_ op: @escaping @MainActor () async throws -> Void) async throws {
+        let previous = debtOpChain
+        let task = Task { @MainActor in
+            _ = await previous?.result
+            try await op()
+        }
+        debtOpChain = task
+        try await task.value
+    }
+
+    /// İlk kaydı izleyen bağlı yazma (ör. ödemeden sonra borç satırı): ilk kayıt
+    /// zaten yazıldığı için bu ADIM HATA FIRLATMAZ — kalıcı olmayan her hatada
+    /// kuyruğa alınır (kullanıcı tekrar deneyip mükerrer ödeme yapmasın).
+    private func writeFollowUp<T: SyncRecord>(_ record: T, in kp: WritableKeyPath<Snapshot, [T]>) async {
+        do {
+            try await write(record, in: kp)
+        } catch where !SupabaseService.isPermanentWriteError(error) {
+            guard let uid = userId else { return }
+            let row = record.rowForWrite(updatedAt: Self.nowISO())
+            if outbox == nil { openOutbox(uid) }
+            outbox?.enqueue(table: T.table, row: row)
+            pendingWrites = outbox?.count ?? 0
+            var raw = row
+            raw["user_id"] = .string(uid)
+            replaceLocal(T(raw: raw), in: kp)
+            scheduleRetry()
+        } catch {
+            lastError = "İşlem kaydedildi ama bağlı kayıt güncellenemedi; web'den kontrol edin."
+        }
     }
 
     /// Yerel kopyayı güncelle (bulut yazması ya da kuyruğa alma sonrası) ve önbelleğe al.

@@ -89,7 +89,12 @@ extension Debt {
     /// Durum kümülatif ödenenden türetilir (paidInstallments kullanılmaz).
     public func paymentPlan(today: String = DateUtil.today()) -> [PlanRow] {
         guard let monthly = monthlyPayment, monthly > 0 else { return [] }
-        let count = (totalInstallments ?? 0) > 0 ? totalInstallments! : Int((totalAmount / monthly).rounded(.up))
+        // Oran Double'da sınanır: aşırı değerde Int dönüşümü çökmesin (web: > 600 → boş)
+        let ratio = (totalAmount / monthly).rounded(.up)
+        let count: Int
+        if let n = totalInstallments, n > 0 { count = n }
+        else if ratio.isFinite, ratio > 0, ratio <= 600 { count = Int(ratio) }
+        else { return [] }
         guard count > 0, count <= 600 else { return [] }
         let remainder = (Money.sub(totalAmount, monthly * Double(count - 1)) * 100).rounded() / 100
         var cum = 0.0

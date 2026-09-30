@@ -65,3 +65,11 @@ struct DebtPaymentTests {
         #expect(DebtPayments.revert(debt(["paidAmount": 100]), payment: t, fx: fx).paidAmount == 0)
     }
 }
+
+@Suite("borç planı sınırları")
+struct DebtPlanGuardTests {
+    @Test func asiriOranCokmez() {
+        let d = Debt(raw: ["id": "d", "totalAmount": 1e17, "monthlyPayment": 0.01, "startDate": "2026-01-01"])
+        #expect(d.paymentPlan().isEmpty)
+    }
+}

@@ -8,6 +8,9 @@ public struct Derived: Sendable {
     public struct MonthFlow: Sendable { public var month: MonthYear; public var flow: Calc.Flow }
 
     public var month: MonthYear
+    /// Hangi alan ve bütçe kümesi için hesaplandı (eşleşmezse kullanılmaz)
+    var workspaceId: String?
+    var budgetsSignature: Int
     public var monthFlow: Calc.Flow
     /// Son 6 ay (eskiden yeniye)
     public var series: [MonthFlow]
@@ -28,6 +31,17 @@ public struct Derived: Sendable {
         var plans: [PaymentPlan]
         var occurrences: [PaymentOccurrence]
         var fx: FX
+        var workspaceId: String?
+    }
+
+    /// Bütçe kümesinin özeti — ekleme/düzenlemeden sonra eski durumlar gösterilmesin
+    static func signature(_ budgets: [Budget]) -> Int {
+        var h = Hasher()
+        for b in budgets {
+            h.combine(b.id); h.combine(b.categoryId); h.combine(b.amount)
+            h.combine(b.rollover); h.combine(b.alertThreshold); h.combine(b.period)
+        }
+        return h.finalize()
     }
 
     static func compute(_ i: Input) -> Derived {
@@ -41,6 +55,8 @@ public struct Derived: Sendable {
         }
         return Derived(
             month: my,
+            workspaceId: i.workspaceId,
+            budgetsSignature: signature(i.budgets),
             monthFlow: Calc.monthlyFlow(i.reportTransactions, my, fx: i.fx),
             series: Calc.monthlySeries(i.reportTransactions, endingAt: my, count: 6, fx: i.fx)
                 .map { MonthFlow(month: $0.month, flow: $0.flow) },
