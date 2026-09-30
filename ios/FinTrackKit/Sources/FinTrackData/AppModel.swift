@@ -321,7 +321,7 @@ public final class AppModel {
         let input = Derived.Input(transactions: transactions, reportTransactions: reportTransactions,
                                   accounts: accounts, categories: categories, budgets: budgets,
                                   plans: paymentPlans, occurrences: paymentOccurrences, fx: fx,
-                                  workspaceId: activeWorkspaceId)
+                                  workspaceId: activeWorkspaceId, debts: debts, balances: balances)
         Task.detached(priority: .userInitiated) { [weak self] in
             let d = Derived.compute(input)
             await MainActor.run {
@@ -712,15 +712,22 @@ public final class AppModel {
     /// Seçilen ayın ödeme satırları (web PaymentBoard liste görünümü): o ayın
     /// satırları + önceki aylardan gecikmişler. Kartlar ve 'borçluyum' borçlar.
     public func paymentBoard(month: String) -> (targets: [PaymentTarget], monthRows: [PaymentRow], carryRows: [PaymentRow]) {
-        let targets = PaymentSchedule.buildTargets(accounts: accounts, debts: debts, plans: paymentPlans, balances: balances)
+        Self.paymentRows(accounts: accounts, debts: debts, plans: paymentPlans, occurrences: paymentOccurrences,
+                         transactions: transactions, balances: balances, fx: fx, month: month)
+    }
+
+    nonisolated static func paymentRows(accounts: [Account], debts: [Debt], plans: [PaymentPlan],
+                                        occurrences: [PaymentOccurrence], transactions: [Transaction],
+                                        balances: [String: Double], fx: FX, month: String)
+        -> (targets: [PaymentTarget], monthRows: [PaymentRow], carryRows: [PaymentRow]) {
+        let targets = PaymentSchedule.buildTargets(accounts: accounts, debts: debts, plans: plans, balances: balances)
         // Kalanı 0 ve aylık tutarı olmayan borç: ödenecek bir şey yok (web bunu
         // sürekli "gecikmiş" gösteriyor — iOS'ta gizlenir)
         let shown = targets.filter { $0.isActive && !($0.kind == .debt && $0.outstanding == 0 && $0.defaultAmount == nil) }
         let earliest = shown.map(\.startMonth).min() ?? month
-        let from = min(month, earliest)
         let rows = PaymentSchedule.buildSchedule(
-            targets: shown, occurrences: paymentOccurrences, transactions: transactions,
-            from: from, to: month, today: DateUtil.today(),
+            targets: shown, occurrences: occurrences, transactions: transactions,
+            from: min(month, earliest), to: month, today: DateUtil.today(),
             cardPayments: CardPayments.assignCardPayments(accounts: accounts, transactions: transactions), fx: fx)
         return (targets, rows.filter { $0.month == month }, rows.filter { $0.month < month && $0.timing == .overdue })
     }

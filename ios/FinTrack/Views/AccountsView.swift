@@ -245,9 +245,12 @@ struct PaymentsLinkRow: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let board = model.paymentBoard(month: String(DateUtil.today().prefix(7)))
-        let s = PaymentSchedule.summarizeRows(board.monthRows, fx: model.fx)
-        let overdue = s.overdueCount + board.carryRows.count
+        let (s, carry): (PaymentSummary, Int) = {
+            if let d = model.derived { return (d.paymentSummary, d.paymentCarryOverdue) }
+            let board = model.paymentBoard(month: String(DateUtil.today().prefix(7)))
+            return (PaymentSchedule.summarizeRows(board.monthRows, fx: model.fx), board.carryRows.count)
+        }()
+        let overdue = s.overdueCount + carry
         HStack(spacing: 12) {
             IconBadge(symbol: "calendar.badge.checkmark", color: Theme.planned, size: 36)
             VStack(alignment: .leading, spacing: 2) {

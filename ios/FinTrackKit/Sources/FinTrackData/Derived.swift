@@ -21,6 +21,9 @@ public struct Derived: Sendable {
     public var budgetStates: [Calc.BudgetState]
     /// Kredi kartı id → açık dönem + son 12 ekstre
     public var cards: [String: CardStatementResult]
+    /// Ödeme Takibi: bu ayın özeti ve önceki aylardan gecikmiş sayısı
+    public var paymentSummary: PaymentSummary
+    public var paymentCarryOverdue: Int
 
     struct Input: Sendable {
         var transactions: [Transaction]
@@ -32,6 +35,8 @@ public struct Derived: Sendable {
         var occurrences: [PaymentOccurrence]
         var fx: FX
         var workspaceId: String?
+        var debts: [Debt]
+        var balances: [String: Double]
     }
 
     /// Bütçe kümesinin özeti — ekleme/düzenlemeden sonra eski durumlar gösterilmesin
@@ -44,10 +49,17 @@ public struct Derived: Sendable {
         return h.finalize()
     }
 
+    static func paymentBoard(_ i: Input, month: String) -> (summary: PaymentSummary, carry: Int) {
+        let rows = AppModel.paymentRows(accounts: i.accounts, debts: i.debts, plans: i.plans, occurrences: i.occurrences,
+                                        transactions: i.transactions, balances: i.balances, fx: i.fx, month: month)
+        return (PaymentSchedule.summarizeRows(rows.monthRows, fx: i.fx), rows.carryRows.count)
+    }
+
     static func compute(_ i: Input) -> Derived {
         let my = MonthYear.current()
         let r = DateUtil.monthRange(my)
         let inMonth = i.reportTransactions.filter { Calc.isFlow($0) && DateUtil.isInRange($0.date, r.from, r.to) }
+        let board = paymentBoard(i, month: String(DateUtil.today().prefix(7)))
         var cards: [String: CardStatementResult] = [:]
         for a in i.accounts where a.type == .credit_card && !a.isArchived {
             cards[a.id] = CardStatements.forCard(a, accounts: i.accounts, transactions: i.transactions,
@@ -63,6 +75,8 @@ public struct Derived: Sendable {
             monthToDate: Calc.monthToDateExpense(i.reportTransactions, fx: i.fx),
             expenseByCategory: Calc.expenseByCategory(inMonth, fx: i.fx),
             budgetStates: AppModel.budgetStates(i.budgets, i.reportTransactions, my, categories: i.categories, fx: i.fx),
-            cards: cards)
+            cards: cards,
+            paymentSummary: board.summary,
+            paymentCarryOverdue: board.carry)
     }
 }
