@@ -11,6 +11,13 @@ struct SettingsView: View {
     @State private var remindersOn = Reminders.isEnabled
     @State private var remindersDenied = false
 
+    private var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let v = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let b = info?["CFBundleVersion"] as? String ?? "—"
+        return "\(v) (\(b))"
+    }
+
     var body: some View {
         @Bindable var lock = lock
         NavigationStack {
@@ -99,6 +106,16 @@ struct SettingsView: View {
                     Text("Web")
                 } footer: {
                     Text("Toplu içe aktarma, yedekleme, raporlar, kart kesim/son ödeme günleri ve Ödeme Takibi web'de.")
+                }
+
+                Section("Hakkında") {
+                    LabeledContent("Sürüm", value: appVersion)
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("-demo") {
+                        Label("Örnek veri modu — buluta hiçbir şey yazılmaz", systemImage: "testtube.2")
+                            .font(.footnote).foregroundStyle(Theme.warning)
+                    }
+                    #endif
                 }
 
                 Section {
