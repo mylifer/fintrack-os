@@ -44,11 +44,9 @@ struct PayRowSheet: View {
                 }
                 Section {
                     Toggle("Hesaptan işlem olarak kaydet", isOn: $createTransaction)
-                    if createTransaction {
-                        Picker("Ödeme hesabı", selection: $fromAccountId) {
-                            Text("Seçin").tag(String?.none)
-                            ForEach(payers) { Text("\($0.name) · \($0.currency.rawValue)").tag(Optional($0.id)) }
-                        }
+                    Picker("Ödeme hesabı", selection: $fromAccountId) {
+                        Text("Seçin").tag(String?.none)
+                        ForEach(payers) { Text("\($0.name) · \($0.currency.rawValue)").tag(Optional($0.id)) }
                     }
                     DatePicker("Tarih", selection: $date, displayedComponents: .date)
                         .environment(\.locale, Locale(identifier: "tr_TR"))
@@ -89,7 +87,7 @@ struct PayRowSheet: View {
 
     private func pay() {
         busy = true
-        let input = PaymentActions.PayInput(amount: Fmt.parseAmount(amountText), fromAccountId: createTransaction ? fromAccountId : nil,
+        let input = PaymentActions.PayInput(amount: Fmt.parseAmount(amountText), fromAccountId: fromAccountId,
                                             date: DateUtil.day(date), createTransaction: createTransaction,
                                             note: note.isEmpty ? nil : note)
         Task {

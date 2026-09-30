@@ -88,3 +88,17 @@ struct PaymentActionsTests {
         #expect(out.debtDeltaTry == 5000)
     }
 }
+
+@Suite("ödeme takibi — güncel kayda birleştirme")
+struct PaymentRemergeTests {
+    @Test func aradakiDuzenlemeKorunur() {
+        let paid = PaymentOccurrence(raw: ["id": "o", "status": "paid", "paidAmount": 100, "note": "n", "statementDate": "eski"])
+        let current = PaymentOccurrence(raw: ["id": "o", "statementDate": "2026-09-27", "dueDate": "x", "deleted_at": "t"])
+        let m = PaymentActions.remerge(paid, onto: current)
+        #expect(m.statementDate == "2026-09-27")
+        #expect(m.status == "paid" && m.paidAmount == 100 && m.note == "n")
+        #expect(m.dueDate == nil)          // ödendi alanı: paid'de yok → null
+        #expect(m.raw["deleted_at"] == .null)
+        #expect(PaymentActions.remerge(paid, onto: nil) == paid)
+    }
+}

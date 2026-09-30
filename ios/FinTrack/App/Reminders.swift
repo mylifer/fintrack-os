@@ -39,8 +39,13 @@ enum Reminders {
     /// Yeniden planla — öncekini iptal ederek (üst üste çalışan iki tur eski
     /// listeden hatırlatma eklemesin).
     static func schedule(_ model: AppModel) {
-        running?.cancel()
-        running = Task { await reschedule(model) }
+        let previous = running
+        previous?.cancel()
+        running = Task {
+            await previous?.value   // eski tur tamamen bitsin (ekleme arada kalmasın)
+            guard !Task.isCancelled else { return }
+            await reschedule(model)
+        }
     }
 
     /// Bekleyen FinTrack hatırlatmalarını silip yeniden kur.

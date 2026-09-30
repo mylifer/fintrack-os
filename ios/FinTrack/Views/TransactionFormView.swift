@@ -221,6 +221,9 @@ struct TransactionFormView: View {
             else { return }
             draft.categoryId = c
         }
+        // Web'de "Ödeme tipi" tek seçim: abonelik ve taksit birlikte olmaz
+        .onChange(of: installments) { _, on in if on { draft.isSubscription = false } }
+        .onChange(of: draft.isSubscription) { _, on in if on { installments = false } }
         .onChange(of: draft.type) { _, newType in
             // Tür değişince uymayan kategori düşer
             if let c = model.category(draft.categoryId),
@@ -332,6 +335,7 @@ struct TransactionFormView: View {
                     next.toAccountId = draft.toAccountId
                     next.date = draft.date
                     draft = next
+                    installments = false
                     categoryTouched = false
                     amountFocused = true
                     saving = false

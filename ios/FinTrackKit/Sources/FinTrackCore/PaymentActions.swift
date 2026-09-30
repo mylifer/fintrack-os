@@ -97,4 +97,15 @@ public enum PaymentActions {
         raw["note"] = JSONValue((note?.isEmpty == false) ? note : row.note)
         return Result(transaction: tx, debtDeltaTry: debtDelta, occurrence: PaymentOccurrence(raw: raw))
     }
+
+    static let paidKeys = ["status", "amount", "dueDate", "fromAccountId", "paidAmount", "paidDate", "transactionId", "note"]
+
+    /// "Ödendi" alanlarını, ay kaydının EN GÜNCEL halinin üstüne koy (ödeme yazılırken
+    /// arada gelen başka alan düzenlemeleri korunur).
+    public static func remerge(_ paid: PaymentOccurrence, onto current: PaymentOccurrence?) -> PaymentOccurrence {
+        guard var raw = current?.raw else { return paid }
+        for k in paidKeys { raw[k] = paid.raw[k] ?? .null }
+        raw["deleted_at"] = .null
+        return PaymentOccurrence(raw: raw)
+    }
 }

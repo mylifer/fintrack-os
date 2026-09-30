@@ -187,7 +187,7 @@ final class SecureOverlay {
             window?.isHidden = true
             window?.rootViewController = nil
             // Ana pencere yeniden anahtar olsun (klavye / VoiceOver oraya dönsün)
-            scene?.windows.first { $0 !== window && !$0.isHidden }?.makeKey()
+            scene?.windows.first { $0 !== window && !$0.isHidden && $0.windowLevel == .normal }?.makeKey()
             return
         }
         guard let scene else { return }   // mod kaydedilmez: sahne gelince yeniden denenir
@@ -197,8 +197,11 @@ final class SecureOverlay {
             w.backgroundColor = .clear
             window = w
         }
-        // Alttaki formda açık klavye kilidin üstünde kalmasın
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        // Kilitte: alttaki formda açık klavye kilidin üstünde kalmasın. Kısa
+        // kesintide (perde: Denetim Merkezi vb.) yazılan alanın odağı korunur.
+        if newMode == .lock {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
         let root: AnyView = newMode == .lock
             ? AnyView(LockView().environment(lock).tint(Theme.tint))
             : AnyView(PrivacyCover())
@@ -206,7 +209,8 @@ final class SecureOverlay {
         host.view.backgroundColor = .systemGroupedBackground
         host.view.accessibilityViewIsModal = true   // VoiceOver alttaki içeriğe geçmesin
         window?.rootViewController = host
-        window?.makeKeyAndVisible()
+        window?.accessibilityViewIsModal = true
+        if newMode == .lock { window?.makeKeyAndVisible() } else { window?.isHidden = false }
         mode = newMode
     }
 }

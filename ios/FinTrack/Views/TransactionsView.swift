@@ -149,10 +149,10 @@ struct TransactionsView: View {
                 Button("Süzgeci temizle", role: .destructive) { filter = TxFilter() }
             }
             Divider()
-            ShareLink(item: CSVFile(transactions: filtered, categories: model.categories,
+            ShareLink(item: CSVFile(transactions: filtered.filter { $0.plannedRecurringId == nil }, categories: model.categories,
                                     accounts: model.accounts, name: csvName),
-                      preview: SharePreview("FinTrack işlemleri (\(filtered.count))")) {
-                Label("CSV olarak paylaş (\(filtered.count))", systemImage: "square.and.arrow.up")
+                      preview: SharePreview("FinTrack işlemleri")) {
+                Label("CSV olarak paylaş", systemImage: "square.and.arrow.up")
             }
         } label: {
             Image(systemName: filter.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
@@ -168,7 +168,7 @@ struct TransactionsView: View {
     private func totals(_ list: [Transaction]) -> some View {
         let flow = Calc.periodFlow(list, from: "0000-01-01", to: "9999-12-31", fx: model.fx)
         return HStack(spacing: 14) {
-            Text("\(list.count) işlem").font(.subheadline.bold())
+            Text("\(list.filter { $0.plannedRecurringId == nil }.count) işlem").font(.subheadline.bold())
             Spacer()
             if flow.expense > 0 {
                 Label(Fmt.currency(flow.expense), systemImage: "arrow.up.right")

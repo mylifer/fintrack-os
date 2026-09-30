@@ -316,7 +316,8 @@ public final class AppModel {
 
     /// Gün döndüyse (uygulama çevrimdışı açıldığında çekiş türetimi tetiklemez)
     public func refreshDerivedIfStale() {
-        if let d = derivedStore, d.day != DateUtil.today() { scheduleDerived() }
+        // Bakiyeler de dünün "tarihi gelmiş" kesimine göre: hepsi yeniden
+        if let d = derivedStore, d.day != DateUtil.today() { recomputeBalances() }
     }
 
     /// Pahalı türetimleri arka planda yeniden hesapla; en son isteğin sonucu kalır.
@@ -451,7 +452,12 @@ public final class AppModel {
         guard let account = account(draft.accountId) else { throw ServiceError.message("Hesap bulunamadı.") }
         let rows = try Installments.makeGroup(draft, count: count, account: account, workspaceId: activeWorkspaceId,
                                               fx: fx, now: Self.nowISO())
-        for r in rows { try await write(r, in: \.transactions) }
+        // İlk satır yazılırsa grup "kaydedildi" sayılır: kalanlar geçici hatada
+        // kuyruğa alınır (yarım grup kalıp kullanıcı tekrar deneyerek ikinci grup
+        // oluşturmasın)
+        guard let first = rows.first else { return }
+        try await write(first, in: \.transactions)
+        for r in rows.dropFirst() { await writeFollowUp(r, in: \.transactions) }
     }
 
     /// Silme = tombstone (deleted_at), gerçek DELETE yok.
@@ -462,9 +468,10 @@ public final class AppModel {
         if t.isPlainInstallment, let group = t.installGroupId {
             // Taksit: TÜM grup silinir (web remove)
             let now = Self.nowISO()
-            for row in all.transactions where row.installGroupId == group && row.isLive {
-                try await write(row.tombstoned(at: now), in: \.transactions)
-            }
+            let rows = all.transactions.filter { $0.installGroupId == group && $0.isLive }
+            guard let first = rows.first else { return }
+            try await write(first.tombstoned(at: now), in: \.transactions)
+            for row in rows.dropFirst() { await writeFollowUp(row.tombstoned(at: now), in: \.transactions) }
             return
         }
         guard t.isPlainDebtPayment, let debtId = t.debtId else {
@@ -770,10 +777,15 @@ public final class AppModel {
             if let delta = out.debtDeltaTry, let debt = self.all.debts.first(where: { $0.id == row.target.id }) {
                 await self.writeFollowUp(debt.applyingPayment(delta, installments: 1), in: \.debts)
             }
-            if out.transaction != nil || !input.createTransaction {
-                await self.writeFollowUp(out.occurrence, in: \.paymentOccurrences)
+            // Ay kaydı işlem yazıldıktan SONRA güncel satırın üstüne (arada gelen
+            // web düzenlemesi — not, kesim tarihi — ezilmesin)
+            let current = self.all.paymentOccurrences.first { $0.id == out.occurrence.id && $0.isLive }
+            let occurrence = PaymentActions.remerge(out.occurrence, onto: current)
+            if out.transaction != nil {
+                await self.writeFollowUp(occurrence, in: \.paymentOccurrences)
             } else {
-                try await self.write(out.occurrence, in: \.paymentOccurrences)
+                // Tek yazma bu: hata kullanıcıya dönsün (sessizce "ödendi" sanılmasın)
+                try await self.write(occurrence, in: \.paymentOccurrences)
             }
         }
     }
