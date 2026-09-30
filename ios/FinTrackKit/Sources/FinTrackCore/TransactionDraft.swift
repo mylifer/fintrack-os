@@ -105,7 +105,9 @@ public struct TransactionDraft: Equatable, Sendable {
         if wantsTag != Subscriptions.hasSubscriptionTag(t.tags) {
             out.raw["tags"] = .array(Self.tags(t.tags, subscription: wantsTag).map { .string($0) })
         }
-        if t.amount != out.amount || t.currency != out.currency {
+        // Kuruş düzeyinde kıyas: yalnız açıklama düzenlenince eski kayıttaki
+        // kayan nokta gürültüsü yüzünden tarihî TRY değeri değişmesin
+        if Money.toMinor(t.amount) != Money.toMinor(out.amount) || t.currency != out.currency {
             out.amountTry = fx.baseSnapshot(out.amount, out.currency)
         }
         return out

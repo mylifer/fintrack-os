@@ -290,6 +290,7 @@ struct GoalFormView: View {
     @State private var busy = false
     @State private var errorMessage: String?
     @State private var confirmDelete = false
+    @State private var newId = UUID().uuidString.lowercased()
 
     private var valid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty && Fmt.parseAmount(amountText) > 0
@@ -392,7 +393,7 @@ struct GoalFormView: View {
     }
 
     private func save() {
-        var g = editing ?? SavingsGoal(raw: ["id": .string(UUID().uuidString.lowercased()), "deleted_at": .null])
+        var g = editing ?? SavingsGoal(raw: ["id": .string(newId), "deleted_at": .null])
         g.name = name.trimmingCharacters(in: .whitespaces)
         g.targetAmount = Fmt.parseAmount(amountText)
         g.targetDate = hasDate ? DateUtil.day(date) : nil

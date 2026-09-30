@@ -312,7 +312,16 @@ private struct DeleteConfirmation: ViewModifier {
 
 /// Paylaşılacak CSV dosyası (UTF-8 BOM: Excel Türkçe karakterleri doğru açar).
 /// Metin yalnız paylaşım anında üretilir (menü her çizildiğinde değil).
+/// Geçici dosyalar açılışta ve çıkışta silinir (finans verisi diskte kalmasın).
 struct CSVFile: Transferable {
+    static func cleanUp() {
+        let tmp = FileManager.default.temporaryDirectory
+        let files = (try? FileManager.default.contentsOfDirectory(at: tmp, includingPropertiesForKeys: nil)) ?? []
+        for f in files where f.lastPathComponent.hasPrefix("fintrack-") && f.pathExtension == "csv" {
+            try? FileManager.default.removeItem(at: f)
+        }
+    }
+
     let transactions: [Transaction]
     let categories: [FinTrackCore.Category]
     let accounts: [Account]

@@ -10,6 +10,7 @@ struct BudgetFormView: View {
     let editing: Budget?
 
     @State private var draft = BudgetDraft()
+    @State private var newId = UUID().uuidString.lowercased()
     @State private var query = ""
     @State private var busy = false
     @State private var errorMessage: String?
@@ -113,7 +114,7 @@ struct BudgetFormView: View {
         busy = true
         Task {
             do {
-                try await model.saveBudget(draft, editing: editing)
+                try await model.saveBudget(draft, editing: editing, newId: newId)
                 Haptics.success()
                 dismiss()
             } catch {

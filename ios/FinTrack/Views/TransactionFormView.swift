@@ -14,6 +14,8 @@ struct TransactionFormView: View {
     @State private var draft = TransactionDraft()
     @State private var categoryTouched = false
     @State private var savedCount = 0
+    /// Yeni kaydın kimliği — tekrar denemede aynı satır (mükerrer olmasın)
+    @State private var newId = UUID().uuidString.lowercased()
     @State private var installments = false
     @State private var installmentCount = 6
     @FocusState private var descriptionFocused: Bool
@@ -334,14 +336,15 @@ struct TransactionFormView: View {
         Task {
             do {
                 if editing == nil && installments && draft.type == .expense {
-                    try await model.saveInstallments(draft, count: installmentCount)
+                    try await model.saveInstallments(draft, count: installmentCount, seed: newId)
                 } else {
-                    try await model.save(draft, editing: editing)
+                    try await model.save(draft, editing: editing, newId: newId)
                 }
                 if editing == nil { UserDefaults.standard.set(draft.accountId, forKey: Self.lastAccountKey) }
                 Haptics.success()
                 if another {
                     savedCount += 1
+                    newId = UUID().uuidString.lowercased()
                     var next = TransactionDraft()
                     next.type = draft.type
                     next.accountId = draft.accountId

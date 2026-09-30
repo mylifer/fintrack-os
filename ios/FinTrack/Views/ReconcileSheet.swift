@@ -11,6 +11,7 @@ struct ReconcileSheet: View {
 
     @State private var text = ""
     @State private var negative = false
+    @State private var rowId = UUID().uuidString.lowercased()
     @State private var busy = false
     @State private var errorMessage: String?
     @FocusState private var focused: Bool
@@ -91,7 +92,7 @@ struct ReconcileSheet: View {
         busy = true
         Task {
             do {
-                try await model.reconcile(account, actual: input)
+                try await model.reconcile(account, actual: input, id: rowId)
                 Haptics.success()
                 dismiss()
             } catch {

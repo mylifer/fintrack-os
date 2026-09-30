@@ -15,6 +15,7 @@ struct PayRowSheet: View {
     @State private var date = Date()
     @State private var createTransaction = true
     @State private var note = ""
+    @State private var transactionId = UUID().uuidString.lowercased()
     @State private var busy = false
     @State private var errorMessage: String?
 
@@ -92,7 +93,7 @@ struct PayRowSheet: View {
                                             note: note.isEmpty ? nil : note)
         Task {
             do {
-                try await model.payRow(row, input: input)
+                try await model.payRow(row, input: input, transactionId: transactionId)
                 Haptics.success()
                 dismiss()
             } catch {

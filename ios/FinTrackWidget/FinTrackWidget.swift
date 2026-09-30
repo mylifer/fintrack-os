@@ -197,7 +197,7 @@ struct MediumView: View {
                 if s.budgets.isEmpty {
                     Text("Bütçe yok").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    ForEach(s.budgets.prefix(3), id: \.name) { b in
+                    ForEach(Array(s.budgets.prefix(3).enumerated()), id: \.offset) { _, b in
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 4) {
                                 Circle().fill(hex(b.colorHex)).frame(width: 6, height: 6)
@@ -251,7 +251,7 @@ struct LargeView: View {
             if s.budgets.isEmpty {
                 Text("Bütçe yok").font(.caption).foregroundStyle(.secondary)
             } else {
-                ForEach(s.budgets.prefix(5), id: \.name) { b in
+                ForEach(Array(s.budgets.prefix(5).enumerated()), id: \.offset) { _, b in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             Circle().fill(hex(b.colorHex)).frame(width: 7, height: 7)

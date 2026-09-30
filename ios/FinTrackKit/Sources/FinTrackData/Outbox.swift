@@ -66,7 +66,7 @@ struct Outbox {
         if entries.isEmpty { try? FileManager.default.removeItem(at: url); return }
         guard let data = try? JSONEncoder().encode(entries) else { return }
         #if os(iOS)
-        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+        try? data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
         #else
         try? data.write(to: url, options: .atomic)
         #endif

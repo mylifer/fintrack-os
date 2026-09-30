@@ -3,7 +3,7 @@ import FinTrackCore
 
 /// Son başarılı çekişin ham satırları — uygulama çevrimdışı açılınca ekran boş
 /// kalmasın diye. Yalnız OKUMA önbelleği: yazmalar her zaman önce buluta gider.
-/// Dosya cihaz kilitliyken okunamaz (complete file protection), yedeğe girmez;
+/// Dosya kilitli cihazda yeni açılamaz (unless-open: açıkken yazma sürer), yedeğe girmez;
 /// çıkışta silinir.
 struct LocalCache {
     private struct Stored: Codable {
@@ -38,7 +38,7 @@ struct LocalCache {
                             paymentOccurrences: s.paymentOccurrences.map(\.raw))
         guard let data = try? JSONEncoder().encode(stored) else { return }
         #if os(iOS)
-        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+        try? data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
         #else
         try? data.write(to: url, options: .atomic)
         #endif

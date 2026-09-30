@@ -434,7 +434,9 @@ public final class AppModel {
     static func nowISO() -> String { iso.string(from: Date()) }
 
     /// Yeni işlem ya da var olan işlemin düzenlemesi.
-    public func save(_ draft: TransactionDraft, editing: Transaction?) async throws {
+    /// `newId`: formun bir kez ürettiği kimlik — belirsiz hatadan sonra tekrar
+    /// denemede aynı satır güncellenir, ikinci işlem oluşmaz.
+    public func save(_ draft: TransactionDraft, editing: Transaction?, newId: String? = nil) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }
         if let e = draft.validationError() { throw ServiceError.message(e) }
         guard let account = account(draft.accountId) else { throw ServiceError.message("Hesap bulunamadı.") }
@@ -442,25 +444,29 @@ public final class AppModel {
             throw ServiceError.message("Bu işlem başka kayıtlara bağlı; web'den düzenleyin.")
         }
         let record = editing.map { draft.applying(to: $0, account: account, fx: fx) }
-            ?? draft.makeNew(account: account, workspaceId: activeWorkspaceId, fx: fx, now: Self.nowISO())
+            ?? draft.makeNew(id: newId ?? UUID().uuidString.lowercased(), account: account,
+                             workspaceId: activeWorkspaceId, fx: fx, now: Self.nowISO())
         try await write(record, in: \.transactions)
     }
 
     /// Bakiye eşitleme (web ReconcileBalanceModal): gerçek bakiyeyle fark tek satır.
-    public func reconcile(_ account: Account, actual input: Double) async throws {
+    public func reconcile(_ account: Account, actual input: Double, id: String = UUID().uuidString.lowercased()) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }
         let balance = balances[account.id] ?? account.initialBalance
         let t = try Reconcile.make(account: account, input: input, balance: balance, fx: fx,
-                                   workspaceId: account.workspaceId ?? activeWorkspaceId, now: Self.nowISO())
+                                   workspaceId: account.workspaceId ?? activeWorkspaceId, now: Self.nowISO(), id: id)
         try await write(t, in: \.transactions)
     }
 
     /// Taksitli alışveriş: N satır aynı grupta (web addInstallmentGroup).
-    public func saveInstallments(_ draft: TransactionDraft, count: Int) async throws {
+    /// `seed`: formun bir kez ürettiği grup kimliği; satır kimlikleri ondan
+    /// türetilir (tekrar denemede aynı grup güncellenir, ikinci grup oluşmaz).
+    public func saveInstallments(_ draft: TransactionDraft, count: Int, seed: String = UUID().uuidString.lowercased()) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }
         guard let account = account(draft.accountId) else { throw ServiceError.message("Hesap bulunamadı.") }
         let rows = try Installments.makeGroup(draft, count: count, account: account, workspaceId: activeWorkspaceId,
-                                              fx: fx, now: Self.nowISO())
+                                              fx: fx, now: Self.nowISO(), groupId: seed,
+                                              ids: (0..<count).map { DeterministicID.uuid("inst:\(seed):\($0)") })
         // İlk satır yazılırsa grup "kaydedildi" sayılır: kalanlar geçici hatada
         // kuyruğa alınır (yarım grup kalıp kullanıcı tekrar deneyerek ikinci grup
         // oluşturmasın)
@@ -497,12 +503,13 @@ public final class AppModel {
     }
 
     /// Borç ödemesi (web debts/page handlePay): işlem + borç satırı.
-    public func payDebt(_ debt: Debt, accountId: String?, amount: Double, date: Date) async throws {
+    public func payDebt(_ debt: Debt, accountId: String?, amount: Double, date: Date,
+                        id: String = UUID().uuidString.lowercased()) async throws {
         guard let account = account(accountId), !account.isArchived else { throw ServiceError.message("Hesap seçin.") }
         try await serializedDebtOp {
             let latest = self.all.debts.first { $0.id == debt.id } ?? debt
             let out = try DebtPayments.pay(latest, from: account, amount: amount, date: DateUtil.day(date), fx: self.fx,
-                                           workspaceId: self.activeWorkspaceId, now: Self.nowISO())
+                                           workspaceId: self.activeWorkspaceId, now: Self.nowISO(), id: id)
             try await self.write(out.transaction, in: \.transactions)
             let fresh = self.all.debts.first { $0.id == debt.id } ?? latest
             await self.writeFollowUp(fresh.applyingPayment(out.transaction.amountTry ?? 0, installments: 1), in: \.debts)
@@ -591,8 +598,11 @@ public final class AppModel {
         pendingWrites = outbox?.count ?? 0
     }
 
-    /// Bekleyenleri sırayla gönder. Ağ hatasında durur (sonra yeniden denenir);
-    /// sunucu reddettiyse satır kuyruktan düşer — çekiş bulut halini geri getirir.
+    /// Bekleyenleri sırayla gönder (yalnız oturum doğrulandıktan sonra çağrılır).
+    /// Ağ hatasında durur. Kalıcı veri hatası ya da — oturum geçerliyken — yetki
+    /// reddi (ör. paylaşılan alandan çıkarıldınız) satırı düşürür: yoksa kuyruk
+    /// sonsuza dek tıkanır, arkasındakiler hiç gitmezdi. Geçici hata (5xx, 429)
+    /// satırı bekletir, sıradakine geçilir.
     @discardableResult
     public func flushOutbox() async -> Int {
         guard !isDemo, !isFlushing, let service, let uid = userId, let entries = outbox?.entries, !entries.isEmpty
@@ -600,21 +610,22 @@ public final class AppModel {
         isFlushing = true
         defer { isFlushing = false; pendingWrites = outbox?.count ?? 0 }
         var rejected = 0
+        var failedTransient = false
         for e in entries.sorted(by: { $0.seq < $1.seq }) {
             do {
                 try await service.upsertRow(e.table, e.row, userId: uid)
                 outbox?.remove(e)
-            } catch where SupabaseService.isPermanentWriteError(error) {
-                // Veri hatası: tekrar denemek düzeltmez — düşür, çekiş bulut halini getirir
+            } catch where SupabaseService.isNetworkError(error) {
+                scheduleRetry()
+                return rejected
+            } catch where SupabaseService.isPermanentWriteError(error) || SupabaseService.isAuthError(error) {
                 outbox?.remove(e)
                 rejected += 1
             } catch {
-                // Ağ, yetki, sunucu, hız sınırı: kuyrukta kalsın, sonra yeniden
-                scheduleRetry()
-                return rejected
+                failedTransient = true
             }
         }
-        retryDelay = 15
+        if failedTransient { scheduleRetry() } else { retryDelay = 15 }
         return rejected
     }
 
@@ -776,12 +787,14 @@ public final class AppModel {
 
     /// Ödeme Takibi "Öde" (web payRow): isteğe bağlı ödeme işlemi (+ borçta borç
     /// satırı) ve ayın kaydı "ödendi". Borç işlemleriyle aynı sıraya girer.
-    public func payRow(_ row: PaymentRow, input: PaymentActions.PayInput) async throws {
+    public func payRow(_ row: PaymentRow, input: PaymentActions.PayInput,
+                       transactionId: String = UUID().uuidString.lowercased()) async throws {
         try await serializedDebtOp {
             let from = self.account(input.fromAccountId)
             let out = try PaymentActions.pay(row: row, input: input, from: from, occurrences: self.all.paymentOccurrences,
                                              existingTransactionIds: Set(self.all.transactions.filter(\.isLive).map(\.id)),
-                                             fx: self.fx, workspaceId: self.activeWorkspaceId, now: Self.nowISO())
+                                             fx: self.fx, workspaceId: self.activeWorkspaceId, now: Self.nowISO(),
+                                             transactionId: transactionId)
             if let t = out.transaction { try await self.write(t, in: \.transactions) }
             if let delta = out.debtDeltaTry, let debt = self.all.debts.first(where: { $0.id == row.target.id }) {
                 await self.writeFollowUp(debt.applyingPayment(delta, installments: 1), in: \.debts)
@@ -815,11 +828,12 @@ public final class AppModel {
         BankRules.resolveCardDays(account: a, plan: CardStatements.plan(for: a, in: paymentPlans)).days
     }
 
-    public func saveRecurring(_ draft: RecurringDraft, editing: RecurringTransaction?) async throws {
+    public func saveRecurring(_ draft: RecurringDraft, editing: RecurringTransaction?,
+                              newId: String = UUID().uuidString.lowercased()) async throws {
         if let e = draft.validationError() { throw ServiceError.message(e) }
         guard let account = account(draft.accountId) else { throw ServiceError.message("Hesap bulunamadı.") }
         let r = draft.build(editing: editing, account: account,
-                            workspaceId: editing?.workspaceId ?? activeWorkspaceId, now: Self.nowISO())
+                            workspaceId: editing?.workspaceId ?? activeWorkspaceId, id: newId, now: Self.nowISO())
         try await write(r, in: \.recurring)
     }
 
@@ -832,10 +846,10 @@ public final class AppModel {
 
     // MARK: Bütçeler
 
-    public func saveBudget(_ draft: BudgetDraft, editing: Budget?) async throws {
+    public func saveBudget(_ draft: BudgetDraft, editing: Budget?, newId: String = UUID().uuidString.lowercased()) async throws {
         if let e = draft.validationError() { throw ServiceError.message(e) }
         let b = draft.build(editing: editing, categories: categories,
-                            workspaceId: editing?.workspaceId ?? activeWorkspaceId)
+                            workspaceId: editing?.workspaceId ?? activeWorkspaceId, id: newId)
         try await write(b, in: \.budgets)
     }
 

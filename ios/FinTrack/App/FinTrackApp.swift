@@ -13,6 +13,7 @@ struct FinTrackApp: App {
     init() {
         Fmt.amountsHidden = UserDefaults.standard.bool(forKey: "fintrack.amountsHidden")
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
+        CSVFile.cleanUp()
     }
 
     var body: some Scene {
@@ -64,7 +65,12 @@ struct RootView: View {
         }
         // Türetim (kart ekstreleri dahil) tamamlanınca: bayat ekstreden hatırlatma kurulmasın
         .onChange(of: model.derivedStamp) { Reminders.schedule(model) }
-        .onChange(of: model.userId) { _, id in if id == nil { Task { await Reminders.clear() } } }
+        .onChange(of: model.userId) { _, id in
+            if id == nil {
+                Task { await Reminders.clear() }
+                CSVFile.cleanUp()
+            }
+        }
     }
 
     private var overlayMode: SecureOverlay.Mode {

@@ -9,6 +9,7 @@ struct RecurringFormView: View {
     let editing: RecurringTransaction?
 
     @State private var draft = RecurringDraft()
+    @State private var newId = UUID().uuidString.lowercased()
     @State private var busy = false
     @State private var errorMessage: String?
     @State private var confirmDelete = false
@@ -137,7 +138,7 @@ struct RecurringFormView: View {
         busy = true
         Task {
             do {
-                try await model.saveRecurring(draft, editing: editing)
+                try await model.saveRecurring(draft, editing: editing, newId: newId)
                 Haptics.success()
                 dismiss()
             } catch {

@@ -172,6 +172,7 @@ struct DebtPaySheet: View {
     @State private var amountText = ""
     @State private var accountId: String?
     @State private var date = Date()
+    @State private var paymentId = UUID().uuidString.lowercased()
     @State private var busy = false
     @State private var errorMessage: String?
     @FocusState private var focused: Bool
@@ -239,7 +240,7 @@ struct DebtPaySheet: View {
         busy = true
         Task {
             do {
-                try await model.payDebt(debt, accountId: accountId, amount: Fmt.parseAmount(amountText), date: date)
+                try await model.payDebt(debt, accountId: accountId, amount: Fmt.parseAmount(amountText), date: date, id: paymentId)
                 Haptics.success()
                 dismiss()
             } catch {
