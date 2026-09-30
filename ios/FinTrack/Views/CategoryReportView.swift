@@ -138,14 +138,14 @@ struct CategoryReportView: View {
             if abs(pct) < 0.5 {
                 Text("değişmedi").font(.caption2).foregroundStyle(.secondary)
             } else {
-            let good = type == .expense ? !up : up
-            HStack(spacing: 3) {
-                Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
-                Text("%\(Int(abs(pct).rounded()))")
-                if let suffix { Text(suffix).foregroundStyle(.secondary) }
-            }
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(good ? Theme.income : Theme.expense)
+                let good = type == .expense ? !up : up
+                HStack(spacing: 3) {
+                    Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
+                    Text("%\(Int(abs(pct).rounded()))")
+                    if let suffix { Text(suffix).foregroundStyle(.secondary) }
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(good ? Theme.income : Theme.expense)
             }
         }
     }
