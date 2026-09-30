@@ -50,6 +50,7 @@ struct TransactionsView: View {
     @Binding var quickAdd: Bool
     @State private var query = ""
     @State private var filter = TxFilter()
+    @AppStorage("fintrack.showPlanned") private var showPlanned = true
     @State private var editing: Transaction?
     @State private var pendingDelete: Transaction?
     @State private var errorMessage: String?
@@ -82,7 +83,13 @@ struct TransactionsView: View {
                     ToolbarItem(placement: .topBarLeading) { filterMenu }
                     ToolbarItem(placement: .topBarTrailing) { AddButton(isPresented: $quickAdd) }
                 }
-                .sheet(item: $editing) { TransactionFormView(editing: $0) }
+                .sheet(item: $editing) { t in
+                    if let rid = t.plannedRecurringId, let r = model.recurring.first(where: { $0.id == rid }) {
+                        NavigationStack { RecurringDetailView(template: r) }
+                    } else {
+                        TransactionFormView(editing: t)
+                    }
+                }
                 .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
                 .onAppear {
                     #if DEBUG
@@ -96,7 +103,26 @@ struct TransactionsView: View {
 
     private var filtered: [Transaction] {
         let match = TxSearch.matcher(query, categories: model.categories, accounts: model.accounts)
-        return model.transactions.filter { filter.matches($0) && match($0) }
+        let base = model.transactions.filter { filter.matches($0) && match($0) }
+        let extra = planned.filter { filter.matches($0) && match($0) }
+        guard !extra.isEmpty else { return base }
+        // Listeyle aynı sıra: tarih ↓, sonra eklenme ↓
+        return (extra + base).sorted {
+            let a = $0.date.prefix(10), b = $1.date.prefix(10)
+            return a != b ? a > b : $0.createdAt > $1.createdAt
+        }
+    }
+
+    /// Tekrarlayanların önümüzdeki 60 gündeki dönemleri (yazılmaz; web "Gelecek
+    /// işlemler"). Bugünkiler Özet'teki onay kartında.
+    private var planned: [Transaction] {
+        guard showPlanned, !model.recurring.isEmpty,
+              let t = DateUtil.parseDay(DateUtil.today()),
+              let tomorrow = DateUtil.calendar.date(byAdding: .day, value: 1, to: t),
+              let h = DateUtil.calendar.date(byAdding: .day, value: 60, to: t) else { return [] }
+        let existing = Set(model.transactions.map(\.id))
+        return Recurrence.plannedTransactions(model.recurring, today: DateUtil.day(tomorrow), horizon: DateUtil.day(h),
+                                              existingIds: existing, fx: model.fx)
     }
 
     private var filterMenu: some View {
@@ -117,6 +143,7 @@ struct TransactionsView: View {
                 Label(model.account(filter.accountId)?.name ?? "Hesap", systemImage: "building.columns")
             }
             Toggle("Yalnız onay bekleyenler", isOn: $filter.pendingOnly)
+            Toggle("Tekrarlayanların gelecek dönemleri", isOn: $showPlanned)
             if filter.isActive {
                 Divider()
                 Button("Süzgeci temizle", role: .destructive) { filter = TxFilter() }

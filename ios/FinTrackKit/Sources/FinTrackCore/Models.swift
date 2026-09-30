@@ -370,6 +370,11 @@ public struct Transaction: SyncRecord, Hashable {
         ]
     }
 
+    /// Tekrarlayandan türetilmiş sanal (yazılmamış) satır mı? Şablon kimliği.
+    public var plannedRecurringId: String? {
+        systemKind == "planned-recurring" ? raw.str("recurringId") : nil
+    }
+
     /// Web'de başka kayıtlarla BAĞI olan satırlar: düzenleme/silme yan etkileri
     /// (borç ödemesi geri alma, taksit grubu, çalışma alanı transferinin karşı
     /// bacağı, yatırım bağlı satırlar, kategori payları, mutabakat) yalnız web'de

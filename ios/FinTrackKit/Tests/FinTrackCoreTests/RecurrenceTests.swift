@@ -101,3 +101,18 @@ struct RecurrenceTests {
         #expect(row["deleted_at"] == .null)
     }
 }
+
+@Suite("planlı tekrarlayan satırları")
+struct PlannedRecurringTests {
+    @Test func sanalSatirlar() {
+        let r = rec(["id": "t", "nextDueDate": "2026-01-01", "amount": 100])
+        // 01-01 zaten yazılmış; 02-01 ve 03-01 planlı
+        let list = Recurrence.plannedTransactions([r], today: "2026-01-01", horizon: "2026-03-15",
+                                                  existingIds: ["7af6fc89-0ac1-4afa-97d2-de0844573c46"], fx: fx)
+        #expect(list.map(\.date) == ["2026-02-01", "2026-03-01"])
+        #expect(list[0].id == "0e660ccf-23af-4dee-97a0-48edb176f187")
+        #expect(list[0].plannedRecurringId == "t")
+        #expect(list[0].isLinked)
+        #expect(!list[0].canDeleteOnIOS)
+    }
+}

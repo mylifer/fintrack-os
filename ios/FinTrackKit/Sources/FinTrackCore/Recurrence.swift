@@ -129,6 +129,25 @@ public enum Recurrence {
         return t
     }
 
+    /// Liste için sanal işlemler (web projectPlannedTransactions): YAZILMAZ.
+    /// `systemKind = "planned-recurring"` ile işaretlenir (bağlı sayılır: düzenleme,
+    /// silme, kopyalama kapalı); `recurringId` şablonu gösterir.
+    public static func plannedTransactions(_ templates: [RecurringTransaction], today: String, horizon: String,
+                                           existingIds: Set<String>, fx: FX) -> [Transaction] {
+        planned(templates, today: today, horizon: horizon, existingIds: existingIds).map { r, d in
+            var raw: JSONObject = [
+                "id": .string(transactionId(templateId: r.id, date: d)), "type": .string(r.type.rawValue),
+                "amount": .number(r.amount), "currency": .string(r.currency.rawValue), "date": .string(d),
+                "accountId": .string(r.accountId), "toAccountId": JSONValue(r.toAccountId),
+                "categoryId": JSONValue(r.categoryId), "description": .string(r.description),
+                "notes": JSONValue(r.notes), "isInstallment": .bool(false),
+                "createdAt": .string(d), "systemKind": "planned-recurring", "recurringId": .string(r.id),
+            ]
+            if let snap = fx.baseSnapshot(r.amount, r.currency) { raw["amountTry"] = .number(snap) }
+            return Transaction(raw: raw)
+        }
+    }
+
     /// İleriye dönük planlanan (henüz yazılmamış) dönemler — salt görüntü (web planned.ts).
     public static func planned(_ templates: [RecurringTransaction], today: String, horizon: String,
                                existingIds: Set<String>) -> [(template: RecurringTransaction, date: String)] {

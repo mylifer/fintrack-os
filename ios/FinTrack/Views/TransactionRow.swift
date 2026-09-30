@@ -70,10 +70,13 @@ struct TransactionRow: View {
             if perspectiveAccountId == nil, let a = model.account(t.accountId) { parts.append(a.name) }
         }
         if let i = t.installIndex, let n = t.installTotal { parts.append("\(i)/\(n) taksit") }
+        // Planlı / onay bekleyen bölümünde gün başlığı yok: tarih satırda
+        if !Calc.isPosted(t) || Calc.awaitsApproval(t) { parts.insert(DateUtil.display(t.date, "d MMM"), at: 0) }
         return parts.joined(separator: " · ")
     }
 
     private var badge: String? {
+        if t.plannedRecurringId != nil { return "Tekrarlayan" }
         if Calc.awaitsApproval(t) { return "Onay bekliyor" }
         if !Calc.isPosted(t) { return "Planlı" }
         return nil
