@@ -206,8 +206,17 @@ struct AccountDetailView: View {
     @State private var pendingDelete: Transaction?
     @State private var errorMessage: String?
 
+    @AppStorage("fintrack.showPlanned") private var showPlanned = true
+
+    /// Hesabın işlemleri + tekrarlayanların önümüzdeki 60 gündeki dönemleri (web ile aynı)
     private var txs: [Transaction] {
-        model.transactions.filter { Calc.touchesAccount($0, account.id) }
+        let own = model.transactions.filter { Calc.touchesAccount($0, account.id) }
+        let planned = showPlanned ? model.plannedRecurringRows(accountId: account.id) : []
+        guard !planned.isEmpty else { return own }
+        return (planned + own).sorted {
+            let a = $0.date.prefix(10), b = $1.date.prefix(10)
+            return a != b ? a > b : $0.createdAt > $1.createdAt
+        }
     }
 
     var body: some View {
@@ -244,7 +253,7 @@ struct AccountDetailView: View {
             .navigationTitle(account.name)
             .navigationBarTitleDisplayMode(.inline)
             .refreshable { await model.refresh() }
-            .sheet(item: $editing) { TransactionFormView(editing: $0) }
+            .transactionEditor($editing)
             .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
     }
 }

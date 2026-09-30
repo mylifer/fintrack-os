@@ -83,13 +83,7 @@ struct TransactionsView: View {
                     ToolbarItem(placement: .topBarLeading) { filterMenu }
                     ToolbarItem(placement: .topBarTrailing) { AddButton(isPresented: $quickAdd) }
                 }
-                .sheet(item: $editing) { t in
-                    if let rid = t.plannedRecurringId, let r = model.recurring.first(where: { $0.id == rid }) {
-                        NavigationStack { RecurringDetailView(template: r) }
-                    } else {
-                        TransactionFormView(editing: t)
-                    }
-                }
+                .transactionEditor($editing)
                 .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
                 .onAppear {
                     #if DEBUG
@@ -113,17 +107,7 @@ struct TransactionsView: View {
         }
     }
 
-    /// Tekrarlayanların önümüzdeki 60 gündeki dönemleri (yazılmaz; web "Gelecek
-    /// işlemler"). Bugünkiler Özet'teki onay kartında.
-    private var planned: [Transaction] {
-        guard showPlanned, !model.recurring.isEmpty,
-              let t = DateUtil.parseDay(DateUtil.today()),
-              let tomorrow = DateUtil.calendar.date(byAdding: .day, value: 1, to: t),
-              let h = DateUtil.calendar.date(byAdding: .day, value: 60, to: t) else { return [] }
-        let existing = Set(model.transactions.map(\.id))
-        return Recurrence.plannedTransactions(model.recurring, today: DateUtil.day(tomorrow), horizon: DateUtil.day(h),
-                                              existingIds: existing, fx: model.fx)
-    }
+    private var planned: [Transaction] { showPlanned ? model.plannedRecurringRows() : [] }
 
     private var filterMenu: some View {
         Menu {
@@ -343,6 +327,43 @@ struct CSVFile: Transferable {
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(file.name).csv")
             try (Data([0xEF, 0xBB, 0xBF]) + Data(text.utf8)).write(to: url, options: [.atomic, .completeFileProtection])
             return SentTransferredFile(url)
+        }
+    }
+}
+
+extension AppModel {
+    /// Tekrarlayanların önümüzdeki `days` gündeki dönemleri (yazılmaz; web "Gelecek
+    /// işlemler"). Bugünkiler Özet'teki onay kartında. `accountId` verilirse o
+    /// hesabı etkileyenler (kaynak ya da hedef).
+    func plannedRecurringRows(accountId: String? = nil, days: Int = 60) -> [Transaction] {
+        let templates = accountId.map { id in recurring.filter { $0.accountId == id || $0.toAccountId == id } } ?? recurring
+        guard !templates.isEmpty,
+              let t = DateUtil.parseDay(DateUtil.today()),
+              let tomorrow = DateUtil.calendar.date(byAdding: .day, value: 1, to: t),
+              let h = DateUtil.calendar.date(byAdding: .day, value: days, to: t) else { return [] }
+        return Recurrence.plannedTransactions(templates, today: DateUtil.day(tomorrow), horizon: DateUtil.day(h),
+                                              existingIds: Set(transactions.map(\.id)), fx: fx)
+    }
+}
+
+extension View {
+    /// İşlem düzenleme sayfası; planlı (tekrarlayandan türetilmiş) satırda şablon detayı.
+    func transactionEditor(_ item: Binding<Transaction?>) -> some View {
+        modifier(TransactionEditorSheet(item: item))
+    }
+}
+
+private struct TransactionEditorSheet: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Binding var item: Transaction?
+
+    func body(content: Content) -> some View {
+        content.sheet(item: $item) { t in
+            if let rid = t.plannedRecurringId, let r = model.recurring.first(where: { $0.id == rid }) {
+                NavigationStack { RecurringDetailView(template: r) }
+            } else {
+                TransactionFormView(editing: t)
+            }
         }
     }
 }
