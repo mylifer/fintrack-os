@@ -32,7 +32,8 @@ final class AppLock {
         graceSeconds = UserDefaults.standard.integer(forKey: Self.graceKey)
         #if DEBUG
         // Örnek veri modu (simülatör ekran doğrulaması): kilit yok
-        if ProcessInfo.processInfo.arguments.contains("-demo") { isLocked = false }
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-demo") && !args.contains("-lock") { isLocked = false }
         #endif
     }
 
@@ -130,7 +131,13 @@ struct LockView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
-        .task { await lock.unlock() }
+        .task {
+            #if DEBUG
+            // `-noautounlock`: istem açılmasın (kilit penceresi ekran doğrulaması)
+            if ProcessInfo.processInfo.arguments.contains("-noautounlock") { return }
+            #endif
+            await lock.unlock()
+        }
     }
 }
 
@@ -149,5 +156,46 @@ struct PrivacyCover: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
         .accessibilityHidden(true)
+    }
+}
+
+/// Kilit ekranı ve gizlilik perdesi AYRI bir pencerede (uyarı düzeyinin üstünde):
+/// açık sayfalar (hızlı ekleme, formlar) ve sistem sayfaları da örtülür. Aynı
+/// ağaçta ZStack ile gösterilince açık bir sayfa kilidin üstünde kalıyordu.
+@MainActor
+final class SecureOverlay {
+    static let shared = SecureOverlay()
+
+    enum Mode: Equatable { case none, cover, lock }
+
+    private var window: UIWindow?
+    private var mode: Mode = .none
+
+    /// Yalnız mod DEĞİŞİNCE kök görünüm yenilenir: LockView her görünüşte Face ID
+    /// istediği için gereksiz yenileme, iptal sonrası istem döngüsüne yol açardı.
+    func update(_ newMode: Mode, lock: AppLock) {
+        guard newMode != mode else { return }
+        mode = newMode
+        guard newMode != .none else {
+            window?.isHidden = true
+            window?.rootViewController = nil
+            return
+        }
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState != .unattached }) else { return }
+        if window == nil || window?.windowScene != scene {
+            let w = UIWindow(windowScene: scene)
+            w.windowLevel = .alert + 1
+            w.backgroundColor = .clear
+            window = w
+        }
+        let root: AnyView = newMode == .lock
+            ? AnyView(LockView().environment(lock).tint(Theme.tint))
+            : AnyView(PrivacyCover())
+        let host = UIHostingController(rootView: root)
+        host.view.backgroundColor = .systemGroupedBackground
+        window?.rootViewController = host
+        window?.isHidden = false
     }
 }

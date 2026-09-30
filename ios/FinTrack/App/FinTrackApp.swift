@@ -49,28 +49,25 @@ struct RootView: View {
     @AppStorage("fintrack.amountsHidden") private var amountsHidden = false
 
     var body: some View {
-        ZStack {
-            content
-                // Tutarları gizle: biçimleyici modül düzeyinde bir bayrak; değişince
-                // ekran yeniden kurulur ki biçimlenmiş tüm tutarlar yenilensin (web PrivacyProvider).
-                .id(amountsHidden)
-
-            // Kilit yalnız oturum açıkken anlamlı; uygulama değiştiricide
-            // (inactive) içerik de gizlenir.
-            if model.userId != nil {
-                if lock.isLocked {
-                    LockView().transition(.opacity)
-                } else if scenePhase != .active {
-                    PrivacyCover().transition(.opacity)
-                }
-            }
-        }
+        content
+            // Tutarları gizle: biçimleyici modül düzeyinde bir bayrak; değişince
+            // ekran yeniden kurulur ki biçimlenmiş tüm tutarlar yenilensin (web PrivacyProvider).
+            .id(amountsHidden)
+            // Kilit yalnız oturum açıkken anlamlı; uygulama değiştiricide (inactive)
+            // içerik de gizlenir. Ayrı pencerede: açık sayfaları da örter.
+            .onChange(of: overlayMode, initial: true) { _, m in SecureOverlay.shared.update(m, lock: lock) }
         .onChange(of: amountsHidden, initial: true) { _, v in
             Fmt.amountsHidden = v
             model.amountsHiddenChanged()
         }
         .onChange(of: model.lastSync) { Task { await Reminders.reschedule(model) } }
         .onChange(of: model.userId) { _, id in if id == nil { Task { await Reminders.clear() } } }
+    }
+
+    private var overlayMode: SecureOverlay.Mode {
+        guard model.userId != nil else { return .none }
+        if lock.isLocked { return .lock }
+        return scenePhase == .active ? .none : .cover
     }
 
     @ViewBuilder private var content: some View {
