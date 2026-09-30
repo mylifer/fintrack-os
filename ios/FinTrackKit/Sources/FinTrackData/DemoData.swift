@@ -102,7 +102,16 @@ enum DemoData {
         }
         // Bugünkü demo bakiyeleri değişmesin: geçmişin etkisi açılış bakiyesinden düşülür
         accounts[0] = account("acc-bank", "Garanti Vadesiz", "checking", "TRY", 42_500 - bankNet, "#14B8A6")
-        let transactions = history + [
+        // `-stress`: 20 bin ek işlem (performans denemesi)
+        var stress: [Transaction] = []
+        if ProcessInfo.processInfo.arguments.contains("-stress") {
+            let cats = ["c-yemek", "c-market", "c-kahve", "c-yakit", "c-fatura"]
+            for i in 0..<20_000 {
+                stress.append(tx("expense", Double(20 + (i * 37) % 900), -(i % 720) - 1,
+                                 i % 3 == 0 ? "acc-card" : "acc-bank", cats[i % cats.count], "Deneme \(i % 300)"))
+            }
+        }
+        let transactions = stress + history + [
             tx("income", 68_000, -25, "acc-bank", "c-maas", "Eylül maaşı"),
             tx("expense", 22_000, -24, "acc-bank", "c-kira", "Kira"),
             tx("expense", 1_240.5, -20, "acc-card", "c-market", "Migros"),

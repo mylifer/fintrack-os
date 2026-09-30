@@ -198,11 +198,16 @@ struct TransactionList: View {
     @Binding var pendingDelete: Transaction?
     /// Listenin üstünde ayrı bölüm (ör. arama/süzgeç toplamı)
     var header: AnyView? = nil
+    /// Sayfalama: çok büyük listede SwiftUI tüm satır kimliklerini hesaplıyor
+    /// (20 bin satırda saniyeler). Önce son `pageSize`, istenirse fazlası.
+    @State private var limit = TransactionList.pageSize
+    static let pageSize = 400
 
     /// Gelecek/onay bekleyen satırlar en üstte ayrı bölümde. Kimlik gün anahtarı
     /// ("yyyy-MM-dd"): sırasız girdide aynı gün iki kez gelse de bölümler birleşir.
     private var sections: [(id: String, title: String, items: [Transaction])] {
         let today = DateUtil.today()
+        let transactions = Array(self.transactions.prefix(limit))
         let upcoming = transactions.filter { !Calc.isPosted($0, asOf: today) }
         var out: [(String, String, [Transaction])] = []
         if !upcoming.isEmpty { out.append(("upcoming", "Planlı ve onay bekleyen", upcoming.reversed())) }
@@ -271,8 +276,23 @@ struct TransactionList: View {
                     }
                 }
             }
+            loadMore
         }
         .listStyle(.insetGrouped)
+    }
+
+    @ViewBuilder private var loadMore: some View {
+        let rest = transactions.count - limit
+        if rest > 0 {
+            Section {
+                Button {
+                    limit += TransactionList.pageSize * 2
+                } label: {
+                    Label("Daha eski işlemleri göster (\(rest) kaldı)", systemImage: "chevron.down.circle")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
     }
 
     private func approve(_ t: Transaction) {
