@@ -445,11 +445,28 @@ public final class AppModel {
         try await write(record, in: \.transactions)
     }
 
+    /// Taksitli alışveriş: N satır aynı grupta (web addInstallmentGroup).
+    public func saveInstallments(_ draft: TransactionDraft, count: Int) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        guard let account = account(draft.accountId) else { throw ServiceError.message("Hesap bulunamadı.") }
+        let rows = try Installments.makeGroup(draft, count: count, account: account, workspaceId: activeWorkspaceId,
+                                              fx: fx, now: Self.nowISO())
+        for r in rows { try await write(r, in: \.transactions) }
+    }
+
     /// Silme = tombstone (deleted_at), gerçek DELETE yok.
     /// Borç ödemesi silinirse borcun ödenen tutarı ve taksit sayacı geri alınır (web).
     public func delete(_ t: Transaction) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }
         guard t.canDeleteOnIOS else { throw ServiceError.message("Bu işlem başka kayıtlara bağlı; web'den silin.") }
+        if t.isPlainInstallment, let group = t.installGroupId {
+            // Taksit: TÜM grup silinir (web remove)
+            let now = Self.nowISO()
+            for row in all.transactions where row.installGroupId == group && row.isLive {
+                try await write(row.tombstoned(at: now), in: \.transactions)
+            }
+            return
+        }
         guard t.isPlainDebtPayment, let debtId = t.debtId else {
             try await write(t.tombstoned(at: Self.nowISO()), in: \.transactions)
             return

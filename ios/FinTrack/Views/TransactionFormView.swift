@@ -14,6 +14,8 @@ struct TransactionFormView: View {
     @State private var draft = TransactionDraft()
     @State private var categoryTouched = false
     @State private var savedCount = 0
+    @State private var installments = false
+    @State private var installmentCount = 6
     @FocusState private var descriptionFocused: Bool
     @State private var saving = false
     @State private var errorMessage: String?
@@ -31,6 +33,8 @@ struct TransactionFormView: View {
                     Section {
                         Label(editing?.isPlainDebtPayment == true
                               ? "Borç ödemesi: düzenleme web'de. Silerseniz borcun ödenen tutarından da düşülür."
+                              : editing?.isPlainInstallment == true
+                              ? "Taksitli işlem (\(editing?.installIndex ?? 1)/\(editing?.installTotal ?? 1)): düzenleme web'de. Silerseniz TÜM taksitler silinir."
                               : "Bu işlem başka kayıtlara bağlı (taksit, borç, yatırım ya da bölünmüş kategori). Düzenlemek ve silmek için web'i kullanın.",
                               systemImage: "link")
                             .font(.footnote)
@@ -111,6 +115,18 @@ struct TransactionFormView: View {
                         if draft.type == .expense {
                             Toggle(isOn: $draft.isSubscription) {
                                 Label("Abonelik", systemImage: "repeat.circle")
+                            }
+                            if editing == nil {
+                                Toggle(isOn: $installments.animation()) {
+                                    Label("Taksitli", systemImage: "square.stack.3d.up")
+                                }
+                                if installments {
+                                    Stepper(value: $installmentCount, in: Installments.countRange) {
+                                        LabeledContent("Taksit sayısı", value: "\(installmentCount)")
+                                    }
+                                    Text(installmentSummary)
+                                        .font(.footnote).foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
@@ -238,6 +254,19 @@ struct TransactionFormView: View {
             ?? accounts.first?.id
     }
 
+    /// "6 × ₺1.666,67" — artan kuruşlar ilk taksitlerde (web splitMoney)
+    private var installmentSummary: String {
+        let cur = account?.currency ?? .TRY
+        guard draft.amount > 0 else { return "Toplam tutarı girin; aylık taksitler eşit bölünür." }
+        let parts = Money.split(draft.amount, installmentCount)
+        let first = parts.first ?? 0, rest = parts.last ?? 0
+        let head = first == rest ? "\(installmentCount) × \(Fmt.currency(rest, cur))"
+                                 : "İlk taksit \(Fmt.currency(first, cur)), sonra \(installmentCount - 1) × \(Fmt.currency(rest, cur))"
+        let end = DateUtil.calendar.date(byAdding: .month, value: installmentCount - 1, to: draft.date).map { DateUtil.display(DateUtil.day($0), "MMMM yyyy") } ?? ""
+        let limitNote = account?.type == .credit_card ? " Tüm tutar kart limitinden bugün düşer." : ""
+        return "\(head) · son taksit \(end). Açıklama ve kategori zorunlu.\(limitNote)"
+    }
+
     private var suggestions: [Suggestions.Item] {
         guard editing == nil, descriptionFocused else { return [] }
         return Suggestions.matching(draft.description, in: model.transactions)
@@ -288,7 +317,11 @@ struct TransactionFormView: View {
         saving = true
         Task {
             do {
-                try await model.save(draft, editing: editing)
+                if editing == nil && installments && draft.type == .expense {
+                    try await model.saveInstallments(draft, count: installmentCount)
+                } else {
+                    try await model.save(draft, editing: editing)
+                }
                 if editing == nil { UserDefaults.standard.set(draft.accountId, forKey: Self.lastAccountKey) }
                 Haptics.success()
                 if another {
