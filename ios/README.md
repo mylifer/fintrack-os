@@ -37,7 +37,7 @@ değişirse iki taraf birlikte güncellenir.
 | --- | --- |
 | Özet | Onay bekleyenler (tek dokunuşla onay), ay harcaması + geçen ayın aynı dönemi, kategori halkası (dokun → kategori raporu), yaklaşanlar (7 gün), son 6 ay grafiği, hesaplar, bütçeler, son işlemler |
 | İşlemler | Arama, süzgeç (tür/dönem/hesap/onay bekleyen), sonuç toplamı, CSV paylaş, tekrarlayanların gelecek dönemleri; kaydır: düzenle · sil · kopyala · onayla |
-| Hesaplar | Net değer, Ödeme Takibi, hesaplar (90 gün bakiye seyri), borçlar (ödeme yap, taksit planı); kredi kartında dönem içi / son ekstre, ekstre geçmişi, "Ekstreyi öde" |
+| Hesaplar | Net değer, Ödeme Takibi, nakit akışı tahmini, hesaplar (90 gün bakiye seyri), borçlar (ödeme yap, taksit planı); kredi kartında dönem içi / son ekstre, ekstre geçmişi, "Ekstreyi öde" |
 | Yatırımlar | Portföy, K/Z, günlük değişim |
 | Plan | Bütçe · Hedef · Tekrarlayan · Abonelik |
 
@@ -73,9 +73,12 @@ Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|acc
 - Abonelik = gider üzerinde `abonelik` etiketi; diğer etiketler korunur.
 - Çevrimdışı: ağ yoksa satır cihazdaki kuyruğa (`Outbox`) girer, bağlantı gelince gönderilir;
   sunucudaki `keep_newer_row` sırayı korur.
-- Ödeme Takibi (`payment_plans` / `payment_occurrences`) iOS'ta yalnız okunur: takvim web
-  `schedule.ts` ile birebir hesaplanır; "Öde" gerçek ödeme işlemini açar, satır vade
-  penceresinde otomatik "ödendi" olur. Tutar/gün düzenleme ve "atla" web'de.
+- Ödeme Takibi: takvim web `schedule.ts` ile birebir. "Öde" = web `payRow`: isteğe bağlı ödeme
+  işlemi (+ borçta borç satırı) ve ayın `payment_occurrences` kaydı "ödendi" (deterministik
+  kimlik, var olan satırın üstüne birleştirilir; tutar/vade dondurulur). Tutar/gün düzenleme ve
+  "atla" web'de; `payment_plans` yalnız okunur.
+- Taksitli alışveriş: web `addInstallmentGroup` (kuruş hassas bölme, ilk taksitlere artan,
+  aylık tarihler, hepsi onaylı, ortak `installGroupId`). Silme tüm grubu siler; düzenleme web'de.
 
 ## Güvenlik
 
