@@ -27,10 +27,17 @@ struct AccountsView: View {
                     NetWorthBreakdown()
                 }
 
-                if model.accounts.contains(where: { $0.type == .credit_card && !$0.isArchived }) || model.debts.contains(where: { $0.owe && !$0.isSettled }) {
-                    Section {
-                        NavigationLink(value: PaymentsRoute()) {
-                            PaymentsLinkRow()
+                Section {
+                    if model.accounts.contains(where: { $0.type == .credit_card && !$0.isArchived }) || model.debts.contains(where: { $0.owe && !$0.isSettled }) {
+                        NavigationLink(value: PaymentsRoute()) { PaymentsLinkRow() }
+                    }
+                    NavigationLink(value: ForecastRoute()) {
+                        HStack(spacing: 12) {
+                            IconBadge(symbol: "chart.line.uptrend.xyaxis", color: Theme.tint, size: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Nakit akışı tahmini")
+                                Text("Önümüzdeki aylarda bakiye").font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -77,6 +84,7 @@ struct AccountsView: View {
             .navigationDestination(for: Debt.self) { DebtDetailView(debt: $0) }
             .navigationDestination(for: CardStatementsRoute.self) { CardStatementsView(accountId: $0.accountId) }
             .navigationDestination(for: PaymentsRoute.self) { _ in PaymentsView() }
+            .navigationDestination(for: ForecastRoute.self) { _ in ForecastView() }
             .onAppear(perform: openDebugAccount)
             .toolbar {
                 if model.accounts.contains(where: \.isArchived) {
@@ -97,6 +105,7 @@ extension AccountsView {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         if path.isEmpty, args.contains("-payments") { path.append(PaymentsRoute()); return }
+        if path.isEmpty, args.contains("-forecast") { path.append(ForecastRoute()); return }
         if path.isEmpty, let i = args.firstIndex(of: "-debt"), i + 1 < args.count,
            let d = model.debts.first(where: { $0.id == args[i + 1] }) {
             path.append(d)
