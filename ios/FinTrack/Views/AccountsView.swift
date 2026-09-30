@@ -27,6 +27,14 @@ struct AccountsView: View {
                     NetWorthBreakdown()
                 }
 
+                if model.accounts.contains(where: { $0.type == .credit_card && !$0.isArchived }) || model.debts.contains(where: { $0.owe && !$0.isSettled }) {
+                    Section {
+                        NavigationLink(value: PaymentsRoute()) {
+                            PaymentsLinkRow()
+                        }
+                    }
+                }
+
                 ForEach(groups, id: \.type) { g in
                     Section(g.type.label) {
                         ForEach(g.items) { a in
@@ -68,6 +76,7 @@ struct AccountsView: View {
             .navigationDestination(for: Account.self) { AccountDetailView(account: $0) }
             .navigationDestination(for: Debt.self) { DebtDetailView(debt: $0) }
             .navigationDestination(for: CardStatementsRoute.self) { CardStatementsView(accountId: $0.accountId) }
+            .navigationDestination(for: PaymentsRoute.self) { _ in PaymentsView() }
             .onAppear(perform: openDebugAccount)
             .toolbar {
                 if model.accounts.contains(where: \.isArchived) {
@@ -87,6 +96,7 @@ extension AccountsView {
     fileprivate func openDebugAccount() {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
+        if path.isEmpty, args.contains("-payments") { path.append(PaymentsRoute()); return }
         if path.isEmpty, let i = args.firstIndex(of: "-debt"), i + 1 < args.count,
            let d = model.debts.first(where: { $0.id == args[i + 1] }) {
             path.append(d)
@@ -227,5 +237,25 @@ struct AccountDetailView: View {
             .refreshable { await model.refresh() }
             .sheet(item: $editing) { TransactionFormView(editing: $0) }
             .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
+    }
+}
+
+/// Hesaplar ekranında Ödeme Takibi girişi: bu ayın kalanı ve gecikmiş sayısı.
+struct PaymentsLinkRow: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let board = model.paymentBoard(month: String(DateUtil.today().prefix(7)))
+        let s = PaymentSchedule.summarizeRows(board.monthRows, fx: model.fx)
+        let overdue = s.overdueCount + board.carryRows.count
+        HStack(spacing: 12) {
+            IconBadge(symbol: "calendar.badge.checkmark", color: Theme.planned, size: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Ödeme Takibi")
+                Text(overdue > 0 ? "\(overdue) gecikmiş ödeme" : "Bu ay kalan \(Fmt.currency(s.remainingTry))")
+                    .font(.caption)
+                    .foregroundStyle(overdue > 0 ? Theme.expense : .secondary)
+            }
+        }
     }
 }

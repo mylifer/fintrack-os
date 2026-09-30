@@ -707,6 +707,24 @@ public final class AppModel {
         return out.sorted { $0.date != $1.date ? $0.date < $1.date : $0.title < $1.title }
     }
 
+    // MARK: Ödeme Takibi
+
+    /// Seçilen ayın ödeme satırları (web PaymentBoard liste görünümü): o ayın
+    /// satırları + önceki aylardan gecikmişler. Kartlar ve 'borçluyum' borçlar.
+    public func paymentBoard(month: String) -> (targets: [PaymentTarget], monthRows: [PaymentRow], carryRows: [PaymentRow]) {
+        let targets = PaymentSchedule.buildTargets(accounts: accounts, debts: debts, plans: paymentPlans, balances: balances)
+        // Kalanı 0 ve aylık tutarı olmayan borç: ödenecek bir şey yok (web bunu
+        // sürekli "gecikmiş" gösteriyor — iOS'ta gizlenir)
+        let shown = targets.filter { $0.isActive && !($0.kind == .debt && $0.outstanding == 0 && $0.defaultAmount == nil) }
+        let earliest = shown.map(\.startMonth).min() ?? month
+        let from = min(month, earliest)
+        let rows = PaymentSchedule.buildSchedule(
+            targets: shown, occurrences: paymentOccurrences, transactions: transactions,
+            from: from, to: month, today: DateUtil.today(),
+            cardPayments: CardPayments.assignCardPayments(accounts: accounts, transactions: transactions), fx: fx)
+        return (targets, rows.filter { $0.month == month }, rows.filter { $0.month < month && $0.timing == .overdue })
+    }
+
     // MARK: Kart ekstresi
 
     /// Kredi kartının açık dönemi ve son `count` ekstresi (web CardStatementPanel).

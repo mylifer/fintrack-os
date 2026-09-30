@@ -189,6 +189,10 @@ enum DemoData {
 
         var snap = Snapshot(workspaces: workspaces, accounts: accounts, categories: categories,
                             budgets: budgets, transactions: transactions, investments: investments, debts: debts)
+        snap.paymentPlans = [PaymentPlan(raw: [
+            "id": .string(DeterministicID.uuid("payplan:card:acc-card")), "targetKind": "card", "targetId": "acc-card",
+            "dayOfMonth": 30, "isActive": true, "fromAccountId": "acc-bank", "workspaceId": .string(ws),
+        ])]
         snap.recurring = recurringList
         snap.goals = goals
         return snap
