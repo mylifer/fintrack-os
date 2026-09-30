@@ -166,8 +166,15 @@ struct UpcomingCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Yaklaşanlar").font(.headline)
-                    Spacer()
                     Text("7 gün").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    NavigationLink(value: ForecastRoute()) {
+                        HStack(spacing: 2) {
+                            Text("Tahmin")
+                            Image(systemName: "chevron.right").font(.caption2.bold())
+                        }
+                        .font(.subheadline)
+                    }
                 }
                 ForEach(items.prefix(5)) { item in
                     Button { open(item) } label: { row(item) }

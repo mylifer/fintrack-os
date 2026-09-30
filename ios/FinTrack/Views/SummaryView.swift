@@ -45,6 +45,7 @@ struct SummaryView: View {
             .navigationDestination(for: CategoryReportRoute.self) { _ in CategoryReportView() }
             .navigationDestination(isPresented: $reportPath) { CategoryReportView() }
             .navigationDestination(for: CategoryTxRoute.self) { CategoryTransactionsView(route: $0) }
+            .navigationDestination(for: ForecastRoute.self) { _ in ForecastView() }
             .sheet(isPresented: $settings) { SettingsView() }
             .onAppear {
                 #if DEBUG
