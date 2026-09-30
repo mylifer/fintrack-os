@@ -50,7 +50,8 @@ Debug derlemede `-demo` başlatma argümanı gerçek hesap yerine örnek veri y�
 şey yazılmaz. Xcode'da: Product → Scheme → Edit Scheme → Run → Arguments → `-demo`.
 Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|accounts|investments|budgets`,
 `-plan budgets|goals|recurring|subscriptions`, `-quickadd`, `-search <metin>`,
-`-account <hesap-id> [-statements]`.
+`-account <hesap-id> [-statements] [-reconcile]`, `-debt <id>`, `-payments`, `-forecast`, `-report`,
+`-settings`, `-newrecurring`, `-newbudget`, `-lock -noautounlock`.
 
 ## Web ile aynı veriye yazmanın kuralları (özet)
 
@@ -77,6 +78,8 @@ Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|acc
   işlemi (+ borçta borç satırı) ve ayın `payment_occurrences` kaydı "ödendi" (deterministik
   kimlik, var olan satırın üstüne birleştirilir; tutar/vade dondurulur). Tutar/gün düzenleme ve
   "atla" web'de; `payment_plans` yalnız okunur.
+- Bakiye eşitleme: web `ReconcileBalanceModal` — fark tek satır, `systemKind='reconciliation'`,
+  `#BakiyeEşitleme`; akışlara/bütçelere/ekstreye girmez. Eşitleme satırı silinebilir.
 - Taksitli alışveriş: web `addInstallmentGroup` (kuruş hassas bölme, ilk taksitlere artan,
   aylık tarihler, hepsi onaylı, ortak `installGroupId`). Silme tüm grubu siler; düzenleme web'de.
 

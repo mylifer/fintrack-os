@@ -264,6 +264,11 @@ struct AccountDetailView: View {
                 }
             }
             .sheet(isPresented: $reconciling) { ReconcileSheet(account: account) }
+            .onAppear {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-reconcile") { reconciling = true }
+                #endif
+            }
             .refreshable { await model.refresh() }
             .transactionEditor($editing)
             .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
