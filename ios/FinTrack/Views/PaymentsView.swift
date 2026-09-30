@@ -71,15 +71,16 @@ struct PaymentsView: View {
         let carryOverdue = carry.count
         let carryTry = Money.sum(carry) { model.fx.toBaseTry($0.remaining, $0.target.currency) }
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            AdaptiveStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Bu ay ödenecek").font(.caption).foregroundStyle(.secondary)
                     Text(Fmt.currency(s.totalTry)).font(.title2.bold().monospacedDigit())
+                        .lineLimit(1).minimumScaleFactor(0.6)
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Kalan").font(.caption).foregroundStyle(.secondary)
                     Text(Fmt.currency(s.remainingTry)).font(.headline.monospacedDigit())
+                        .lineLimit(1).minimumScaleFactor(0.6)
                         .foregroundStyle(s.remainingTry > 0 ? Color.primary : Theme.income)
                 }
             }
@@ -131,11 +132,35 @@ struct PaymentsView: View {
 
 struct PaymentRowView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var typeSize
     let row: PaymentRow
     var showMonth = false
     var onPay: () -> Void
 
     var body: some View {
+        if typeSize.isAccessibilitySize {
+            // Büyük yazıda tutar ve "Öde" alta iner (sıkışıp kesilmesin)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(row.target.name)
+                pill
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                if let note = amountNote { Text(note).font(.caption2).foregroundStyle(.secondary) }
+                HStack {
+                    Text(amountText).font(.subheadline.monospacedDigit().weight(.semibold))
+                    Spacer()
+                    if row.isActionable {
+                        Button("Öde", action: onPay)
+                            .buttonStyle(.borderedProminent).tint(Theme.accent).foregroundStyle(Theme.onAccent)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        } else {
+            compactBody
+        }
+    }
+
+    private var compactBody: some View {
         HStack(alignment: .top, spacing: 12) {
             IconBadge(symbol: row.target.kind == .card ? "creditcard" : "building.columns",
                       color: Color(hex: row.target.color), size: 36)
