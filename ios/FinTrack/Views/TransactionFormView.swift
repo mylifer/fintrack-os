@@ -124,6 +124,17 @@ struct TransactionFormView: View {
                                     Stepper(value: $installmentCount, in: Installments.countRange) {
                                         LabeledContent("Taksit sayısı", value: "\(installmentCount)")
                                     }
+                                    HStack(spacing: 8) {
+                                        ForEach([3, 6, 9, 12, 18, 24], id: \.self) { n in
+                                            Button("\(n)") { installmentCount = n }
+                                                .font(.subheadline.monospacedDigit().weight(installmentCount == n ? .bold : .regular))
+                                                .frame(maxWidth: .infinity, minHeight: 30)
+                                                .background(installmentCount == n ? Theme.accent.opacity(0.25) : Color(.tertiarySystemFill),
+                                                            in: Capsule())
+                                                .buttonStyle(.plain)
+                                                .accessibilityLabel("\(n) taksit")
+                                        }
+                                    }
                                     Text(installmentSummary)
                                         .font(.footnote).foregroundStyle(.secondary)
                                 }
