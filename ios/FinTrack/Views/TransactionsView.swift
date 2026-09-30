@@ -180,31 +180,28 @@ struct TransactionList: View {
     /// Listenin üstünde ayrı bölüm (ör. arama/süzgeç toplamı)
     var header: AnyView? = nil
 
-    /// Gelecek/onay bekleyen satırlar en üstte ayrı bölümde.
-    private var sections: [(title: String, items: [Transaction])] {
+    /// Gelecek/onay bekleyen satırlar en üstte ayrı bölümde. Kimlik gün anahtarı
+    /// ("yyyy-MM-dd"): sırasız girdide aynı gün iki kez gelse de bölümler birleşir.
+    private var sections: [(id: String, title: String, items: [Transaction])] {
         let today = DateUtil.today()
         let upcoming = transactions.filter { !Calc.isPosted($0, asOf: today) }
-        var out: [(String, [Transaction])] = []
-        if !upcoming.isEmpty { out.append(("Planlı ve onay bekleyen", upcoming.reversed())) }
-        var current: String?
-        var bucket: [Transaction] = []
+        var out: [(String, String, [Transaction])] = []
+        if !upcoming.isEmpty { out.append(("upcoming", "Planlı ve onay bekleyen", upcoming.reversed())) }
+        var order: [String] = []
+        var byDay: [String: [Transaction]] = [:]
         for t in transactions where Calc.isPosted(t, asOf: today) {
             let d = String(t.date.prefix(10))
-            if d != current {
-                if let c = current { out.append((DateUtil.sectionTitle(c, today: today), bucket)) }
-                current = d
-                bucket = []
-            }
-            bucket.append(t)
+            if byDay[d] == nil { order.append(d) }
+            byDay[d, default: []].append(t)
         }
-        if let c = current { out.append((DateUtil.sectionTitle(c, today: today), bucket)) }
+        for d in order.sorted(by: >) { out.append((d, DateUtil.sectionTitle(d, today: today), byDay[d] ?? [])) }
         return out
     }
 
     var body: some View {
         List {
             if let header { Section { header } }
-            ForEach(sections, id: \.title) { section in
+            ForEach(sections, id: \.id) { section in
                 Section(section.title) {
                     ForEach(section.items) { t in
                         Button { editing = t } label: {

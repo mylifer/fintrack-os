@@ -177,7 +177,7 @@ public enum Calc {
                     amountTry = Money.toMajor(tm - acc)
                 } else {
                     let part = totalMinor == 0 ? 0
-                        : Int(Money.jsRound(Double(tm) * Double(Money.toMinor(s.amount)) / Double(totalMinor)))
+                        : Money.safeInt(Money.jsRound(Double(tm) * Double(Money.toMinor(s.amount)) / Double(totalMinor)))
                     acc += part
                     amountTry = Money.toMajor(part)
                 }

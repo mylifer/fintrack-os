@@ -118,7 +118,7 @@ struct CategoryReportView: View {
                 Spacer(minLength: 6)
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(Fmt.currency(node.amount)).font(.subheadline.monospacedDigit().weight(.semibold))
-                    Text("%\(Int((share * 100).rounded()))").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                    Text("%\((share * 100).rounded().safeInt)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                 }
             }
             ProgressView(value: share).tint(color)
@@ -141,7 +141,7 @@ struct CategoryReportView: View {
                 let good = type == .expense ? !up : up
                 HStack(spacing: 3) {
                     Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
-                    Text("%\(Int(abs(pct).rounded()))")
+                    Text("%\(abs(pct).rounded().safeInt)")
                     if let suffix { Text(suffix).foregroundStyle(.secondary) }
                 }
                 .font(.caption.monospacedDigit())

@@ -453,3 +453,15 @@ struct AmountFieldRoundTripTests {
         #expect(Fmt.parseAmount("1.234,5") == 1234.5)
     }
 }
+
+@Suite("bozuk değerlere dayanıklılık")
+struct RobustnessTests {
+    @Test func sonluOlmayanlarCokertmez() {
+        #expect(Money.toMinor(.nan) == 0)
+        #expect(Money.toMinor(.infinity) == 0)
+        #expect(Money.toMinor(1e20) == 900_000_000_000_000_0)
+        #expect(Money.mul(100, .infinity) == 0)
+        #expect(JSONValue.string("NaN").double == nil)
+        #expect(JSONValue.number(.infinity).double == nil)
+    }
+}

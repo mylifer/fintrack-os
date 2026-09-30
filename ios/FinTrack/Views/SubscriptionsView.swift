@@ -79,7 +79,7 @@ struct SubscriptionsContent: View {
         let extra = rises.reduce(0.0) { acc, g in
             acc + model.fx.toBaseTry(g.priceChange!.to - g.priceChange!.from, g.currency)
         }
-        let names = rises.map { "\($0.name) +%\(Int($0.priceChange!.pct.rounded()))" }.joined(separator: ", ")
+        let names = rises.map { "\($0.name) +%\($0.priceChange!.pct.rounded().safeInt)" }.joined(separator: ", ")
         return AnyView(
             Label {
                 VStack(alignment: .leading, spacing: 2) {
@@ -158,7 +158,7 @@ struct SubscriptionRow: View {
                 HStack(spacing: 6) {
                     Text(group.name).lineLimit(1)
                     if let p = group.priceChange {
-                        Text("Zam +%\(Int(p.pct.rounded()))")
+                        Text("Zam +%\(p.pct.rounded().safeInt)")
                             .font(.caption2.bold())
                             .padding(.horizontal, 6).padding(.vertical, 1)
                             .foregroundStyle(Theme.warning)

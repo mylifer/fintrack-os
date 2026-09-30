@@ -39,8 +39,8 @@ public enum JSONValue: Codable, Hashable, Sendable {
     public var string: String? { if case .string(let s) = self { return s }; return nil }
     public var double: Double? {
         switch self {
-        case .number(let n): return n
-        case .string(let s): return Double(s)   // savunma: numeric metin dönerse
+        case .number(let n): return n.isFinite ? n : nil
+        case .string(let s): return Double(s).flatMap { $0.isFinite ? $0 : nil }   // savunma: numeric metin dönerse ("NaN" kabul edilmez)
         default: return nil
         }
     }
@@ -61,7 +61,7 @@ extension JSONValue {
 extension Dictionary where Key == String, Value == JSONValue {
     func str(_ k: String) -> String? { self[k]?.string }
     func num(_ k: String) -> Double? { self[k]?.double }
-    func int(_ k: String) -> Int? { self[k]?.double.map { Int($0) } }
+    func int(_ k: String) -> Int? { self[k]?.double.map(\.safeInt) }
     func flag(_ k: String) -> Bool? { self[k]?.bool }
 }
 

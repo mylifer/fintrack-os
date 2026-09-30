@@ -109,14 +109,16 @@ public enum PricesService {
         async let prevR = firstRates([isoDate(1), isoDate(2), isoDate(3)])
         async let goldR = goldUsd()
         async let trR = turkishGold()
-        guard let cur = await curR, let tryR = cur["try"], let eur = cur["eur"], let gbp = cur["gbp"] else { return nil }
+        guard let cur = await curR, let tryR = cur["try"], let eur = cur["eur"], let gbp = cur["gbp"],
+              [tryR, eur, gbp].allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }   // bozuk kur: eskiler kalır
         let prev = await prevR, gold = await goldR, tr = await trR
 
         var b = PriceBook()
         b.usdTry = tryR
         b.eurTry = tryR / eur
         b.gbpTry = tryR / gbp
-        if let p = prev, let pt = p["try"], let pe = p["eur"], let pg = p["gbp"] {
+        if let p = prev, let pt = p["try"], let pe = p["eur"], let pg = p["gbp"],
+           [pt, pe, pg].allSatisfy({ $0.isFinite && $0 > 0 }) {
             b.prevUsdTry = pt; b.prevEurTry = pt / pe; b.prevGbpTry = pt / pg
         }
         func gram(_ oz: Double, _ usdTry: Double) -> Double { oz / 31.1035 * usdTry }

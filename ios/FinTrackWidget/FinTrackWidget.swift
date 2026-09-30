@@ -57,7 +57,7 @@ private func statusColor(_ status: String) -> Color {
 
 private extension WidgetSnapshot {
     var budgetRatio: Double { budgetLimit > 0 ? min(1, budgetSpent / budgetLimit) : 0 }
-    var budgetPercent: Int { budgetLimit > 0 ? Int((budgetSpent / budgetLimit * 100).rounded()) : 0 }
+    var budgetPercent: Int { budgetLimit > 0 ? (budgetSpent / budgetLimit * 100).rounded().safeInt : 0 }
     var budgetColor: Color {
         let p = budgetLimit > 0 ? budgetSpent / budgetLimit * 100 : 0
         return p >= 100 ? expenseRed : p >= 80 ? warn : accent
@@ -203,7 +203,7 @@ struct MediumView: View {
                                 Circle().fill(hex(b.colorHex)).frame(width: 6, height: 6)
                                 Text(b.name).font(.caption2).lineLimit(1)
                                 Spacer(minLength: 2)
-                                Text("%\(Int(b.percent.rounded()))")
+                                Text("%\(b.percent.rounded().safeInt)")
                                     .font(.caption2.bold().monospacedDigit())
                                     .foregroundStyle(b.status == "ok" ? Color.secondary : statusColor(b.status))
                             }
@@ -260,7 +260,7 @@ struct LargeView: View {
                             Text("\(money(b.spent, s)) / \(money(b.limit, s))")
                                 .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                                 .privacySensitive()
-                            Text("%\(Int(b.percent.rounded()))")
+                            Text("%\(b.percent.rounded().safeInt)")
                                 .font(.caption2.bold().monospacedDigit())
                                 .foregroundStyle(b.status == "ok" ? Color.secondary : statusColor(b.status))
                         }

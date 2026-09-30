@@ -81,7 +81,7 @@ struct BudgetProgressRow: View {
                 }
                 Text(info.label).font(compact ? .subheadline : .body).lineLimit(1)
                 Spacer()
-                Text("%\(Int(state.percentUsed.rounded()))")
+                Text("%\(state.percentUsed.rounded().safeInt)")
                     .font(.caption.bold().monospacedDigit())
                     .foregroundStyle(state.status == .ok ? Color.secondary : color)
             }

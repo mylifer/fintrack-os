@@ -157,7 +157,7 @@ public struct PaymentPlan: SyncRecord, Hashable {
         targetId = raw.str("targetId") ?? ""
         amount = raw.num("amount")
         fromAccountId = raw.str("fromAccountId")
-        dayOfMonth = raw.num("dayOfMonth").map { Int($0.rounded()) }
+        dayOfMonth = raw.num("dayOfMonth").map { $0.rounded().safeInt }
         startMonth = raw.str("startMonth")
         isActive = raw.flag("isActive") ?? true
         notes = raw.str("notes")

@@ -71,7 +71,7 @@ struct DebtDetailView: View {
                     Text(Fmt.currency(d.remaining)).font(.system(size: 30, weight: .bold).monospacedDigit())
                         .contentTransition(.numericText())
                     ProgressView(value: d.progress, total: 100).tint(d.owe ? Theme.accent : Theme.income)
-                    Text("\(Fmt.currency(d.paidAmount)) / \(Fmt.currency(d.totalAmount)) ödendi · %\(Int(d.progress.rounded()))")
+                    Text("\(Fmt.currency(d.paidAmount)) / \(Fmt.currency(d.totalAmount)) ödendi · %\(d.progress.rounded().safeInt)")
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)

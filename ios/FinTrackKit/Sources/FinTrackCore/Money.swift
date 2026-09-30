@@ -8,8 +8,16 @@ public enum Money {
     /// negatifte sıfırdan uzağa yuvarlar, -0.5 → -1; JS'te -0).
     static func jsRound(_ x: Double) -> Double { (x + 0.5).rounded(.down) }
 
+    /// Sonlu olmayan (NaN/∞ — bozuk kur ya da hücre) değer 0; aşırı büyükler
+    /// sınırlanır: Int dönüşümü uygulamayı çökertmesin.
     public static func toMinor(_ amount: Double) -> Int {
-        Int(jsRound((amount + Double.ulpOfOne) * 100))
+        safeInt(jsRound((amount + Double.ulpOfOne) * 100))
+    }
+
+    /// Kuruş tam sayısına güvenli dönüşüm (NaN/∞ → 0, ±9e15 sınırı)
+    static func safeInt(_ v: Double) -> Int {
+        guard v.isFinite else { return 0 }
+        return Int(max(min(v, 9e15), -9e15))
     }
 
     public static func toMajor(_ minor: Int) -> Double { Double(minor) / 100 }
@@ -29,14 +37,20 @@ public enum Money {
 
     /// Tutarı birimsiz bir çarpanla (kur, %) çarpar, kuruşa yuvarlar.
     public static func mul(_ amount: Double, _ factor: Double) -> Double {
-        toMajor(Int(jsRound(Double(toMinor(amount)) * factor)))
+        toMajor(safeInt(jsRound(Double(toMinor(amount)) * factor)))
     }
 
     /// Toplamı `count` parçaya böler; kuruş kalanı ilk parçalara gider.
     public static func split(_ total: Double, _ count: Int) -> [Double] {
         let totalMinor = toMinor(total)
-        let per = Int((Double(totalMinor) / Double(count)).rounded(.down))
+        guard count > 0 else { return [] }
+        let per = safeInt((Double(totalMinor) / Double(count)).rounded(.down))
         let remainder = totalMinor - per * count
         return (0..<count).map { toMajor(per + ($0 < remainder ? 1 : 0)) }
     }
+}
+
+extension Double {
+    /// Veriden gelen sayıyı Int'e güvenle çevir (NaN/∞ → 0, aşırılar sınırlı)
+    public var safeInt: Int { Money.safeInt(self) }
 }

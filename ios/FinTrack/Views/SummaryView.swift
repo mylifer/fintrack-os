@@ -101,7 +101,7 @@ struct SummaryView: View {
             HStack(spacing: 4) {
                 Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
                     .font(.caption.bold())
-                Text("%\(Int(abs(pct).rounded()))")
+                Text("%\(abs(pct).rounded().safeInt)")
                     .font(.caption.bold().monospacedDigit())
                 Text("geçen ayın aynı dönemine göre")
                     .font(.caption)
@@ -109,7 +109,7 @@ struct SummaryView: View {
             }
             .foregroundStyle(up ? Theme.expense : Theme.income)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Geçen ayın aynı dönemine göre yüzde \(Int(abs(pct).rounded())) \(up ? "fazla" : "az") harcama")
+            .accessibilityLabel("Geçen ayın aynı dönemine göre yüzde \(abs(pct).rounded().safeInt) \(up ? "fazla" : "az") harcama")
         }
     }
 
@@ -152,7 +152,9 @@ struct SummaryView: View {
         var byTop: [String: Double] = [:]
         for (catId, amount) in byCategory {
             var c = model.category(catId)
-            while let p = c?.parentId, let parent = model.category(p) { c = parent }
+            // Üst kategoriye çık; web'de iki cihazdan çelişkili taşıma döngü yaratabilir
+            var seen: Set<String> = []
+            while let cur = c, seen.insert(cur.id).inserted, let p = cur.parentId, let parent = model.category(p) { c = parent }
             byTop[c?.id ?? "", default: 0] = Money.add(byTop[c?.id ?? "", default: 0], amount)
         }
         let sorted = byTop.filter { $0.value > 0 }.sorted { $0.value > $1.value }

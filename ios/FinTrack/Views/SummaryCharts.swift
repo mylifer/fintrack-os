@@ -46,7 +46,7 @@ struct CategoryDonut: View {
 
     private func share(_ v: Double) -> String {
         guard total > 0 else { return "" }
-        return "%\(Int((v / total * 100).rounded()))"
+        return "%\((v / total * 100).rounded().safeInt)"
     }
 }
 

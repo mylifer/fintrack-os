@@ -122,10 +122,10 @@ public struct Account: SyncRecord, Hashable {
         isArchived = raw.flag("isArchived") ?? false
         createdAt = raw.str("createdAt") ?? ""
         creditLimit = raw.num("creditLimit")
-        statementDay = raw.num("statementDay").map { Int($0.rounded()) }
+        statementDay = raw.num("statementDay").map { $0.rounded().safeInt }
         dueDay = raw.int("dueDay")
         minPayPct = raw.num("minPayPct")
-        dueGapDays = raw.num("dueGapDays").map { Int($0.rounded()) }
+        dueGapDays = raw.num("dueGapDays").map { $0.rounded().safeInt }
         holidayRule = raw.str("holidayRule")
     }
 
@@ -225,7 +225,7 @@ public struct BudgetDraft: Equatable, Sendable {
     public init(editing b: Budget) {
         categoryIds = Calc.budgetCategoryIds(b)
         amountText = Fmt.amountInput(b.amount)
-        alertThreshold = Int(b.alertThreshold)
+        alertThreshold = b.alertThreshold.safeInt
         rollover = b.rollover
     }
 
