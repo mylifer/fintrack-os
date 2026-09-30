@@ -8,6 +8,7 @@ struct SummaryView: View {
     @Binding var quickAdd: Bool
     var openTab: (MainTabView.Tab) -> Void
     @State private var settings = false
+    @State private var reportPath = false
     @State private var editing: Transaction?
 
     private var month: MonthYear { .current() }
@@ -20,7 +21,9 @@ struct SummaryView: View {
                 VStack(spacing: 16) {
                     SyncErrorBanner()
                     PendingCard(editing: $editing, openRecurring: { router.openPlan(.recurring) })
-                    monthCard
+                    NavigationLink(value: CategoryReportRoute()) { monthCard }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Kategori raporunu açar")
                     UpcomingCard(editing: $editing)
                     if hasHistory { trendCard }
                     netWorthCard
@@ -39,10 +42,14 @@ struct SummaryView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) { AddButton(isPresented: $quickAdd) }
             }
+            .navigationDestination(for: CategoryReportRoute.self) { _ in CategoryReportView() }
+            .navigationDestination(isPresented: $reportPath) { CategoryReportView() }
+            .navigationDestination(for: CategoryTxRoute.self) { CategoryTransactionsView(route: $0) }
             .sheet(isPresented: $settings) { SettingsView() }
             .onAppear {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-settings") { settings = true }
+                if ProcessInfo.processInfo.arguments.contains("-report") { reportPath = true }
                 #endif
             }
             .sheet(item: $editing) { TransactionFormView(editing: $0) }
@@ -57,9 +64,13 @@ struct SummaryView: View {
 
     private var monthCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("\(DateUtil.monthTitle(month)) harcaması")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("\(DateUtil.monthTitle(month)) harcaması")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary)
+            }
             Text(Fmt.currency(flow.expense))
                 .font(.system(size: 34, weight: .bold).monospacedDigit())
                 .minimumScaleFactor(0.6)

@@ -37,3 +37,19 @@ struct SeriesTests {
         #expect(Calc.monthToDateExpense(list, fx: fx, today: "2026-03-31").previous == 10)
     }
 }
+
+@Suite("kategoriye göre toplam")
+struct AmountByCategoryTests {
+    @Test func gelirVeGider() {
+        let txs = [
+            tx(["type": "expense", "amount": 100, "amountTry": 100, "categoryId": "m"]),
+            tx(["type": "expense", "amount": 50, "amountTry": 50, "categoryId": "m"]),
+            tx(["type": "income", "amount": 1000, "amountTry": 1000, "categoryId": "s"]),
+            tx(["type": "income", "amount": 7, "amountTry": 7]),
+            tx(["type": "expense", "amount": 999, "amountTry": 999, "categoryId": "m", "icon": "📈"]),   // yatırım bağlı
+        ]
+        #expect(Calc.amountByCategory(txs, type: .expense, fx: fx) == ["m": 150])
+        #expect(Calc.amountByCategory(txs, type: .income, fx: fx) == ["s": 1000, "": 7])
+        #expect(Calc.expenseByCategory(txs, fx: fx) == ["m": 150])
+    }
+}

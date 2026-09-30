@@ -284,8 +284,14 @@ public enum Calc {
     /// Giderleri kategoriye göre TRY toplar (yatırım bağlı ve mutabakat hariç,
     /// kategori payları açılarak) — web sumExpenseByKey kuralı.
     public static func expenseByCategory(_ txs: [Transaction], fx: FX) -> [String: Double] {
+        amountByCategory(txs, type: .expense, fx: fx)
+    }
+
+    /// Gelir ya da gideri kategoriye göre TRY toplar (yatırım bağlı ve mutabakat
+    /// hariç, kategori payları açılarak). Kategorisiz = "".
+    public static func amountByCategory(_ txs: [Transaction], type: TransactionType, fx: FX) -> [String: Double] {
         var minor: [String: Int] = [:]
-        for t in txs where t.type == .expense && t.icon == nil && !isReconciliation(t) {
+        for t in txs where t.type == type && t.icon == nil && !isReconciliation(t) {
             for s in categorySlices(t) {
                 minor[s.categoryId ?? "", default: 0] += Money.toMinor(s.amountTry ?? fx.toBaseTry(s.amount, t.currency))
             }
