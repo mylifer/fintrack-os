@@ -65,7 +65,9 @@ final class AppLock {
     }
 
     func unlock() async {
-        guard isLocked, !isAuthenticating else { return }
+        // Arka plandayken Face ID istenemez (başarısız olur, "açılamadı" kalırdı);
+        // öne dönüşte willBecomeActive sonrası yeniden denenir
+        guard isLocked, !isAuthenticating, UIApplication.shared.applicationState != .background else { return }
         guard isEnabled else { isLocked = false; return }
         isAuthenticating = true
         defer { isAuthenticating = false }

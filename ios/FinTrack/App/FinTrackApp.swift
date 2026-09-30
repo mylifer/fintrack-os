@@ -33,6 +33,7 @@ struct FinTrackApp: App {
                 Reminders.schedule(model)
             case .active:
                 lock.willBecomeActive()
+                if lock.isLocked { Task { await lock.unlock() } }
                 model.refreshDerivedIfStale()
                 // Başka cihazdaki değişiklikler — açılışta tazele
                 if model.userId != nil { Task { await model.refresh() } }
