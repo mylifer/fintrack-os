@@ -446,6 +446,15 @@ public final class AppModel {
         try await write(record, in: \.transactions)
     }
 
+    /// Bakiye eşitleme (web ReconcileBalanceModal): gerçek bakiyeyle fark tek satır.
+    public func reconcile(_ account: Account, actual input: Double) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let balance = balances[account.id] ?? account.initialBalance
+        let t = try Reconcile.make(account: account, input: input, balance: balance, fx: fx,
+                                   workspaceId: account.workspaceId ?? activeWorkspaceId, now: Self.nowISO())
+        try await write(t, in: \.transactions)
+    }
+
     /// Taksitli alışveriş: N satır aynı grupta (web addInstallmentGroup).
     public func saveInstallments(_ draft: TransactionDraft, count: Int) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }

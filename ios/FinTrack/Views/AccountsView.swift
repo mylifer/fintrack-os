@@ -207,6 +207,7 @@ struct AccountDetailView: View {
     @State private var errorMessage: String?
 
     @AppStorage("fintrack.showPlanned") private var showPlanned = true
+    @State private var reconciling = false
 
     /// Hesabın işlemleri + tekrarlayanların önümüzdeki 60 gündeki dönemleri (web ile aynı)
     private var txs: [Transaction] {
@@ -252,6 +253,17 @@ struct AccountDetailView: View {
             }
             .navigationTitle(account.name)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { reconciling = true } label: { Label("Bakiyeyi eşitle", systemImage: "equal.circle") }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Hesap işlemleri")
+                }
+            }
+            .sheet(isPresented: $reconciling) { ReconcileSheet(account: account) }
             .refreshable { await model.refresh() }
             .transactionEditor($editing)
             .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)

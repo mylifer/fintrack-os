@@ -33,6 +33,8 @@ struct TransactionFormView: View {
                     Section {
                         Label(editing?.isPlainDebtPayment == true
                               ? "Borç ödemesi: düzenleme web'de. Silerseniz borcun ödenen tutarından da düşülür."
+                              : editing?.isPlainReconciliation == true
+                              ? "Bakiye eşitleme satırı: gelir/gidere girmez, yalnız bakiyeyi düzeltir. Düzenleme web'de; silinebilir."
                               : editing?.isPlainInstallment == true
                               ? "Taksitli işlem (\(editing?.installIndex ?? 1)/\(editing?.installTotal ?? 1)): düzenleme web'de. Silerseniz TÜM taksitler silinir."
                               : "Bu işlem başka kayıtlara bağlı (taksit, borç, yatırım ya da bölünmüş kategori). Düzenlemek ve silmek için web'i kullanın.",

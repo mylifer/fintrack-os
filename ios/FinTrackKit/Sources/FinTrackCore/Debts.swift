@@ -134,7 +134,7 @@ extension Debt {
 extension Transaction {
     /// iOS'ta silinebilir mi: bağsız satır, düz borç ödemesi (borç geri alınır) ya
     /// da taksit satırı (tüm grup silinir).
-    public var canDeleteOnIOS: Bool { !isLinked || isPlainDebtPayment || isPlainInstallment }
+    public var canDeleteOnIOS: Bool { !isLinked || isPlainDebtPayment || isPlainInstallment || isPlainReconciliation }
 
     /// Yalnız borç ödemesi olan (başka bağı olmayan) satır: iOS silebilir, borç geri alınır.
     public var isPlainDebtPayment: Bool {
