@@ -46,7 +46,7 @@ struct BudgetFormView: View {
                             .keyboardType(.decimalPad)
                             .font(.system(size: 32, weight: .bold).monospacedDigit())
                             .onChange(of: draft.amountText) { _, v in
-                                let fixed = v.replacingOccurrences(of: ".", with: ",")
+                                let fixed = Fmt.normalizeTypedAmount(v)
                                 if fixed != v { draft.amountText = fixed }
                             }
                     }

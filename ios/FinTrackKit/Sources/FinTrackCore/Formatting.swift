@@ -55,13 +55,26 @@ public enum Fmt {
         return negative ? -rounded : rounded
     }
 
-    /// Kayıtlı sayıyı düzenleme alanına TR biçiminde yazar ("1.234,56").
+    /// Kayıtlı sayıyı düzenleme alanına yazar: ondalık virgül, BİNLİK AYRAÇ YOK
+    /// ("1234,56"). Ayraçlı "5.000" yazım dönüştürücüden geçince "5,000" = 5
+    /// olarak okunuyordu — düzenlenen tutar bozuluyordu.
     public static func amountInput(_ n: Double) -> String {
         let f = NumberFormatter()
         f.locale = Locale(identifier: "tr_TR")
         f.numberStyle = .decimal
+        f.usesGroupingSeparator = false
         f.maximumFractionDigits = 2
         f.minimumFractionDigits = 0
         return f.string(from: NSNumber(value: n)) ?? ""
+    }
+
+    /// Tutar alanına yazılırken: ondalık ayraç virgül. Harici klavyeden/yapıştırmadan
+    /// gelen tek "." virgüle çevrilir; ama metinde zaten virgül varsa ya da "."
+    /// binlik ayraç biçimindeyse ("1.250.000") dokunulmaz.
+    public static func normalizeTypedAmount(_ v: String) -> String {
+        if v.contains(",") { return v }
+        if v.range(of: #"^\d{1,3}(\.\d{3})+$"#, options: .regularExpression) != nil { return v }
+        let dots = v.filter { $0 == "." }.count
+        return dots == 1 ? v.replacingOccurrences(of: ".", with: ",") : v
     }
 }

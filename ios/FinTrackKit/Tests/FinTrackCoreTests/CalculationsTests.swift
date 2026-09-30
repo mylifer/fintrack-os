@@ -433,3 +433,23 @@ struct PortfolioTests {
         #expect(Asset.label("GOLD_BRACELET") == "Gr Bilezik")
     }
 }
+
+@Suite("tutar alanı gidiş-dönüş")
+struct AmountFieldRoundTripTests {
+    /// Doldur → yazım dönüştürücü → ayrıştır: değer korunmalı (hata: 5.000 → 5)
+    @Test(arguments: [5000.0, 1234.5, 22000, 0.5, 1_250_000.75, 99.99])
+    func korunur(_ n: Double) {
+        let shown = Fmt.normalizeTypedAmount(Fmt.amountInput(n))
+        #expect(Fmt.parseAmount(shown) == n)
+    }
+
+    @Test func yazim() {
+        #expect(Fmt.amountInput(5000) == "5000")
+        #expect(Fmt.amountInput(1234.5) == "1234,5")
+        #expect(Fmt.normalizeTypedAmount("12.5") == "12,5")
+        #expect(Fmt.normalizeTypedAmount("1.250.000") == "1.250.000")
+        #expect(Fmt.parseAmount(Fmt.normalizeTypedAmount("1.250.000")) == 1_250_000)
+        #expect(Fmt.normalizeTypedAmount("1.234,5") == "1.234,5")
+        #expect(Fmt.parseAmount("1.234,5") == 1234.5)
+    }
+}

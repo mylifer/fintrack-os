@@ -189,7 +189,7 @@ struct DebtPaySheet: View {
                             .font(.system(size: 36, weight: .bold).monospacedDigit())
                             .focused($focused)
                             .onChange(of: amountText) { _, v in
-                                let fixed = v.replacingOccurrences(of: ".", with: ",")
+                                let fixed = Fmt.normalizeTypedAmount(v)
                                 if fixed != v { amountText = fixed }
                             }
                     }

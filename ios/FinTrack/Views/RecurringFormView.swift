@@ -36,7 +36,7 @@ struct RecurringFormView: View {
                             .multilineTextAlignment(.trailing)
                             .monospacedDigit()
                             .onChange(of: draft.amountText) { _, v in
-                                let fixed = v.replacingOccurrences(of: ".", with: ",")
+                                let fixed = Fmt.normalizeTypedAmount(v)
                                 if fixed != v { draft.amountText = fixed }
                             }
                         Text(account?.currency.symbol ?? "₺").foregroundStyle(.secondary)

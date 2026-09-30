@@ -59,7 +59,7 @@ struct TransactionFormView: View {
                                 .focused($amountFocused)
                                 .onChange(of: draft.amountText) { _, v in
                                     // Ondalık ayraç virgül (TR); nokta yazılırsa virgüle çevrilir
-                                    let fixed = v.replacingOccurrences(of: ".", with: ",")
+                                    let fixed = Fmt.normalizeTypedAmount(v)
                                     if fixed != v { draft.amountText = fixed }
                                 }
                         }
