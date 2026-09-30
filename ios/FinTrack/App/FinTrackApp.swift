@@ -30,9 +30,10 @@ struct FinTrackApp: App {
             case .background:
                 lock.didEnterBackground()
                 // Yerel değişiklikler (onay, yeni işlem) hatırlatmalara yansısın
-                Task { await Reminders.reschedule(model) }
+                Reminders.schedule(model)
             case .active:
                 lock.willBecomeActive()
+                model.refreshDerivedIfStale()
                 // Başka cihazdaki değişiklikler — açılışta tazele
                 if model.userId != nil { Task { await model.refresh() } }
             default:
@@ -61,7 +62,7 @@ struct RootView: View {
             model.amountsHiddenChanged()
         }
         // Türetim (kart ekstreleri dahil) tamamlanınca: bayat ekstreden hatırlatma kurulmasın
-        .onChange(of: model.derivedStamp) { Task { await Reminders.reschedule(model) } }
+        .onChange(of: model.derivedStamp) { Reminders.schedule(model) }
         .onChange(of: model.userId) { _, id in if id == nil { Task { await Reminders.clear() } } }
     }
 

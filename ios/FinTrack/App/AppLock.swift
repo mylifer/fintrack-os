@@ -173,29 +173,40 @@ final class SecureOverlay {
 
     /// Yalnız mod DEĞİŞİNCE kök görünüm yenilenir: LockView her görünüşte Face ID
     /// istediği için gereksiz yenileme, iptal sonrası istem döngüsüne yol açardı.
+    /// Sahne yeniden bağlandıysa (sistem arka plandaki sahneyi kapatıp açtıysa)
+    /// aynı modda da pencere yeni sahnede yeniden kurulur.
     func update(_ newMode: Mode, lock: AppLock) {
-        guard newMode != mode else { return }
-        mode = newMode
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState != .unattached }
+        let showing = window.map { !$0.isHidden && $0.windowScene != nil && $0.windowScene === scene } ?? false
+        if newMode == mode && (newMode == .none || showing) { return }
+
         guard newMode != .none else {
+            mode = .none
             window?.isHidden = true
             window?.rootViewController = nil
+            // Ana pencere yeniden anahtar olsun (klavye / VoiceOver oraya dönsün)
+            scene?.windows.first { $0 !== window && !$0.isHidden }?.makeKey()
             return
         }
-        guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState != .unattached }) else { return }
-        if window == nil || window?.windowScene != scene {
+        guard let scene else { return }   // mod kaydedilmez: sahne gelince yeniden denenir
+        if window == nil || window?.windowScene !== scene {
             let w = UIWindow(windowScene: scene)
             w.windowLevel = .alert + 1
             w.backgroundColor = .clear
             window = w
         }
+        // Alttaki formda açık klavye kilidin üstünde kalmasın
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         let root: AnyView = newMode == .lock
             ? AnyView(LockView().environment(lock).tint(Theme.tint))
             : AnyView(PrivacyCover())
         let host = UIHostingController(rootView: root)
         host.view.backgroundColor = .systemGroupedBackground
+        host.view.accessibilityViewIsModal = true   // VoiceOver alttaki içeriğe geçmesin
         window?.rootViewController = host
-        window?.isHidden = false
+        window?.makeKeyAndVisible()
+        mode = newMode
     }
 }

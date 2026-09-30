@@ -8,6 +8,8 @@ public struct Derived: Sendable {
     public struct MonthFlow: Sendable { public var month: MonthYear; public var flow: Calc.Flow }
 
     public var month: MonthYear
+    /// Hesaplandığı gün ("gecikmiş", "bugün" gibi değerler güne bağlı)
+    public var day: String
     /// Hangi alan ve bütçe kümesi için hesaplandı (eşleşmezse kullanılmaz)
     var workspaceId: String?
     var budgetsSignature: Int
@@ -67,6 +69,7 @@ public struct Derived: Sendable {
         }
         return Derived(
             month: my,
+            day: DateUtil.today(),
             workspaceId: i.workspaceId,
             budgetsSignature: signature(i.budgets),
             monthFlow: Calc.monthlyFlow(i.reportTransactions, my, fx: i.fx),

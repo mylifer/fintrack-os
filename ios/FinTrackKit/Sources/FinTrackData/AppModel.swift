@@ -48,7 +48,7 @@ public final class AppModel {
     /// Arka planda hesaplanan türetimler (nil: ilk hesap sürüyor → ekranlar anında hesaplar).
     /// Ay dönünce eskisi kullanılmaz.
     public var derived: Derived? {
-        guard let d = derivedStore, d.month == MonthYear.current(), d.workspaceId == activeWorkspaceId else { return nil }
+        guard let d = derivedStore, d.day == DateUtil.today(), d.workspaceId == activeWorkspaceId else { return nil }
         return d
     }
     /// Türetim her tamamlandığında artar (hatırlatmalar güncel ekstreden kurulsun)
@@ -312,6 +312,11 @@ public final class AppModel {
         holdings = Portfolio.holdings(investments, prices: prices)
             .sorted { $0.currentValue > $1.currentValue }
         scheduleDerived()
+    }
+
+    /// Gün döndüyse (uygulama çevrimdışı açıldığında çekiş türetimi tetiklemez)
+    public func refreshDerivedIfStale() {
+        if let d = derivedStore, d.day != DateUtil.today() { scheduleDerived() }
     }
 
     /// Pahalı türetimleri arka planda yeniden hesapla; en son isteğin sonucu kalır.
@@ -721,15 +726,39 @@ public final class AppModel {
                                         balances: [String: Double], fx: FX, month: String)
         -> (targets: [PaymentTarget], monthRows: [PaymentRow], carryRows: [PaymentRow]) {
         let targets = PaymentSchedule.buildTargets(accounts: accounts, debts: debts, plans: plans, balances: balances)
-        // Kalanı 0 ve aylık tutarı olmayan borç: ödenecek bir şey yok (web bunu
-        // sürekli "gecikmiş" gösteriyor — iOS'ta gizlenir)
-        let shown = targets.filter { $0.isActive && !($0.kind == .debt && $0.outstanding == 0 && $0.defaultAmount == nil) }
+        let shown = targets.filter(\.isActive)
         let earliest = shown.map(\.startMonth).min() ?? month
-        let rows = PaymentSchedule.buildSchedule(
+        let allRows = PaymentSchedule.buildSchedule(
             targets: shown, occurrences: occurrences, transactions: transactions,
             from: min(month, earliest), to: month, today: DateUtil.today(),
             cardPayments: CardPayments.assignCardPayments(accounts: accounts, transactions: transactions), fx: fx)
+        // Kalanı 0 ve aylık tutarı olmayan borcun AÇIK ayları: ödenecek bir şey yok
+        // (web bunları sürekli "gecikmiş" gösteriyor). Ödenmiş ayları kalır.
+        let rows = allRows.filter { r in
+            !(r.target.kind == .debt && r.target.outstanding == 0 && r.target.defaultAmount == nil
+              && r.state == .open && r.remaining == 0)
+        }
         return (targets, rows.filter { $0.month == month }, rows.filter { $0.month < month && $0.timing == .overdue })
+    }
+
+    /// Ödeme Takibi "Öde" (web payRow): isteğe bağlı ödeme işlemi (+ borçta borç
+    /// satırı) ve ayın kaydı "ödendi". Borç işlemleriyle aynı sıraya girer.
+    public func payRow(_ row: PaymentRow, input: PaymentActions.PayInput) async throws {
+        try await serializedDebtOp {
+            let from = self.account(input.fromAccountId)
+            let out = try PaymentActions.pay(row: row, input: input, from: from, occurrences: self.all.paymentOccurrences,
+                                             existingTransactionIds: Set(self.all.transactions.filter(\.isLive).map(\.id)),
+                                             fx: self.fx, workspaceId: self.activeWorkspaceId, now: Self.nowISO())
+            if let t = out.transaction { try await self.write(t, in: \.transactions) }
+            if let delta = out.debtDeltaTry, let debt = self.all.debts.first(where: { $0.id == row.target.id }) {
+                await self.writeFollowUp(debt.applyingPayment(delta, installments: 1), in: \.debts)
+            }
+            if out.transaction != nil || !input.createTransaction {
+                await self.writeFollowUp(out.occurrence, in: \.paymentOccurrences)
+            } else {
+                try await self.write(out.occurrence, in: \.paymentOccurrences)
+            }
+        }
     }
 
     // MARK: Kart ekstresi

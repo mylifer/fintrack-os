@@ -42,7 +42,7 @@ struct CardStatementSummary: View {
             if let last = r.statements.first, last.status == .open || last.status == .partial || last.status == .overdue {
                 let due = max(0, Money.sub(last.total, last.paid))
                 Button {
-                    router.payCard(account, amount: due, from: defaultPayer)
+                    router.payCard(account, amount: amountInPayerCurrency(due), from: defaultPayer)
                 } label: {
                     Label("Ekstreyi öde · \(Fmt.currency(due, account.currency))", systemImage: "arrow.right.circle.fill")
                         .font(.subheadline.weight(.semibold))
@@ -52,6 +52,13 @@ struct CardStatementSummary: View {
                 .tint(Theme.tint)
             }
         }
+    }
+
+    /// Transfer tutarı kaynak hesabın para biriminde (web payRow dönüşümü)
+    private func amountInPayerCurrency(_ due: Double) -> Double {
+        guard let from = model.account(defaultPayer), from.currency != account.currency,
+              model.fx.rate(account.currency) != nil, model.fx.rate(from.currency) != nil else { return due }
+        return Money.round(model.fx.fromBaseTry(model.fx.toBaseTry(due, account.currency), from.currency))
     }
 
     /// Ödeme hesabı: son kullanılan, yoksa ilk TL vadesiz/nakit (kart dışı)

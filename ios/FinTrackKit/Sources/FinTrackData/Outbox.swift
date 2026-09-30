@@ -96,6 +96,8 @@ extension Snapshot {
         case Account.table: put(\.accounts)
         case Budget.table: put(\.budgets)
         case Debt.table: put(\.debts)
+        case PaymentOccurrence.table: put(\.paymentOccurrences)
+        case PaymentPlan.table: put(\.paymentPlans)
         default: break
         }
     }

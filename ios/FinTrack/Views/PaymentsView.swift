@@ -3,14 +3,13 @@ import FinTrackCore
 import FinTrackData
 
 /// Ödeme Takibi (web /payments liste görünümü): kart ekstreleri ve kredi
-/// taksitleri ay ay. "Öde" gerçek ödeme işlemini açar; web'deki gibi işlem
-/// vade penceresinde otomatik tanınır ve satır "ödendi" olur. Tutar/gün
-/// düzenleme ve "atla" web'de (Ayarlar → Web).
+/// taksitleri ay ay. "Öde" web payRow: ödeme işlemi + ayın kaydı "ödendi".
+/// Tutar/gün düzenleme ve "atla" web'de (Ayarlar → Web).
 struct PaymentsView: View {
     @Environment(AppModel.self) private var model
     @Environment(Router.self) private var router
     @State private var month = String(DateUtil.today().prefix(7))
-    @State private var payingDebt: Debt?
+    @State private var paying: PaymentRow?
 
     var body: some View {
         let board = model.paymentBoard(month: month)
@@ -47,7 +46,7 @@ struct PaymentsView: View {
         .refreshable { await model.refresh() }
         .navigationTitle("Ödeme Takibi")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $payingDebt) { DebtPaySheet(debt: $0) }
+        .sheet(item: $paying) { PayRowSheet(row: $0) }
     }
 
     private var monthSwitcher: some View {
@@ -120,22 +119,14 @@ struct PaymentsView: View {
                     Spacer()
                     let sum = done ? Money.sum(rows) { model.fx.toBaseTry($0.paidAmount, $0.target.currency) }
                                    : Money.sum(rows) { model.fx.toBaseTry($0.remaining, $0.target.currency) }
-                    Text("\(rows.count) · \(Fmt.whole(sum))\(done ? " ödendi" : "")").monospacedDigit()
+                    Text(sum > 0 ? "\(rows.count) · \(Fmt.whole(sum))\(done ? " ödendi" : "")" : "\(rows.count) ödeme")
+                        .monospacedDigit()
                 }
             }
         }
     }
 
-    private func pay(_ r: PaymentRow) {
-        switch r.target.kind {
-        case .card:
-            guard let card = r.target.account else { return }
-            let amount = r.remaining > 0 ? r.remaining : (r.amount ?? 0)
-            router.payCard(card, amount: amount, from: r.fromAccountId)
-        case .debt:
-            payingDebt = r.target.debt
-        }
-    }
+    private func pay(_ r: PaymentRow) { paying = r }
 }
 
 struct PaymentRowView: View {
@@ -216,6 +207,8 @@ struct PaymentRowView: View {
             return "\(Fmt.currency(row.paidAmount, cur)) ödendi · kalan \(Fmt.currency(row.remaining, cur))"
         case .paid where row.amount != nil && row.paidAmount != row.amount:
             return "\(Fmt.currency(row.paidAmount, cur)) ödendi"
+        case .paid, .skipped, .clear:
+            return nil
         default:
             if row.amountSource == .custom { return "bu aya özel" }
             if row.amountSource == .derived { return "aylık taksit" }
@@ -230,9 +223,9 @@ struct PaymentRowView: View {
             let oto = row.paidVia == .detected ? " · oto" : ""
             switch row.state {
             case .paid: return ("Ödendi" + oto, Theme.income)
-            case .partial: return (row.timing == .overdue ? "Kısmi · gecikti" : "Kısmi" + oto, Theme.warning)
+            case .partial: return ((row.timing == .overdue ? "Kısmi · gecikti" : "Kısmi") + oto, Theme.warning)
             case .skipped: return ("Atlandı", .secondary)
-            case .clear: return ("Borç yok", Theme.income)
+            case .clear: return ("Borç yok", .secondary)
             case .open:
                 switch row.timing {
                 case .overdue: return ("Gecikti", Theme.expense)

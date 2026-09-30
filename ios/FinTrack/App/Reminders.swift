@@ -34,6 +34,15 @@ enum Reminders {
         center.removePendingNotificationRequests(withIdentifiers: ids)
     }
 
+    private static var running: Task<Void, Never>?
+
+    /// Yeniden planla — öncekini iptal ederek (üst üste çalışan iki tur eski
+    /// listeden hatırlatma eklemesin).
+    static func schedule(_ model: AppModel) {
+        running?.cancel()
+        running = Task { await reschedule(model) }
+    }
+
     /// Bekleyen FinTrack hatırlatmalarını silip yeniden kur.
     static func reschedule(_ model: AppModel) async {
         guard isEnabled, model.userId != nil else { await clear(); return }
@@ -57,6 +66,7 @@ enum Reminders {
                 let comps = DateUtil.calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fire)
                 let req = UNNotificationRequest(identifier: "\(prefix)\(u.id).\(offset)", content: content,
                                                 trigger: UNCalendarNotificationTrigger(dateMatching: comps, repeats: false))
+                if Task.isCancelled { return }
                 try? await center.add(req)
                 count += 1
             }
