@@ -231,7 +231,8 @@ struct TransactionFormView: View {
             // Daha önce aynı açıklamayla girilmiş işlemin kategorisi (kullanıcı
             // kategoriyi kendisi seçmediyse)
             guard editing == nil, !categoryTouched, draft.type != .transfer,
-                  let c = Suggestions.exactCategory(d, type: draft.type, in: model.transactions),
+                  let c = model.derived?.suggestionIndex.exactCategory(d, type: draft.type)
+                      ?? Suggestions.exactCategory(d, type: draft.type, in: model.transactions),
                   model.category(c).map({ !$0.isArchived }) ?? false
             else { return }
             draft.categoryId = c
@@ -287,6 +288,7 @@ struct TransactionFormView: View {
 
     private var suggestions: [Suggestions.Item] {
         guard editing == nil, descriptionFocused else { return [] }
+        if let idx = model.derived?.suggestionIndex { return idx.matching(draft.description) }
         return Suggestions.matching(draft.description, in: model.transactions)
     }
 

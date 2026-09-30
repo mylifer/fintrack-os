@@ -21,6 +21,53 @@ public enum Suggestions {
             .lowercased(with: tr)
     }
 
+    /// Tekil açıklamaların dizini — 20 bin işlemde her tuşta tüm açıklamaları
+    /// yeniden normalleştirmemek için veri değişince bir kez kurulur.
+    public struct Index: Sendable {
+        struct Entry: Sendable { var key: String; var item: Item; var order: Int }
+        var entries: [Entry] = []
+        /// "<tür>|<anahtar>" → en yeni kategorili satırın kategorisi
+        var exact: [String: String] = [:]
+
+        public init() {}
+
+        public init(_ txs: [Transaction]) {
+            var byKey: [String: Int] = [:]
+            for t in txs where t.type != .transfer && !t.isLinked && !t.description.isEmpty {
+                let k = Suggestions.key(t.description)
+                if let c = t.categoryId, exact["\(t.type.rawValue)|\(k)"] == nil { exact["\(t.type.rawValue)|\(k)"] = c }
+                if let i = byKey[k] {
+                    entries[i].item.count += 1
+                } else {
+                    byKey[k] = entries.count
+                    entries.append(Entry(key: k, item: Item(
+                        description: t.description.trimmingCharacters(in: .whitespacesAndNewlines),
+                        type: t.type, categoryId: t.categoryId, accountId: t.accountId,
+                        lastAmount: t.amount, count: 1), order: entries.count))
+                }
+            }
+        }
+
+        public func matching(_ query: String, limit: Int = 3) -> [Item] {
+            let q = Suggestions.key(query)
+            guard q.count >= 2 else { return [] }
+            let hits = entries.filter { $0.key.contains(q) }
+            let ranked = hits.sorted { a, b in
+                let pa = a.key.hasPrefix(q), pb = b.key.hasPrefix(q)
+                if pa != pb { return pa }
+                if a.item.count != b.item.count { return a.item.count > b.item.count }
+                return a.order < b.order
+            }
+            if ranked.count == 1, ranked[0].key == q { return [] }
+            return ranked.prefix(limit).map(\.item)
+        }
+
+        public func exactCategory(_ description: String, type: TransactionType) -> String? {
+            let q = Suggestions.key(description)
+            return q.isEmpty ? nil : exact["\(type.rawValue)|\(q)"]
+        }
+    }
+
     /// `txs` tarih ↓ sıralı (AppModel.transactions). Aynı açıklama tek öneri olur;
     /// alanları EN SON işlemden gelir. Önce açıklaması sorguyla BAŞLAYANLAR, sonra
     /// içerenler; her grupta sık kullanılan önce. Sorguyla birebir aynı olan tek

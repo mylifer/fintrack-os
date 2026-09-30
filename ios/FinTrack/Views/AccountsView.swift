@@ -222,6 +222,7 @@ struct AccountDetailView: View {
 
     var body: some View {
         let balance = model.balances[account.id] ?? account.initialBalance
+        let txs = self.txs
         TransactionList(transactions: txs, perspectiveAccountId: account.id,
                         editing: $editing, pendingDelete: $pendingDelete)
             .safeAreaInset(edge: .top) {

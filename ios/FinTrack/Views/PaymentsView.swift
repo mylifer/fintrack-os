@@ -10,9 +10,17 @@ struct PaymentsView: View {
     @Environment(Router.self) private var router
     @State private var month = String(DateUtil.today().prefix(7))
     @State private var paying: PaymentRow?
+    @State private var cached: (key: String, board: (targets: [PaymentTarget], monthRows: [PaymentRow], carryRows: [PaymentRow]))?
+
+    /// Takvim (kart ödemesi tanıma dahil) ay ve veri değişmedikçe yeniden kurulmaz
+    private var board: (targets: [PaymentTarget], monthRows: [PaymentRow], carryRows: [PaymentRow]) {
+        if let c = cached, c.key == cacheKey { return c.board }
+        return model.paymentBoard(month: month)
+    }
+    private var cacheKey: String { "\(month)|\(model.derivedStamp)|\(model.transactions.count)|\(model.paymentOccurrences.count)" }
 
     var body: some View {
-        let board = model.paymentBoard(month: month)
+        let board = self.board
         let summary = PaymentSchedule.summarizeRows(board.monthRows, fx: model.fx)
         let setup = board.targets.filter { $0.isActive && $0.needsSetup }
         List {
@@ -47,6 +55,7 @@ struct PaymentsView: View {
         .navigationTitle("Ödeme Takibi")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $paying) { PayRowSheet(row: $0) }
+        .task(id: cacheKey) { cached = (cacheKey, model.paymentBoard(month: month)) }
     }
 
     private var monthSwitcher: some View {

@@ -11,8 +11,17 @@ struct ForecastView: View {
     @Environment(AppModel.self) private var model
     @State private var horizon = 6
     @State private var mode: ForecastMode = .total
+    @State private var cached: (key: String, result: ForecastResult)?
 
+    private var cacheKey: String { "\(horizon)|\(mode.rawValue)|\(model.derivedStamp)|\(model.transactions.count)|\(model.recurring.count)" }
+
+    /// Projeksiyon ufuk/kapsam ya da veri değişmedikçe yeniden hesaplanmaz
     private var result: ForecastResult {
+        if let c = cached, c.key == cacheKey { return c.result }
+        return compute()
+    }
+
+    private func compute() -> ForecastResult {
         let funds = Money.sum(model.holdings.filter { $0.kind == .fund }) { $0.currentValue }
         return Forecast.build(accounts: model.accounts.filter { !$0.isArchived }, balances: model.balances,
                               recurring: model.recurring, transactions: model.transactions, debts: model.debts,
@@ -122,6 +131,7 @@ struct ForecastView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .task(id: cacheKey) { cached = (cacheKey, compute()) }
         .navigationTitle("Nakit akışı tahmini")
         .navigationBarTitleDisplayMode(.inline)
     }

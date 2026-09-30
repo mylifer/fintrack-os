@@ -100,14 +100,33 @@ struct TransactionsView: View {
         let base = model.transactions.filter { filter.matches($0) && match($0) }
         let extra = planned.filter { filter.matches($0) && match($0) }
         guard !extra.isEmpty else { return base }
-        // Listeyle aynı sıra: tarih ↓, sonra eklenme ↓
-        return (extra + base).sorted {
-            let a = $0.date.prefix(10), b = $1.date.prefix(10)
-            return a != b ? a > b : $0.createdAt > $1.createdAt
-        }
+        return Self.mergeByDate(extra, base)
     }
 
     private var planned: [Transaction] { showPlanned ? model.plannedRecurringRows() : [] }
+
+    /// İki tarih ↓ sıralı listeyi birleştir (tam sıralama yerine doğrusal)
+    static func mergeByDate(_ a: [Transaction], _ b: [Transaction]) -> [Transaction] {
+        func before(_ x: Transaction, _ y: Transaction) -> Bool {
+            let dx = x.date.prefix(10), dy = y.date.prefix(10)
+            return dx != dy ? dx > dy : x.createdAt > y.createdAt
+        }
+        let a = a.sorted(by: before)   // planlı satırlar az
+        var out: [Transaction] = []
+        out.reserveCapacity(a.count + b.count)
+        var i = 0, j = 0
+        while i < a.count && j < b.count {
+            if before(b[j], a[i]) { out.append(b[j]); j += 1 } else { out.append(a[i]); i += 1 }
+        }
+        out.append(contentsOf: a[i...]); out.append(contentsOf: b[j...])
+        return out
+    }
+
+    /// Menü açılınca hesaplanır; planlı satırlar dışarıda
+    private var exportList: [Transaction] {
+        let match = TxSearch.matcher(query, categories: model.categories, accounts: model.accounts)
+        return model.transactions.filter { filter.matches($0) && match($0) }
+    }
 
     private var filterMenu: some View {
         Menu {
@@ -133,7 +152,7 @@ struct TransactionsView: View {
                 Button("Süzgeci temizle", role: .destructive) { filter = TxFilter() }
             }
             Divider()
-            ShareLink(item: CSVFile(transactions: filtered.filter { $0.plannedRecurringId == nil }, categories: model.categories,
+            ShareLink(item: CSVFile(transactions: exportList, categories: model.categories,
                                     accounts: model.accounts, name: csvName),
                       preview: SharePreview("FinTrack işlemleri")) {
                 Label("CSV olarak paylaş", systemImage: "square.and.arrow.up")
@@ -347,8 +366,13 @@ extension AppModel {
               let t = DateUtil.parseDay(DateUtil.today()),
               let tomorrow = DateUtil.calendar.date(byAdding: .day, value: 1, to: t),
               let h = DateUtil.calendar.date(byAdding: .day, value: days, to: t) else { return [] }
+        // Yalnız şablonların deterministik kimlikleri aranır (20 bin kimlik kümesi kurmadan)
+        let candidates = Set(templates.flatMap { r in
+            Recurrence.occurrences(r, asOf: DateUtil.day(h)).map { Recurrence.transactionId(templateId: r.id, date: $0) }
+        })
+        let existing = Set(transactions.lazy.map(\.id).filter { candidates.contains($0) })
         return Recurrence.plannedTransactions(templates, today: DateUtil.day(tomorrow), horizon: DateUtil.day(h),
-                                              existingIds: Set(transactions.map(\.id)), fx: fx)
+                                              existingIds: existing, fx: fx)
     }
 }
 

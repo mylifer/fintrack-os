@@ -41,7 +41,18 @@ public enum DateUtil {
     nonisolated(unsafe) private static let dayFormatter = formatter("yyyy-MM-dd")
 
     public static func day(_ date: Date) -> String { dayFormatter.string(from: date) }
-    public static func today() -> String { day(Date()) }
+    /// Bugün ("yyyy-MM-dd"). Satır başına çağrılıyor (Calc.isPosted varsayılanı):
+    /// biçimleyiciyi her seferinde çalıştırmamak için 1 sn önbellek.
+    public static func today() -> String {
+        let now = Date().timeIntervalSinceReferenceDate
+        todayLock.lock(); defer { todayLock.unlock() }
+        if let c = todayCache, now - c.at < 1, now >= c.at { return c.value }
+        let v = day(Date())
+        todayCache = (v, now)
+        return v
+    }
+    nonisolated(unsafe) private static var todayCache: (value: String, at: TimeInterval)?
+    private static let todayLock = NSLock()
     public static func parseDay(_ s: String) -> Date? { dayFormatter.date(from: String(s.prefix(10))) }
 
     public static func monthRange(_ my: MonthYear) -> (from: String, to: String) {

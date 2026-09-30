@@ -5,7 +5,7 @@ import FinTrackCore
 /// kalmasın diye. Yalnız OKUMA önbelleği: yazmalar her zaman önce buluta gider.
 /// Dosya kilitli cihazda yeni açılamaz (unless-open: açıkken yazma sürer), yedeğe girmez;
 /// çıkışta silinir.
-struct LocalCache {
+struct LocalCache: Sendable {
     private struct Stored: Codable {
         var workspaces: [JSONObject]
         var accounts: [JSONObject]

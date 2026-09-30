@@ -50,3 +50,19 @@ struct SuggestionsTests {
         #expect(Suggestions.exactCategory("ikea", type: .income, in: list) == nil)
     }
 }
+
+@Suite("öneri dizini")
+struct SuggestionIndexTests {
+    /// Dizin, doğrudan tarama ile aynı sonucu vermeli
+    @Test func taramaylaAyni() {
+        let base = SuggestionsTests()
+        let idx = Suggestions.Index(base.txs)
+        for q in ["mig", "kah", "ar", "maa", "taks", "starbucks", "s"] {
+            #expect(idx.matching(q) == Suggestions.matching(q, in: base.txs), "\(q)")
+        }
+        let list = [tx(["description": "İKEA", "categoryId": "ev"])]
+        let i2 = Suggestions.Index(list)
+        #expect(i2.exactCategory("ikea", type: .expense) == "ev")
+        #expect(i2.exactCategory("ikea", type: .income) == nil)
+    }
+}

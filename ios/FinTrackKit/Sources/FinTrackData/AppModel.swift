@@ -68,6 +68,10 @@ public final class AppModel {
     private var writesDuringRefresh: [(table: String, row: JSONObject)] = []
     private var retryTask: Task<Void, Never>?
     private var debtOpChain: Task<Void, Error>?
+    private var batchDepth = 0
+    private var batchDirty = false
+    private var saveTask: Task<Void, Never>?
+    private var derivedTask: Task<Void, Never>?
     private var retryDelay: UInt64 = 15
     private let pathMonitor = NWPathMonitor()
     /// DEBUG örnek veri modu (simülatörde ekran doğrulama): buluta hiçbir şey yazılmaz.
@@ -146,6 +150,7 @@ public final class AppModel {
     /// `discardPending`: kullanıcı kendisi çıkıyorsa gönderilmemiş değişiklikler
     /// de silinir; oturum kendiliğinden düştüyse kuyruk yeniden girişi bekler.
     public func signOut(discardPending: Bool = true) async {
+        saveTask?.cancel()   // gecikmeli önbellek yazımı çıkıştan sonra dosyayı geri yazmasın
         if !isDemo, let uid = userId { cache.clear(userId: uid) }
         derivedStore = nil
         if discardPending { outbox?.clear() }
@@ -231,7 +236,7 @@ public final class AppModel {
             for e in outbox?.entries ?? [] { snap.overlay(table: e.table, row: e.row) }
             for w in writesDuringRefresh { snap.overlay(table: w.table, row: w.row) }
             apply(snap)
-            cache.save(snap, userId: uid)
+            scheduleCacheSave()
             lastSync = Date()
             lastError = rejected > 0 ? "\(rejected) çevrimdışı değişiklik sunucu tarafından kabul edilmedi." : nil
         } catch {
@@ -328,7 +333,9 @@ public final class AppModel {
                                   accounts: accounts, categories: categories, budgets: budgets,
                                   plans: paymentPlans, occurrences: paymentOccurrences, fx: fx,
                                   workspaceId: activeWorkspaceId, debts: debts, balances: balances)
-        Task.detached(priority: .userInitiated) { [weak self] in
+        derivedTask?.cancel()
+        derivedTask = Task.detached(priority: .userInitiated) { [weak self] in
+            guard !Task.isCancelled else { return }   // daha yeni bir istek geldi
             let d = Derived.compute(input)
             await MainActor.run {
                 guard let self, self.derivedGeneration == gen else { return }
@@ -471,8 +478,10 @@ public final class AppModel {
         // kuyruğa alınır (yarım grup kalıp kullanıcı tekrar deneyerek ikinci grup
         // oluşturmasın)
         guard let first = rows.first else { return }
-        try await write(first, in: \.transactions)
-        for r in rows.dropFirst() { await writeFollowUp(r, in: \.transactions) }
+        try await batched {
+            try await write(first, in: \.transactions)
+            for r in rows.dropFirst() { await writeFollowUp(r, in: \.transactions) }
+        }
     }
 
     /// Silme = tombstone (deleted_at), gerçek DELETE yok.
@@ -485,8 +494,10 @@ public final class AppModel {
             let now = Self.nowISO()
             let rows = all.transactions.filter { $0.installGroupId == group && $0.isLive }
             guard let first = rows.first else { return }
-            try await write(first.tombstoned(at: now), in: \.transactions)
-            for row in rows.dropFirst() { await writeFollowUp(row.tombstoned(at: now), in: \.transactions) }
+            try await batched {
+                try await write(first.tombstoned(at: now), in: \.transactions)
+                for row in rows.dropFirst() { await writeFollowUp(row.tombstoned(at: now), in: \.transactions) }
+            }
             return
         }
         guard t.isPlainDebtPayment, let debtId = t.debtId else {
@@ -556,8 +567,36 @@ public final class AppModel {
         } else {
             all[keyPath: kp].append(r)
         }
+        if batchDepth > 0 { batchDirty = true; return }
         rescope()
-        if !isDemo, let uid = userId { cache.save(all, userId: uid) }
+        scheduleCacheSave()
+    }
+
+    /// Çok satırlı işlemler (taksit grubu, grup silme, birikmiş dönemler): yerel
+    /// yeniden hesap ve önbellek yazımı işlem sonunda BİR kez.
+    private func batched<R>(_ body: () async throws -> R) async rethrows -> R {
+        batchDepth += 1
+        defer {
+            batchDepth -= 1
+            if batchDepth == 0 && batchDirty {
+                batchDirty = false
+                rescope()
+                scheduleCacheSave()
+            }
+        }
+        return try await body()
+    }
+
+    /// Önbelleği arka planda ve gecikmeli yaz (art arda yazmalar tek dosya yazımı).
+    private func scheduleCacheSave() {
+        guard !isDemo, let uid = userId else { return }
+        saveTask?.cancel()
+        let snap = all, cache = cache
+        saveTask = Task.detached(priority: .utility) {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            cache.save(snap, userId: uid)
+        }
     }
 
     /// Tek kayıt yaz: buluta upsert, sonra yerel kopya (user_id oturumdan).
@@ -692,8 +731,10 @@ public final class AppModel {
         let existing = Set(all.transactions.filter(\.isLive).map(\.id))
         let out = Recurrence.approve(r, asOf: today, existingIds: existing,
                                      workspaceId: r.workspaceId ?? activeWorkspaceId, fx: fx, now: Self.nowISO())
-        for t in out.transactions { try await write(t, in: \.transactions) }
-        try await write(out.template, in: \.recurring)
+        try await batched {
+            for t in out.transactions { try await write(t, in: \.transactions) }
+            try await write(out.template, in: \.recurring)
+        }
     }
 
     public func skipRecurring(_ r: RecurringTransaction) async throws {
@@ -889,7 +930,7 @@ public final class AppModel {
     }
 }
 
-struct Snapshot {
+struct Snapshot: Sendable {
     var workspaces: [Workspace] = []
     var accounts: [Account] = []
     var categories: [Category] = []

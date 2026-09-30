@@ -26,6 +26,8 @@ public struct Derived: Sendable {
     /// Ödeme Takibi: bu ayın özeti ve önceki aylardan gecikmiş sayısı
     public var paymentSummary: PaymentSummary
     public var paymentCarryOverdue: Int
+    /// Hızlı ekleme önerileri için açıklama dizini
+    public var suggestionIndex: Suggestions.Index
 
     struct Input: Sendable {
         var transactions: [Transaction]
@@ -80,6 +82,7 @@ public struct Derived: Sendable {
             budgetStates: AppModel.budgetStates(i.budgets, i.reportTransactions, my, categories: i.categories, fx: i.fx),
             cards: cards,
             paymentSummary: board.summary,
-            paymentCarryOverdue: board.carry)
+            paymentCarryOverdue: board.carry,
+            suggestionIndex: Suggestions.Index(i.transactions))
     }
 }
