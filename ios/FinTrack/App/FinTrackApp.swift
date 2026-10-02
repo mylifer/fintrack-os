@@ -5,6 +5,7 @@ import FinTrackData
 
 @main
 struct FinTrackApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
     @State private var lock = AppLock()
     @State private var router = Router.shared
@@ -16,6 +17,15 @@ struct FinTrackApp: App {
         CSVFile.cleanUp()
     }
 
+    /// DEBUG `-noautounlock`: kilit ekranı doğrulamasında istem açılmasın
+    private static var noAutoUnlock: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-noautounlock")
+        #else
+        false
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -24,6 +34,13 @@ struct FinTrackApp: App {
                 .environment(router)
                 .tint(Theme.tint)
                 .onOpenURL { router.open($0) }
+                #if DEBUG
+                // `-openurl <url>`: bağlantı/kısayol yönlendirmesini simülatörde dene
+                .onAppear {
+                    let args = ProcessInfo.processInfo.arguments
+                    if let i = args.firstIndex(of: "-openurl"), i + 1 < args.count, let u = URL(string: args[i + 1]) { router.open(u) }
+                }
+                #endif
                 .task { await model.start(config: AppConfig.fromBundle()) }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -34,7 +51,7 @@ struct FinTrackApp: App {
                 Reminders.schedule(model)
             case .active:
                 lock.willBecomeActive()
-                if lock.isLocked { Task { await lock.unlock() } }
+                if lock.isLocked && !Self.noAutoUnlock { Task { await lock.unlock() } }
                 model.refreshDerivedIfStale()
                 // Başka cihazdaki değişiklikler — açılışta tazele
                 if model.userId != nil { Task { await model.refresh() } }

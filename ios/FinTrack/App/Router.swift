@@ -10,8 +10,10 @@ final class Router {
 
     var tab: MainTabView.Tab = Router.debugTab ?? .summary
     var quickAdd = Router.debugFlag("-quickadd") {
-        didSet { if !quickAdd { quickAddTemplate = nil } }
+        didSet { if !quickAdd { quickAddTemplate = nil; quickAddType = nil } }
     }
+    /// Boş hızlı ekleme hangi türle açılsın (kısayol: gelir / transfer)
+    var quickAddType: TransactionType?
     /// Plan sekmesinde açık bölüm
     var planSection: PlanSection = Router.debugPlan ?? .budgets
 
@@ -47,7 +49,11 @@ final class Router {
     func open(_ url: URL) {
         guard url.scheme == "fintrack" else { return }
         switch url.host {
-        case "add": quickAdd = true
+        case "add":
+            let type = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "type" }?.value.flatMap(TransactionType.init(rawValue:))
+            // Açık form varsa üstüne yenisi açılmaz
+            if !quickAdd { quickAddType = type; quickAdd = true }
         case "budgets": openPlan(.budgets)
         case "goals": openPlan(.goals)
         case "recurring": openPlan(.recurring)

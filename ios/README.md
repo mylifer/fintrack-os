@@ -41,7 +41,7 @@ değişirse iki taraf birlikte güncellenir.
 | Yatırımlar | Portföy, K/Z, günlük değişim |
 | Plan | Bütçe · Hedef · Tekrarlayan · Abonelik |
 
-Hızlı erişim: ana ekran / kilit ekranı widget'ı, Denetim Merkezi düğmesi (iOS 18), Siri
+Hızlı erişim: uygulama simgesine basılı tut (gider / gelir / transfer ekle, bütçeler), ana ekran / kilit ekranı widget'ı, Denetim Merkezi düğmesi (iOS 18), Siri
 ("FinTrack ile harcama ekle").
 
 ## Simülatörde örnek veriyle çalıştırma
@@ -50,7 +50,7 @@ Debug derlemede `-demo` başlatma argümanı gerçek hesap yerine örnek veri y�
 şey yazılmaz. Xcode'da: Product → Scheme → Edit Scheme → Run → Arguments → `-demo`.
 Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|accounts|investments|budgets`,
 `-plan budgets|goals|recurring|subscriptions`, `-quickadd`, `-search <metin>`,
-`-account <hesap-id> [-statements] [-reconcile]`, `-debt <id>`, `-payments`, `-forecast`, `-report`, `-monthly`, `-tags`, `-edit <açıklama>`,
+`-account <hesap-id> [-statements] [-reconcile]`, `-debt <id>`, `-payments`, `-forecast`, `-report`, `-monthly`, `-tags`, `-edit <açıklama>`, `-openurl <fintrack://…>`,
 `-settings`, `-newrecurring`, `-newbudget`, `-lock -noautounlock`.
 
 Performans: `-demo -stress` örnek veriye 20 bin işlem ekler. Ağır hesaplar (aylık akış,

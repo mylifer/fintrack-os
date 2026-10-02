@@ -10,6 +10,8 @@ struct TransactionFormView: View {
     let editing: Transaction?
     /// Yeni işlem bir şablonla (kopya) açılıyorsa
     var template: TransactionDraft? = nil
+    /// Boş form bu türle açılsın (ana ekran kısayolu)
+    var initialType: TransactionType? = nil
 
     @State private var draft = TransactionDraft()
     @State private var categoryTouched = false
@@ -266,6 +268,7 @@ struct TransactionFormView: View {
             amountFocused = true
         } else {
             // Son kullanılan hesap; yoksa ilk TL nakit/vadesiz hesap
+            if let initialType { draft.type = initialType }
             draft.accountId = defaultAccountId
             amountFocused = true
         }
