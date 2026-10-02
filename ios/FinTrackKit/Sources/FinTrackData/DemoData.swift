@@ -27,6 +27,10 @@ enum DemoData {
             account("acc-card", "Bonus Kart", "credit_card", "TRY", 0, "#8B5CF6", limit: 60_000),
             account("acc-cash", "Nakit", "cash", "TRY", 1_850, "#22C55E"),
             account("acc-usd", "Dolar Hesabı", "savings", "USD", 1_264.95, "#3B82F6"),
+            // Vadesi dün dolmuş vadeli mevduat ("Faizi işle" ekranı)
+            Account(raw: account("acc-dep", "Vadeli TL", "savings", "TRY", 100_000, "#F59E0B").raw.merging([
+                "depositRate": 45, "depositStart": .string(day(-33)), "depositEnd": .string(day(-1)), "depositTaxPct": 17.5,
+            ]) { $1 }),
         ]
 
         func cat(_ id: String, _ name: String, _ icon: String, _ color: String, _ order: Double,

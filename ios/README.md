@@ -37,7 +37,7 @@ değişirse iki taraf birlikte güncellenir.
 | --- | --- |
 | Özet | Onay bekleyenler (tek dokunuşla onay), ay harcaması + geçen ayın aynı dönemi, kategori halkası (dokun → kategori raporu), yaklaşanlar (7 gün), son 6 ay grafiği (→ aylık özet: gelir/gider/net/tasarruf, önceki ay ve geçen yılla kıyas, paylaş), hesaplar, bütçeler, son işlemler |
 | İşlemler | Arama, süzgeç (tür/dönem/hesap/etiket/onay bekleyen), etiketler (sayı, toplam → işlemler), sonuç toplamı, CSV paylaş, tekrarlayanların gelecek dönemleri; kaydır: düzenle · sil · kopyala · onayla |
-| Hesaplar | Net değer, Ödeme Takibi, nakit akışı tahmini, hesaplar (90 gün bakiye seyri), borçlar (ödeme yap, taksit planı); kredi kartında dönem içi / son ekstre, ekstre geçmişi, "Ekstreyi öde" |
+| Hesaplar | Net değer, Ödeme Takibi, nakit akışı tahmini, hesaplar (90 gün bakiye seyri; vadeli hesapta vade özeti + faizi işle), borçlar (ödeme yap, taksit planı); kredi kartında dönem içi / son ekstre, ekstre geçmişi, "Ekstreyi öde" |
 | Yatırımlar | Portföy, K/Z, günlük değişim |
 | Plan | Bütçe · Hedef · Tekrarlayan · Abonelik |
 
@@ -53,7 +53,7 @@ Debug derlemede `-demo` başlatma argümanı gerçek hesap yerine örnek veri y�
 şey yazılmaz. Xcode'da: Product → Scheme → Edit Scheme → Run → Arguments → `-demo`.
 Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|accounts|investments|budgets`,
 `-plan budgets|goals|recurring|subscriptions`, `-quickadd`, `-search <metin>`,
-`-account <hesap-id> [-statements] [-reconcile]`, `-debt <id>`, `-payments`, `-forecast`, `-report`, `-monthly`, `-tags`, `-edit <açıklama>`, `-openurl <fintrack://…>`,
+`-account <hesap-id> [-statements] [-reconcile] [-processdeposit]`, `-debt <id>`, `-payments`, `-forecast`, `-report`, `-monthly`, `-tags`, `-edit <açıklama>`, `-openurl <fintrack://…>`,
 `-settings`, `-newrecurring`, `-newbudget`, `-lock -noautounlock`.
 
 Performans: `-demo -stress` örnek veriye 20 bin işlem ekler. Ağır hesaplar (aylık akış,
@@ -90,6 +90,10 @@ her sekme birkaç saniye içinde açılmalı.
   "atla" web'de; `payment_plans` yalnız okunur.
 - Bakiye eşitleme: web `ReconcileBalanceModal` — fark tek satır, `systemKind='reconciliation'`,
   `#BakiyeEşitleme`; akışlara/bütçelere/ekstreye girmez. Eşitleme satırı silinebilir.
+- Vadeli mevduat: web `deposit.ts` (basit faiz, stopaj, net). "Faizi işle" = web
+  `processDepositInterest`: net faiz vade sonu tarihli gelir (kimlik hesap+vade sonundan türetilir,
+  tekrar denemede ikinci satır olmaz) + hesap satırında yalnız `deposit*` alanları (yenile: aynı süre
+  ileri; bitir: boş). Vade koşulları web'de girilir; iOS'un hesaba yazdığı tek alan budur.
 - Taksitli alışveriş: web `addInstallmentGroup` (kuruş hassas bölme, ilk taksitlere artan,
   aylık tarihler, hepsi onaylı, ortak `installGroupId`). Silme tüm grubu siler; düzenleme web'de.
 

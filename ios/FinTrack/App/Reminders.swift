@@ -55,6 +55,22 @@ enum Reminders {
         let center = UNUserNotificationCenter.current()
         let now = Date()
         var count = 0
+        for d in depositReminders(model) {
+            guard count < 40, let day = DateUtil.parseDay(d.date),
+                  let fire = DateUtil.calendar.date(bySettingHour: hour, minute: 0, second: 0, of: day), fire > now
+            else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = d.title
+            content.body = d.body
+            content.sound = .default
+            content.userInfo = ["url": "fintrack://accounts"]
+            content.threadIdentifier = "fintrack.deposit"
+            let comps = DateUtil.calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fire)
+            if Task.isCancelled { return }
+            try? await center.add(UNNotificationRequest(identifier: "\(prefix)\(d.id)", content: content,
+                                                        trigger: UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)))
+            count += 1
+        }
         for u in model.upcoming(days: 14) + dueToday(model) {
             for (offset, text) in lines(u) {
                 guard count < 40,
@@ -75,6 +91,19 @@ enum Reminders {
                 try? await center.add(req)
                 count += 1
             }
+        }
+    }
+
+    /// Vadesi önümüzdeki 14 gün içinde dolan mevduatlar: vade günü sabahı
+    /// (web bildirim merkezi deposit-matured / deposit-upcoming).
+    private static func depositReminders(_ model: AppModel) -> [(id: String, date: String, title: String, body: String)] {
+        let today = DateUtil.today()
+        let limit = DateUtil.calendar.date(byAdding: .day, value: 14, to: Date()).map(DateUtil.day) ?? today
+        return model.activeAccounts.compactMap { a in
+            guard let t = Deposit.terms(a), t.end >= today, t.end <= limit else { return nil }
+            let p = Deposit.project(model.balances[a.id] ?? a.initialBalance, t, asOf: t.end)
+            let net = Fmt.amountsHidden ? "" : " Net faiz \(Fmt.currency(p.net, a.currency))."
+            return ("d:\(a.id):\(t.end)", t.end, "Vade doldu: \(a.name)", "Vadeli mevduatın vadesi bugün doluyor.\(net) İşlemek için dokun.")
         }
     }
 

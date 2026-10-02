@@ -115,6 +115,8 @@ extension AccountsView {
               let a = model.account(args[i + 1]) else { return }
         path.append(a)
         if args.contains("-statements") { path.append(CardStatementsRoute(accountId: a.id)) }
+        // `-processdeposit`: vade sonu faizini işle (yenile) — yazma yolunu doğrula
+        if args.contains("-processdeposit") { Task { try? await model.processDeposit(a, renew: true) } }
         #endif
     }
 }
@@ -189,6 +191,11 @@ struct AccountRow: View {
                         .font(.caption).foregroundStyle(.secondary)
                 } else if account.isArchived {
                     Text("Arşivde").font(.caption).foregroundStyle(.secondary)
+                } else if let t = Deposit.terms(account) {
+                    Text(DateUtil.today() >= t.end ? "Vade doldu · faizi işle"
+                                                   : "Vade \(DateUtil.display(t.end, "d MMM")) · %\(Deposit.rateText(t.rate))")
+                        .font(.caption.weight(DateUtil.today() >= t.end ? .semibold : .regular))
+                        .foregroundStyle(DateUtil.today() >= t.end ? Theme.warning : .secondary)
                 }
             }
             Spacer()
@@ -235,6 +242,9 @@ struct AccountDetailView: View {
                         .foregroundStyle(balance < 0 ? Theme.expense : .primary)
                         .lineLimit(1).minimumScaleFactor(0.5)
                     if account.type != .credit_card { BalanceSparkline(account: account) }
+                    if account.type == .savings {
+                        DepositSummary(accountId: account.id)
+                    }
                     if account.type == .credit_card, let limit = account.creditLimit {
                         let avail = Calc.availableCredit(account, balance: balance, model.transactions)
                         ProgressView(value: min(max(limit - avail, 0), limit), total: max(limit, 1))

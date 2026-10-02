@@ -472,6 +472,30 @@ public final class AppModel {
         try await write(t, in: \.transactions)
     }
 
+    /// Vadesi dolan mevduatın net faizini işle, vadeyi yenile ya da bitir
+    /// (web processDepositInterest). Faiz satırı yazılınca hesap satırı bağlı
+    /// yazmadır: geçici hatada kuyruğa girer (tekrar basıp ikinci faiz olmasın;
+    /// faiz kimliği zaten vadeye sabit). Döner: işlenen net faiz.
+    @discardableResult
+    public func processDeposit(_ account: Account, renew: Bool) async throws -> Double {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        guard let current = self.account(account.id), let t = Deposit.terms(current), DateUtil.today() >= t.end
+        else { throw ServiceError.message("Vade henüz dolmadı ya da koşullar değişti.") }
+        let balance = balances[current.id] ?? current.initialBalance
+        guard let r = Deposit.process(account: current, balance: balance, categories: categories, renew: renew, fx: fx,
+                                      workspaceId: current.workspaceId ?? activeWorkspaceId, now: Self.nowISO())
+        else { return 0 }
+        try await batched {
+            if let tx = r.interest {
+                try await write(tx, in: \.transactions)
+                await writeFollowUp(r.account, in: \.accounts)
+            } else {
+                try await write(r.account, in: \.accounts)
+            }
+        }
+        return r.interest?.amount ?? 0
+    }
+
     /// Taksitli alışveriş: N satır aynı grupta (web addInstallmentGroup).
     /// `seed`: formun bir kez ürettiği grup kimliği; satır kimlikleri ondan
     /// türetilir (tekrar denemede aynı grup güncellenir, ikinci grup oluşmaz).
