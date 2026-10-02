@@ -61,6 +61,8 @@ struct RecurringFormView: View {
                         } label: {
                             LabeledContent("Kategori", value: model.category(draft.categoryId)?.name ?? "Yok")
                         }
+                        PersonPicker(title: "Aile üyesi", role: .familyMember, selection: $draft.familyMemberId)
+                        PersonPicker(title: "Alıcı", role: .recipient, selection: $draft.recipientId)
                     }
                 }
                 Section {

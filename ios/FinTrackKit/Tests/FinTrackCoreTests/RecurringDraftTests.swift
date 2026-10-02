@@ -63,6 +63,19 @@ struct RecurringDraftTests {
         #expect(row["toAccountId"] == "u")
     }
 
+    @Test func kisilerDegisinceYazilir() {
+        let base = RecurringTransaction(raw: ["id": "r", "name": "X", "recipientId": "p1",
+                                              "startDate": "2026-10-05", "nextDueDate": "2026-10-05"])
+        var d = RecurringDraft(editing: base)
+        d.accountId = "b"; d.amountText = "5"
+        #expect(d.recipientId == "p1")
+        let same = d.build(editing: base, account: bank, workspaceId: nil, now: "N")
+        #expect(same.raw["familyMemberId"] == nil)          // dokunulmadı
+        d.familyMemberId = "f1"
+        let r = d.build(editing: base, account: bank, workspaceId: nil, now: "N").rowForWrite(updatedAt: "N")
+        #expect(r["familyMemberId"] == "f1" && r["recipientId"] == "p1")
+    }
+
     @Test func dogrulama() {
         var d = draft(); d.name = "  "
         #expect(d.validationError() == "Ad girin.")

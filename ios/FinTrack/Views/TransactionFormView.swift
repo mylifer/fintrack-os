@@ -117,8 +117,8 @@ struct TransactionFormView: View {
                             }
                         }
                         if draft.type != .transfer {
-                            personPicker("Aile üyesi", role: .familyMember, selection: $draft.familyMemberId)
-                            personPicker("Alıcı", role: .recipient, selection: $draft.recipientId)
+                            PersonPicker(title: "Aile üyesi", role: .familyMember, selection: $draft.familyMemberId)
+                            PersonPicker(title: "Alıcı", role: .recipient, selection: $draft.recipientId)
                         }
                         DatePicker("Tarih", selection: $draft.date, displayedComponents: .date)
                             .environment(\.locale, Locale(identifier: "tr_TR"))
@@ -275,23 +275,6 @@ struct TransactionFormView: View {
             if let initialType { draft.type = initialType }
             draft.accountId = defaultAccountId
             amountFocused = true
-        }
-    }
-
-    /// Web kişileri (aile üyesi / alıcı). Kişiler web'de eklenir; o roldeki kişi
-    /// yoksa satır görünmez. Arşivlenmiş ama seçili kişi listede kalır.
-    @ViewBuilder
-    private func personPicker(_ title: String, role: Person.Role, selection: Binding<String?>) -> some View {
-        let options = model.pickerPeople(role)
-        let current = model.person(selection.wrappedValue)
-        if !options.isEmpty || current != nil {
-            Picker(title, selection: selection) {
-                Text("Yok").tag(String?.none)
-                ForEach(options) { Text($0.name).tag(Optional($0.id)) }
-                if let current, !options.contains(where: { $0.id == current.id }) {
-                    Text("\(current.name) (arşiv)").tag(Optional(current.id))
-                }
-            }
         }
     }
 

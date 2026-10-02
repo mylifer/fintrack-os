@@ -18,6 +18,9 @@ public struct RecurringDraft: Equatable, Sendable {
     public var startDate = Date()
     public var hasEndDate = false
     public var endDate = Date()
+    /// Web kişileri; onaylanınca işleme geçer (Recurrence)
+    public var familyMemberId: String?
+    public var recipientId: String?
 
     public init() {}
 
@@ -33,6 +36,8 @@ public struct RecurringDraft: Equatable, Sendable {
         frequency = r.frequency
         startDate = DateUtil.parseDay(r.startDate) ?? Date()
         if let e = r.endDate, let d = DateUtil.parseDay(e) { hasEndDate = true; endDate = d }
+        familyMemberId = r.familyMemberId
+        recipientId = r.recipientId
     }
 
     public var amount: Double { Fmt.parseAmount(amountText) }
@@ -78,10 +83,11 @@ public struct RecurringDraft: Equatable, Sendable {
             r.nextDueDate = start
         }
         r.startDate = start
-        if type == .transfer {
-            r.raw["familyMemberId"] = .null
-            r.raw["recipientId"] = .null
-        }
+        // Kişiler: transferde boş; değişmediyse ham satıra dokunulmaz
+        let fam = type == .transfer ? nil : familyMemberId
+        let rec = type == .transfer ? nil : recipientId
+        if editing == nil || fam != editing?.familyMemberId { r.raw["familyMemberId"] = JSONValue(fam); r.familyMemberId = fam }
+        if editing == nil || rec != editing?.recipientId { r.raw["recipientId"] = JSONValue(rec); r.recipientId = rec }
         return r
     }
 }
