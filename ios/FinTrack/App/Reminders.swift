@@ -163,11 +163,17 @@ enum BudgetAlerts {
         let keys = alerts.map { key($0, my) }
         let storeKey = storePrefix + uid + "." + (model.activeWorkspaceId ?? "-")
         let stored = UserDefaults.standard.stringArray(forKey: storeKey)
-        // Yalnız güncel anahtarlar saklanır (geçen aylar birikmesin)
-        UserDefaults.standard.set(keys, forKey: storeKey)
-        guard let stored, Reminders.isEnabled else { return }
-        let seen = Set(stored)
+        // Bu ay bildirilenler birikir (harcama düşüp yeniden eşiğe çıkınca tekrar
+        // gelmesin); geçen ayların anahtarları atılır
+        let monthTag = ":\(my.year)-\(my.month):"
+        var seen = Set((stored ?? []).filter { $0.contains(monthTag) })
+        defer { UserDefaults.standard.set(Array(seen), forKey: storeKey) }
+        guard stored != nil, Reminders.isEnabled else { seen.formUnion(keys); return }
         for (s, k) in zip(alerts, keys) where !seen.contains(k) {
+            seen.insert(k)
+            // Aşım bildirildiyse (ör. limit sonradan artırıldı) aynı ay "uyarı" gelmez
+            let exceededKey = "\(s.budget.id)\(monthTag)\(BudgetStatus.exceeded.rawValue)"
+            if s.status == .warning && seen.contains(exceededKey) { continue }
             post(s, key: k, categories: model.categories)
         }
     }

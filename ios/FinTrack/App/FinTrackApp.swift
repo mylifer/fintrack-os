@@ -88,6 +88,8 @@ struct RootView: View {
         .onChange(of: model.userId) { _, id in
             if id == nil {
                 Task { await Reminders.clear() }
+                // Bildirim Merkezi'nde kalan (tutar içerebilen) bildirimler de gitsin
+                UNUserNotificationCenter.current().removeAllDeliveredNotifications()
                 CSVFile.cleanUp()
             }
         }

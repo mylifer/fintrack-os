@@ -485,27 +485,52 @@ public final class AppModel {
     }
 
     /// Vadesi dolan mevduatın net faizini işle, vadeyi yenile ya da bitir
-    /// (web processDepositInterest). Faiz satırı yazılınca hesap satırı bağlı
-    /// yazmadır: geçici hatada kuyruğa girer (tekrar basıp ikinci faiz olmasın;
-    /// faiz kimliği zaten vadeye sabit). Döner: işlenen net faiz.
+    /// (web processDepositInterest). Önce buluttan TAZE veri çekilir (web'de
+    /// işlenmiş/düzenlenmiş vade yeniden işlenmesin); faiz satırı zaten varsa
+    /// yazılmaz. Hesapta yalnız deposit* sütunları kısmi güncellenir — tam satır
+    /// yazılsa web'in o arada yaptığı değişiklikler (ad, arşiv, silme) ezilirdi.
+    /// Döner: bu çağrıda yazılan net faiz (zaten işlenmişse 0).
     @discardableResult
     public func processDeposit(_ account: Account, renew: Bool) async throws -> Double {
-        guard userId != nil else { throw ServiceError.notSignedIn }
-        guard let current = self.account(account.id), let t = Deposit.terms(current), DateUtil.today() >= t.end
-        else { throw ServiceError.message("Vade henüz dolmadı ya da koşullar değişti.") }
-        let balance = balances[current.id] ?? current.initialBalance
-        guard let r = Deposit.process(account: current, balance: balance, categories: categories, renew: renew, fx: fx,
-                                      workspaceId: current.workspaceId ?? activeWorkspaceId, now: Self.nowISO())
-        else { return 0 }
-        try await batched {
-            if let tx = r.interest {
-                try await write(tx, in: \.transactions)
-                await writeFollowUp(r.account, in: \.accounts)
-            } else {
-                try await write(r.account, in: \.accounts)
+        guard let uid = userId else { throw ServiceError.notSignedIn }
+        if !isDemo {
+            let before = lastSync
+            await refresh()
+            guard userId == uid, let s = lastSync, s != before else {
+                throw ServiceError.message("Güncel veriler alınamadı. Bağlantınızı kontrol edip tekrar deneyin.")
             }
         }
-        return r.interest?.amount ?? 0
+        guard let current = self.account(account.id), let t = Deposit.terms(current), DateUtil.today() >= t.end
+        else { throw ServiceError.message("Vade henüz dolmamış ya da koşullar web'de değişmiş; ekran güncellendi.") }
+        let balance = balances[current.id] ?? current.initialBalance
+        let now = Self.nowISO()
+        guard let r = Deposit.process(account: current, balance: balance, categories: categories, renew: renew, fx: fx,
+                                      workspaceId: current.workspaceId ?? activeWorkspaceId, now: now)
+        else { return 0 }
+        var written = 0.0
+        if let tx = r.interest, !Deposit.interestBooked(all.transactions, accountId: current.id, end: t.end) {
+            try await write(tx, in: \.transactions)
+            written = tx.amount
+        }
+        var cols = Deposit.nextColumns(t, renew: renew)
+        cols["updatedAt"] = .string(now)
+        if !isDemo {
+            guard let service else { throw ServiceError.notSignedIn }
+            do {
+                try await service.updateColumns(Account.table, id: current.id, cols)
+            } catch {
+                // Faiz yazıldıysa tekrar denemede ikinci kez yazılmaz (interestBooked)
+                throw ServiceError.message(written > 0
+                    ? "Faiz işlendi ama vade güncellenemedi. Tekrar deneyin; faiz ikinci kez yazılmaz."
+                    : "Vade güncellenemedi: \(error.localizedDescription)")
+            }
+        }
+        guard userId == uid else { return written }
+        var raw = current.raw
+        for (k, v) in cols { raw[k] = v }
+        if isRefreshing { writesDuringRefresh.append((Account.table, raw)) }
+        replaceLocal(Account(raw: raw), in: \.accounts)
+        return written
     }
 
     /// Taksitli alışveriş: N satır aynı grupta (web addInstallmentGroup).

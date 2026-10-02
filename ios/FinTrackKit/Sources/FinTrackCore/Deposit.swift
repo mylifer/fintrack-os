@@ -84,6 +84,27 @@ public enum Deposit {
         }?.id
     }
 
+    /// Vade sonu faiz satırı zaten var mı (web ya da önceki deneme): hesabın
+    /// vade sonu tarihli, "Vadeli mevduat faizi" açıklamalı canlı geliri.
+    /// Web rastgele kimlik kullandığından kimlikle değil içerikle aranır.
+    public static func interestBooked(_ txs: [Transaction], accountId: String, end: String) -> Bool {
+        txs.contains {
+            $0.isLive && $0.accountId == accountId && $0.type == .income
+                && $0.date.prefix(10) == end && $0.description.hasPrefix("Vadeli mevduat faizi")
+        }
+    }
+
+    /// Hesap satırında değişecek tek alanlar (yenile: aynı süre ileri; bitir: boş).
+    public static func nextColumns(_ t: Terms, renew: Bool) -> JSONObject {
+        let next = renew ? rolled(t) : nil
+        return [
+            "depositRate": next.map { .number($0.rate) } ?? .null,
+            "depositStart": next.map { .string($0.start) } ?? .null,
+            "depositEnd": next.map { .string($0.end) } ?? .null,
+            "depositTaxPct": next.map { .number($0.taxPct) } ?? .null,
+        ]
+    }
+
     /// Vade sonu faizini işle (web processDepositInterest): NET faiz vade sonu
     /// tarihli gelir olarak yazılır, koşullar ya aynı süreyle ileri kayar (yenile)
     /// ya da silinir (bitir) — aynı vade ikinci kez "dolmuş" görünmez.
@@ -114,13 +135,9 @@ public enum Deposit {
             if t.end > DateUtil.today() { raw["approvalStatus"] = .string(ApprovalStatus.pending.rawValue) }
             interest = Transaction(raw: raw)
         }
-        let next = renew ? rolled(t) : nil
-        // Ham satır korunur; yalnız vade alanları değişir (web accounts.update)
+        // Yerel kopya; bulutta yalnız nextColumns kısmi güncellenir (web accounts.update)
         var raw = account.raw
-        raw["depositRate"] = next.map { .number($0.rate) } ?? .null
-        raw["depositStart"] = next.map { .string($0.start) } ?? .null
-        raw["depositEnd"] = next.map { .string($0.end) } ?? .null
-        raw["depositTaxPct"] = next.map { .number($0.taxPct) } ?? .null
+        for (k, v) in nextColumns(t, renew: renew) { raw[k] = v }
         return (interest, Account(raw: raw))
     }
 }

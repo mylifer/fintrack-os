@@ -246,6 +246,15 @@ public final class SupabaseService: Sendable {
         try await upsertRow(T.table, record.rowForWrite(updatedAt: now), userId: userId)
     }
 
+    /// Yalnız verilen sütunları güncelle (tam satır değil): web'in sahip olduğu
+    /// alanlar iOS'taki eski kopyayla ezilmesin. Satır yoksa hata.
+    func updateColumns(_ table: String, id: String, _ values: JSONObject) async throws {
+        struct Row: Decodable { let id: String }
+        let rows: [Row] = try await client.from(table).update(values, returning: .representation)
+            .eq("id", value: id).select("id").execute().value
+        if rows.isEmpty { throw ServiceError.message("Kayıt bulunamadı ya da değiştirme yetkiniz yok.") }
+    }
+
     /// Hazır (damgalı) satırı yaz — çevrimdışı kuyruğun gönderimi de bunu kullanır.
     func upsertRow(_ table: String, _ row: JSONObject, userId: String) async throws {
         var row = row

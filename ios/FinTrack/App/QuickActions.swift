@@ -45,16 +45,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, configurationForConnecting session: UISceneSession,
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {
-        // Soğuk açılış kısayolu: sahne bağlanırken gelir
-        if let item = options.shortcutItem { _ = QuickActions.perform(item) }
+        // Soğuk açılış kısayolu sahne delegesinde (willConnectTo) işlenir: geri
+        // yüklenen oturumda bu yöntem hiç çağrılmaz
         let config = UISceneConfiguration(name: nil, sessionRole: session.role)
         config.delegateClass = QuickActionSceneDelegate.self
         return config
     }
 }
 
-/// Uygulama arka plandayken seçilen kısayol
+/// Uygulama arka plandayken seçilen kısayol; soğuk açılışta willConnectTo
 final class QuickActionSceneDelegate: NSObject, UIWindowSceneDelegate {
+    /// Soğuk açılış (yeni ya da sistemin geri yüklediği oturum): kısayol burada gelir.
+    /// Pencereyi SwiftUI kurar; burada yalnız yönlendirme yapılır.
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        if let item = connectionOptions.shortcutItem { _ = QuickActions.perform(item) }
+    }
+
     func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem,
                      completionHandler: @escaping (Bool) -> Void) {
         completionHandler(QuickActions.perform(shortcutItem))

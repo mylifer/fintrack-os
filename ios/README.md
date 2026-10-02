@@ -91,9 +91,10 @@ her sekme birkaç saniye içinde açılmalı.
 - Bakiye eşitleme: web `ReconcileBalanceModal` — fark tek satır, `systemKind='reconciliation'`,
   `#BakiyeEşitleme`; akışlara/bütçelere/ekstreye girmez. Eşitleme satırı silinebilir.
 - Vadeli mevduat: web `deposit.ts` (basit faiz, stopaj, net). "Faizi işle" = web
-  `processDepositInterest`: net faiz vade sonu tarihli gelir (kimlik hesap+vade sonundan türetilir,
-  tekrar denemede ikinci satır olmaz) + hesap satırında yalnız `deposit*` alanları (yenile: aynı süre
-  ileri; bitir: boş). Vade koşulları web'de girilir; iOS'un hesaba yazdığı tek alan budur.
+  `processDepositInterest`. Önce buluttan taze veri çekilir (çevrimdışıysa işlenmez); o vadenin faiz
+  satırı (web'in rastgele kimlikli satırı dahil, içerikle aranır) zaten varsa yazılmaz. Net faiz vade
+  sonu tarihli gelir; hesapta yalnız `deposit*` sütunları KISMİ güncellenir (`update … eq id`, tam satır
+  değil — web'in değiştirdiği alanlar ezilmez). Vade koşulları web'de girilir.
 - Taksitli alışveriş: web `addInstallmentGroup` (kuruş hassas bölme, ilk taksitlere artan,
   aylık tarihler, hepsi onaylı, ortak `installGroupId`). Silme tüm grubu siler; düzenleme web'de.
 

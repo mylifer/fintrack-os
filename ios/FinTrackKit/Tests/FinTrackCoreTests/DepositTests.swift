@@ -77,4 +77,23 @@ struct DepositTests {
         let z = try #require(Deposit.process(account: a, balance: 0, categories: [], renew: false, fx: FX(), workspaceId: nil, now: "n"))
         #expect(z.interest == nil && Deposit.terms(z.account) == nil)
     }
+
+    /// Web'in rastgele kimlikli faiz satırı da tanınır (çift faiz yok)
+    @Test func islenmisFaizTaninir() {
+        let web = tx(["id": "rastgele", "type": "income", "accountId": "v", "date": "2026-10-03",
+                      "description": "Vadeli mevduat faizi (net, %45)", "amount": 3254.8])
+        #expect(Deposit.interestBooked([web], accountId: "v", end: "2026-10-03"))
+        #expect(!Deposit.interestBooked([web], accountId: "v", end: "2026-11-04"))
+        #expect(!Deposit.interestBooked([web], accountId: "baska", end: "2026-10-03"))
+        let silinmis = tx(["id": "s", "type": "income", "accountId": "v", "date": "2026-10-03",
+                           "description": "Vadeli mevduat faizi (net, %45)", "deleted_at": "2026-10-04T00:00:00Z"])
+        #expect(!Deposit.interestBooked([silinmis], accountId: "v", end: "2026-10-03"))
+    }
+
+    @Test func yalnizVadeSutunlari() {
+        let c = Deposit.nextColumns(t, renew: true)
+        #expect(Set(c.keys) == ["depositRate", "depositStart", "depositEnd", "depositTaxPct"])
+        #expect(c["depositEnd"] == "2026-11-04")
+        #expect(Deposit.nextColumns(t, renew: false).values.allSatisfy { $0 == .null })
+    }
 }

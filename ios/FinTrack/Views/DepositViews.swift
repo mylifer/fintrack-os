@@ -9,7 +9,7 @@ struct DepositSummary: View {
     let accountId: String
     @State private var confirming = false
     @State private var busy = false
-    @State private var done: (net: Double, date: String)?
+    @State private var done: (net: Double, date: String, currency: CurrencyCode)?
     @State private var errorMessage: String?
 
     var body: some View {
@@ -33,8 +33,7 @@ struct DepositSummary: View {
                 Text("%\(Deposit.rateText(t.rate)) · \(DateUtil.display(t.start)) – \(DateUtil.display(t.end)) (\(p.days) gün) · stopaj %\(Deposit.rateText(t.taxPct)) · bugüne kadar \(money(p.accruedNet))")
                     .font(.caption2).foregroundStyle(.secondary)
                 if let done {
-                    Label("\(money(done.net)) net faiz \(DateUtil.display(done.date)) tarihiyle işlendi.", systemImage: "checkmark.circle.fill")
-                        .font(.caption).foregroundStyle(Theme.income)
+                    doneLabel(done)
                 } else if p.matured {
                     Button { confirming = true } label: {
                         Label(busy ? "İşleniyor…" : "Faizi işle · \(money(p.net))", systemImage: "banknote")
@@ -55,10 +54,15 @@ struct DepositSummary: View {
                 Button("Tamam", role: .cancel) {}
             } message: { Text(errorMessage ?? "") }
         } else if let done {
-            Label("\(Fmt.currency(done.net)) net faiz \(DateUtil.display(done.date)) tarihiyle işlendi; vade kapandı.",
-                  systemImage: "checkmark.circle.fill")
-                .font(.caption).foregroundStyle(Theme.income)
+            doneLabel(done)
         }
+    }
+
+    private func doneLabel(_ d: (net: Double, date: String, currency: CurrencyCode)) -> some View {
+        Label(d.net > 0 ? "\(Fmt.currency(d.net, d.currency)) net faiz \(DateUtil.display(d.date)) tarihiyle işlendi."
+                        : "Bu vadenin faizi zaten işlenmişti; vade güncellendi.",
+              systemImage: "checkmark.circle.fill")
+            .font(.caption).foregroundStyle(Theme.income)
     }
 
     private func cell(_ label: String, _ value: String, _ color: Color) -> some View {
@@ -76,7 +80,7 @@ struct DepositSummary: View {
         Task {
             do {
                 let net = try await model.processDeposit(account, renew: renew)
-                done = (net, t.end)
+                done = (net, t.end, account.currency)
                 Haptics.success()
             } catch {
                 errorMessage = error.localizedDescription
