@@ -24,8 +24,10 @@ struct TxFilter: Equatable {
     var pendingOnly = false
     /// Etiket anahtarı (Tags.key)
     var tagKey: String?
+    /// Kişi (aile üyesi ya da alıcı)
+    var personId: String?
 
-    var isActive: Bool { type != nil || accountId != nil || period != .all || pendingOnly || tagKey != nil }
+    var isActive: Bool { type != nil || accountId != nil || period != .all || pendingOnly || tagKey != nil || personId != nil }
 
     /// Dönemin [başlangıç, bitiş] günleri; tüm zamanlar için nil.
     var range: (from: String, to: String)? {
@@ -43,6 +45,7 @@ struct TxFilter: Equatable {
         if let a = accountId, !Calc.touchesAccount(t, a) { return false }
         if pendingOnly && !Calc.awaitsApproval(t) { return false }
         if let k = tagKey, !Tags.has(t, key: k) { return false }
+        if let p = personId, t.familyMemberId != p && t.recipientId != p { return false }
         if let r = range, !DateUtil.isInRange(t.date, r.from, r.to) { return false }
         return true
     }
@@ -166,6 +169,19 @@ struct TransactionsView: View {
                 } label: {
                     Label(filter.tagKey.flatMap { k in tags.first { $0.key == k }.map { "#\($0.tag)" } } ?? "Etiket",
                           systemImage: "number")
+                }
+            }
+            let people = model.people.filter { !$0.isArchived }
+            if !people.isEmpty {
+                Menu {
+                    Picker("Kişi", selection: $filter.personId) {
+                        Text("Tüm kişiler").tag(String?.none)
+                        ForEach(people) { p in
+                            Text(p.role == .familyMember ? "\(p.name) · aile" : p.name).tag(Optional(p.id))
+                        }
+                    }
+                } label: {
+                    Label(model.person(filter.personId)?.name ?? "Kişi", systemImage: "person")
                 }
             }
             Toggle("Yalnız onay bekleyenler", isOn: $filter.pendingOnly)

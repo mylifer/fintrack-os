@@ -36,7 +36,7 @@ değişirse iki taraf birlikte güncellenir.
 | Sekme | İçerik |
 | --- | --- |
 | Özet | Onay bekleyenler (tek dokunuşla onay), ay harcaması + geçen ayın aynı dönemi, kategori halkası (dokun → kategori raporu), yaklaşanlar (7 gün), son 6 ay grafiği (→ aylık özet: gelir/gider/net/tasarruf, önceki ay ve geçen yılla kıyas, paylaş), hesaplar, bütçeler, son işlemler |
-| İşlemler | Arama, süzgeç (tür/dönem/hesap/etiket/onay bekleyen), etiketler (sayı, toplam → işlemler), sonuç toplamı, CSV paylaş, tekrarlayanların gelecek dönemleri; kaydır: düzenle · sil · kopyala · onayla |
+| İşlemler | Arama, süzgeç (tür/dönem/hesap/etiket/kişi/onay bekleyen), etiketler (sayı, toplam → işlemler), sonuç toplamı, CSV paylaş, tekrarlayanların gelecek dönemleri; kaydır: düzenle · sil · kopyala · onayla |
 | Hesaplar | Net değer, Ödeme Takibi, nakit akışı tahmini, hesaplar (90 gün bakiye seyri; vadeli hesapta vade özeti + faizi işle), borçlar (ödeme yap, taksit planı); kredi kartında dönem içi / son ekstre, ekstre geçmişi, "Ekstreyi öde" |
 | Yatırımlar | Portföy, K/Z, günlük değişim |
 | Plan | Bütçe · Hedef · Tekrarlayan · Abonelik |
