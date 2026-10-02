@@ -358,6 +358,9 @@ struct TransactionFormView: View {
         if model.activeAccounts.contains(where: { $0.id == item.accountId }) {
             draft.accountId = item.accountId
         }
+        // Kişiler: yalnız arşivde olmayan; formda zaten seçilmişse korunur
+        if draft.familyMemberId == nil, let p = model.person(item.familyMemberId), !p.isArchived { draft.familyMemberId = p.id }
+        if draft.recipientId == nil, let p = model.person(item.recipientId), !p.isArchived { draft.recipientId = p.id }
         categoryTouched = true
         descriptionFocused = false
         if draft.amountText.isEmpty { amountFocused = true }

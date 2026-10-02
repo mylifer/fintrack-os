@@ -39,6 +39,14 @@ struct SuggestionsTests {
         #expect(Suggestions.matching("taks", in: txs).isEmpty)
     }
 
+    @Test func kisilerEnYenidenGelir() {
+        let list = [tx(["id": "1", "description": "Migros", "recipientId": "p-yeni", "familyMemberId": "f"]),
+                    tx(["id": "2", "description": "Migros", "recipientId": "p-eski"])]
+        let s = Suggestions.matching("mig", in: list)
+        #expect(s.first?.recipientId == "p-yeni" && s.first?.familyMemberId == "f")
+        #expect(Suggestions.Index(list).matching("mig").first?.recipientId == "p-yeni")
+    }
+
     @Test func birebirAyniysaGosterilmez() {
         #expect(Suggestions.matching("starbucks", in: txs).isEmpty)
     }

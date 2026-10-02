@@ -12,6 +12,9 @@ public enum Suggestions {
         public var accountId: String
         public var lastAmount: Double
         public var count: Int
+        /// Web önerisi gibi kişiler de en son işlemden
+        public var familyMemberId: String? = nil
+        public var recipientId: String? = nil
     }
 
     static let tr = Locale(identifier: "tr_TR")
@@ -43,7 +46,8 @@ public enum Suggestions {
                     entries.append(Entry(key: k, item: Item(
                         description: t.description.trimmingCharacters(in: .whitespacesAndNewlines),
                         type: t.type, categoryId: t.categoryId, accountId: t.accountId,
-                        lastAmount: t.amount, count: 1), order: entries.count))
+                        lastAmount: t.amount, count: 1,
+                        familyMemberId: t.familyMemberId, recipientId: t.recipientId), order: entries.count))
                 }
             }
         }
@@ -86,7 +90,8 @@ public enum Suggestions {
             } else {
                 byKey[k] = Item(description: t.description.trimmingCharacters(in: .whitespacesAndNewlines),
                                 type: t.type, categoryId: t.categoryId, accountId: t.accountId,
-                                lastAmount: t.amount, count: 1)
+                                lastAmount: t.amount, count: 1,
+                                familyMemberId: t.familyMemberId, recipientId: t.recipientId)
                 order.append(k)
             }
         }
