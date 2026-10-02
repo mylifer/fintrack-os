@@ -93,6 +93,8 @@ struct TransactionsView: View {
                 .transactionEditor($editing)
                 .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
                 .navigationDestination(isPresented: $showTags) { TagsView() }
+                // Kişi ve etiket alana özgü: alan değişince süzgeçte asılı kalmasın
+                .onChange(of: model.activeWorkspaceId) { filter.personId = nil; filter.tagKey = nil }
                 .navigationDestination(for: TagRoute.self) { TagTransactionsView(route: $0) }
                 .onAppear {
                     #if DEBUG

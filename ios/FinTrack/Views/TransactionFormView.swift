@@ -15,6 +15,8 @@ struct TransactionFormView: View {
 
     @State private var draft = TransactionDraft()
     @State private var categoryTouched = false
+    /// Son öneriden gelen kişiler: yeni öneri yalnız bunları (ya da boşları) değiştirir
+    @State private var suggestedPeople: (family: String?, recipient: String?) = (nil, nil)
     @State private var savedCount = 0
     /// Yeni kaydın kimliği — tekrar denemede aynı satır (mükerrer olmasın)
     @State private var newId = UUID().uuidString.lowercased()
@@ -341,9 +343,15 @@ struct TransactionFormView: View {
         if model.activeAccounts.contains(where: { $0.id == item.accountId }) {
             draft.accountId = item.accountId
         }
-        // Kişiler: yalnız arşivde olmayan; formda zaten seçilmişse korunur
-        if draft.familyMemberId == nil, let p = model.person(item.familyMemberId), !p.isArchived { draft.familyMemberId = p.id }
-        if draft.recipientId == nil, let p = model.person(item.recipientId), !p.isArchived { draft.recipientId = p.id }
+        // Kişiler (web onSelect gibi öneriden gelir, boşsa temizlenir) — yalnız
+        // etkin alanın seçilebilir kişileri; kullanıcının elle seçtiği korunur
+        func valid(_ id: String?, _ role: Person.Role) -> String? {
+            model.pickerPeople(role).contains { $0.id == id } ? id : nil
+        }
+        let fam = valid(item.familyMemberId, .familyMember), rec = valid(item.recipientId, .recipient)
+        if draft.familyMemberId == nil || draft.familyMemberId == suggestedPeople.family { draft.familyMemberId = fam }
+        if draft.recipientId == nil || draft.recipientId == suggestedPeople.recipient { draft.recipientId = rec }
+        suggestedPeople = (fam, rec)
         categoryTouched = true
         descriptionFocused = false
         if draft.amountText.isEmpty { amountFocused = true }
@@ -373,6 +381,7 @@ struct TransactionFormView: View {
                     draft = next
                     installments = false
                     categoryTouched = false
+                    suggestedPeople = (nil, nil)
                     amountFocused = true
                     saving = false
                     return

@@ -248,11 +248,16 @@ public final class SupabaseService: Sendable {
 
     /// Yalnız verilen sütunları güncelle (tam satır değil): web'in sahip olduğu
     /// alanlar iOS'taki eski kopyayla ezilmesin. Satır yoksa hata.
+    /// Sunucudaki keep_newer_row eski damgalı güncellemeyi satırı döndürerek
+    /// SESSİZCE yok sayar: dönen updatedAt gönderilenle aynı değilse uygulanmamıştır.
     func updateColumns(_ table: String, id: String, _ values: JSONObject) async throws {
-        struct Row: Decodable { let id: String }
+        struct Row: Decodable { let id: String; let updatedAt: String? }
         let rows: [Row] = try await client.from(table).update(values, returning: .representation)
-            .eq("id", value: id).select("id").execute().value
-        if rows.isEmpty { throw ServiceError.message("Kayıt bulunamadı ya da değiştirme yetkiniz yok.") }
+            .eq("id", value: id).select("id,updatedAt").execute().value
+        guard let row = rows.first else { throw ServiceError.message("Kayıt bulunamadı ya da değiştirme yetkiniz yok.") }
+        if let sent = values["updatedAt"]?.string, row.updatedAt != sent {
+            throw ServiceError.message("Kayıt başka bir cihazda daha yeni; güncelleme uygulanmadı.")
+        }
     }
 
     /// Hazır (damgalı) satırı yaz — çevrimdışı kuyruğun gönderimi de bunu kullanır.

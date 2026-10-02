@@ -13,7 +13,7 @@ struct DepositSummary: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        if let account = model.account(accountId), let t = Deposit.terms(account) {
+        if let account = model.account(accountId), account.isLive, !account.isArchived, let t = Deposit.terms(account) {
             let balance = model.balances[account.id] ?? account.initialBalance
             let p = Deposit.project(balance, t, asOf: DateUtil.today())
             let money = { (v: Double) in Fmt.currency(v, account.currency) }
@@ -60,7 +60,7 @@ struct DepositSummary: View {
 
     private func doneLabel(_ d: (net: Double, date: String, currency: CurrencyCode)) -> some View {
         Label(d.net > 0 ? "\(Fmt.currency(d.net, d.currency)) net faiz \(DateUtil.display(d.date)) tarihiyle işlendi."
-                        : "Bu vadenin faizi zaten işlenmişti; vade güncellendi.",
+                        : "Vade güncellendi (işlenecek yeni faiz yoktu).",
               systemImage: "checkmark.circle.fill")
             .font(.caption).foregroundStyle(Theme.income)
     }

@@ -55,6 +55,10 @@ struct MonthSpendIntent: AppIntent {
             parts.append("Bütçelerin yüzde \((s.budgetSpent / s.budgetLimit * 100).rounded().safeInt) kadarı kullanıldı.")
         }
         if s.pendingCount > 0 { parts.append("Onay bekleyen \(s.pendingCount) işlem var.") }
+        // Özet uygulamanın son açılışından: eskiyse söyle
+        if Date().timeIntervalSince(s.updatedAt) > 6 * 3600 {
+            parts.append("Son güncelleme \(s.updatedAt.formatted(.relative(presentation: .named).locale(Locale(identifier: "tr_TR")))).")
+        }
         return parts.joined(separator: " ")
     }
 }

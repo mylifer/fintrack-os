@@ -38,3 +38,14 @@ struct OutboxTests {
         #expect(snap.recurring.first?.name == "Kira")
     }
 }
+
+@Suite("yazma damgası")
+struct StampTests {
+    @Test func satirdakindenEskiOlmaz() {
+        // Satır saati ileri bir cihazdan: damga +1 ms
+        #expect(AppModel.stamp(after: "2026-10-02T12:00:00.000Z", now: "2026-10-02T11:59:00.000Z") == "2026-10-02T12:00:00.001Z")
+        #expect(AppModel.stamp(after: "2026-10-02T11:00:00.000Z", now: "2026-10-02T11:59:00.000Z") == "2026-10-02T11:59:00.000Z")
+        #expect(AppModel.stamp(after: nil, now: "2026-10-02T11:59:00.000Z") == "2026-10-02T11:59:00.000Z")
+        #expect(AppModel.stamp(after: "2026-10-02T11:59:00.000Z", now: "2026-10-02T11:59:00.000Z") == "2026-10-02T11:59:00.001Z")
+    }
+}

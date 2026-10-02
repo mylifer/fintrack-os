@@ -476,6 +476,12 @@ public final class AppModel {
     /// damgaları metin olarak kıyaslar, biçim birebir olmalı.
     static func nowISO() -> String { iso.string(from: Date()) }
 
+    /// `now`, ama satırın mevcut damgasından eski değil (+1 ms).
+    nonisolated static func stamp(after current: String?, now: String) -> String {
+        guard let current, current >= now, let d = iso.date(from: current) else { return now }
+        return iso.string(from: d.addingTimeInterval(0.001))
+    }
+
     /// Yeni işlem ya da var olan işlemin düzenlemesi.
     /// `newId`: formun bir kez ürettiği kimlik — belirsiz hatadan sonra tekrar
     /// denemede aynı satır güncellenir, ikinci işlem oluşmaz.
@@ -511,13 +517,19 @@ public final class AppModel {
     public func processDeposit(_ account: Account, renew: Bool) async throws -> Double {
         guard let uid = userId else { throw ServiceError.notSignedIn }
         if !isDemo {
+            // Süren yenileme varsa bitmesini bekle (yoksa refresh hemen döner ve
+            // taze veri gelmemiş görünürdü), sonra kendi turunu çalıştır
+            for _ in 0..<150 where isRefreshing { try? await Task.sleep(nanoseconds: 200_000_000) }
             let before = lastSync
             await refresh()
             guard userId == uid, let s = lastSync, s != before else {
                 throw ServiceError.message("Güncel veriler alınamadı. Bağlantınızı kontrol edip tekrar deneyin.")
             }
         }
-        guard let current = self.account(account.id), let t = Deposit.terms(current), DateUtil.today() >= t.end
+        guard let current = self.account(account.id), current.isLive, !current.isArchived else {
+            throw ServiceError.message("Hesap web'de silinmiş ya da arşivlenmiş.")
+        }
+        guard let t = Deposit.terms(current), DateUtil.today() >= t.end
         else { throw ServiceError.message("Vade henüz dolmamış ya da koşullar web'de değişmiş; ekran güncellendi.") }
         let balance = balances[current.id] ?? current.initialBalance
         let now = Self.nowISO()
@@ -530,7 +542,9 @@ public final class AppModel {
             written = tx.amount
         }
         var cols = Deposit.nextColumns(t, renew: renew)
-        cols["updatedAt"] = .string(now)
+        // Damga satırdakinden eski olmasın (saati ileri bir cihaz yazmış olabilir):
+        // keep_newer_row eskiyi sessizce yok sayardı
+        cols["updatedAt"] = .string(Self.stamp(after: current.updatedAt, now: now))
         if !isDemo {
             guard let service else { throw ServiceError.notSignedIn }
             do {
