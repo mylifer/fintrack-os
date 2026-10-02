@@ -64,7 +64,9 @@ her sekme birkaç saniye içinde açılmalı.
 
 ## Web ile aynı veriye yazmanın kuralları (özet)
 
-- Satırın tamamı `upsert(onConflict: "id")`, her yazmada `updatedAt` (JS `toISOString` biçimi).
+- Satırın tamamı `upsert(onConflict: "id")`, her yazmada `updatedAt` (JS `toISOString` biçimi);
+  damga satırdakinden eski olmaz (+1 ms) — saati ileri bir cihazın düzenlediği satırda `keep_newer_row`
+  iOS yazmasını sessizce yok saymasın.
 - Ham satır korunur: iOS'un bilmediği sütunlar düzenlemede kaybolmaz.
 - Silme = `deleted_at` damgası; okurken silinmişler gizlenir.
 - Başka kayıtlara bağlı işlemler (taksit, borç, yatırım, bölünmüş kategori, çalışma alanı

@@ -476,7 +476,9 @@ public final class AppModel {
     /// damgaları metin olarak kıyaslar, biçim birebir olmalı.
     static func nowISO() -> String { iso.string(from: Date()) }
 
-    /// `now`, ama satırın mevcut damgasından eski değil (+1 ms).
+    /// `now`, ama satırın mevcut damgasından eski değil (+1 ms). Sunucudaki
+    /// keep_newer_row eski damgalı yazmayı sessizce yok sayar: saati ileri bir
+    /// cihazın düzenlediği satırda iOS düzenlemesi kaybolmasın.
     nonisolated static func stamp(after current: String?, now: String) -> String {
         guard let current, current >= now, let d = iso.date(from: current) else { return now }
         return iso.string(from: d.addingTimeInterval(0.001))
@@ -646,7 +648,7 @@ public final class AppModel {
             try await write(record, in: kp)
         } catch where !SupabaseService.isPermanentWriteError(error) {
             guard let uid = userId else { return }
-            let row = record.rowForWrite(updatedAt: Self.nowISO())
+            let row = record.rowForWrite(updatedAt: Self.stamp(after: record.updatedAt, now: Self.nowISO()))
             if outbox == nil { openOutbox(uid) }
             outbox?.enqueue(table: T.table, row: row)
             pendingWrites = outbox?.count ?? 0
@@ -703,7 +705,7 @@ public final class AppModel {
     /// gelince gönderilir. Sunucu reddederse (yetki, doğrulama) hata fırlatılır.
     private func write<T: SyncRecord>(_ record: T, in kp: WritableKeyPath<Snapshot, [T]>) async throws {
         guard let uid = userId else { throw ServiceError.notSignedIn }
-        let row = record.rowForWrite(updatedAt: Self.nowISO())
+        let row = record.rowForWrite(updatedAt: Self.stamp(after: record.updatedAt, now: Self.nowISO()))
         if !isDemo {
             guard let service else { throw ServiceError.notSignedIn }
             do {
