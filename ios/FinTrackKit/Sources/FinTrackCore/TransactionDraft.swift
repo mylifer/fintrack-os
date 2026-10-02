@@ -16,6 +16,8 @@ public struct TransactionDraft: Equatable, Sendable {
     public var notes: String = ""
     /// Gider için "abonelik" etiketi (web ödeme türü segmenti "Abonelik")
     public var isSubscription = false
+    /// Abonelik dışındaki etiketler (web etiket alanı); yazmada `Tags.dedupe`
+    public var tags: [String] = []
 
     public init() {}
 
@@ -29,14 +31,13 @@ public struct TransactionDraft: Equatable, Sendable {
         description = t.description
         notes = t.notes ?? ""
         isSubscription = Subscriptions.hasSubscriptionTag(t.tags)
+        tags = (t.tags ?? []).filter { !Subscriptions.isSubscriptionTag($0) }
     }
 
-    /// Etiketlere abonelik etiketini ekle / kaldır; diğer etiketler korunur, tekrar yok.
-    static func tags(_ current: [String]?, subscription: Bool) -> [String] {
-        var out: [String] = []
-        for t in current ?? [] where !Subscriptions.isSubscriptionTag(t) && !out.contains(t) { out.append(t) }
-        if subscription { out.append(Subscriptions.tag) }
-        return out
+    /// Yazılacak etiket listesi: temizlenmiş etiketler + (giderse) abonelik.
+    var tagsForWrite: [String] {
+        let others = Tags.dedupe(tags.filter { !Subscriptions.isSubscriptionTag($0) })
+        return others + (type == .expense && isSubscription ? [Subscriptions.tag] : [])
     }
 
     public var amount: Double { Fmt.parseAmount(amountText) }
@@ -77,7 +78,7 @@ public struct TransactionDraft: Equatable, Sendable {
             "categoryId": JSONValue(type == .transfer ? nil : categoryId),
             "description": .string(descriptionOrDefault),
             "notes": JSONValue(notesOrNil),
-            "tags": .array(type == .expense && isSubscription ? [.string(Subscriptions.tag)] : []),
+            "tags": .array(tagsForWrite.map { .string($0) }),
             "isInstallment": .bool(false),
             "createdAt": .string(now),
             "updatedAt": .string(now),
@@ -101,9 +102,11 @@ public struct TransactionDraft: Equatable, Sendable {
         out.categoryId = type == .transfer ? nil : categoryId
         out.description = descriptionOrDefault
         out.notes = notesOrNil
+        // Etiketlere dokunulmadıysa ham liste aynen kalır (web'in yazdığı biçim korunur)
         let wantsTag = type == .expense && isSubscription
-        if wantsTag != Subscriptions.hasSubscriptionTag(t.tags) {
-            out.raw["tags"] = .array(Self.tags(t.tags, subscription: wantsTag).map { .string($0) })
+        let originalOthers = (t.tags ?? []).filter { !Subscriptions.isSubscriptionTag($0) }
+        if wantsTag != Subscriptions.hasSubscriptionTag(t.tags) || tags != originalOthers {
+            out.raw["tags"] = .array(tagsForWrite.map { .string($0) })
         }
         // Kuruş düzeyinde kıyas: yalnız açıklama düzenlenince eski kayıttaki
         // kayan nokta gürültüsü yüzünden tarihî TRY değeri değişmesin

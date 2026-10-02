@@ -147,6 +147,13 @@ struct TransactionFormView: View {
                     }
 
                     Section {
+                        TagEditor(tags: $draft.tags, known: model.knownTags,
+                                  onSubscriptionTag: draft.type == .expense ? { draft.isSubscription = true } : nil)
+                    } header: {
+                        Text("Etiketler")
+                    }
+
+                    Section {
                         TextField("Not", text: $draft.notes, axis: .vertical)
                             .lineLimit(1...4)
                     }
@@ -332,7 +339,7 @@ struct TransactionFormView: View {
         if draft.amountText.isEmpty { amountFocused = true }
     }
 
-    /// `another`: kaydettikten sonra formu kapatma; tür, hesap ve tarih kalsın.
+    /// `another`: kaydettikten sonra formu kapatma; tür, hesap, tarih ve etiketler kalsın.
     private func save(another: Bool = false) {
         saving = true
         Task {
@@ -352,6 +359,7 @@ struct TransactionFormView: View {
                     next.accountId = draft.accountId
                     next.toAccountId = draft.toAccountId
                     next.date = draft.date
+                    next.tags = draft.tags   // art arda girişte (ör. #Tatil) etiket kalsın
                     draft = next
                     installments = false
                     categoryTouched = false

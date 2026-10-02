@@ -22,8 +22,10 @@ struct TxFilter: Equatable {
     var accountId: String?
     var period: Period = .all
     var pendingOnly = false
+    /// Etiket anahtarı (Tags.key)
+    var tagKey: String?
 
-    var isActive: Bool { type != nil || accountId != nil || period != .all || pendingOnly }
+    var isActive: Bool { type != nil || accountId != nil || period != .all || pendingOnly || tagKey != nil }
 
     /// Dönemin [başlangıç, bitiş] günleri; tüm zamanlar için nil.
     var range: (from: String, to: String)? {
@@ -40,6 +42,7 @@ struct TxFilter: Equatable {
         if let type, t.type != type { return false }
         if let a = accountId, !Calc.touchesAccount(t, a) { return false }
         if pendingOnly && !Calc.awaitsApproval(t) { return false }
+        if let k = tagKey, !Tags.has(t, key: k) { return false }
         if let r = range, !DateUtil.isInRange(t.date, r.from, r.to) { return false }
         return true
     }
@@ -54,6 +57,7 @@ struct TransactionsView: View {
     @State private var editing: Transaction?
     @State private var pendingDelete: Transaction?
     @State private var errorMessage: String?
+    @State private var showTags = false
 
     var body: some View {
         NavigationStack {
@@ -85,10 +89,17 @@ struct TransactionsView: View {
                 }
                 .transactionEditor($editing)
                 .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
+                .navigationDestination(isPresented: $showTags) { TagsView() }
+                .navigationDestination(for: TagRoute.self) { TagTransactionsView(route: $0) }
                 .onAppear {
                     #if DEBUG
-                    // `-search <metin>` (simülatör ekran doğrulaması)
                     let args = ProcessInfo.processInfo.arguments
+                    if args.contains("-tags") { showTags = true }
+                    // `-edit <açıklama>`: o işlemin düzenleyicisini aç
+                    if editing == nil, let i = args.firstIndex(of: "-edit"), i + 1 < args.count {
+                        editing = model.transactions.first { $0.description == args[i + 1] }
+                    }
+                    // `-search <metin>` (simülatör ekran doğrulaması)
                     if query.isEmpty, let i = args.firstIndex(of: "-search"), i + 1 < args.count { query = args[i + 1] }
                     #endif
                 }
@@ -145,6 +156,18 @@ struct TransactionsView: View {
             } label: {
                 Label(model.account(filter.accountId)?.name ?? "Hesap", systemImage: "building.columns")
             }
+            let tags = model.knownTags
+            if !tags.isEmpty {
+                Menu {
+                    Picker("Etiket", selection: $filter.tagKey) {
+                        Text("Tüm etiketler").tag(String?.none)
+                        ForEach(tags.prefix(40)) { Text("#\($0.tag)").tag(Optional($0.key)) }
+                    }
+                } label: {
+                    Label(filter.tagKey.flatMap { k in tags.first { $0.key == k }.map { "#\($0.tag)" } } ?? "Etiket",
+                          systemImage: "number")
+                }
+            }
             Toggle("Yalnız onay bekleyenler", isOn: $filter.pendingOnly)
             Toggle("Tekrarlayanların gelecek dönemleri", isOn: $showPlanned)
             if filter.isActive {
@@ -152,6 +175,7 @@ struct TransactionsView: View {
                 Button("Süzgeci temizle", role: .destructive) { filter = TxFilter() }
             }
             Divider()
+            Button { showTags = true } label: { Label("Etiketler", systemImage: "tag") }
             ShareLink(item: CSVFile(transactions: exportList, categories: model.categories,
                                     accounts: model.accounts, name: csvName),
                       preview: SharePreview("FinTrack işlemleri")) {

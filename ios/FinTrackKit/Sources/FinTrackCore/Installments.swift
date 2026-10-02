@@ -78,7 +78,7 @@ extension Installments {
         guard !description.isEmpty else { throw InstallmentError.description }
         let notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let amounts = Money.split(draft.amount, count)
-        let tags = draft.isSubscription ? [Subscriptions.tag] : []
+        let tags = draft.tagsForWrite   // web: taksitler formun etiketlerini taşır
         let start = DateUtil.calendar.startOfDay(for: draft.date)
         return (0..<count).map { i in
             let date = DateUtil.calendar.date(byAdding: .month, value: i, to: start) ?? start

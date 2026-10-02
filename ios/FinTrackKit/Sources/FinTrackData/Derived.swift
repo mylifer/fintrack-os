@@ -28,6 +28,8 @@ public struct Derived: Sendable {
     public var paymentCarryOverdue: Int
     /// Hızlı ekleme önerileri için açıklama dizini
     public var suggestionIndex: Suggestions.Index
+    /// Kullanılan etiketler (işlem sayısı ↓) — web aggregateTags
+    public var tags: [Tags.Aggregate]
 
     struct Input: Sendable {
         var transactions: [Transaction]
@@ -83,6 +85,7 @@ public struct Derived: Sendable {
             cards: cards,
             paymentSummary: board.summary,
             paymentCarryOverdue: board.carry,
-            suggestionIndex: Suggestions.Index(i.transactions))
+            suggestionIndex: Suggestions.Index(i.transactions),
+            tags: Tags.aggregate(i.transactions, fx: i.fx))
     }
 }

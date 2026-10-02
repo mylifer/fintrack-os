@@ -410,6 +410,9 @@ public final class AppModel {
         fx.rates == nil && activeAccounts.contains { $0.currency != .TRY }
     }
 
+    /// Kullanılan etiketler (işlem sayısı ↓); arka plan hesabı yoksa anında
+    public var knownTags: [Tags.Aggregate] { derived?.tags ?? Tags.aggregate(transactions, fx: fx) }
+
     /// Bütçe kümesinin özeti (ekran önbellekleri için anahtar)
     public var budgetsSignature: Int { Derived.signature(budgets) }
 

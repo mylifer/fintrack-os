@@ -293,4 +293,25 @@ struct SubscriptionTagDraftTests {
         // Değişmediyse etikete dokunulmaz
         #expect(TransactionDraft(editing: plain).applying(to: plain, account: account, fx: fx).raw["tags"] == .array(["iş", "iş"]))
     }
+
+    @Test func serbestEtiketlerTemizlenipYazilir() {
+        var d = TransactionDraft()
+        d.amountText = "50"; d.accountId = "a"; d.isSubscription = true
+        d.tags = [" Tatil ", "tatil", "", "İş"]
+        let t = d.makeNew(account: account, workspaceId: nil, fx: fx, now: "n", today: "2026-09-30")
+        #expect(t.tags == ["Tatil", "İş", "abonelik"])
+        // Gelir: abonelik düşer, diğer etiketler kalır
+        d.type = .income
+        #expect(d.makeNew(account: account, workspaceId: nil, fx: fx, now: "n", today: "2026-09-30").tags == ["Tatil", "İş"])
+    }
+
+    @Test func duzenlemedeEtiketEklenirCikarilir() {
+        let t = tx(["tags": .array(["iş", "abonelik"]), "accountId": "a", "amount": 10])
+        var d = TransactionDraft(editing: t)
+        #expect(d.tags == ["iş"])
+        d.tags.append("Tatil")
+        #expect(d.applying(to: t, account: account, fx: fx).raw["tags"] == .array(["iş", "Tatil", "abonelik"]))
+        d.tags = []
+        #expect(d.applying(to: t, account: account, fx: fx).raw["tags"] == .array(["abonelik"]))
+    }
 }
