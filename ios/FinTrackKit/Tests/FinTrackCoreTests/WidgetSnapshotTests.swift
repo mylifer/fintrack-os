@@ -11,13 +11,16 @@ struct WidgetSnapshotTests {
         """
         let s = try JSONDecoder().decode(WidgetSnapshot.self, from: Data(old.utf8))
         #expect(s.pendingCount == 0)
+        #expect(s.upcoming.isEmpty)
         #expect(s.expense == 1)
     }
 
     @Test func gidipGelir() throws {
         let s = WidgetSnapshot(month: "2026-09", monthTitle: "Eylül 2026", expense: 1, income: 2, net: 1, netWorth: 5,
                                budgetSpent: 0, budgetLimit: 0, budgets: [], amountsHidden: true, updatedAt: Date(timeIntervalSince1970: 0),
-                               pendingCount: 3)
+                               pendingCount: 3,
+                               upcoming: [.init(title: "Kira", date: "2026-10-04", amount: 22_000, currency: "TRY",
+                                                isIncome: false, kind: "recurring")])
         let back = try JSONDecoder().decode(WidgetSnapshot.self, from: JSONEncoder().encode(s))
         #expect(back == s)
     }

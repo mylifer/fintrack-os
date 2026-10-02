@@ -73,7 +73,15 @@ private extension WidgetSnapshot {
             .init(name: "Ulaşım", colorHex: "#3B82F6", spent: 1_890, limit: 4_000, percent: 47, status: "ok"),
             .init(name: "Kahve ve Cafe", colorHex: "#713F12", spent: 355, limit: 800, percent: 44, status: "ok"),
         ],
-        amountsHidden: false, updatedAt: .now)
+        amountsHidden: false, updatedAt: .now, pendingCount: 1,
+        upcoming: [
+            .init(title: "Kira", date: DateUtil.day(Date().addingTimeInterval(86_400 * 2)), amount: 22_000,
+                  currency: "TRY", isIncome: false, kind: "recurring"),
+            .init(title: "Bonus Kart son ödeme", date: DateUtil.day(Date().addingTimeInterval(86_400 * 4)), amount: 12_450,
+                  currency: "TRY", isIncome: false, kind: "cardDue"),
+            .init(title: "Maaş", date: DateUtil.day(Date().addingTimeInterval(86_400 * 5)), amount: 68_000,
+                  currency: "TRY", isIncome: true, kind: "recurring"),
+        ])
 }
 
 // MARK: - Görünümler
@@ -392,6 +400,123 @@ struct FinTrackSummaryWidget: Widget {
     }
 }
 
+// MARK: - Yaklaşanlar
+
+/// Gösterim anına göre: geçmiş günler düşer, "Bugün / Yarın / 3 gün" yeniden hesaplanır.
+private func visibleUpcoming(_ s: WidgetSnapshot, at date: Date) -> [WidgetSnapshot.UpcomingLine] {
+    let today = DateUtil.day(date)
+    return s.upcoming.filter { $0.date >= today }
+}
+
+private func relativeDay(_ iso: String, from date: Date) -> String {
+    guard let d = DateUtil.parseDay(iso) else { return iso }
+    let n = DateUtil.calendar.dateComponents([.day], from: DateUtil.calendar.startOfDay(for: date), to: d).day ?? 0
+    switch n {
+    case 0: return "Bugün"
+    case 1: return "Yarın"
+    default: return "\(n) gün"
+    }
+}
+
+private func kindIcon(_ k: String) -> String {
+    switch k {
+    case "cardDue": "creditcard"
+    case "planned": "calendar"
+    default: "arrow.triangle.2.circlepath"
+    }
+}
+
+private func upcomingAmount(_ u: WidgetSnapshot.UpcomingLine, _ s: WidgetSnapshot) -> String {
+    if s.amountsHidden { return "₺•••" }
+    let c = CurrencyCode(rawValue: u.currency) ?? .TRY
+    return (u.isIncome ? "+" : "−") + Fmt.whole(u.amount, c)
+}
+
+struct UpcomingRow: View {
+    let u: WidgetSnapshot.UpcomingLine
+    let s: WidgetSnapshot
+    let date: Date
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: kindIcon(u.kind)).font(.caption).foregroundStyle(accent).frame(width: 16)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(u.title).font(.caption.weight(.medium)).lineLimit(1)
+                Text("\(relativeDay(u.date, from: date)) · \(DateUtil.display(u.date, "d MMM"))")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Text(upcomingAmount(u, s)).font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(u.isIncome ? incomeGreen : .primary)
+                .lineLimit(1).privacySensitive()
+        }
+    }
+}
+
+struct UpcomingWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: Entry
+
+    var body: some View {
+        Group {
+            if let s = entry.snapshot {
+                let items = visibleUpcoming(s, at: entry.date)
+                switch family {
+                case .accessoryRectangular:
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Yaklaşanlar").font(.caption2).widgetAccentable()
+                        if let u = items.first {
+                            Text(u.title).font(.headline).lineLimit(1)
+                            Text("\(relativeDay(u.date, from: entry.date)) · \(upcomingAmount(u, s))")
+                                .font(.caption2).privacySensitive()
+                        } else {
+                            Text("14 gün içinde yok").font(.caption)
+                        }
+                    }
+                default:
+                    let limit = family == .systemLarge ? 8 : 3
+                    VStack(alignment: .leading, spacing: family == .systemLarge ? 8 : 5) {
+                        HStack {
+                            Label("Yaklaşanlar", systemImage: "calendar.badge.clock").font(.caption.weight(.semibold))
+                                .foregroundStyle(accent)
+                            Spacer()
+                            if items.count > limit {
+                                Text("+\(items.count - limit)").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                        if items.isEmpty {
+                            Spacer()
+                            Text("Önümüzdeki 14 günde ödeme ya da tekrarlayan işlem yok.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                        } else {
+                            ForEach(Array(items.prefix(limit).enumerated()), id: \.offset) { _, u in
+                                UpcomingRow(u: u, s: s, date: entry.date)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            } else {
+                switch family {
+                case .accessoryRectangular: Text("FinTrack")
+                default: EmptyState()
+                }
+            }
+        }
+        .containerBackground(for: .widget) { Color(.systemBackground) }
+        .widgetURL(URL(string: "fintrack://summary"))
+    }
+}
+
+struct FinTrackUpcomingWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "FinTrackUpcoming", provider: Provider()) { UpcomingWidgetView(entry: $0) }
+            .configurationDisplayName("Yaklaşanlar")
+            .description("Kart son ödeme günleri, tekrarlayan ve planlı işlemler (14 gün).")
+            .supportedFamilies([.systemMedium, .systemLarge, .accessoryRectangular])
+    }
+}
+
 /// Denetim Merkezi / kilit ekranı / Eylem düğmesi: tek dokunuşla hızlı ekleme (iOS 18).
 @available(iOS 18.0, *)
 struct QuickAddControl: ControlWidget {
@@ -411,6 +536,7 @@ struct FinTrackWidgets: WidgetBundle {
     var body: some Widget {
         FinTrackSummaryWidget()
         FinTrackNetWorthWidget()
+        FinTrackUpcomingWidget()
         if #available(iOS 18.0, *) { QuickAddControl() }
     }
 }
@@ -418,3 +544,4 @@ struct FinTrackWidgets: WidgetBundle {
 #Preview(as: .systemMedium) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }
 #Preview(as: .systemSmall) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }
 #Preview(as: .systemLarge) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }
+#Preview(as: .systemMedium) { FinTrackUpcomingWidget() } timeline: { Entry(date: .now, snapshot: .sample) }

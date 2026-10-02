@@ -16,6 +16,20 @@ public struct WidgetSnapshot: Codable, Hashable, Sendable {
         }
     }
 
+    /// Yaklaşan ödeme / tekrarlayan / planlı işlem (widget "Yaklaşanlar")
+    public struct UpcomingLine: Codable, Hashable, Sendable {
+        public var title: String
+        public var date: String         // yyyy-MM-dd
+        public var amount: Double
+        public var currency: String
+        public var isIncome: Bool
+        public var kind: String         // cardDue | recurring | planned
+        public init(title: String, date: String, amount: Double, currency: String, isIncome: Bool, kind: String) {
+            self.title = title; self.date = date; self.amount = amount
+            self.currency = currency; self.isIncome = isIncome; self.kind = kind
+        }
+    }
+
     public var month: String            // "2026-09"
     public var monthTitle: String       // "Eylül 2026"
     public var expense: Double
@@ -30,19 +44,22 @@ public struct WidgetSnapshot: Codable, Hashable, Sendable {
     /// Onay bekleyen (tarihi gelmiş işlem + vadesi gelen tekrarlayan) sayısı.
     /// Eski özetlerde yok → 0.
     public var pendingCount: Int = 0
+    /// Önümüzdeki 14 gün, tarih ↑ (en çok 8). Eski özetlerde yok → boş.
+    public var upcoming: [UpcomingLine] = []
 
     public init(month: String, monthTitle: String, expense: Double, income: Double, net: Double,
                 netWorth: Double, budgetSpent: Double, budgetLimit: Double, budgets: [BudgetLine],
-                amountsHidden: Bool, updatedAt: Date, pendingCount: Int = 0) {
+                amountsHidden: Bool, updatedAt: Date, pendingCount: Int = 0, upcoming: [UpcomingLine] = []) {
         self.month = month; self.monthTitle = monthTitle; self.expense = expense; self.income = income
         self.net = net; self.netWorth = netWorth; self.budgetSpent = budgetSpent; self.budgetLimit = budgetLimit
         self.budgets = budgets; self.amountsHidden = amountsHidden; self.updatedAt = updatedAt
         self.pendingCount = pendingCount
+        self.upcoming = upcoming
     }
 
     enum CodingKeys: String, CodingKey {
         case month, monthTitle, expense, income, net, netWorth, budgetSpent, budgetLimit, budgets
-        case amountsHidden, updatedAt, pendingCount
+        case amountsHidden, updatedAt, pendingCount, upcoming
     }
 
     public init(from decoder: Decoder) throws {
@@ -59,6 +76,7 @@ public struct WidgetSnapshot: Codable, Hashable, Sendable {
         amountsHidden = try c.decode(Bool.self, forKey: .amountsHidden)
         updatedAt = try c.decode(Date.self, forKey: .updatedAt)
         pendingCount = try c.decodeIfPresent(Int.self, forKey: .pendingCount) ?? 0
+        upcoming = try c.decodeIfPresent([UpcomingLine].self, forKey: .upcoming) ?? []
     }
 
     public static let appGroup = "group.com.mylifer.fintrack"

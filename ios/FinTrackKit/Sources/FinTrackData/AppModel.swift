@@ -364,10 +364,22 @@ public final class AppModel {
             expense: flow.expense, income: flow.income, net: flow.net, netWorth: netWorth,
             budgetSpent: Money.sum(states) { $0.spent }, budgetLimit: Money.sum(states) { $0.limit },
             budgets: Array(lines), amountsHidden: Fmt.amountsHidden, updatedAt: Date(),
-            pendingCount: dueApprovals.count + dueRecurring.count)
+            pendingCount: dueApprovals.count + dueRecurring.count,
+            upcoming: upcoming(days: 14).prefix(8).map {
+                .init(title: $0.title, date: $0.date, amount: $0.amount, currency: $0.currency.rawValue,
+                      isIncome: $0.type == .income, kind: Self.widgetKind($0.kind))
+            })
         let changed = snap.withoutDate != WidgetSnapshot.load()?.withoutDate
         snap.save()
         if changed { reloadWidgets() }
+    }
+
+    nonisolated static func widgetKind(_ k: Upcoming.Kind) -> String {
+        switch k {
+        case .cardDue: "cardDue"
+        case .recurring: "recurring"
+        case .planned: "planned"
+        }
     }
 
     /// "Tutarları gizle" değişince widget da gizlesin.
