@@ -45,7 +45,8 @@ Bildirimler (Ayarlar → Hatırlatmalar): kart son ödeme günü, tekrarlayan ve
 bütçe uyarı eşiği geçilince / aşılınca (web bildirim merkezindeki gibi bütçe + ay + durum başına bir kez).
 
 Hızlı erişim: uygulama simgesine basılı tut (gider / gelir / transfer ekle, bütçeler), ana ekran / kilit ekranı widget'ları (Bu ay, Net değer, Yaklaşanlar), Denetim Merkezi düğmesi (iOS 18), Siri
-("FinTrack ile harcama ekle").
+("FinTrack ile harcama ekle", "FinTrack bu ay ne kadar harcadım" — uygulamayı açmadan cevaplar; cihaz
+kilitliyse önce kilit açılır, "Tutarları gizle" açıksa tutar söylenmez).
 
 ## Simülatörde örnek veriyle çalıştırma
 
