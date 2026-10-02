@@ -9,6 +9,7 @@ struct SummaryView: View {
     var openTab: (MainTabView.Tab) -> Void
     @State private var settings = false
     @State private var reportPath = false
+    @State private var monthlyPath = false
     @State private var editing: Transaction?
 
     private var month: MonthYear { .current() }
@@ -46,11 +47,14 @@ struct SummaryView: View {
             .navigationDestination(isPresented: $reportPath) { CategoryReportView() }
             .navigationDestination(for: CategoryTxRoute.self) { CategoryTransactionsView(route: $0) }
             .navigationDestination(for: ForecastRoute.self) { _ in ForecastView() }
+            .navigationDestination(for: MonthlySummaryRoute.self) { _ in MonthlySummaryView() }
+            .navigationDestination(isPresented: $monthlyPath) { MonthlySummaryView() }
             .sheet(isPresented: $settings) { SettingsView() }
             .onAppear {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-settings") { settings = true }
                 if ProcessInfo.processInfo.arguments.contains("-report") { reportPath = true }
+                if ProcessInfo.processInfo.arguments.contains("-monthly") { monthlyPath = true }
                 #endif
             }
             .sheet(item: $editing) { TransactionFormView(editing: $0) }
@@ -128,6 +132,19 @@ struct SummaryView: View {
                 }
             }
             TrendChart(series: series)
+            Divider()
+            NavigationLink(value: MonthlySummaryRoute()) {
+                HStack {
+                    Label("Aylık özet", systemImage: "doc.text.magnifyingglass")
+                    Spacer()
+                    Text("gelir, gider, tasarruf, kıyas").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Theme.tint)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()

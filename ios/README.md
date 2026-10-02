@@ -35,7 +35,7 @@ değişirse iki taraf birlikte güncellenir.
 
 | Sekme | İçerik |
 | --- | --- |
-| Özet | Onay bekleyenler (tek dokunuşla onay), ay harcaması + geçen ayın aynı dönemi, kategori halkası (dokun → kategori raporu), yaklaşanlar (7 gün), son 6 ay grafiği, hesaplar, bütçeler, son işlemler |
+| Özet | Onay bekleyenler (tek dokunuşla onay), ay harcaması + geçen ayın aynı dönemi, kategori halkası (dokun → kategori raporu), yaklaşanlar (7 gün), son 6 ay grafiği (→ aylık özet: gelir/gider/net/tasarruf, önceki ay ve geçen yılla kıyas, paylaş), hesaplar, bütçeler, son işlemler |
 | İşlemler | Arama, süzgeç (tür/dönem/hesap/onay bekleyen), sonuç toplamı, CSV paylaş, tekrarlayanların gelecek dönemleri; kaydır: düzenle · sil · kopyala · onayla |
 | Hesaplar | Net değer, Ödeme Takibi, nakit akışı tahmini, hesaplar (90 gün bakiye seyri), borçlar (ödeme yap, taksit planı); kredi kartında dönem içi / son ekstre, ekstre geçmişi, "Ekstreyi öde" |
 | Yatırımlar | Portföy, K/Z, günlük değişim |
@@ -50,7 +50,7 @@ Debug derlemede `-demo` başlatma argümanı gerçek hesap yerine örnek veri y�
 şey yazılmaz. Xcode'da: Product → Scheme → Edit Scheme → Run → Arguments → `-demo`.
 Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|accounts|investments|budgets`,
 `-plan budgets|goals|recurring|subscriptions`, `-quickadd`, `-search <metin>`,
-`-account <hesap-id> [-statements] [-reconcile]`, `-debt <id>`, `-payments`, `-forecast`, `-report`,
+`-account <hesap-id> [-statements] [-reconcile]`, `-debt <id>`, `-payments`, `-forecast`, `-report`, `-monthly`,
 `-settings`, `-newrecurring`, `-newbudget`, `-lock -noautounlock`.
 
 Performans: `-demo -stress` örnek veriye 20 bin işlem ekler. Ağır hesaplar (aylık akış,

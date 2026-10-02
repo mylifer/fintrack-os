@@ -410,6 +410,9 @@ public final class AppModel {
         fx.rates == nil && activeAccounts.contains { $0.currency != .TRY }
     }
 
+    /// Bütçe kümesinin özeti (ekran önbellekleri için anahtar)
+    public var budgetsSignature: Int { Derived.signature(budgets) }
+
     public func budgetStates(_ my: MonthYear = .current()) -> [Calc.BudgetState] {
         if let d = derived, d.month == my, d.budgetsSignature == Derived.signature(budgets) { return d.budgetStates }
         return Self.budgetStates(budgets, reportTransactions, my, categories: categories, fx: fx)
