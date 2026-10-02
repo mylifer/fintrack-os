@@ -102,17 +102,37 @@ public struct MonthlySummary: Sendable {
             return CategoryRow(categoryId: k.isEmpty ? nil : k, amount: amount, prevAmount: prev,
                                yearAmount: byYear[k] ?? 0, change: pctChange(amount, prev))
         }.filter { $0.amount > 0 }
-        rows.sort { $0.amount != $1.amount ? $0.amount > $1.amount : $0.id < $1.id }
+        // Eşit tutarda web'deki gibi ilk görülme sırası (Map ekleme sırası, kararlı sıralama)
+        var firstSeen: [String: Int] = [:]
+        for t in curTxs where t.type == .expense && t.icon == nil {
+            for sl in Calc.categorySlices(t) where firstSeen[sl.categoryId ?? ""] == nil {
+                firstSeen[sl.categoryId ?? ""] = firstSeen.count
+            }
+        }
+        rows.sort {
+            if $0.amount != $1.amount { return $0.amount > $1.amount }
+            return (firstSeen[$0.categoryId ?? ""] ?? .max) < (firstSeen[$1.categoryId ?? ""] ?? .max)
+        }
 
         let increases = rows
             .filter { $0.amount - $0.prevAmount > 0 && $0.prevAmount > 0 }
-            .sorted { ($0.amount - $0.prevAmount) > ($1.amount - $1.prevAmount) }
+            .enumerated()
+            .sorted { a, b in
+                let x = a.element.amount - a.element.prevAmount, y = b.element.amount - b.element.prevAmount
+                return x != y ? x > y : a.offset < b.offset
+            }
             .prefix(3)
+            .map(\.element)
 
         let largest = curTxs
             .filter { $0.type == .expense && $0.icon == nil }
-            .sorted { fx.baseAmount($0) > fx.baseAmount($1) }
+            .enumerated()
+            .sorted { a, b in
+                let x = fx.baseAmount(a.element), y = fx.baseAmount(b.element)
+                return x != y ? x > y : a.offset < b.offset   // kararlı (web Array.sort)
+            }
             .prefix(5)
+            .map(\.element)
 
         let current = flow(curRange)
         return MonthlySummary(

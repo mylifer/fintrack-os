@@ -10,9 +10,10 @@ struct MonthlySummaryRoute: Hashable {}
 struct MonthlySummaryView: View {
     @Environment(AppModel.self) private var model
     @State private var month = MonthlySummary.defaultMonth()
-    @State private var cached: (key: String, value: MonthlySummary, budgets: [Calc.BudgetState])?
+    @State private var cached: (key: String, month: MonthYear, value: MonthlySummary, budgets: [Calc.BudgetState])?
 
-    private var key: String { "\(month.year)-\(month.month)|\(model.derivedStamp)|\(model.reportTransactions.count)|\(model.budgetsSignature)|\(DateUtil.today())" }
+    /// derivedStamp her veri değişikliğinden sonraki türetimde artar
+    private var key: String { "\(month.year)-\(month.month)|\(model.derivedStamp)|\(model.budgetsSignature)|\(DateUtil.today())" }
     private var isCurrent: Bool { month == .current() }
 
     var body: some View {
@@ -54,6 +55,9 @@ struct MonthlySummaryView: View {
             }
         }
         .task(id: key) {
+            // Ay okları art arda basılınca hesaplar yığılmasın
+            if cached != nil { try? await Task.sleep(for: .milliseconds(150)) }
+            guard !Task.isCancelled else { return }
             let txs = model.reportTransactions, fx = model.fx, my = month, k = key
             let budgets = model.budgets, categories = model.categories
             let (value, states) = await Task.detached(priority: .userInitiated) {
@@ -64,18 +68,19 @@ struct MonthlySummaryView: View {
                 return (MonthlySummary.build(txs, month: my, fx: fx), states)
             }.value
             guard !Task.isCancelled else { return }
-            cached = (k, value, states)
+            cached = (k, my, value, states)
         }
     }
 
-    /// Önbellek ay/veri değişince geçersiz; eski ayın sonucu yeni ayda gösterilmez.
+    /// Başka ayın sonucu gösterilmez; aynı ayın önceki sonucu yeniden hesaplanırken
+    /// ekranda kalır (her senkronda boş sayfaya dönmesin).
     private var summary: MonthlySummary? {
-        guard let c = cached, c.key == key else { return nil }
+        guard let c = cached, c.month == month else { return nil }
         return c.value
     }
 
     private var budgets: [Calc.BudgetState] {
-        guard let c = cached, c.key == key else { return [] }
+        guard let c = cached, c.month == month else { return [] }
         return c.budgets
     }
 

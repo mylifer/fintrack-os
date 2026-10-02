@@ -230,7 +230,8 @@ struct CategoryTransactionsView: View {
     private var txs: [Transaction] {
         let r = DateUtil.monthRange(route.month)
         return model.reportTransactions.filter { t in
-            t.type == route.type && Calc.isFlow(t) && DateUtil.isInRange(t.date, r.from, r.to)
+            // Tutar kuralıyla aynı (amountByCategory): yatırım bağlı satırlar hariç
+            t.type == route.type && t.icon == nil && Calc.isFlow(t) && DateUtil.isInRange(t.date, r.from, r.to)
                 && Calc.categorySlices(t).contains { s in
                     if let c = s.categoryId, !c.isEmpty { return route.categoryIds.contains(c) }
                     return route.uncategorized

@@ -305,6 +305,21 @@ struct SubscriptionTagDraftTests {
         #expect(d.makeNew(account: account, workspaceId: nil, fx: fx, now: "n", today: "2026-09-30").tags == ["Tatil", "İş"])
     }
 
+    /// Web gelir/transfer satırına abonelik koyduysa iOS düzenlemesi silmez
+    @Test func gelirdekiAbonelikEtiketiKorunur() {
+        let t = tx(["type": "income", "tags": .array(["Abonelik", "iş"]), "accountId": "a", "amount": 10])
+        var d = TransactionDraft(editing: t)
+        d.amountText = "20"
+        #expect(d.applying(to: t, account: account, fx: fx).raw["tags"] == .array(["Abonelik", "iş"]))
+        d.tags.append("ek")
+        #expect(d.applying(to: t, account: account, fx: fx).raw["tags"] == .array(["iş", "ek", "abonelik"]))
+        // Giderden gelire çevrilen satır da etiketi korur
+        let e = tx(["type": "expense", "tags": .array(["abonelik"]), "accountId": "a", "amount": 10])
+        var d2 = TransactionDraft(editing: e)
+        d2.type = .income
+        #expect(d2.applying(to: e, account: account, fx: fx).raw["tags"] == .array(["abonelik"]))
+    }
+
     @Test func duzenlemedeEtiketEklenirCikarilir() {
         let t = tx(["tags": .array(["iş", "abonelik"]), "accountId": "a", "amount": 10])
         var d = TransactionDraft(editing: t)

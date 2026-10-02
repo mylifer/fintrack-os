@@ -60,8 +60,11 @@ struct TagChip: View {
             if let onRemove {
                 Button(action: onRemove) {
                     Image(systemName: "xmark").font(.caption2.weight(.bold))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .padding(.vertical, -8).padding(.trailing, -8)
                 .accessibilityLabel("\(tag) etiketini kaldır")
             }
         }
@@ -96,7 +99,7 @@ struct TagEditor: View {
         if !tags.isEmpty {
             FlowLayout {
                 ForEach(Array(tags.enumerated()), id: \.offset) { i, t in
-                    TagChip(tag: t) { tags.remove(at: i) }
+                    TagChip(tag: t) { if tags.indices.contains(i) { tags.remove(at: i) } }
                 }
             }
             .padding(.vertical, 2)
@@ -129,7 +132,11 @@ struct TagEditor: View {
         let n = Tags.normalize(raw.hasPrefix("#") ? String(raw.dropFirst()) : raw)
         defer { text = "" }
         guard !n.isEmpty, !tags.contains(where: { Tags.key($0) == Tags.key(n) }) else { return }
-        if Subscriptions.isSubscriptionTag(n) { onSubscriptionTag?(); return }   // abonelik ayrı anahtarla
+        // Abonelik ayrı anahtarla (yalnız gider); gelir/transferde eklenmez
+        if Subscriptions.isSubscriptionTag(n) {
+            if let onSubscriptionTag { onSubscriptionTag() } else { Haptics.warning() }
+            return
+        }
         tags.append(n)
         Haptics.tap()
     }
@@ -161,7 +168,9 @@ struct TagsView: View {
         }
         .listStyle(.insetGrouped)
         .overlay {
-            if list.isEmpty {
+            if model.derived == nil {
+                ProgressView()
+            } else if list.isEmpty {
                 if q.isEmpty {
                     ContentUnavailableView("Henüz etiket yok", systemImage: "number",
                                            description: Text("İşlem eklerken etiket atadığınızda burada görünür."))
@@ -210,9 +219,12 @@ struct TagTransactionsView: View {
 
     var body: some View {
         let list = model.transactions.filter { Tags.has($0, key: route.key) }
-        let agg = model.knownTags.first { $0.key == route.key }
+        // Web etiket detayı: taksitler toplu, yalnız akışa giren (işlenmiş,
+        // mutabakat/anapara hariç) satırlar
+        let flowTxs = model.reportTransactions.filter { Tags.has($0, key: route.key) && Calc.isFlow($0) }
+        let flow = Calc.periodFlow(flowTxs, from: "0000-01-01", to: "9999-12-31", fx: model.fx)
         TransactionList(transactions: list, editing: $editing, pendingDelete: $pendingDelete,
-                        header: list.isEmpty ? nil : AnyView(header(count: list.count, agg)))
+                        header: list.isEmpty ? nil : AnyView(header(count: flowTxs.count, flow)))
             .overlay { if list.isEmpty { ContentUnavailableView("İşlem yok", systemImage: "tray") } }
             .navigationTitle("#\(route.tag)")
             .navigationBarTitleDisplayMode(.inline)
@@ -220,15 +232,15 @@ struct TagTransactionsView: View {
             .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
     }
 
-    private func header(count: Int, _ a: Tags.Aggregate?) -> some View {
+    private func header(count: Int, _ f: Calc.Flow) -> some View {
         HStack(spacing: 14) {
             Text("\(count) işlem").font(.subheadline.bold())
             Spacer()
-            if let a, a.expense > 0 {
-                Label(Fmt.currency(a.expense), systemImage: "arrow.up.right").foregroundStyle(Theme.expense)
+            if f.expense > 0 {
+                Label(Fmt.currency(f.expense), systemImage: "arrow.up.right").foregroundStyle(Theme.expense)
             }
-            if let a, a.income > 0 {
-                Label(Fmt.currency(a.income), systemImage: "arrow.down.left").foregroundStyle(Theme.income)
+            if f.income > 0 {
+                Label(Fmt.currency(f.income), systemImage: "arrow.down.left").foregroundStyle(Theme.income)
             }
         }
         .font(.subheadline.monospacedDigit())

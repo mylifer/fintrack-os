@@ -34,10 +34,13 @@ public struct TransactionDraft: Equatable, Sendable {
         tags = (t.tags ?? []).filter { !Subscriptions.isSubscriptionTag($0) }
     }
 
-    /// Yazılacak etiket listesi: temizlenmiş etiketler + (giderse) abonelik.
-    var tagsForWrite: [String] {
+    /// Yazılacak etiket listesi: temizlenmiş etiketler + abonelik. Abonelik
+    /// anahtarı yalnız giderde görünür: yeni satırda yalnız gidere yazılır;
+    /// düzenlemede web'in gelir/transfer satırına koyduğu etiket korunur.
+    func tagsForWrite(hadSubscription: Bool = false) -> [String] {
         let others = Tags.dedupe(tags.filter { !Subscriptions.isSubscriptionTag($0) })
-        return others + (type == .expense && isSubscription ? [Subscriptions.tag] : [])
+        let keepSub = isSubscription && (type == .expense || hadSubscription)
+        return others + (keepSub ? [Subscriptions.tag] : [])
     }
 
     public var amount: Double { Fmt.parseAmount(amountText) }
@@ -78,7 +81,7 @@ public struct TransactionDraft: Equatable, Sendable {
             "categoryId": JSONValue(type == .transfer ? nil : categoryId),
             "description": .string(descriptionOrDefault),
             "notes": JSONValue(notesOrNil),
-            "tags": .array(tagsForWrite.map { .string($0) }),
+            "tags": .array(tagsForWrite().map { .string($0) }),
             "isInstallment": .bool(false),
             "createdAt": .string(now),
             "updatedAt": .string(now),
@@ -103,10 +106,11 @@ public struct TransactionDraft: Equatable, Sendable {
         out.description = descriptionOrDefault
         out.notes = notesOrNil
         // Etiketlere dokunulmadıysa ham liste aynen kalır (web'in yazdığı biçim korunur)
-        let wantsTag = type == .expense && isSubscription
+        let hadSub = Subscriptions.hasSubscriptionTag(t.tags)
+        let wantsSub = isSubscription && (type == .expense || hadSub)
         let originalOthers = (t.tags ?? []).filter { !Subscriptions.isSubscriptionTag($0) }
-        if wantsTag != Subscriptions.hasSubscriptionTag(t.tags) || tags != originalOthers {
-            out.raw["tags"] = .array(tagsForWrite.map { .string($0) })
+        if wantsSub != hadSub || tags != originalOthers {
+            out.raw["tags"] = .array(tagsForWrite(hadSubscription: hadSub).map { .string($0) })
         }
         // Kuruş düzeyinde kıyas: yalnız açıklama düzenlenince eski kayıttaki
         // kayan nokta gürültüsü yüzünden tarihî TRY değeri değişmesin
