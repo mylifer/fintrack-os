@@ -41,6 +41,9 @@ değişirse iki taraf birlikte güncellenir.
 | Yatırımlar | Portföy, K/Z, günlük değişim |
 | Plan | Bütçe · Hedef · Tekrarlayan · Abonelik |
 
+Bildirimler (Ayarlar → Hatırlatmalar): kart son ödeme günü, tekrarlayan ve planlı işlemler (sabah 9),
+bütçe uyarı eşiği geçilince / aşılınca (web bildirim merkezindeki gibi bütçe + ay + durum başına bir kez).
+
 Hızlı erişim: uygulama simgesine basılı tut (gider / gelir / transfer ekle, bütçeler), ana ekran / kilit ekranı widget'ı, Denetim Merkezi düğmesi (iOS 18), Siri
 ("FinTrack ile harcama ekle").
 

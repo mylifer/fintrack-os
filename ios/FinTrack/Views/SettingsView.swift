@@ -67,7 +67,7 @@ struct SettingsView: View {
                 } footer: {
                     Text(remindersDenied
                          ? "Bildirim izni verilmedi. iPhone Ayarlar → FinTrack → Bildirimler'den açabilirsiniz."
-                         : "Kart son ödeme günü (bir gün önce ve günü), tekrarlayan ve planlı işlemler için sabah 9'da hatırlatır. \"Tutarları gizle\" açıksa tutar yazılmaz.")
+                         : "Kart son ödeme günü (bir gün önce ve günü), tekrarlayan ve planlı işlemler için sabah 9'da hatırlatır; bütçe uyarı eşiğini geçince ya da aşılınca haber verir. \"Tutarları gizle\" açıksa tutar yazılmaz.")
                 }
 
                 Section("Eşitleme") {

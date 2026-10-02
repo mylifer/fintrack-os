@@ -115,6 +115,50 @@ enum Reminders {
     }
 }
 
+/// Bütçe uyarıları (web bildirim merkezi "budget-alert"): bu ay uyarı eşiğini
+/// geçen ya da aşılan bütçe için tek seferlik bildirim. Anahtar web'deki gibi
+/// bütçe + ay + durum: eşikten aşıma geçen bütçe yeniden bildirilir. İlk
+/// çalıştırmada (ve hatırlatmalar kapalıyken) mevcut durumlar sessizce kaydedilir.
+@MainActor
+enum BudgetAlerts {
+    private static let storePrefix = "fintrack.budgetAlertsSeen."
+
+    static func key(_ s: Calc.BudgetState, _ my: MonthYear) -> String {
+        "\(s.budget.id):\(my.year)-\(my.month):\(s.status.rawValue)"
+    }
+
+    static func check(_ model: AppModel) {
+        guard let uid = model.userId, model.derived != nil else { return }
+        let my = MonthYear.current()
+        let alerts = model.budgetStates(my).filter { $0.status != .ok }
+        let keys = alerts.map { key($0, my) }
+        let storeKey = storePrefix + uid + "." + (model.activeWorkspaceId ?? "-")
+        let stored = UserDefaults.standard.stringArray(forKey: storeKey)
+        // Yalnız güncel anahtarlar saklanır (geçen aylar birikmesin)
+        UserDefaults.standard.set(keys, forKey: storeKey)
+        guard let stored, Reminders.isEnabled else { return }
+        let seen = Set(stored)
+        for (s, k) in zip(alerts, keys) where !seen.contains(k) {
+            post(s, key: k, categories: model.categories)
+        }
+    }
+
+    private static func post(_ s: Calc.BudgetState, key: String, categories: [FinTrackCore.Category]) {
+        let label = Calc.budgetLabel(s.budget, categories).label
+        let content = UNMutableNotificationContent()
+        content.title = s.status == .exceeded ? "Bütçe aşıldı: \(label)" : "Bütçe uyarısı: \(label)"
+        let pct = "%\(s.percentUsed.rounded().safeInt) kullanıldı"
+        content.body = Fmt.amountsHidden
+            ? "\(pct). Ayrıntılar için dokun."
+            : "\(pct) · \(Fmt.currency(s.spent)) / \(Fmt.currency(s.limit))"
+        content.sound = .default
+        content.userInfo = ["url": "fintrack://budgets"]
+        content.threadIdentifier = "fintrack.budget"
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "fintrack.budget.\(key)", content: content, trigger: nil))
+    }
+}
+
 /// Bildirime dokununca ilgili ekrana yönlendir.
 final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     static let shared = NotificationRouter()

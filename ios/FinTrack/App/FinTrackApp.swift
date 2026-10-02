@@ -81,7 +81,10 @@ struct RootView: View {
             model.amountsHiddenChanged()
         }
         // Türetim (kart ekstreleri dahil) tamamlanınca: bayat ekstreden hatırlatma kurulmasın
-        .onChange(of: model.derivedStamp) { Reminders.schedule(model) }
+        .onChange(of: model.derivedStamp) {
+            Reminders.schedule(model)
+            BudgetAlerts.check(model)
+        }
         .onChange(of: model.userId) { _, id in
             if id == nil {
                 Task { await Reminders.clear() }
