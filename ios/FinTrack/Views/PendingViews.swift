@@ -54,7 +54,7 @@ struct PendingCard: View {
 
     private func txRow(_ t: Transaction) -> some View {
         HStack(spacing: 8) {
-            Button { editing = t } label: { TransactionRow(t: t) }
+            Button { editing = t } label: { TransactionRow(t: t, showsBadge: false) }
                 .buttonStyle(.plain)
             approveButton(id: t.id) { try await model.approve(t) }
         }

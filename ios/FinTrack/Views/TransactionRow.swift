@@ -7,6 +7,8 @@ struct TransactionRow: View {
     let t: Transaction
     /// Hesap detayında gösterilen hesap: transferin yönü buna göre işaretlenir.
     var perspectiveAccountId: String?
+    /// "Onay bekliyor" kartında rozet tekrar olur; orada gizlenir.
+    var showsBadge = true
 
     var body: some View {
         AmountRow {
@@ -16,7 +18,7 @@ struct TransactionRow: View {
                 Text(title).font(.body).lineLimit(1)
                 HStack(spacing: 4) {
                     Text(subtitle).lineLimit(1)
-                    if let badge {
+                    if showsBadge, let badge {
                         Text("·")
                         Text(badge).foregroundStyle(Theme.planned).lineLimit(1).fixedSize()
                     }
