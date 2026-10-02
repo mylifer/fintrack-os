@@ -96,8 +96,9 @@ her sekme birkaç saniye içinde açılmalı.
 - Bakiye eşitleme: web `ReconcileBalanceModal` — fark tek satır, `systemKind='reconciliation'`,
   `#BakiyeEşitleme`; akışlara/bütçelere/ekstreye girmez. Eşitleme satırı silinebilir.
 - Vadeli mevduat: web `deposit.ts` (basit faiz, stopaj, net). "Faizi işle" = web
-  `processDepositInterest`. Önce buluttan taze veri çekilir (çevrimdışıysa işlenmez); o vadenin faiz
-  satırı (web'in rastgele kimlikli satırı dahil, içerikle aranır) zaten varsa yazılmaz. Net faiz vade
+  `processDepositInterest`. Önce buluttan taze veri çekilir (çevrimdışıysa işlenmez). Faiz satırının
+  kimliği web ile AYNI formülden (`deposit:<hesap>:<vade sonu>`): iki cihaz aynı vadeyi işlese de tek
+  satır. O vadenin faizi (kimlikle ya da eski rastgele kimlikli satır içerikle) zaten varsa yazılmaz. Net faiz vade
   sonu tarihli gelir; hesapta yalnız `deposit*` sütunları KISMİ güncellenir (`update … eq id`, tam satır
   değil — web'in değiştirdiği alanlar ezilmez). Vade koşulları web'de girilir.
 - Taksitli alışveriş: web `addInstallmentGroup` (kuruş hassas bölme, ilk taksitlere artan,

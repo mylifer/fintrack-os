@@ -96,4 +96,14 @@ struct DepositTests {
         #expect(c["depositEnd"] == "2026-11-04")
         #expect(Deposit.nextColumns(t, renew: false).values.allSatisfy { $0 == .null })
     }
+
+    /// web src/lib/utils/deposit.test.ts ile aynı beklenen değerler
+    @Test func kimlikWebIleAyni() {
+        #expect(Deposit.interestId(accountId: "acc-dep", end: "2026-10-01") == "3cd79f4e-b7ef-44f4-a206-e6bc8cba62f7")
+        #expect(Deposit.interestId(accountId: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d", end: "2026-11-04") == "d6c83b2f-b803-4ff6-a761-1698bc567989")
+        // Açıklaması web'de değiştirilmiş satır kimlikle tanınır
+        let edited = tx(["id": .string(Deposit.interestId(accountId: "v", end: "2026-10-03")), "type": "income",
+                         "accountId": "v", "date": "2026-10-03", "description": "elle değişti"])
+        #expect(Deposit.interestBooked([edited], accountId: "v", end: "2026-10-03"))
+    }
 }

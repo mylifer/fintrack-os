@@ -88,10 +88,16 @@ public enum Deposit {
     /// vade sonu tarihli, "Vadeli mevduat faizi" açıklamalı canlı geliri.
     /// Web rastgele kimlik kullandığından kimlikle değil içerikle aranır.
     public static func interestBooked(_ txs: [Transaction], accountId: String, end: String) -> Bool {
-        txs.contains {
-            $0.isLive && $0.accountId == accountId && $0.type == .income
-                && $0.date.prefix(10) == end && $0.description.hasPrefix("Vadeli mevduat faizi")
+        let id = interestId(accountId: accountId, end: end)
+        return txs.contains {
+            $0.isLive && ($0.id == id || ($0.accountId == accountId && $0.type == .income
+                && $0.date.prefix(10) == end && $0.description.hasPrefix("Vadeli mevduat faizi")))
         }
+    }
+
+    /// Faiz satırı kimliği — web depositInterestId ile aynı (iki cihaz aynı satıra yazar).
+    public static func interestId(accountId: String, end: String) -> String {
+        DeterministicID.uuid("deposit:\(accountId):\(end)")
     }
 
     /// Hesap satırında değişecek tek alanlar (yenile: aynı süre ileri; bitir: boş).
@@ -108,8 +114,8 @@ public enum Deposit {
     /// Vade sonu faizini işle (web processDepositInterest): NET faiz vade sonu
     /// tarihli gelir olarak yazılır, koşullar ya aynı süreyle ileri kayar (yenile)
     /// ya da silinir (bitir) — aynı vade ikinci kez "dolmuş" görünmez.
-    /// Faiz satırının kimliği hesap + vade sonundan türetilir: tekrar denemede
-    /// ikinci faiz satırı oluşmaz (web rastgele kimlik kullanır).
+    /// Faiz satırının kimliği hesap + vade sonundan türetilir (web ile aynı):
+    /// tekrar denemede ya da iki cihaz aynı vadeyi işlediğinde tek satır.
     public static func process(account: Account, balance: Double, categories: [Category], renew: Bool,
                                fx: FX, workspaceId: String?, now: String) -> (interest: Transaction?, account: Account)? {
         guard let t = terms(account) else { return nil }
@@ -117,7 +123,7 @@ public enum Deposit {
         var interest: Transaction?
         if p.net >= 0.01 {
             var raw: JSONObject = [
-                "id": .string(DeterministicID.uuid("deposit:\(account.id):\(t.end)")),
+                "id": .string(interestId(accountId: account.id, end: t.end)),
                 "type": "income",
                 "amount": .number(p.net),
                 "currency": .string(account.currency.rawValue),
