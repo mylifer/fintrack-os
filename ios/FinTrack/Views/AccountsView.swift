@@ -195,6 +195,8 @@ struct AccountRow: View {
             Text(Fmt.currency(balance, account.currency))
                 .font(.body.monospacedDigit().weight(.semibold))
                 .foregroundStyle(balance < 0 ? Theme.expense : .primary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .layoutPriority(1)
         }
     }
 }
@@ -231,6 +233,7 @@ struct AccountDetailView: View {
                     Text(Fmt.currency(balance, account.currency))
                         .font(.system(size: 30, weight: .bold).monospacedDigit())
                         .foregroundStyle(balance < 0 ? Theme.expense : .primary)
+                        .lineLimit(1).minimumScaleFactor(0.5)
                     if account.type != .credit_card { BalanceSparkline(account: account) }
                     if account.type == .credit_card, let limit = account.creditLimit {
                         let avail = Calc.availableCredit(account, balance: balance, model.transactions)

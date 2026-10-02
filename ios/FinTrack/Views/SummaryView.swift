@@ -196,6 +196,7 @@ struct SummaryView: View {
                         Text(Fmt.currency(model.balances[a.id] ?? 0, a.currency))
                             .font(.subheadline.monospacedDigit())
                             .foregroundStyle((model.balances[a.id] ?? 0) < 0 ? Theme.expense : .primary)
+                            .lineLimit(1).minimumScaleFactor(0.7).layoutPriority(1)
                     }
                 }
                 if model.activeAccounts.count > 5 {
