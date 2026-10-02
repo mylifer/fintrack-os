@@ -80,7 +80,9 @@ export function DepositPanel({ account }: { account: Account }) {
       )}
       {done !== null && (
         <p className="mt-3 text-xs text-green-600">
-          {money(done.net)} net faiz {fmt(done.date)} tarihiyle hesaba işlendi.
+          {done.net > 0
+            ? <>{money(done.net)} net faiz {fmt(done.date)} tarihiyle hesaba işlendi.</>
+            : <>Bu vadenin faizi zaten işlenmişti (başka bir cihazdan); vade güncellendi.</>}
         </p>
       )}
     </div>

@@ -147,7 +147,7 @@ vi.mock('@/store/sync-status.store', () => ({
 const {
   localUpsert, localPatch, localPatchMany, localBulkUpsert, localBatch,
   softDelete, flushOutbox, reconcilingPull, pendingCount, retryDeadLetters,
-  MAX_SYNC_ATTEMPTS, lastPullWasAuthoritative, purgeWorkspacesLocal,
+  MAX_SYNC_ATTEMPTS, lastPullWasAuthoritative, purgeWorkspacesLocal, stampAfter,
 } = await import('./engine')
 const { setMemberWorkspaceIds } = await import('@/lib/workspace-context')
 
@@ -631,6 +631,44 @@ describe('senkron bütünlüğü — updatedAt, silme/düzenleme çakışması, 
     expect(rows).toHaveLength(2500)
     expect(new Set(rows.map(r => r.id)).size).toBe(2500)
     expect(selectCalls.map(c => c.afterId)).toEqual([null, 'id-00999', 'id-01999'])
+  })
+})
+
+describe('saat kayması — damga satırın son damgasından eski olmaz', () => {
+  it('stampAfter: geride kalan saat +1 ms, normalde şimdi', () => {
+    expect(stampAfter('2026-10-02T12:00:00.000Z', '2026-10-02T11:59:00.000Z')).toBe('2026-10-02T12:00:00.001Z')
+    expect(stampAfter('2026-10-02T11:00:00.000Z', '2026-10-02T11:59:00.000Z')).toBe('2026-10-02T11:59:00.000Z')
+    expect(stampAfter(undefined, '2026-10-02T11:59:00.000Z')).toBe('2026-10-02T11:59:00.000Z')
+    expect(stampAfter('2026-10-02T11:59:00.000Z', '2026-10-02T11:59:00.000Z')).toBe('2026-10-02T11:59:00.001Z')
+    // Postgres biçimi (mikrosaniye, +00:00): metin kıyası sunucudakiyle aynı
+    expect(stampAfter('2026-10-02T12:00:00.123456+00:00', '2026-10-02T11:00:00.000Z')).toBe('2026-10-02T12:00:00.124Z')
+    expect(stampAfter('bozuk', '2026-10-02T11:00:00.000Z')).toBe('2026-10-02T11:00:00.000Z')
+  })
+
+  it('saati ileri bir cihazın yazdığı satırda yerel düzenleme yok sayılmaz (upsert, patch, patchMany, batch)', async () => {
+    const future = '2026-10-02T12:00:00.000Z'   // başka cihaz (saati ileri)
+    await txTable.put(tx('t1', { updatedAt: future }) as Row)
+    await txTable.put(tx('t2', { updatedAt: future }) as Row)
+    await txTable.put(tx('t3', { updatedAt: '2026-01-01T00:00:00.000Z' }) as Row)
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-10-02T11:00:00.000Z'))   // bu cihaz geride
+      await localPatch('transactions', 't1', { amount: 300 })
+      expect((await txTable.get('t1'))!.updatedAt).toBe('2026-10-02T12:00:00.001Z')
+      expect(((await outbox.get('transactions:t1'))!.snapshot as Record<string, unknown>).updatedAt).toBe('2026-10-02T12:00:00.001Z')
+
+      await localUpsert('transactions', tx('t2', { amount: 400 }))
+      expect((await txTable.get('t2'))!.updatedAt).toBe('2026-10-02T12:00:00.001Z')
+
+      await localPatchMany('transactions', ['t1', 't3'], { notes: 'x' })
+      expect((await txTable.get('t1'))!.updatedAt).toBe('2026-10-02T12:00:00.002Z')
+      expect((await txTable.get('t3'))!.updatedAt).toBe('2026-10-02T11:00:00.000Z')   // normal satır: şimdi
+
+      await localBatch([{ kind: 'patch', table: 'transactions', id: 't2', patch: { amount: 500 } }])
+      expect((await txTable.get('t2'))!.updatedAt).toBe('2026-10-02T12:00:00.002Z')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
