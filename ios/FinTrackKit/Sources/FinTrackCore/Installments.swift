@@ -95,6 +95,7 @@ extension Installments {
                 "approvalStatus": .string(ApprovalStatus.approved.rawValue), "approvedAt": .string(now),
                 "createdAt": .string(now), "updatedAt": .string(now), "deleted_at": .null,
                 "workspaceId": JSONValue(workspaceId),
+                "familyMemberId": JSONValue(draft.familyMemberId), "recipientId": JSONValue(draft.recipientId),
             ]
             if let snap = fx.baseSnapshot(amounts[i], account.currency) { raw["amountTry"] = .number(snap) }
             return Transaction(raw: raw)

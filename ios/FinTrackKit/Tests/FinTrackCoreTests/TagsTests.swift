@@ -61,3 +61,15 @@ struct TagsTests {
         #expect(Tags.color("a very long tag name for hashing ğüşiöç") == "#F3A712")
     }
 }
+
+@Suite("arama — kişiler")
+struct TxSearchPeopleTests {
+    @Test func kisiAdiylaBulunur() {
+        let people = [Person(raw: ["id": "p1", "name": "Ayşe", "role": "family_member"]),
+                      Person(raw: ["id": "p2", "name": "Migros", "role": "recipient"])]
+        let m = TxSearch.matcher("ayş", categories: [], accounts: [], people: people)
+        #expect(m(tx(["familyMemberId": "p1"])))
+        #expect(!m(tx(["recipientId": "p2"])))
+        #expect(TxSearch.matcher("migr", categories: [], accounts: [], people: people)(tx(["recipientId": "p2"])))
+    }
+}

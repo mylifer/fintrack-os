@@ -118,10 +118,10 @@ enum DemoData {
         let transactions = stress + history + [
             tx("income", 68_000, -25, "acc-bank", "c-maas", "Eylül maaşı"),
             tx("expense", 22_000, -24, "acc-bank", "c-kira", "Kira"),
-            tx("expense", 1_240.5, -20, "acc-card", "c-market", "Migros"),
+            tx("expense", 1_240.5, -20, "acc-card", "c-market", "Migros", extra: ["recipientId": "p-migros"]),
             tx("expense", 2_150, -12, "acc-card", "c-market", "Carrefour haftalık"),
             tx("expense", 1_890, -9, "acc-card", "c-yakit", "Shell", extra: ["tags": .array(["Tatil"])]),
-            tx("expense", 685, -6, "acc-card", "c-yemek", "Akşam yemeği", extra: ["tags": .array(["Tatil", "Aile"])]),
+            tx("expense", 685, -6, "acc-card", "c-yemek", "Akşam yemeği", extra: ["tags": .array(["Tatil", "Aile"]), "familyMemberId": "p-ayse"]),
             tx("expense", 145, -2, "acc-cash", "c-kahve", "Kahve Dünyası"),
             tx("expense", 1_430.75, -1, "acc-card", "c-market", "A101"),
             tx("expense", 320, 0, "acc-card", "c-yemek", "Öğle yemeği", extra: ["tags": .array(["İş"])]),
@@ -208,6 +208,11 @@ enum DemoData {
         ])]
         snap.recurring = recurringList
         snap.goals = goals
+        snap.people = [
+            Person(raw: ["id": "p-ayse", "name": "Ayşe", "role": "family_member", "workspaceId": .string(ws)]),
+            Person(raw: ["id": "p-can", "name": "Can", "role": "family_member", "workspaceId": .string(ws)]),
+            Person(raw: ["id": "p-migros", "name": "Migros", "role": "recipient", "workspaceId": .string(ws)]),
+        ]
         return snap
     }
 

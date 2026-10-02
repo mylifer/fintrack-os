@@ -18,6 +18,7 @@ struct LocalCache: Sendable {
         var goals: [JSONObject]?
         var paymentPlans: [JSONObject]?
         var paymentOccurrences: [JSONObject]?
+        var people: [JSONObject]?
     }
 
     private func url(_ userId: String) -> URL? {
@@ -35,7 +36,8 @@ struct LocalCache: Sendable {
                             investments: s.investments.map(\.raw), debts: s.debts.map(\.raw),
                             recurring: s.recurring.map(\.raw), goals: s.goals.map(\.raw),
                             paymentPlans: s.paymentPlans.map(\.raw),
-                            paymentOccurrences: s.paymentOccurrences.map(\.raw))
+                            paymentOccurrences: s.paymentOccurrences.map(\.raw),
+                            people: s.people.map(\.raw))
         guard let data = try? JSONEncoder().encode(stored) else { return }
         #if os(iOS)
         try? data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
@@ -62,7 +64,8 @@ struct LocalCache: Sendable {
                         recurring: (s.recurring ?? []).map(RecurringTransaction.init(raw:)),
                         goals: (s.goals ?? []).map(SavingsGoal.init(raw:)),
                         paymentPlans: (s.paymentPlans ?? []).map(PaymentPlan.init(raw:)),
-                        paymentOccurrences: (s.paymentOccurrences ?? []).map(PaymentOccurrence.init(raw:)))
+                        paymentOccurrences: (s.paymentOccurrences ?? []).map(PaymentOccurrence.init(raw:)),
+                        people: (s.people ?? []).map(Person.init(raw:)))
     }
 
     func clear(userId: String) {

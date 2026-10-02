@@ -329,4 +329,23 @@ struct SubscriptionTagDraftTests {
         d.tags = []
         #expect(d.applying(to: t, account: account, fx: fx).raw["tags"] == .array(["abonelik"]))
     }
+
+    /// Kişiler (web people): değişmediyse ham satıra dokunulmaz; transferde boşalır
+    @Test func kisilerYazilir() {
+        var d = TransactionDraft()
+        d.amountText = "50"; d.accountId = "a"; d.recipientId = "p1"; d.familyMemberId = "f1"
+        let t = d.makeNew(account: account, workspaceId: nil, fx: fx, now: "n", today: "2026-09-30")
+        #expect(t.recipientId == "p1" && t.familyMemberId == "f1")
+        d.type = .transfer; d.toAccountId = "b"
+        let tr = d.makeNew(account: account, workspaceId: nil, fx: fx, now: "n", today: "2026-09-30")
+        #expect(tr.recipientId == nil && tr.familyMemberId == nil)
+
+        let old = tx(["recipientId": "p1", "accountId": "a", "amount": 10])
+        var e = TransactionDraft(editing: old)
+        #expect(e.applying(to: old, account: account, fx: fx).raw["familyMemberId"] == nil)   // dokunulmadı
+        e.recipientId = nil
+        #expect(e.applying(to: old, account: account, fx: fx).raw["recipientId"] == .null)
+        e.familyMemberId = "f2"
+        #expect(e.applying(to: old, account: account, fx: fx).raw["familyMemberId"] == "f2")
+    }
 }

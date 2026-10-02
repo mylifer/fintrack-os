@@ -35,6 +35,8 @@ public final class AppModel {
     /// (web collapseInstallments). Aylık gelir/gider, kategori dağılımı ve bütçeler
     /// BUNU okur; bakiye/limit ham `transactions`'ı.
     public private(set) var reportTransactions: [Transaction] = []
+    /// Etkin alanın kişileri (arşivliler dahil, ada göre)
+    public private(set) var people: [Person] = []
     public private(set) var balances: [String: Double] = [:]  // hesap id → kendi para biriminde
     public private(set) var fx = FX()
     public private(set) var investments: [InvestmentTransaction] = []
@@ -224,6 +226,7 @@ public final class AppModel {
             async let go = try? service.fetchAll(SavingsGoal.self, userId: uid, memberIds: members)
             async let pp = try? service.fetchAll(PaymentPlan.self, userId: uid, memberIds: members)
             async let po = try? service.fetchAll(PaymentOccurrence.self, userId: uid, memberIds: members)
+            async let pe = try? service.fetchAll(Person.self, userId: uid, memberIds: members)
             var snap = Snapshot(workspaces: try await ws, accounts: try await ac, categories: try await ca,
                                 budgets: try await bu, transactions: try await tx,
                                 investments: try await iv, debts: try await de)
@@ -231,6 +234,7 @@ public final class AppModel {
             snap.goals = await go ?? all.goals
             snap.paymentPlans = await pp ?? all.paymentPlans
             snap.paymentOccurrences = await po ?? all.paymentOccurrences
+            snap.people = await pe ?? all.people
             guard userId == uid else { return }   // çekiş sürerken çıkış yapıldı
             // Görüntü alındıktan SONRA yapılan yazmalar ve hâlâ gönderilemeyenler üste
             for e in outbox?.entries ?? [] { snap.overlay(table: e.table, row: e.row) }
@@ -300,6 +304,8 @@ public final class AppModel {
         goals = all.goals.filter(inActive)
         paymentPlans = all.paymentPlans.filter(inActive)
         paymentOccurrences = all.paymentOccurrences.filter(inActive)
+        people = all.people.filter(inActive)
+            .sorted { $0.name.compare($1.name, locale: Locale(identifier: "tr_TR")) == .orderedAscending }
         recomputeBalances()
     }
 
@@ -392,6 +398,17 @@ public final class AppModel {
     }
 
     // MARK: Türetilmiş
+
+    /// Arşivlenmiş kişi de çözülür (bağlı işlemde adı görünsün)
+    public func person(_ id: String?) -> Person? {
+        guard let id, !id.isEmpty else { return nil }
+        return people.first { $0.id == id } ?? all.people.first { $0.id == id }
+    }
+
+    /// Formda seçilebilecekler: arşivde olmayan, verilen roldeki kişiler
+    public func pickerPeople(_ role: Person.Role) -> [Person] {
+        people.filter { $0.role == role && !$0.isArchived }
+    }
 
     public func account(_ id: String?) -> Account? {
         guard let id else { return nil }
@@ -1010,6 +1027,7 @@ struct Snapshot: Sendable {
     var goals: [SavingsGoal] = []
     var paymentPlans: [PaymentPlan] = []
     var paymentOccurrences: [PaymentOccurrence] = []
+    var people: [Person] = []
 }
 
 extension WidgetSnapshot {

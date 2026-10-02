@@ -18,6 +18,9 @@ public struct TransactionDraft: Equatable, Sendable {
     public var isSubscription = false
     /// Abonelik dışındaki etiketler (web etiket alanı); yazmada `Tags.dedupe`
     public var tags: [String] = []
+    /// Web kişileri (people): aile üyesi ve alıcı; transferde yazılmaz
+    public var familyMemberId: String?
+    public var recipientId: String?
 
     public init() {}
 
@@ -32,6 +35,8 @@ public struct TransactionDraft: Equatable, Sendable {
         notes = t.notes ?? ""
         isSubscription = Subscriptions.hasSubscriptionTag(t.tags)
         tags = (t.tags ?? []).filter { !Subscriptions.isSubscriptionTag($0) }
+        familyMemberId = t.familyMemberId
+        recipientId = t.recipientId
     }
 
     /// Yazılacak etiket listesi: temizlenmiş etiketler + abonelik. Abonelik
@@ -82,6 +87,8 @@ public struct TransactionDraft: Equatable, Sendable {
             "description": .string(descriptionOrDefault),
             "notes": JSONValue(notesOrNil),
             "tags": .array(tagsForWrite().map { .string($0) }),
+            "familyMemberId": JSONValue(type == .transfer ? nil : familyMemberId),
+            "recipientId": JSONValue(type == .transfer ? nil : recipientId),
             "isInstallment": .bool(false),
             "createdAt": .string(now),
             "updatedAt": .string(now),
@@ -112,6 +119,11 @@ public struct TransactionDraft: Equatable, Sendable {
         if wantsSub != hadSub || tags != originalOthers {
             out.raw["tags"] = .array(tagsForWrite(hadSubscription: hadSub).map { .string($0) })
         }
+        // Kişiler: web formu gibi transferde boş; değişmediyse ham satıra dokunulmaz
+        let fam = type == .transfer ? nil : familyMemberId
+        let rec = type == .transfer ? nil : recipientId
+        if fam != t.familyMemberId { out.raw["familyMemberId"] = JSONValue(fam) }
+        if rec != t.recipientId { out.raw["recipientId"] = JSONValue(rec) }
         // Kuruş düzeyinde kıyas: yalnız açıklama düzenlenince eski kayıttaki
         // kayan nokta gürültüsü yüzünden tarihî TRY değeri değişmesin
         if Money.toMinor(t.amount) != Money.toMinor(out.amount) || t.currency != out.currency {

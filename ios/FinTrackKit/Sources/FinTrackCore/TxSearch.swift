@@ -6,11 +6,13 @@ public enum TxSearch {
     static let tr = Locale(identifier: "tr_TR")
     static func lc(_ s: String) -> String { s.lowercased(with: tr) }
 
-    public static func matcher(_ query: String, categories: [Category], accounts: [Account]) -> (Transaction) -> Bool {
+    public static func matcher(_ query: String, categories: [Category], accounts: [Account],
+                               people: [Person] = []) -> (Transaction) -> Bool {
         let q = lc(query.trimmingCharacters(in: .whitespacesAndNewlines))
         if q.isEmpty { return { _ in true } }
         let categoryIds = Set(categories.filter { lc($0.name).contains(q) }.map(\.id))
         let accountIds = Set(accounts.filter { lc($0.name).contains(q) }.map(\.id))
+        let personIds = Set(people.filter { lc($0.name).contains(q) }.map(\.id))
 
         return { t in
             if lc(t.description).contains(q) { return true }
@@ -24,6 +26,8 @@ public enum TxSearch {
             } else if let c = t.categoryId, categoryIds.contains(c) { return true }
             if accountIds.contains(t.accountId) { return true }
             if let to = t.toAccountId, accountIds.contains(to) { return true }
+            if let r = t.recipientId, personIds.contains(r) { return true }
+            if let f = t.familyMemberId, personIds.contains(f) { return true }
             return false
         }
     }

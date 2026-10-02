@@ -80,7 +80,7 @@ struct TransactionsView: View {
                         }
                     }
                 }
-                .searchable(text: $query, prompt: "Açıklama, kategori, hesap, tutar")
+                .searchable(text: $query, prompt: "Açıklama, kategori, hesap, kişi, tutar")
                 .refreshable { await model.refresh() }
                 .navigationTitle("İşlemler")
                 .toolbar {
@@ -107,7 +107,7 @@ struct TransactionsView: View {
     }
 
     private var filtered: [Transaction] {
-        let match = TxSearch.matcher(query, categories: model.categories, accounts: model.accounts)
+        let match = TxSearch.matcher(query, categories: model.categories, accounts: model.accounts, people: model.people)
         let base = model.transactions.filter { filter.matches($0) && match($0) }
         let extra = planned.filter { filter.matches($0) && match($0) }
         guard !extra.isEmpty else { return base }
@@ -135,7 +135,7 @@ struct TransactionsView: View {
 
     /// Menü açılınca hesaplanır; planlı satırlar dışarıda
     private var exportList: [Transaction] {
-        let match = TxSearch.matcher(query, categories: model.categories, accounts: model.accounts)
+        let match = TxSearch.matcher(query, categories: model.categories, accounts: model.accounts, people: model.people)
         return model.transactions.filter { filter.matches($0) && match($0) }
     }
 

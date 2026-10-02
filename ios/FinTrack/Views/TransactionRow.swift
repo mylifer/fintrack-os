@@ -69,6 +69,7 @@ struct TransactionRow: View {
                c.name.lowercased(with: Locale(identifier: "tr_TR")) != t.description.lowercased(with: Locale(identifier: "tr_TR")) {
                 parts.append(c.name)
             }
+            if let p = model.person(t.recipientId) ?? model.person(t.familyMemberId) { parts.append(p.name) }
             if perspectiveAccountId == nil, let a = model.account(t.accountId) { parts.append(a.name) }
         }
         if let i = t.installIndex, let n = t.installTotal { parts.append("\(i)/\(n) taksit") }

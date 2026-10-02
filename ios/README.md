@@ -83,6 +83,8 @@ her sekme birkaç saniye içinde açılmalı.
 - Etiketler: web `tags.ts` kuralı — yazmada `Tags.dedupe` (boşluk kırpma, Türkçe büyük/küçük harf
   tekrarı atılır); etikete dokunulmadıysa ham liste aynen kalır. Yeniden adlandırma web'de.
 - Abonelik = gider üzerinde `abonelik` etiketi; diğer etiketler korunur.
+- Kişiler (web `people`): iOS yalnız okur ve işleme atar (`familyMemberId`, `recipientId`); transferde
+  boş yazılır (web formu gibi), dokunulmazsa ham satır aynen kalır. Kişi ekleme/düzenleme web'de.
 - Çevrimdışı: ağ yoksa satır cihazdaki kuyruğa (`Outbox`) girer, bağlantı gelince gönderilir;
   sunucudaki `keep_newer_row` sırayı korur.
 - Ödeme Takibi: takvim web `schedule.ts` ile birebir. "Öde" = web `payRow`: isteğe bağlı ödeme
