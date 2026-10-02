@@ -53,6 +53,11 @@ Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|acc
 `-account <hesap-id> [-statements] [-reconcile]`, `-debt <id>`, `-payments`, `-forecast`, `-report`,
 `-settings`, `-newrecurring`, `-newbudget`, `-lock -noautounlock`.
 
+Performans: `-demo -stress` örnek veriye 20 bin işlem ekler. Ağır hesaplar (aylık akış,
+kategori dağılımı, bütçe durumları, kart ekstreleri, öneri dizini) arka planda bir kez yapılır
+(`Derived`); işlem listesi 400'lük sayfalarla çizilir, kaydırdıkça devamı gelir. Bu veride
+her sekme birkaç saniye içinde açılmalı.
+
 ## Web ile aynı veriye yazmanın kuralları (özet)
 
 - Satırın tamamı `upsert(onConflict: "id")`, her yazmada `updatedAt` (JS `toISOString` biçimi).
