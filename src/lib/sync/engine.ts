@@ -145,6 +145,17 @@ function stampTime<T extends object>(row: T, ts: string): T {
   return { ...row, updatedAt: ts }
 }
 
+// Saat kayması: damga, satırın bilinen son damgasından ESKİ olamaz. Saati ileri
+// bir cihaz (başka tarayıcı/telefon) satırı en son yazdıysa, bu cihazın "şimdi"si
+// geride kalır ve keep_newer_row yazmayı SESSİZCE yok sayardı (hata dönmez,
+// düzenleme bir sonraki çekişte geri gelir). O durumda son damga + 1 ms.
+// iOS ile aynı kural (AppModel.stamp(after:now:)).
+export function stampAfter(prev: unknown, ts: string): string {
+  if (typeof prev !== 'string' || prev < ts) return ts
+  const ms = Date.parse(prev)
+  return Number.isFinite(ms) ? new Date(ms + 1).toISOString() : ts
+}
+
 // Dexie's update() DELETES keys whose value is undefined, so a "clear this
 // field" patch would vanish before we snapshot it and never reach the cloud
 // (the classic field-resurrection bug). Normalise undefined → null so the
@@ -189,9 +200,11 @@ async function putOutbox(table: SyncTable, row: { id: string }, ownerId: string 
 /** Insert-or-replace a full entity locally and enqueue it for push. */
 export async function localUpsert<T extends { id: string }>(table: SyncTable, entity: T): Promise<void> {
   const t = DEXIE[table]
-  const stamped = stampTime(stampWorkspace(table, entity), now())
+  const ts = now()
   const ownerId = await currentOwnerId()   // capture before the tx (see currentOwnerId)
   await db.transaction('rw', t, db._outbox, async () => {
+    const prev = await t.get(entity.id) as { updatedAt?: unknown } | undefined
+    const stamped = stampTime(stampWorkspace(table, entity), stampAfter(prev?.updatedAt, ts))
     await t.put(stamped)
     await putOutbox(table, stamped, ownerId)
   })
@@ -203,9 +216,13 @@ export async function localBulkUpsert<T extends { id: string }>(table: SyncTable
   if (entities.length === 0) return
   const t = DEXIE[table]
   const ts = now()
-  const stamped = entities.map(e => stampTime(stampWorkspace(table, e), ts))
   const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
+    const stamped = []
+    for (const e of entities) {
+      const prev = await t.get(e.id) as { updatedAt?: unknown } | undefined
+      stamped.push(stampTime(stampWorkspace(table, e), stampAfter(prev?.updatedAt, ts)))
+    }
     await t.bulkPut(stamped)
     for (const e of stamped) await putOutbox(table, e, ownerId)
   })
@@ -215,10 +232,12 @@ export async function localBulkUpsert<T extends { id: string }>(table: SyncTable
 /** Apply a partial patch, then enqueue the resulting FULL row snapshot. */
 export async function localPatch(table: SyncTable, id: string, patch: Record<string, unknown>): Promise<void> {
   const t = DEXIE[table]
-  const norm = stampTime(nullifyPatch(patch), now())
+  const norm = nullifyPatch(patch)
+  const ts = now()
   const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
-    await t.update(id, norm)
+    const prev = await t.get(id) as { updatedAt?: unknown } | undefined
+    await t.update(id, stampTime(norm, stampAfter(prev?.updatedAt, ts)))
     const full = await t.get(id)
     if (full) await putOutbox(table, full, ownerId)
   })
@@ -229,10 +248,13 @@ export async function localPatch(table: SyncTable, id: string, patch: Record<str
 export async function localPatchMany(table: SyncTable, ids: string[], patch: Record<string, unknown>): Promise<void> {
   if (ids.length === 0) return
   const t = DEXIE[table]
-  const norm = stampTime(nullifyPatch(patch), now())
+  const norm = nullifyPatch(patch)
+  const ts = now()
   const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
-    await t.where('id').anyOf(ids).modify(norm)
+    // Satır başına damga (her satırın son damgası farklı olabilir)
+    const before = await t.where('id').anyOf(ids).toArray() as Array<{ id: string; updatedAt?: unknown }>
+    for (const r of before) await t.update(r.id, stampTime(norm, stampAfter(r.updatedAt, ts)))
     const rows = await t.where('id').anyOf(ids).toArray()
     for (const r of rows) await putOutbox(table, r, ownerId)
   })
@@ -273,16 +295,20 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
     for (const op of ops) {
       const t = DEXIE[op.table]
       if (op.kind === 'upsert') {
-        const stamped = stampTime(stampWorkspace(op.table, op.entity), ts)
+        const prev = await t.get(op.entity.id) as { updatedAt?: unknown } | undefined
+        const stamped = stampTime(stampWorkspace(op.table, op.entity), stampAfter(prev?.updatedAt, ts))
         await t.put(stamped)
         await putOutbox(op.table, stamped, ownerId)
       } else if (op.kind === 'patch') {
-        await t.update(op.id, stampTime(nullifyPatch(op.patch), ts))
+        const prev = await t.get(op.id) as { updatedAt?: unknown } | undefined
+        await t.update(op.id, stampTime(nullifyPatch(op.patch), stampAfter(prev?.updatedAt, ts)))
         const full = await t.get(op.id)
         if (full) await putOutbox(op.table, full, ownerId)
       } else {
         if (op.ids.length === 0) continue
-        await t.where('id').anyOf(op.ids).modify(stampTime(nullifyPatch(op.patch), ts))
+        const norm = nullifyPatch(op.patch)
+        const before = await t.where('id').anyOf(op.ids).toArray() as Array<{ id: string; updatedAt?: unknown }>
+        for (const r of before) await t.update(r.id, stampTime(norm, stampAfter(r.updatedAt, ts)))
         const rows = await t.where('id').anyOf(op.ids).toArray()
         for (const r of rows) await putOutbox(op.table, r, ownerId)
       }

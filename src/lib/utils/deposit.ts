@@ -1,6 +1,7 @@
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { toMajor, toMinor } from './money'
-import type { Account } from '@/types'
+import { deterministicUuid } from './id'
+import type { Account, Transaction } from '@/types'
 
 /* Vadeli mevduat — "Vadeli Hesap" (savings) türündeki hesaba vade koşulları
    girilir: yıllık brüt faiz, vade başlangıcı/sonu, stopaj oranı.
@@ -63,4 +64,27 @@ export function projectDeposit(principal: number, t: DepositTerms, asOf: string)
 export function rolledTerms(t: DepositTerms): DepositTerms {
   const days = differenceInCalendarDays(parseISO(t.end), parseISO(t.start))
   return { ...t, start: t.end, end: format(addDays(parseISO(t.end), days), 'yyyy-MM-dd') }
+}
+
+/* ── Faiz satırı kimliği ve çift işleme koruması ─────────────────────────
+   Faiz satırının kimliği hesap + vade sonundan türetilir (iOS ile AYNI formül:
+   DeterministicID.uuid("deposit:<hesap>:<vade sonu>")). İki cihaz aynı vadeyi
+   işlerse aynı satıra yazar — ikinci faiz satırı oluşmaz. Eski (rastgele
+   kimlikli) satırlar içerikle tanınır: interestBooked. */
+export const DEPOSIT_INTEREST_PREFIX = 'Vadeli mevduat faizi'
+
+export function depositInterestId(accountId: string, end: string): string {
+  return deterministicUuid(`deposit:${accountId}:${end}`)
+}
+
+/** Bu vadenin faiz satırı zaten var mı (bu cihaz, başka cihaz ya da eski kayıt). */
+export function interestBooked(
+  txs: readonly Pick<Transaction, 'id' | 'accountId' | 'type' | 'date' | 'description' | 'deleted_at'>[],
+  accountId: string,
+  end: string,
+): boolean {
+  const id = depositInterestId(accountId, end)
+  return txs.some(t => !t.deleted_at && (t.id === id || (
+    t.accountId === accountId && t.type === 'income' && t.date.slice(0, 10) === end
+    && t.description.startsWith(DEPOSIT_INTEREST_PREFIX))))
 }

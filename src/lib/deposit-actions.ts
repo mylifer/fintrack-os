@@ -2,7 +2,7 @@ import { useAccountStore } from '@/store/accounts.store'
 import { useTransactionStore } from '@/store/transactions.store'
 import { useCategoryStore } from '@/store/categories.store'
 import { foldText } from '@/lib/auto-category'
-import { depositTerms, projectDeposit, rolledTerms } from '@/lib/utils/deposit'
+import { DEPOSIT_INTEREST_PREFIX, depositInterestId, depositTerms, interestBooked, projectDeposit, rolledTerms } from '@/lib/utils/deposit'
 import type { Account, Transaction } from '@/types'
 
 /* Vadesi dolan mevduatın NET faizini deftere işler (banka stopajı keserek
@@ -10,7 +10,9 @@ import type { Account, Transaction } from '@/types'
    tarihi vade sonudur — bakiye geçmişi bankadaki gibi o gün artar.
 
    Çift işleme koruması: koşullar ya ileri kayar (yenile) ya da silinir
-   (bitir); aynı vade ikinci kez "dolmuş" görünmez. */
+   (bitir); aynı vade ikinci kez "dolmuş" görünmez. Faiz satırının kimliği
+   hesap + vade sonundan türetilir (iOS ile aynı) ve satır zaten varsa
+   yazılmaz — iki cihaz aynı vadeyi işlese de tek faiz satırı olur. */
 
 /** "Faiz", "Faiz Geliri", "Mevduat Faizi" … — adında faiz geçen ilk gelir kategorisi. */
 function interestCategoryId(): string | undefined {
@@ -22,18 +24,21 @@ export async function processDepositInterest(account: Account, opts: { renew: bo
   const terms = depositTerms(account)
   if (!terms) return 0
   const p = projectDeposit(account.balance, terms, terms.end)
+  // Başka cihaz (iOS) işlediyse faiz zaten bakiyede: yeniden hesaplanıp
+  // bileşik tutarla üzerine yazılmasın
+  const booked = interestBooked(useTransactionStore.getState().transactions, account.id, terms.end)
 
-  if (p.net >= 0.01) {
+  if (p.net >= 0.01 && !booked) {
     const now = new Date().toISOString()
     const tx: Transaction = {
-      id:            crypto.randomUUID(),
+      id:            depositInterestId(account.id, terms.end),
       type:          'income',
       amount:        p.net,
       currency:      account.currency,
       date:          terms.end,
       accountId:     account.id,
       categoryId:    interestCategoryId(),
-      description:   `Vadeli mevduat faizi (net, %${terms.rate.toLocaleString('tr-TR')})`,
+      description:   `${DEPOSIT_INTEREST_PREFIX} (net, %${terms.rate.toLocaleString('tr-TR')})`,
       isInstallment: false,
       createdAt:     now,
       updatedAt:     now,
@@ -49,5 +54,5 @@ export async function processDepositInterest(account: Account, opts: { renew: bo
     depositTaxPct: next?.taxPct ?? null,
   })
   useAccountStore.getState().recomputeBalances(useTransactionStore.getState().transactions)
-  return p.net
+  return booked ? 0 : p.net
 }

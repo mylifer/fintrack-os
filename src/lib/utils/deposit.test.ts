@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_DEPOSIT_TAX, depositTerms, projectDeposit, rolledTerms } from './deposit'
+import { DEFAULT_DEPOSIT_TAX, depositInterestId, depositTerms, interestBooked, projectDeposit, rolledTerms } from './deposit'
 
 const acc = (o: object) => ({ type: 'savings' as const, ...o })
 
@@ -43,5 +43,21 @@ describe('rolledTerms', () => {
   it('aynı gün sayısıyla yenilenir', () => {
     expect(rolledTerms({ rate: 45, start: '2026-09-01', end: '2026-10-03', taxPct: 17.5 }))
       .toEqual({ rate: 45, start: '2026-10-03', end: '2026-11-04', taxPct: 17.5 })
+  })
+})
+
+describe('faiz satırı kimliği ve çift işleme', () => {
+  it('kimlik iOS ile aynı (DeterministicID.uuid("deposit:<hesap>:<vade sonu>"))', () => {
+    expect(depositInterestId('acc-dep', '2026-10-01')).toBe('3cd79f4e-b7ef-44f4-a206-e6bc8cba62f7')
+    expect(depositInterestId('9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d', '2026-11-04')).toBe('d6c83b2f-b803-4ff6-a761-1698bc567989')
+  })
+
+  it('işlenmiş faiz kimlikle ya da içerikle (eski rastgele kimlik) tanınır; silinmiş sayılmaz', () => {
+    const base = { accountId: 'v', type: 'income' as const, date: '2026-10-03', description: 'Vadeli mevduat faizi (net, %45)' }
+    expect(interestBooked([{ ...base, id: 'rastgele' }], 'v', '2026-10-03')).toBe(true)
+    expect(interestBooked([{ ...base, id: depositInterestId('v', '2026-10-03'), description: 'elle değişti' }], 'v', '2026-10-03')).toBe(true)
+    expect(interestBooked([{ ...base, id: 'r' }], 'v', '2026-11-04')).toBe(false)
+    expect(interestBooked([{ ...base, id: 'r' }], 'baska', '2026-10-03')).toBe(false)
+    expect(interestBooked([{ ...base, id: 'r', deleted_at: '2026-10-04T00:00:00Z' }], 'v', '2026-10-03')).toBe(false)
   })
 })
