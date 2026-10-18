@@ -13,6 +13,8 @@ import {
   readSnapshot, totalRecords, BACKUP_KIND_LABELS, type CloudBackupMeta,
 } from '@/lib/auto-backup'
 import { reloadAllStores } from '@/lib/reload-stores'
+import { getMemberWorkspaceIds } from '@/lib/workspace-context'
+import { useWorkspaceStore } from '@/store/workspace.store'
 
 /* ── Types ───────────────────────────────────────────────────── */
 
@@ -33,6 +35,8 @@ interface BackupFile {
     paymentOccurrences?:    unknown[]
     // Birikim Hedefleri — aynı kural
     savingsGoals?:          unknown[]
+    // Çalışma alanları — yoksa (eski yedek) mevcut alanlara dokunulmaz
+    workspaces?:            unknown[]
   }
 }
 
@@ -48,6 +52,7 @@ const TABLE_LABELS: Record<keyof BackupFile['data'], string> = {
   paymentPlans:           'Ödeme Planı',
   paymentOccurrences:     'Ödeme Kaydı',
   savingsGoals:           'Birikim Hedefi',
+  workspaces:             'Çalışma Alanı',
 }
 
 /* ── Per-record validation (type-confusion hardening) ─────────────
@@ -120,6 +125,9 @@ const RECORD_GUARDS: Record<keyof BackupFile['data'], RecordGuard> = {
   savingsGoals: r =>
     isNonEmptyStr(r.id) && isStr(r.name) && isFiniteNum(r.targetAmount) &&
     isOptFiniteNum(r.savedAmount) && isStr(r.color) && isStr(r.createdAt),
+  workspaces: r =>
+    isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.createdAt) &&
+    (r.isDefault === undefined || r.isDefault === null || typeof r.isDefault === 'boolean'),
 }
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -143,7 +151,7 @@ function validateBackup(raw: unknown): BackupFile {
   // Ödeme Takibi ve Birikim Hedefi tabloları bilerek boş diziye ÇEVRİLMEZ:
   // anahtarın yokluğu "bu yedek o tabloyu bilmiyor" demektir ve geri yükleme
   // mevcut kayıtları korur. Varsa dizi olmalı.
-  for (const key of ['paymentPlans', 'paymentOccurrences', 'savingsGoals'] as const) {
+  for (const key of ['paymentPlans', 'paymentOccurrences', 'savingsGoals', 'workspaces'] as const) {
     if (b.data[key] !== undefined && !Array.isArray(b.data[key])) throw new Error(`"${key}" alanı bozuk.`)
   }
 
@@ -339,10 +347,18 @@ export function BackupManager() {
   // not part of this replace (see replaceOutboxTables), so their pending edits
   // are still the latest truth — dropping them would let the next pull overwrite
   // them with the older cloud row.
+  // Çalışma alanları yalnız yedek onları taşıyorsa değiştirilir (RPC ile aynı
+  // kural); üyesi olduğum paylaşılan alanlar yedekte yoktur ve yerinde kalır.
   async function writeDexie(data: BackupData) {
     await db.transaction('rw',
-      [db.accounts, db.transactions, db.categories, db.budgets, db.debts, db.investmentTransactions, db.people, db.recurringTransactions, db._outbox],
+      [db.accounts, db.transactions, db.categories, db.budgets, db.debts, db.investmentTransactions, db.people, db.recurringTransactions, db.workspaces, db._outbox],
       async () => {
+        if (data.workspaces?.length) {
+          const shared = new Set(getMemberWorkspaceIds())
+          const owned = (await db.workspaces.toArray()).filter(w => !shared.has(w.id)).map(w => w.id)
+          await db.workspaces.bulkDelete(owned)
+          await db.workspaces.bulkPut(data.workspaces)
+        }
         await Promise.all([
           db.accounts.clear(), db.transactions.clear(), db.categories.clear(),
           db.budgets.clear(), db.debts.clear(), db.investmentTransactions.clear(),
@@ -367,7 +383,10 @@ export function BackupManager() {
   // bakiye yeniden hesabı dahil. Eskiden burada ayrı bir kopya vardı ve
   // recomputeBalances çağırmadığı için geri yükleme sonrası hesaplar yalnız
   // açılış bakiyesini gösteriyordu (kenar çubuğu Net Varlık dahil).
+  // Çalışma alanları önce: geri yüklenen veri başka (yedekteki) bir alana ait
+  // olabilir — aktif alan çözülmeden yüklenen store'lar onu göstermezdi.
   async function reloadStores() {
+    await useWorkspaceStore.getState().load()
     await reloadAllStores()
   }
 

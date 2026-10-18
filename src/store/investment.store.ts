@@ -6,9 +6,10 @@ import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
 import { rowInActiveWorkspace } from '@/lib/workspace-context'
 import { loadEntities } from './entity-helpers'
-import { setBaseRates } from '@/lib/utils/fx'
+import { fromBaseTry, rateFor, setBaseRates } from '@/lib/utils/fx'
 import { sellCleanupTxIds } from '@/lib/utils/investment-links'
 import { useTransactionStore } from './transactions.store'
+import { useAccountStore } from './accounts.store'
 import { useCategoryStore } from './categories.store'
 import { getFundTaxConfig } from './settings.store'
 import { fundTaxRate, taxOnGain } from '@/lib/utils/fund-tax'
@@ -19,7 +20,7 @@ import { isMarketAsset, marketKind, marketSymbol, marketAssetsIn, MARKET_KIND_ME
 import type {
   InvestmentTransaction, InvestmentHolding,
   InvestmentAsset, StaticInvestmentAsset, PriceData, Transaction,
-  TefasFundPrice,
+  TefasFundPrice, CurrencyCode,
 } from '@/types'
 
 /* ── Asset helpers ───────────────────────────────────────────────── */
@@ -94,6 +95,31 @@ function sellDescription(asset: InvestmentAsset, qty: number): string {
 
 /* ── Linked-transaction helpers (module-level, use store.getState()) ── */
 
+/* Bağlı defter satırları HESABIN para biriminde yazılır. Yatırım tutarları
+   TL'dir (birim fiyatlar TL), ama hesap seçicide USD/EUR/GBP hesaplar da var.
+   Bakiye hesabı (computeTransactionEffect) satırın `amount`ını hesabın kendi
+   birimi sayar — TL tutar olduğu gibi yazılınca 10.000 ₺'lik altın alımı USD
+   hesabından 10.000 $ düşüyordu. */
+function accountCurrency(accountId: string): CurrencyCode {
+  return useAccountStore.getState().accounts.find(a => a.id === accountId)?.currency ?? 'TRY'
+}
+
+/** Yabancı para hesabı için kur yoksa çeviri yapılamaz — HİÇBİR şey yazılmadan
+ *  önce çağrılır ki düzenleme yarıda kalıp eski bağlı satırları silmesin. */
+function assertLedgerRate(accountId: string | undefined): void {
+  if (!accountId) return
+  const currency = accountCurrency(accountId)
+  if (rateFor(currency) === null) {
+    throw new Error(`${currency} kuru henüz yüklenmedi — hesaba yazılacak tutar çevrilemiyor. Biraz sonra tekrar deneyin.`)
+  }
+}
+
+/** TL tutarın hesabın para birimindeki karşılığı. */
+function ledgerMoney(accountId: string, amountTry: number): Pick<Transaction, 'amount' | 'currency'> {
+  const currency = accountCurrency(accountId)
+  return { currency, amount: currency === 'TRY' ? amountTry : fromBaseTry(amountTry, currency) }
+}
+
 const ASSET_ICONS: Record<StaticInvestmentAsset, string> = {
   GOLD_GRAM:    'Au',
   GOLD_QUARTER: 'Au',
@@ -126,8 +152,7 @@ async function createLinkedTx(
   const linked: Transaction = {
     id:            crypto.randomUUID(),
     type:          'expense',
-    amount:        total,
-    currency:      'TRY',
+    ...ledgerMoney(sourceAccountId, total),
     date,
     accountId:     sourceAccountId,
     icon:          assetIcon(asset),
@@ -191,8 +216,7 @@ async function createSellLinkedTxs(
   const saleLinked: Transaction = {
     id:            crypto.randomUUID(),
     type:          'income',
-    amount:        saleAmount,
-    currency:      'TRY',
+    ...ledgerMoney(targetAccountId, saleAmount),
     date,
     accountId:     targetAccountId,
     icon:          assetIcon(asset),
@@ -204,13 +228,13 @@ async function createSellLinkedTxs(
   await txStore.add(saleLinked)
 
   let pnlId: string | undefined
-  if (hasCost && Math.abs(pnl) >= 0.01) {
+  const pnlMoney = ledgerMoney(targetAccountId, Math.abs(pnl))
+  if (hasCost && pnlMoney.amount >= 0.01) {
     const isPnlIncome = pnl > 0
     const pnlLinked: Transaction = {
       id:            crypto.randomUUID(),
       type:          isPnlIncome ? 'income' : 'expense',
-      amount:        Math.abs(pnl),
-      currency:      'TRY',
+      ...pnlMoney,
       date,
       accountId:     targetAccountId,
       icon:          assetIcon(asset),
@@ -232,12 +256,12 @@ async function createSellLinkedTxs(
   let taxId: string | undefined
   const rate = fundTaxRate(asset, getFundTaxConfig())
   const tax  = hasCost ? taxOnGain(pnl, rate) : 0
-  if (tax >= 0.01) {
+  const taxMoney = ledgerMoney(targetAccountId, tax)
+  if (taxMoney.amount >= 0.01) {
     const taxLinked: Transaction = {
       id:            crypto.randomUUID(),
       type:          'expense',
-      amount:        tax,
-      currency:      'TRY',
+      ...taxMoney,
       date,
       accountId:     targetAccountId,
       categoryId:    taxCategoryId(),
@@ -395,6 +419,7 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
     let pnlLinkedTransactionId: string | undefined
     let taxLinkedTransactionId: string | undefined
     const total = tx.quantity * tx.pricePerUnit
+    assertLedgerRate(tx.type === 'buy' ? tx.sourceAccountId : tx.targetAccountId)
 
     if (tx.type === 'buy' && tx.sourceAccountId) {
       linkedTransactionId = await createLinkedTx(
@@ -428,6 +453,9 @@ export const useInvestmentStore = create<InvestmentState>()((set, get) => ({
   updateTransaction: async (id, patch) => {
     const oldTx = get().transactions.find(t => t.id === id)
     if (!oldTx) return
+    // Eski bağlı satırlar silinmeden ÖNCE: yeni satırlar yazılamayacaksa hiç başlama
+    const planned = { ...oldTx, ...patch }
+    assertLedgerRate(planned.type === 'buy' ? planned.sourceAccountId : planned.targetAccountId)
 
     await cleanLinkedTxs(oldTx)
     await cleanSellLinkedTxs(oldTx)

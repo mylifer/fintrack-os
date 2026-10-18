@@ -62,12 +62,13 @@ const AUTO_INTERVAL_MS = 24 * 60 * 60 * 1000
  * savunma var (0009: `deleted_at` artık yükten korunur, null'a zorlanmaz). */
 export async function readSnapshot(): Promise<BackupData> {
   const [accounts, transactions, categories, budgets, debts, investmentTransactions, people, recurringTransactions,
-    paymentPlans, paymentOccurrences, savingsGoals] =
+    paymentPlans, paymentOccurrences, savingsGoals, workspaces] =
     await Promise.all([
       db.accounts.toArray(), db.transactions.toArray(), db.categories.toArray(),
       db.budgets.toArray(), db.debts.toArray(), db.investmentTransactions.toArray(),
       db.people.toArray(), db.recurringTransactions.toArray(),
       db.paymentPlans.toArray(), db.paymentOccurrences.toArray(), db.savingsGoals.toArray(),
+      db.workspaces.toArray(),
     ])
   // Üyesi olduğum (sahibi olmadığım) paylaşılan alanların satırları yedeğe
   // GİRMEZ: veri alan sahibinindir ve kendi yedeğinde durur. Üyenin yedeğinde
@@ -87,6 +88,8 @@ export async function readSnapshot(): Promise<BackupData> {
     paymentPlans:           paymentPlans.filter(keep),
     paymentOccurrences:     paymentOccurrences.filter(keep),
     savingsGoals:           savingsGoals.filter(keep),
+    // Alanın kendisi workspaceId taşımaz — üyesi olduğum alan kimliğinden elenir
+    workspaces:             workspaces.filter(w => isLive(w) && !shared.has(w.id)),
   }
 }
 

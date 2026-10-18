@@ -5,7 +5,7 @@ import { localBatch, type BatchOp } from './sync/engine'
 import type {
   Account, Transaction, Category, Budget, Debt,
   InvestmentTransaction, Person, RecurringTransaction,
-  PaymentPlan, PaymentOccurrence, SavingsGoal,
+  PaymentPlan, PaymentOccurrence, SavingsGoal, Workspace,
 } from '@/types'
 
 /**
@@ -36,6 +36,11 @@ export interface BackupData {
   paymentOccurrences?:    PaymentOccurrence[]
   // Birikim Hedefleri — aynı kural: anahtar yoksa (eski yedek) dokunulmaz.
   savingsGoals?:          SavingsGoal[]
+  // Çalışma alanları (yalnız SAHİBİ olduklarım). Diğer tabloların satırları
+  // workspaceId taşır; tanımlar yedekte olmazsa yeni bir hesaba/projeye geri
+  // yüklemede hiçbir satırın alanı bulunamaz ve veri görünmez olur. RPC (0009)
+  // bu anahtar varsa alanları da değiştirir; yoksa (eski yedek) dokunmaz.
+  workspaces?:            Workspace[]
 }
 
 /**
