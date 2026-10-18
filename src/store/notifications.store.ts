@@ -104,7 +104,8 @@ export function getNotifications(): AppNotification[] {
   }
   for (const r of recurringStore.recurring) {
     if (!r.isActive) continue
-    if (r.endDate && r.endDate < todayStr) continue
+    // Sıradaki dönem bitişten sonraysa şablon bitmiştir — yaklaşan da yok
+    if (r.endDate && r.nextDueDate > r.endDate) continue
     if (r.nextDueDate > todayStr && r.nextDueDate <= horizon) {
       out.push({ kind: 'recurring-upcoming', recurring: r })
     }

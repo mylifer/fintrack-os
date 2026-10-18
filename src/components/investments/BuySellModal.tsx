@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useInvestmentStore, useAccountStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { formatCurrency } from '@/lib/utils/currency'
+import { fromBaseTry, rateFor } from '@/lib/utils/fx'
 import { today } from '@/lib/utils/date'
 import { SelectField } from '@/components/ui/Select'
 import { Dialog, DialogContent, DialogTitle, DialogClose } from '@/components/ui/dialog'
@@ -124,6 +125,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   const [date,           setDate]           = useState(today())
   const [note,           setNote]           = useState('')
   const [saving,         setSaving]         = useState(false)
+  const [saveError,      setSaveError]      = useState('')
   const [fetchingPrice,  setFetchingPrice]  = useState(false)
   const [priceFetchFailed, setPriceFetchFailed] = useState(false)
   // Kullanıcının birim fiyatı ELLE girdiği (varlık|tarih) kombinasyonu.
@@ -175,6 +177,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     setFetchingPrice(false)
     setPriceFetchFailed(false)
     setTotalDraft('')
+    setSaveError('')
     touchedPriceKey.current = null
   }, [open, editingTx, defaultType, getHoldings])
 
@@ -409,6 +412,15 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   const sellTax      = taxOnGain(sellGain, sellRate)
   const showSellTax  = !sellExceeded && sellRate > 0 && total > 0 && sellCost > 0.001
 
+  // Bağlı defter satırı hesabın para biriminde yazılır (investment.store
+  // ledgerMoney) — yabancı para hesabında çevrilmiş tutar ve TL karşılığı.
+  function inAccountCurrency(accId: string, amountTry: number): string {
+    const acc = accounts.find(a => a.id === accId)
+    if (!acc || acc.currency === 'TRY') return formatCurrency(amountTry)
+    if (rateFor(acc.currency) === null) return `${formatCurrency(amountTry)} (${acc.currency} kuru bekleniyor)`
+    return `${formatCurrency(fromBaseTry(amountTry, acc.currency), acc.currency)} (${formatCurrency(amountTry)})`
+  }
+
   // Geçmiş tarihin fiyatı yüklenirken kaydetmek, alanda kalan ESKİ (canlı)
   // fiyatla kayıt açardı — yükleme bitene kadar kaydetme kapalı.
   const canSave = qtyNum > 0 && priceNum > 0 && !!date && !sellExceeded && !saving && !fetchingPrice && resolvedAsset !== null
@@ -416,6 +428,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
   async function handleSave() {
     if (!canSave || !resolvedAsset) return
     setSaving(true)
+    setSaveError('')
     try {
     if (isEdit && editingTx) {
       await updateTransaction(editingTx.id, {
@@ -446,6 +459,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     onClose()
     } catch (err) {
       console.error('[investment:save]', err)
+      setSaveError(err instanceof Error ? err.message : 'Kaydedilemedi, tekrar deneyin.')
     } finally {
       setSaving(false)
     }
@@ -649,7 +663,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               />
               {accountId && total > 0 && (
                 <div className="mt-1 text-xs text-muted-foreground">
-                  Seçilen hesaptan {formatCurrency(total)} düşülecek.
+                  Seçilen hesaptan {inAccountCurrency(accountId, total)} düşülecek.
                 </div>
               )}
             </div>
@@ -672,7 +686,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               />
               {targetAccId && total > 0 && (
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {formatCurrency(total)} seçilen hesaba eklenecek.
+                  {inAccountCurrency(targetAccId, total)} seçilen hesaba eklenecek.
                 </div>
               )}
             </div>
@@ -753,6 +767,10 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           )}
 
         </div>
+
+        {saveError && (
+          <p role="alert" className="px-6 pb-3 text-xs text-destructive">{saveError}</p>
+        )}
 
         {/* Footer */}
         <div className="px-6 pb-6 flex gap-3">

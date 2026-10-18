@@ -31,6 +31,7 @@ const tables = {
   paymentPlans:           new FakeTable(),
   paymentOccurrences:     new FakeTable(),
   savingsGoals:           new FakeTable(),
+  workspaces:             new FakeTable(),
 }
 
 vi.mock('@/lib/db', () => ({ db: tables }))
@@ -103,10 +104,17 @@ describe('readSnapshot — paylaşılan alanlar (0021)', () => {
       { id: 't-eski' },
     ]
     tables.accounts.rows = [{ id: 'a-aile', workspaceId: 'ws-aile' }]
+    tables.workspaces.rows = [
+      { id: 'ws-aile', name: 'Aile' },
+      { id: 'ws-benim', name: 'Benim' },
+      { id: 'ws-silinen', name: 'Eski', deleted_at: '2026-08-01T00:00:00.000Z' },
+    ]
     try {
       const snap = await readSnapshot()
       expect(snap.transactions.map(t => t.id)).toEqual(['t-benim', 't-eski'])
       expect(snap.accounts).toEqual([])
+      // Alan tanımları: yalnız sahibi olduğum CANLI alanlar
+      expect(snap.workspaces?.map(w => w.id)).toEqual(['ws-benim'])
     } finally {
       setMemberWorkspaceIds([])
     }

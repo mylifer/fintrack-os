@@ -222,7 +222,7 @@ function emptyForm() {
   return {
     name: '', type: 'personal' as DebtType, direction: 'owe' as DebtDirection,
     totalStr: '', paidStr: '0', interestStr: '',
-    startDate: new Date().toISOString().slice(0, 10),
+    startDate: today(),   // yerel gün (toISOString UTC'dir: gece 00–03 arası dünü verirdi)
     // Paranın hesaba girdiği/hesaptan çıktığı gün — anapara işleminin tarihi.
     borrowDate: today(),
     dueDate: '', monthlyStr: '', totalInst: '', counterparty: '',

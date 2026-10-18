@@ -14,7 +14,7 @@ import { installErrorReporter } from '@/lib/error-reporter'
 // Otomatik yedeğin kapsadığı tablolar (auto-backup.ts readSnapshot ile aynı küme).
 const BACKUP_TABLES: SyncTable[] = [
   'accounts', 'transactions', 'categories', 'budgets', 'debts',
-  'investment_transactions', 'people', 'recurring_transactions',
+  'investment_transactions', 'people', 'recurring_transactions', 'workspaces',
 ]
 
 // Modül seviyesinde tekil koruma: StrictMode'da effect iki kez çalışır ve iki

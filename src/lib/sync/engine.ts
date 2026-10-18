@@ -8,7 +8,7 @@ import { isLive } from './tombstone'
 import { sanitizeIdRefs } from './sanitize'
 import { useSyncStatusStore } from '@/store/sync-status.store'
 import type { OutboxEntry } from '@/types'
-import { getActiveWorkspaceId, getMemberWorkspaceIds, rowInActiveWorkspace } from '@/lib/workspace-context'
+import { getActiveWorkspaceId, getMemberWorkspaceIds, setMemberWorkspaceIds, rowInActiveWorkspace } from '@/lib/workspace-context'
 
 /* ────────────────────────────────────────────────────────────────────────
    Sync Engine — P0 remediation for offline data-loss (C1 / C2 / C6)
@@ -513,6 +513,12 @@ export async function guardUserSwitch(): Promise<void> {
     // (Güvenlik denetimi 2026-08-29, bulgu F3.)
     // LAST_UID_KEY aşağıda YENİDEN yazılıyor — sıra korunmalı.
     clearBrowserStorage()
+    // Üyelik listesi bellekte de önbelleklenir (workspace-context) ve store
+    // oluşturulurken ÖNCEKİ kullanıcının listesiyle dolmuştur. Silinmezse ilk
+    // syncSharing o alanları "geri alındı" sanıp yeni kullanıcıya yersiz bir
+    // "artık sizinle paylaşılmıyor" bildirimi gösterir; çevrimdışıysa çekiş
+    // filtresi de eski kullanıcının alanlarını sorar.
+    setMemberWorkspaceIds([])
   }
 
   try { localStorage.setItem(LAST_UID_KEY, uid) } catch { /* storage kapalı */ }

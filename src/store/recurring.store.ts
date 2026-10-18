@@ -82,7 +82,11 @@ export const useRecurringStore = create<RecurringState>()((set, get) => ({
   getDue: (asOf) => {
     return get().recurring.filter(r => {
       if (!r.isActive) return false
-      if (r.endDate && r.endDate < asOf) return false
+      // Bitiş tarihi BUGÜNE değil sıradaki döneme kıyaslanır (denetim #18):
+      // bitişi geçmiş şablonun bitişten önceki, henüz üretilmemiş dönemleri
+      // (uygulama o günlerde açılmadıysa) hâlâ bekleyen sayılır. Üretim zaten
+      // bitişe kadar olan dönemlerle sınırlı (recurringOccurrences).
+      if (r.endDate && r.nextDueDate > r.endDate) return false
       return r.nextDueDate <= asOf
     })
   },
