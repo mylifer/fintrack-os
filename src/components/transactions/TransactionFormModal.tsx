@@ -16,6 +16,7 @@ import { parseCurrencyInput, getCurrencySymbol, formatCurrency } from '@/lib/uti
 import { splitMoney, sumMoney } from '@/lib/utils/money'
 import { rebalanceInstallmentsBelow } from '@/lib/utils/installments'
 import { toBaseTry, baseAmount } from '@/lib/utils/fx'
+import { DEBT_COLLECTION_ICON, isDebtCollectionTx } from '@/lib/utils/calculations'
 import { today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -152,8 +153,12 @@ function buildInitialForm(
       isInstallment:  editingTx.isInstallment,
       familyMemberId: editingTx.familyMemberId ?? undefined,
       recipientId:    editingTx.recipientId    ?? undefined,
-      isDebtPayment:  editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId,
-      debtId:         editingTx.type === 'transfer' && !editingTx.toAccountId ? editingTx.debtId : undefined,
+      // Borç bağı iki biçimde olur: transfer = borcuma ödeme, gelir = alacağımın
+      // tahsilatı (isDebtCollectionTx). İkisi de aynı form alanlarını kullanır.
+      isDebtPayment:  (editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId)
+        || isDebtCollectionTx(editingTx),
+      debtId:         (editingTx.type === 'transfer' && !editingTx.toAccountId) || isDebtCollectionTx(editingTx)
+        ? editingTx.debtId : undefined,
     }
   }
   const f = newForm()
@@ -425,6 +430,10 @@ export function TransactionFormModal() {
   const updateTx     = useTransactionStore(s => s.update)
   const allPeople    = usePeopleStore(s => s.people)
   const activeDebts  = useDebtStore(useShallow(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe')))
+  // Alacaklar (bana borçlu olunanlar) — gelir sekmesindeki "Alacak" modu.
+  // Kapanmış alacak listede yoktur; ama düzenlenen tahsilat onu kapatmış
+  // olabilir, o yüzden düzenlenen satırın kendi alacağı her zaman listededir.
+  const allDebts     = useDebtStore(s => s.debts)
   const recurring    = useRecurringStore(s => s.recurring)
   const addRec       = useRecurringStore(s => s.add)
   const updateRec    = useRecurringStore(s => s.update)
@@ -604,6 +613,28 @@ export function TransactionFormModal() {
   }, [amountStr])
 
   const filteredCategories = useMemo(() => categories.filter(c => c.scope === tab), [categories, tab])
+
+  // ── Alacak tahsilatı (gelir sekmesi) ───────────────────────────────────
+  // Gelir, bana verilmiş bir borcun geri ödemesiyse kategori yerine alacak
+  // seçilir: tutar alacaktan düşer ve satır gelir sayılmaz (isDebtCollectionTx).
+  // Tekrarlayan şablonda ve art arda oturum satırı düzeltilirken yoktur —
+  // transferdeki "Borç" seçeneğiyle aynı sınır.
+  const editDebtLinkId = editingTx?.debtId
+  const receivables = useMemo(
+    () => allDebts.filter(d => d.direction === 'owed' && (!d.isSettled || d.id === editDebtLinkId)),
+    [allDebts, editDebtLinkId],
+  )
+  const isCollection = tab === 'income' && form.isDebtPayment
+  const canCollect   = tab === 'income' && !isRecurring && !sessionEditId
+    && (receivables.length > 0 || isCollection)
+  // Seçili alacakta bu kayıttan ÖNCE kalan tutar. Düzenlemede satırın eski
+  // payı alacağa geri eklenir (aynı alacak seçiliyse) — yoksa tutarı
+  // değiştirmeden kaydetmek bile "kalandan fazla" hatası verirdi.
+  const selectedReceivable = isCollection ? receivables.find(d => d.id === form.debtId) : undefined
+  const receivableRemaining = selectedReceivable
+    ? Math.round((selectedReceivable.totalAmount - selectedReceivable.paidAmount
+        + (editingTx && isDebtCollectionTx(editingTx) && editingTx.debtId === selectedReceivable.id ? baseAmount(editingTx) : 0)) * 100) / 100
+    : 0
   const accountOptions     = useMemo(
     () => accounts.map(a => ({ value: a.id, label: a.name, icon: <AccountAvatar account={a} size="xs" /> })),
     [accounts],
@@ -659,7 +690,16 @@ export function TransactionFormModal() {
     if (!amount || amount <= 0)                      e.amount      = 'Geçerli bir tutar girin'
     if (!form.accountId)                             e.accountId   = 'Hesap seçin'
     // Bölme açıkken kategori payların içinden gelir; tek alan boş olabilir.
-    if (tab !== 'transfer' && !splits && !form.categoryId)              e.categoryId  = 'Kategori seçin'
+    // Alacak tahsilatı kategori taşımaz — yerine alacak seçilir.
+    if (tab !== 'transfer' && !isCollection && !splits && !form.categoryId) e.categoryId  = 'Kategori seçin'
+    if (isCollection && !form.debtId)                e.debtId      = 'Alacak seçin'
+    else if (isCollection && selectedReceivable && amount > 0) {
+      // Alacak TL bazlıdır; yabancı para hesaba gelen tahsilat TL'ye çevrilip kıyaslanır.
+      const cur = (accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode
+      if (toBaseTry(amount, cur) > receivableRemaining + 0.005) {
+        e.amount = `Tutar kalan alacaktan fazla (kalan ${formatCurrency(receivableRemaining, 'TRY')})`
+      }
+    }
     // Oran barı toplamı yapısal olarak korur → geriye iki kural kalır: her payın
     // kategorisi dolu ve payı 0'dan büyük olmalı (0 paylı kategori hiçbir rapora
     // katkı vermez, yalnızca yanıltır — taksit editörüyle aynı kural).
@@ -887,6 +927,15 @@ export function TransactionFormModal() {
       : undefined
     const splitCategoryId = primarySplitCategoryId(txSplits)
 
+    // Alacak tahsilatı: kategori ve pay taşımaz, DEBT_COLLECTION_ICON ile
+    // işaretlenir (dağılım grafikleri `!t.icon` ile süzer). Tahsilat normal
+    // gelire çevrilirse işaret temizlenir; diğer satırların ikonuna dokunulmaz
+    // (yatırım/transfer satırları ikonu kendi işareti olarak taşır).
+    const collecting = tab === 'income' && form.isDebtPayment && !!formData.debtId
+    const collectionFields: Partial<Transaction> = collecting
+      ? { categoryId: undefined, categorySplits: undefined, icon: DEBT_COLLECTION_ICON }
+      : editingTx && isDebtCollectionTx(editingTx) ? { icon: undefined } : {}
+
     if (editingTx && editingTx.isInstallment && editingTx.installGroupId && installments > 1) {
       // Taksitli grup düzenleme: 'ilk giriş' gibi toplam/sayı/taksitler tüm gruba
       // uygulanır. Taksit tutarları pozitif harcamadır → büyüklük kullanılır.
@@ -943,8 +992,9 @@ export function TransactionFormModal() {
         approvedAt:     now,
         createdAt:      now,
         updatedAt:      now,
+        ...collectionFields,
       })
-      if (tab === 'transfer' && form.isDebtPayment && formData.debtId) {
+      if ((tab === 'transfer' || tab === 'income') && form.isDebtPayment && formData.debtId) {
         await useDebtStore.getState().recordPayment(formData.debtId, amountTry)
       }
     } else if (editingTx) {
@@ -959,6 +1009,7 @@ export function TransactionFormModal() {
         familyMemberId: formData.familyMemberId ?? null,
         recipientId:    formData.recipientId    ?? null,
         tags:           cleanTags.length ? cleanTags : undefined,
+        ...collectionFields,
       })
 
       // Reconcile debt paidAmount for edit.
@@ -967,8 +1018,10 @@ export function TransactionFormModal() {
       // Narrowed locals let TS follow the debt-id flow without non-null assertions.
       const editDebtId = editingTx.debtId
       const formDebtId = formData.debtId
-      const wasDebtPayment = editingTx.type === 'transfer' && !!editDebtId && !editingTx.toAccountId
-      const isDebtPaymentNow = tab === 'transfer' && form.isDebtPayment && !!formDebtId
+      // Borca ödeme (transfer) ve alacak tahsilatı (gelir) aynı mutabakattan geçer.
+      const wasDebtPayment = (editingTx.type === 'transfer' && !!editDebtId && !editingTx.toAccountId)
+        || isDebtCollectionTx(editingTx)
+      const isDebtPaymentNow = (tab === 'transfer' || tab === 'income') && form.isDebtPayment && !!formDebtId
       const { recordPayment, revertPayment, adjustPaidAmount } = useDebtStore.getState()
       // Önceki ödemenin TL değeri — silme yoluyla (transactions.store remove) AYNI
       // kural. `amountTry ?? amount` snapshot'sız yabancı para ödemesinde ham
@@ -1026,6 +1079,7 @@ export function TransactionFormModal() {
         categoryId:  splitCategoryId ?? formData.categoryId ?? undefined,
         toAccountId: formData.toAccountId || undefined,
         tags:        cleanTags.length ? cleanTags : undefined,
+        ...collectionFields,
       }
       const isGroup = formData.isInstallment && installments > 1
       let newId: string
@@ -1037,7 +1091,7 @@ export function TransactionFormModal() {
         await addTx({ ...base, id: newId, isInstallment: false, createdAt: now, updatedAt: now })
       }
       rememberAddedDate(formData.date)
-      const isDebtPay = tab === 'transfer' && form.isDebtPayment && !!formData.debtId
+      const isDebtPay = (tab === 'transfer' || tab === 'income') && form.isDebtPayment && !!formData.debtId
       if (isDebtPay && formData.debtId) {
         await useDebtStore.getState().recordPayment(formData.debtId, amountTry)
       }
@@ -1213,6 +1267,46 @@ export function TransactionFormModal() {
     }
     toggleSubscription(next === 'subscription')
   }
+
+
+  // Gelir sekmesinde "Gelir | Alacak" anahtarı — transferdeki "Hesap | Borç"
+  // anahtarının karşılığı. Alacağa geçince kategori/bölme bırakılır; kayıtta
+  // satır kategori taşımaz (bkz. collectionFields).
+  const incomeModeToggle = canCollect ? (
+    <div className="flex rounded border border-input overflow-hidden text-[11px]">
+      <button
+        type="button"
+        onClick={() => patch({ isDebtPayment: false, debtId: undefined })}
+        className={cn(
+          "px-2 py-0.5 transition-colors",
+          !isCollection ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        Gelir
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setSplits(null)
+          setAutoCategory(null)
+          setErrors(prev => ({ ...prev, categoryId: '', categorySplits: '' }))
+          // Tek alacak varsa doğrudan seçilir (açıklama boşsa listeden seçimle aynı doldurulur).
+          const only = !form.debtId && receivables.length === 1 ? receivables[0] : undefined
+          patch({
+            isDebtPayment: true,
+            debtId: form.debtId ?? only?.id,
+            ...(only && !form.description.trim() ? { description: `${only.name} tahsilatı` } : {}),
+          })
+        }}
+        className={cn(
+          "px-2 py-0.5 transition-colors border-l border-input",
+          isCollection ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        Alacak
+      </button>
+    </div>
+  ) : null
 
   return (
     <Dialog open={open} onOpenChange={v => !v && closeModal()}>
@@ -1611,6 +1705,32 @@ export function TransactionFormModal() {
                   </>
                 )}
               </div>
+            ) : isCollection ? (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className={cn("text-sm font-medium", errors.debtId && "text-destructive")}>Alacak</Label>
+                  {incomeModeToggle}
+                </div>
+                {receivables.length === 0 ? (
+                  <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground select-none">
+                    Açık alacağınız yok
+                  </div>
+                ) : (
+                  <AppSelect
+                    value={form.debtId ?? ''}
+                    onChange={v => {
+                      const debt = receivables.find(d => d.id === v)
+                      if (errors.debtId || errors.amount) setErrors(prev => ({ ...prev, debtId: '', amount: '' }))
+                      patch({ debtId: v, ...(debt && !form.description.trim() ? { description: `${debt.name} tahsilatı` } : {}) })
+                    }}
+                    options={receivables.map(d => ({ value: d.id, label: d.name }))}
+                    placeholder="Alacak seçin..."
+                    error={!!errors.debtId}
+                    onOpenChange={onSelectOpen}
+                  />
+                )}
+                {errors.debtId && <p className="text-xs text-destructive">{errors.debtId}</p>}
+              </div>
             ) : (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
@@ -1627,6 +1747,7 @@ export function TransactionFormModal() {
                   </Label>
                   {/* Bölme yalnızca gerçek bir tutar varken anlamlı — 0'ı bölmek
                       boş bir bar üretirdi. */}
+                  <div className="flex items-center gap-2">
                   {splits ? (
                     <button type="button" onClick={closeSplit} className="text-xs font-medium text-primary hover:underline">
                       Bölmeyi kaldır
@@ -1636,6 +1757,8 @@ export function TransactionFormModal() {
                       Böl
                     </button>
                   )}
+                  {incomeModeToggle}
+                  </div>
                 </div>
                 {splits ? (
                   // Bölme açıkken alan özet gösterir; seçim aşağıdaki paylardan yapılır.
@@ -1667,6 +1790,24 @@ export function TransactionFormModal() {
               </div>
             )}
           </div>
+
+          {/* Alacak tahsilatı özeti — kalan alacak bu kayıttan sonra ne olur */}
+          {isCollection && selectedReceivable && (() => {
+            const cur   = (accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode
+            const paid  = toBaseTry(parseCurrencyInput(amountStr), cur)
+            const after = Math.round((receivableRemaining - paid) * 100) / 100
+            return (
+              <div className="-mt-1 flex flex-col gap-0.5 text-xs text-muted-foreground">
+                <span className="tabular-nums">
+                  Kalan alacak <span className="font-medium text-foreground">{formatCurrency(receivableRemaining, 'TRY')}</span>
+                  {paid > 0 && after >= 0 && (
+                    <> → <span className="font-medium text-foreground">{after === 0 ? 'kapanır' : formatCurrency(after, 'TRY')}</span></>
+                  )}
+                </span>
+                <span>Gelir sayılmaz; yalnızca hesap bakiyesi artar.</span>
+              </div>
+            )
+          })()}
 
           {/* Kategori bölme — oran barı (tam genişlik, ızgaranın hemen altında) */}
           {splits && tab !== 'transfer' && (

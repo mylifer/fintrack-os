@@ -315,16 +315,31 @@ export function isWorkspaceTransferTx(t: Partial<Pick<Transaction, 'workspaceTra
   return !!t.workspaceTransferId
 }
 
-/** Anapara hareketi — yatırım özsermayesi, borç anaparası VEYA çalışma alanları
- *  arası transfer bacağı. Gerçek gelir/gider olmayan, yalnızca paranın yer
- *  değiştirdiği defter satırları: akış (gelir/gider/net) toplamlarından
- *  dışlanır, bakiye/net-varlık HAM yürüyüşüne dahildir. Akışı isFlowTx
- *  üzerinden hesaplamayan yüzeyler (nakit akışı, DetailedStats) bu tek yüklemi
- *  paylaşır ki dışlama kuralı iki yerde ayrışmasın. */
+// Alacak TAHSİLATI — verdiğim bir borcun geri ödemesi (gelir tipli, debtId'li
+// satır; borç yönü 'owed'). Para hesaba gerçekten girer ama gelir DEĞİLDİR:
+// alacak nakde döner, yani yalnızca varlığın biçimi değişir. Verilen borç gider
+// sayılmadığı gibi (… verilen borç) geri dönüşü de gelir sayılmaz. İşaret
+// debtId'dir (açıklama/ikon sezgisine dayanmaz); satır ayrıca
+// DEBT_COLLECTION_ICON taşır ki `!t.icon` ile süzen dağılım yüzeyleri (kategori
+// donut'u, en çok gelir getirenler) de onu dışlasın.
+export const DEBT_COLLECTION_ICON = '🤝'
+
+export function isDebtCollectionTx(t: Partial<Pick<Transaction, 'type' | 'debtId'>>): boolean {
+  return t.type === 'income' && !!t.debtId
+}
+
+/** Anapara hareketi — yatırım özsermayesi, borç anaparası, alacak tahsilatı
+ *  VEYA çalışma alanları arası transfer bacağı. Gerçek gelir/gider olmayan,
+ *  yalnızca paranın yer değiştirdiği defter satırları: akış (gelir/gider/net)
+ *  toplamlarından dışlanır, bakiye/net-varlık HAM yürüyüşüne dahildir. Akışı
+ *  isFlowTx üzerinden hesaplamayan yüzeyler (nakit akışı, DetailedStats) bu tek
+ *  yüklemi paylaşır ki dışlama kuralı iki yerde ayrışmasın. */
 export function isPrincipalMoveTx(
-  t: Pick<Transaction, 'icon' | 'description'> & Partial<Pick<Transaction, 'workspaceTransferId'>>,
+  t: Pick<Transaction, 'icon' | 'description'>
+    & Partial<Pick<Transaction, 'workspaceTransferId' | 'type' | 'debtId'>>,
 ): boolean {
   return isInvestmentPrincipalTx(t) || isDebtPrincipalTx(t) || isWorkspaceTransferTx(t)
+    || isDebtCollectionTx(t)
 }
 
 // Gerçekleşen yatırım kâr/zararı — satış anında yazılan "… Satış Kârı" (gelir),
@@ -356,8 +371,8 @@ function sumFlow(inRange: Transaction[]): { income: number; expense: number; net
 // A transaction that counts toward income/expense/net FLOW totals: posted
 // (approved + arrived, isPosted), not a balance-reconciliation ghost, and not
 // an investment principal move (… Alımı/… Satışı), not a debt principal
-// move (… borç girişi/… verilen borç) and not a cross-workspace transfer leg
-// (workspaceTransferId). This is the SINGLE flow
+// move (… borç girişi/… verilen borç), not a debt collection (income with
+// debtId) and not a cross-workspace transfer leg (workspaceTransferId). This is the SINGLE flow
 // predicate — calcPeriodFlow/calcMonthlyFlow AND every surface that sums flow
 // over an already-scoped slice (işlem özet çubuğu, kişi/etiket/kategori detay
 // toplamları) share it, so no two widgets can drift apart on which rows count.
@@ -454,7 +469,7 @@ function sumTypeByKey(
   // kategoriye göre gruplarken sonucu değiştirir, ki istenen de budur.
   for (const t of expandByCategory(transactions)) {
     if (t.type !== type || t.icon) continue
-    if (isReconciliation(t)) continue
+    if (isReconciliation(t) || isDebtCollectionTx(t)) continue
     const k = keyOf(t)
     minor.set(k, (minor.get(k) ?? 0) + toMinor(baseAmount(t)))
   }
