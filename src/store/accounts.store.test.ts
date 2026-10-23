@@ -38,13 +38,21 @@ vi.mock('@/lib/sync/engine', () => ({
 
 // revertPayment çağrılarını kaydet — testin asıl gözlemi bu.
 const revertCalls: { debtId: string; amount: number }[] = []
+// Başka alandaki borç (karşı bacak) için yamalar Dexie'den hesaplanır — mock
+// yalnız çağrıyı kaydeder ve sabit bir yama döndürür.
+const crossDebtCalls: { changes: { debtId: string; amount: number }[]; sign: number }[] = []
 vi.mock('./debts.store', () => ({
   useDebtStore: {
     getState: () => ({
       debts: [],
       update: async () => {},
+      applyLocal: () => {},
       revertPayment: async (debtId: string, amount: number) => { revertCalls.push({ debtId, amount }) },
     }),
+  },
+  debtPaymentPatches: async (changes: { debtId: string; amount: number }[], sign: number) => {
+    crossDebtCalls.push({ changes, sign })
+    return new Map(changes.map(c => [c.debtId, { paidAmount: 0 }]))
   },
 }))
 
@@ -155,6 +163,24 @@ describe('remove — kaskad', () => {
 
     const ops = batches[0] as { ids?: string[] }[]
     expect(ops[0].ids).toEqual(['giden', 'gelen'])
+  })
+
+  it('karşı bacaktaki (başka alandaki) borç ödemesini de atomik blokta geri alır', async () => {
+    useAccountStore.setState({ accounts: [acc('a')] })
+    crossDebtCalls.length = 0
+    dexieTransactions = [
+      tx({ id: 'giden', type: 'expense',  amount: 500, accountId: 'a',   workspaceTransferId: 'x2' }),
+      tx({ id: 'gelen', type: 'income',   amount: 500, accountId: 'ara', workspaceTransferId: 'x2' }),
+      tx({ id: 'odeme', type: 'transfer', amount: 500, accountId: 'ara', workspaceTransferId: 'x2', debtId: 'd9', amountTry: 500 }),
+    ]
+
+    await useAccountStore.getState().remove('a')
+
+    expect(revertCalls).toHaveLength(0)
+    expect(crossDebtCalls).toEqual([{ changes: [{ debtId: 'd9', amount: 500 }], sign: -1 }])
+    const ops = batches[0] as { table: string; id?: string; ids?: string[] }[]
+    expect(ops[0].ids).toEqual(['giden', 'gelen', 'odeme'])
+    expect(ops.some(o => o.table === 'debts' && o.id === 'd9')).toBe(true)
   })
 
   it('CANLI borç ödemesini tam olarak bir kez geri alır', async () => {

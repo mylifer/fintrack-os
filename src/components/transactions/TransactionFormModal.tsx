@@ -20,7 +20,7 @@ import { today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency, Category, Account } from '@/types'
+import type { Transaction, TransactionType, CurrencyCode, PersonRole, Person, ModalPayload, RecurringTransaction, RecurringFrequency, Category, Account, Debt } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
 import { X, Pencil, Trash2, Wallet, CreditCard, Repeat } from 'lucide-react'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
@@ -624,6 +624,11 @@ export function TransactionFormModal() {
   const [targetWorkspaceId, setTargetWorkspaceId] = useState('')
   const [targetAccounts, setTargetAccounts]   = useState<Account[]>([])
   const [targetAccountId, setTargetAccountId] = useState('')
+  // Hedef alandaki bir borcu öde: para hedef hesaba girer ve aynı hesaptan
+  // seçilen borca ödeme olarak çıkar (bkz. addCrossWorkspaceTransfer).
+  const [crossWsDebt, setCrossWsDebt]         = useState(false)
+  const [targetDebts, setTargetDebts]         = useState<Debt[]>([])
+  const [targetDebtId, setTargetDebtId]       = useState('')
 
   useEffect(() => {
     // Boş hedef alan durumunda state'e dokunulmaz — hesap picker'ı zaten
@@ -632,10 +637,15 @@ export function TransactionFormModal() {
     // içinde senkron setState'ten kaçınmak için.
     if (!crossWs || !targetWorkspaceId) return
     let cancelled = false
-    db.accounts.toArray().then(rows => {
+    Promise.all([db.accounts.toArray(), db.debts.toArray()]).then(([accRows, debtRows]) => {
       if (cancelled) return
       setTargetAccounts(
-        rows.filter(isLive).filter(a => rowInWorkspace(a, targetWorkspaceId)) as Account[],
+        accRows.filter(isLive).filter(a => rowInWorkspace(a, targetWorkspaceId)) as Account[],
+      )
+      // Yalnız ödenecek yöndeki (benim borcum) ve kapanmamış borçlar
+      setTargetDebts(
+        debtRows.filter(isLive)
+          .filter(d => rowInWorkspace(d, targetWorkspaceId) && d.direction === 'owe' && !d.isSettled) as Debt[],
       )
     })
     return () => { cancelled = true }
@@ -740,7 +750,8 @@ export function TransactionFormModal() {
     if (!amount || amount <= 0)   e.amount            = 'Geçerli bir tutar girin'
     if (!form.accountId)          e.accountId         = 'Hesap seçin'
     if (!targetWorkspaceId)       e.targetWorkspaceId = 'Çalışma alanı seçin'
-    if (!targetAccountId)         e.toAccountId       = 'Hedef hesap seçin'
+    if (crossWsDebt && !targetDebtId) e.debtId        = 'Borç seçin'
+    if (!targetAccountId)         e.toAccountId       = crossWsDebt ? 'Ödemenin geçeceği hesabı seçin' : 'Hedef hesap seçin'
     if (!form.date)               e.date              = 'Tarih seçin'
     if (!form.description.trim()) e.description       = 'Açıklama girin'
     setErrors(e)
@@ -756,6 +767,7 @@ export function TransactionFormModal() {
         date:        form.date,
         description: form.description.trim(),
         notes:       form.notes || undefined,
+        targetDebtId: crossWsDebt ? targetDebtId : undefined,
       })
       rememberAddedDate(form.date)
       closeModal()
@@ -1482,13 +1494,70 @@ export function TransactionFormModal() {
                   <div className="flex flex-col gap-2">
                     <AppSelect
                       value={targetWorkspaceId}
-                      onChange={v => { setTargetWorkspaceId(v); setTargetAccountId(''); setTargetAccounts([]) }}
+                      onChange={v => {
+                        setTargetWorkspaceId(v); setTargetAccountId(''); setTargetAccounts([])
+                        setTargetDebtId(''); setTargetDebts([])
+                      }}
                       options={otherWorkspaces.map(w => ({ value: w.id, label: w.name }))}
                       placeholder="Çalışma alanı seçin..."
                       error={!!errors.targetWorkspaceId}
                       onOpenChange={onSelectOpen}
                     />
                     {errors.targetWorkspaceId && <p className="text-xs text-destructive">{errors.targetWorkspaceId}</p>}
+                    {targetWorkspaceId && (
+                      <div className="flex self-start rounded border border-input overflow-hidden text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => { setCrossWsDebt(false); setTargetDebtId('') }}
+                          className={cn(
+                            "px-2 py-0.5 transition-colors",
+                            !crossWsDebt ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Hesaba yatır
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCrossWsDebt(true)}
+                          className={cn(
+                            "px-2 py-0.5 transition-colors border-l border-input",
+                            crossWsDebt ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Borç öde
+                        </button>
+                      </div>
+                    )}
+                    {targetWorkspaceId && crossWsDebt && (
+                      targetDebts.length === 0 ? (
+                        <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground select-none">
+                          Bu alanda aktif borç bulunmuyor
+                        </div>
+                      ) : (
+                        <AppSelect
+                          value={targetDebtId}
+                          onChange={v => {
+                            setTargetDebtId(v)
+                            const debt = targetDebts.find(d => d.id === v)
+                            // Borcun kendi ödeme hesabı bu alandaysa ara hesap olarak öner
+                            if (debt?.accountId && targetAccounts.some(a => a.id === debt.accountId)) {
+                              setTargetAccountId(debt.accountId)
+                            }
+                            if (debt && !form.description.trim()) patch({ description: `${debt.name} ödemesi` })
+                          }}
+                          options={targetDebts.map(d => ({ value: d.id, label: d.name }))}
+                          placeholder="Borç seçin..."
+                          error={!!errors.debtId}
+                          onOpenChange={onSelectOpen}
+                        />
+                      )
+                    )}
+                    {crossWsDebt && errors.debtId && <p className="text-xs text-destructive">{errors.debtId}</p>}
+                    {targetWorkspaceId && crossWsDebt && targetDebts.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Ödeme, hedef alandaki aşağıdaki hesaptan geçer: para bu hesaba girer ve borca ödenir — hesabın bakiyesi değişmez.
+                      </p>
+                    )}
                     {targetWorkspaceId && (
                       targetAccounts.length === 0 ? (
                         <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground select-none">
@@ -1499,7 +1568,7 @@ export function TransactionFormModal() {
                           value={targetAccountId}
                           onChange={setTargetAccountId}
                           options={targetAccounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
-                          placeholder="Hedef hesap seçin..."
+                          placeholder={crossWsDebt ? "Ödemenin geçeceği hesap..." : "Hedef hesap seçin..."}
                           error={!!errors.toAccountId}
                           onOpenChange={onSelectOpen}
                         />

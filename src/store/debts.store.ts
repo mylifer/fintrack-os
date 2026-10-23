@@ -28,7 +28,12 @@ interface DebtState {
   adjustPaidAmount: (id: string, delta: number) => Promise<void>
   /** recordPayment (+1) / revertPayment (−1) yamalarını YAZMADAN hesaplar —
    *  çağıran bunları kendi atomik localBatch'ine koyar. */
-  paymentPatches: (changes: { debtId: string; amount: number }[], sign: 1 | -1) => Map<string, Partial<Debt>>
+  paymentPatches: (
+    changes: { debtId: string; amount: number }[],
+    sign: 1 | -1,
+    /** Bellekte olmayan (başka çalışma alanına ait) borçlar — bkz. debtPaymentPatches. */
+    extraDebts?: readonly Debt[],
+  ) => Map<string, Partial<Debt>>
   /** Yazılmış yamaları bellekteki listeye uygular (outbox'a yazmaz). */
   applyLocal: (patches: Map<string, Partial<Debt>>) => void
   getActive: () => DebtWithRemaining[]
@@ -110,14 +115,16 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
     set(s => ({ debts: s.debts.map(d => d.id === id ? { ...d, ...patch } : d) }))
   },
 
-  paymentPatches: (changes, sign) => {
+  paymentPatches: (changes, sign, extraDebts) => {
     // recordPayment/revertPayment ile AYNI aritmetik, ama yazmadan: çağıran
     // yamaları kendi localBatch'ine koyar ki işlem silme ve borç geri alma
     // tek IndexedDB işleminde olsun (denetim #22). Aynı borca birden çok
     // değişiklik (taksit grubu) sırayla birikir.
     const working = new Map<string, Debt>()
     for (const { debtId, amount } of changes) {
-      const debt = working.get(debtId) ?? get().debts.find(d => d.id === debtId)
+      const debt = working.get(debtId)
+        ?? get().debts.find(d => d.id === debtId)
+        ?? extraDebts?.find(d => d.id === debtId)
       if (!debt) continue
       let paidAmount: number
       let paidInstallments: number
@@ -148,3 +155,22 @@ export const useDebtStore = create<DebtState>()((set, get) => ({
       .filter(d => !d.isSettled && d.dueDate && isDueSoon(d.dueDate, days))
       .map(enrichDebt),
 }))
+
+/** paymentPatches'in çalışma alanından bağımsız hâli. Bellekte yalnız AKTİF
+ *  alanın borçları vardır; çalışma alanları arası borç ödemesinde borç başka
+ *  alana aittir → eksik borçlar ham Dexie'den okunur. Yamalar YAZILMAZ: çağıran
+ *  kendi atomik localBatch'ine koyar, sonra applyLocal ile belleğe yansıtır
+ *  (applyLocal yalnız yüklü borçlara dokunur). */
+export async function debtPaymentPatches(
+  changes: { debtId: string; amount: number }[],
+  sign: 1 | -1,
+): Promise<Map<string, Partial<Debt>>> {
+  const state = useDebtStore.getState()
+  if (changes.length === 0) return new Map()
+  const loaded = new Set(state.debts.map(d => d.id))
+  const missing = [...new Set(changes.map(c => c.debtId))].filter(id => !loaded.has(id))
+  const extra = missing.length === 0
+    ? []
+    : (await db.debts.bulkGet(missing)).filter((d): d is Debt => !!d && isLive(d))
+  return state.paymentPatches(changes, sign, extra)
+}
