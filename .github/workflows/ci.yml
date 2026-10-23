@@ -45,6 +45,31 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
           NEXT_TELEMETRY_DISABLED: 1
 
+  # Depodaki SQL projeyi BOŞ bir veritabanında sıfırdan kurabiliyor mu
+  # (felaket kurtarma / yeni test projesi)? Supabase 30 Ekim 2026'dan beri
+  # yeni tablolara Data API izni vermediği için izni unutulmuş bir tablo da
+  # burada kırmızı olur. Supabase'e bağlanmaz — geçici bir Postgres kullanır.
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sıfırdan kurulum + izin/RLS kontrolleri
+        run: supabase/fresh-install/run.sh
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
+
   # Uçtan uca testler (e2e/): uygulama AUTH_BYPASS=1 ile `next dev` üzerinde
   # girişsiz açılır, her test kendi tarayıcı bağlamında (IndexedDB) çalışır.
   # Supabase değişkenleri sahte — buluta hiç yazılmaz.
