@@ -306,14 +306,25 @@ export function isDebtPrincipalTx(t: Pick<Transaction, 'icon' | 'description'>):
   )
 }
 
-/** Anapara hareketi — yatırım özsermayesi VEYA borç anaparası. Gerçek
- *  gelir/gider olmayan, yalnızca paranın yer değiştirdiği defter satırları:
- *  akış (gelir/gider/net) toplamlarından dışlanır, bakiye/net-varlık HAM
- *  yürüyüşüne dahildir. Akışı isFlowTx üzerinden hesaplamayan yüzeyler
- *  (nakit akışı, DetailedStats) bu tek yüklemi paylaşır ki dışlama kuralı
- *  iki yerde ayrışmasın. */
-export function isPrincipalMoveTx(t: Pick<Transaction, 'icon' | 'description'>): boolean {
-  return isInvestmentPrincipalTx(t) || isDebtPrincipalTx(t)
+// Çalışma alanları arası transferin bacağı — kaynak alandaki 'expense' ve hedef
+// alandaki 'income' (borç ödemeli transferde ayrıca 'transfer' tipli ödeme).
+// İki alan da aynı kullanıcınındır: para yalnızca kendi cepleri arasında yer
+// değiştirir, hiçbir alanda gelir ya da gider DEĞİLDİR. Bakiyeyi gerçekten
+// oynatır (bacaklar income/expense tipindedir) — dışlama yalnız akışta.
+export function isWorkspaceTransferTx(t: Partial<Pick<Transaction, 'workspaceTransferId'>>): boolean {
+  return !!t.workspaceTransferId
+}
+
+/** Anapara hareketi — yatırım özsermayesi, borç anaparası VEYA çalışma alanları
+ *  arası transfer bacağı. Gerçek gelir/gider olmayan, yalnızca paranın yer
+ *  değiştirdiği defter satırları: akış (gelir/gider/net) toplamlarından
+ *  dışlanır, bakiye/net-varlık HAM yürüyüşüne dahildir. Akışı isFlowTx
+ *  üzerinden hesaplamayan yüzeyler (nakit akışı, DetailedStats) bu tek yüklemi
+ *  paylaşır ki dışlama kuralı iki yerde ayrışmasın. */
+export function isPrincipalMoveTx(
+  t: Pick<Transaction, 'icon' | 'description'> & Partial<Pick<Transaction, 'workspaceTransferId'>>,
+): boolean {
+  return isInvestmentPrincipalTx(t) || isDebtPrincipalTx(t) || isWorkspaceTransferTx(t)
 }
 
 // Gerçekleşen yatırım kâr/zararı — satış anında yazılan "… Satış Kârı" (gelir),
@@ -344,8 +355,9 @@ function sumFlow(inRange: Transaction[]): { income: number; expense: number; net
 
 // A transaction that counts toward income/expense/net FLOW totals: posted
 // (approved + arrived, isPosted), not a balance-reconciliation ghost, and not
-// an investment principal move (… Alımı/… Satışı) and not a debt principal
-// move (… borç girişi/… verilen borç). This is the SINGLE flow
+// an investment principal move (… Alımı/… Satışı), not a debt principal
+// move (… borç girişi/… verilen borç) and not a cross-workspace transfer leg
+// (workspaceTransferId). This is the SINGLE flow
 // predicate — calcPeriodFlow/calcMonthlyFlow AND every surface that sums flow
 // over an already-scoped slice (işlem özet çubuğu, kişi/etiket/kategori detay
 // toplamları) share it, so no two widgets can drift apart on which rows count.
