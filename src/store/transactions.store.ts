@@ -20,6 +20,7 @@ import { txTouchesAccount } from '@/lib/utils/calculations'
 import { splitMoney } from '@/lib/utils/money'
 import { splitsAreValid, splitsMatchAmount, primarySplitCategoryId, rescaleSplits, txHasCategory } from '@/lib/utils/categorySplits'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
+import { withLinkedInterestTax } from '@/lib/utils/interest-tax'
 
 // Snapshot the base-currency (TRY) value at write time (S2/S3). Every creation
 // path funnels through the store, so stamping here covers the form, refunds,
@@ -700,9 +701,10 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const tx = all.find(t => t.id === id)
     // Taksitli işlem: tek taksit yalnız silinmez — satın almanın TÜM taksitleri
     // (aynı installGroupId) birlikte silinir ve undo hepsini birlikte geri getirir.
-    const group = tx?.installGroupId
+    // Faiz gelirinin stopaj gideri (interest-tax.ts) satırla birlikte silinir.
+    const group = withLinkedInterestTax(tx?.installGroupId
       ? all.filter(t => t.installGroupId === tx.installGroupId)
-      : tx ? [tx] : []
+      : tx ? [tx] : [], all)
 
     // Çalışma alanları arası transferin karşı bacak(lar)ı ham Dexie'den bulunup
     // onlar da tombstone'lanır (yetim kayıt kalmasın; mimari kısıt olarak
@@ -725,7 +727,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // payment — symmetric with the revertPayment above (recordPayment +amount,
     // +1 installment ↔ revertPayment -amount, -1 installment).
     if (group.length && opts?.undoable !== false) {
-      const label = group.length > 1 ? `Taksitli işlem silindi (${group.length} taksit)` : 'İşlem silindi'
+      const label = tx?.installGroupId && group.length > 1
+        ? `Taksitli işlem silindi (${group.length} taksit)`
+        : group.length > 1 ? 'Faiz ve stopajı silindi' : 'İşlem silindi'
       useUndoStore.getState().pushUndo(label, async () => {
         await setDeletedWithDebts(group, peers, false)
         const next = [...group, ...localPeers, ...get().transactions]
@@ -755,7 +759,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         targetIds.add(id)
       }
     }
-    const group = [...targetIds].map(id => byId.get(id)!).filter(Boolean)
+    const group = withLinkedInterestTax([...targetIds].map(id => byId.get(id)!).filter(Boolean), all)
     if (group.length === 0) return
 
     // Karşı bacağı da tombstone'la (bkz. remove() yorumu) — grup içinde her

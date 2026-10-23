@@ -17,6 +17,9 @@ import { splitMoney, sumMoney } from '@/lib/utils/money'
 import { rebalanceInstallmentsBelow } from '@/lib/utils/installments'
 import { toBaseTry, baseAmount } from '@/lib/utils/fx'
 import { DEBT_COLLECTION_ICON, isDebtCollectionTx } from '@/lib/utils/calculations'
+import { INTEREST_TAX_SUFFIX, impliedTaxRate, interestTaxId, isInterestCategory, splitInterest } from '@/lib/utils/interest-tax'
+import { DEFAULT_DEPOSIT_TAX } from '@/lib/utils/deposit'
+import { foldText } from '@/lib/auto-category'
 import { today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -498,6 +501,18 @@ export function TransactionFormModal() {
   // Sign of the amount. Always +1 except when editing a refund (negative
   // expense), where we preserve the negative so a save doesn't flip it positive.
   const [amountSign, setAmountSign] = useState(() => isEdit && editingTx && editingTx.amount < 0 ? -1 : 1)
+  // Faiz stopajı: girilen tutar net (bankanın yatırdığı) mı brüt mü; oran
+  // null = hesabın mevduat stopajı / varsayılan. Düzenlemede kayıtlı satır
+  // brüttür ve oran kayıtlı stopajdan geri çıkarılır.
+  const [interestMode, setInterestMode] = useState<'net' | 'gross'>(() => {
+    if (!isEdit || !editingTx) return 'net'
+    return 'gross'
+  })
+  const [interestRateStr, setInterestRateStr] = useState<string | null>(() => {
+    if (!isEdit || !editingTx) return null
+    const tax = useTransactionStore.getState().transactions.find(t => t.id === interestTaxId(editingTx.id))
+    return tax ? String(impliedTaxRate(editingTx.amount, tax.amount)).replace('.', ',') : null
+  })
   const [installments, setInstallments] = useState(() =>
     installGroup.length || (isEdit && editingTx ? (editingTx.installTotal ?? 1) : 1))
   // Elle düzenlenen taksit tutarları (amountStr formatında raw string'ler).
@@ -631,6 +646,27 @@ export function TransactionFormModal() {
   // payı alacağa geri eklenir (aynı alacak seçiliyse) — yoksa tutarı
   // değiştirmeden kaydetmek bile "kalandan fazla" hatası verirdi.
   const selectedReceivable = isCollection ? receivables.find(d => d.id === form.debtId) : undefined
+  // ── Faiz stopajı (gelir sekmesi, Faiz kategorisi) ─────────────────────
+  // Bankanın kestiği stopaj ayrı bir Vergi gideri olarak yazılır (bkz.
+  // lib/utils/interest-tax). Yeni girişte Faiz kategorisi seçilince açılır;
+  // düzenlemede yalnız satırın zaten bir stopaj kaydı varsa (eski faiz
+  // satırlarına kullanıcı istemeden gider eklenmesin). Tekrarlayan şablon,
+  // bölünmüş kategori ve art arda oturum satırı düzeltmesi dışarıda kalır.
+  const linkedTaxTx = editingTx && !isPlannedEdit
+    ? transactions.find(t => t.id === interestTaxId(editingTx.id))
+    : undefined
+  const isInterest = tab === 'income' && !form.isDebtPayment && !splits && !isRecurring && !sessionEditId
+    && (!isEdit || !!linkedTaxTx)
+    && isInterestCategory(form.categoryId, categories)
+  const interestAccount = accounts.find(a => a.id === form.accountId)
+  const defaultTaxRate  = interestAccount?.depositTaxPct ?? DEFAULT_DEPOSIT_TAX
+  const taxRate = interestRateStr === null
+    ? defaultTaxRate
+    : (parseFloat(interestRateStr.replace(',', '.')) || 0)
+  const interestSplit = isInterest
+    ? splitInterest(parseCurrencyInput(amountStr), taxRate, interestMode)
+    : null
+
   const receivableRemaining = selectedReceivable
     ? Math.round((selectedReceivable.totalAmount - selectedReceivable.paidAmount
         + (editingTx && isDebtCollectionTx(editingTx) && editingTx.debtId === selectedReceivable.id ? baseAmount(editingTx) : 0)) * 100) / 100
@@ -692,6 +728,7 @@ export function TransactionFormModal() {
     // Bölme açıkken kategori payların içinden gelir; tek alan boş olabilir.
     // Alacak tahsilatı kategori taşımaz — yerine alacak seçilir.
     if (tab !== 'transfer' && !isCollection && !splits && !form.categoryId) e.categoryId  = 'Kategori seçin'
+    if (isInterest && !(taxRate >= 0 && taxRate < 100)) e.interestRate = 'Stopaj oranı 0 ile 99 arasında olmalı'
     if (isCollection && !form.debtId)                e.debtId      = 'Alacak seçin'
     else if (isCollection && selectedReceivable && amount > 0) {
       // Alacak TL bazlıdır; yabancı para hesaba gelen tahsilat TL'ye çevrilip kıyaslanır.
@@ -895,6 +932,19 @@ export function TransactionFormModal() {
     return Array.from(byCurrency, ([cur, sum]) => formatCurrency(sum, cur)).join(' · ')
   }, [session])
 
+  // Stopaj gideri: sistemdeki "Vergi" gider kategorisi (yoksa adında vergi
+  // geçen ilk gider kategorisi) ve "İTC" alıcısı (yoksa oluşturulur).
+  function taxCategoryId(): string | undefined {
+    const live = categories.filter(c => c.scope === 'expense' && !c.isArchived)
+    return (live.find(c => c.isSystem && c.name === 'Vergi')
+      ?? live.find(c => foldText(c.name).includes('vergi')))?.id
+  }
+  async function taxRecipientId(): Promise<string> {
+    const people = usePeopleStore.getState()
+    const found = people.people.find(p => p.role === 'recipient' && foldText(p.name) === foldText('İTC'))
+    return found ? found.id : (await people.add('İTC', 'recipient')).id
+  }
+
   async function handleSubmit() {
     if (crossWs) return handleCrossWorkspaceSubmit()
     if (isRecurring) return handleRecurringSubmit()
@@ -935,6 +985,12 @@ export function TransactionFormModal() {
     const collectionFields: Partial<Transaction> = collecting
       ? { categoryId: undefined, categorySplits: undefined, icon: DEBT_COLLECTION_ICON }
       : editingTx && isDebtCollectionTx(editingTx) ? { icon: undefined } : {}
+
+    // Faiz stopajı: gelir satırı BRÜT faizle yazılır, stopaj ayrı gider olur.
+    // Net girildiyse brüt, stopajı kesilince tam bu neti verecek tutardır.
+    const savedAmount = interestSplit ? interestSplit.gross : amount
+    const taxAmount   = interestSplit?.tax ?? 0
+    const taxDescription = `${form.description.trim()} ${INTEREST_TAX_SUFFIX}`
 
     if (editingTx && editingTx.isInstallment && editingTx.installGroupId && installments > 1) {
       // Taksitli grup düzenleme: 'ilk giriş' gibi toplam/sayı/taksitler tüm gruba
@@ -999,7 +1055,7 @@ export function TransactionFormModal() {
       }
     } else if (editingTx) {
       await updateTx(editingTx.id, {
-        ...formData, type: tab as TransactionType, amount, currency, updatedAt: now,
+        ...formData, type: tab as TransactionType, amount: savedAmount, currency, updatedAt: now,
         // Taksit bayrağı bu dalda DEĞİŞMEZ: gruba dönüşüm yukarıdaki dalda
         // olur, burada `isInstallment: true` yazmak grupsuz sahte taksit üretir.
         isInstallment:  editingTx.isInstallment,
@@ -1043,6 +1099,19 @@ export function TransactionFormModal() {
       } else if (!wasDebtPayment && isDebtPaymentNow && formDebtId) {
         await recordPayment(formDebtId, amountTry)
       }
+
+      // Bağlı stopaj satırı faizle birlikte güncellenir; faiz artık faiz
+      // değilse (kategori/tip değişti) ya da stopaj 0'a indiyse silinir.
+      if (linkedTaxTx) {
+        if (interestSplit && taxAmount > 0) {
+          await updateTx(linkedTaxTx.id, {
+            amount: taxAmount, currency, accountId: form.accountId, date: form.date,
+            description: taxDescription, updatedAt: now,
+          })
+        } else {
+          await useTransactionStore.getState().remove(linkedTaxTx.id, { undoable: false })
+        }
+      }
     } else if (sessionEditId) {
       // Art arda oturumundaki bir satırın düzeltilmesi. Bu satırlar tanımı
       // gereği sıradan (taksitsiz, borçsuz) olduğundan borç mutabakatı yok —
@@ -1073,7 +1142,7 @@ export function TransactionFormModal() {
       const base = {
         ...formData,
         type:        tab as TransactionType,
-        amount,
+        amount:      savedAmount,
         currency,
         categorySplits: txSplits,
         categoryId:  splitCategoryId ?? formData.categoryId ?? undefined,
@@ -1090,6 +1159,25 @@ export function TransactionFormModal() {
         newId = crypto.randomUUID()
         await addTx({ ...base, id: newId, isInstallment: false, createdAt: now, updatedAt: now })
       }
+      const wroteTax = !isGroup && taxAmount > 0
+      if (wroteTax) {
+        // Stopaj: Vergi kategorisine, alıcısı İTC olan ayrı gider. Kimliği faiz
+        // satırından türetilir (interestTaxId) — silme ve düzenleme bu bağla bulur.
+        await addTx({
+          id:            interestTaxId(newId),
+          type:          'expense',
+          amount:        taxAmount,
+          currency,
+          date:          form.date,
+          accountId:     form.accountId,
+          categoryId:    taxCategoryId(),
+          recipientId:   await taxRecipientId(),
+          description:   taxDescription,
+          isInstallment: false,
+          createdAt:     now,
+          updatedAt:     now,
+        })
+      }
       rememberAddedDate(formData.date)
       const isDebtPay = (tab === 'transfer' || tab === 'income') && form.isDebtPayment && !!formData.debtId
       if (isDebtPay && formData.debtId) {
@@ -1101,12 +1189,12 @@ export function TransactionFormModal() {
         setSession(rows => [...rows, {
           id:          newId,
           description: form.description.trim(),
-          amount:      isGroup ? parseCurrencyInput(amountStr) : amount,
+          amount:      isGroup ? parseCurrencyInput(amountStr) : savedAmount,
           currency,
           type:        tab,
           categoryId:  formData.categoryId || undefined,
           accountName: account?.name ?? '',
-          editable:    !isGroup && !isDebtPay,
+          editable:    !isGroup && !isDebtPay && !wroteTax,
         }])
         resetForNext(formData.date)
         return
@@ -1791,6 +1879,69 @@ export function TransactionFormModal() {
             )}
           </div>
 
+          {/* Faiz stopajı — Brüt · Stopaj · Net. Kaydedince stopaj Vergi'ye
+              ayrı gider olarak yazılır (alıcı İTC). */}
+          {isInterest && interestSplit && (
+            <div className="-mt-1 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className={cn("text-sm font-medium", errors.interestRate && "text-destructive")}>Stopaj</span>
+                <div className="flex rounded border border-input overflow-hidden text-[11px]" title="Girdiğin tutar bankanın yatırdığı net tutar mı, brüt faiz mi?">
+                  {(['net', 'gross'] as const).map((m, i) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setInterestMode(m)}
+                      className={cn(
+                        "px-2 py-0.5 transition-colors",
+                        i > 0 && "border-l border-input",
+                        interestMode === m ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {m === 'net' ? 'Net girdim' : 'Brüt girdim'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 rounded-lg border border-input overflow-hidden text-xs">
+                <div className="flex flex-col gap-0.5 px-3 py-2 min-w-0">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Brüt faiz</span>
+                  <span className="text-sm font-semibold tabular-nums text-green-600 truncate">{formatCurrency(interestSplit.gross, interestAccount?.currency ?? 'TRY')}</span>
+                  <span className="text-muted-foreground">Gelir · Faiz</span>
+                </div>
+                <div className="flex flex-col gap-0.5 px-3 py-2 min-w-0 border-l border-input">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Stopaj</span>
+                  <span className="text-sm font-semibold tabular-nums text-destructive truncate">−{formatCurrency(interestSplit.tax, interestAccount?.currency ?? 'TRY')}</span>
+                  <label className="flex items-center gap-1 text-muted-foreground">
+                    %
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      aria-label="Stopaj oranı"
+                      value={interestRateStr ?? String(defaultTaxRate).replace('.', ',')}
+                      onChange={e => {
+                        setInterestRateStr(e.target.value.replace(/[^0-9,.]/g, ''))
+                        if (errors.interestRate) setErrors(prev => ({ ...prev, interestRate: '' }))
+                      }}
+                      aria-invalid={!!errors.interestRate}
+                      className={cn(
+                        "w-12 h-5 rounded border bg-transparent px-1 text-right tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                        errors.interestRate ? "border-destructive" : "border-input",
+                      )}
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-col gap-0.5 px-3 py-2 min-w-0 border-l border-input">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Hesaba geçen</span>
+                  <span className="text-sm font-semibold tabular-nums truncate">{formatCurrency(interestSplit.net, interestAccount?.currency ?? 'TRY')}</span>
+                  <span className="text-muted-foreground">Net</span>
+                </div>
+              </div>
+              {errors.interestRate
+                ? <p className="text-xs text-destructive">{errors.interestRate}</p>
+                : <p className="text-xs text-muted-foreground">Stopaj, Vergi kategorisine alıcısı İTC olan ayrı bir gider olarak yazılır.</p>}
+            </div>
+          )}
+
           {/* Alacak tahsilatı özeti — kalan alacak bu kayıttan sonra ne olur */}
           {isCollection && selectedReceivable && (() => {
             const cur   = (accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode
@@ -2154,6 +2305,7 @@ export function TransactionFormModal() {
               {sessionEditId ? 'Satırı Güncelle'
                 : isEdit && !isPlannedEdit ? 'Güncelle'
                 : canKeepOpen && keepOpen ? 'Kaydet ve devam'
+                : interestSplit && interestSplit.tax > 0 ? 'Faiz + Stopaj Kaydet'
                 : 'Kaydet'}
             </Button>
           </div>
