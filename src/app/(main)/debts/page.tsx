@@ -18,7 +18,7 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { parseCurrencyInput } from '@/lib/utils/currency'
 import { toBaseTry, fromBaseTry } from '@/lib/utils/fx'
 import type { Account, Debt, DebtType, DebtDirection, DebtWithRemaining, Transaction } from '@/types'
-import { enrichDebt } from '@/lib/utils/calculations'
+import { enrichDebt, DEBT_COLLECTION_ICON } from '@/lib/utils/calculations'
 import { debtPrincipalDescription, findDebtPrincipalTx, debtLinkedTransactions } from '@/lib/utils/debt-links'
 import { deleteDebtWithTransactions } from '@/lib/debt-actions'
 import { useShallow } from 'zustand/react/shallow'
@@ -456,21 +456,36 @@ export default function DebtsPage() {
     setPayForm(emptyPayForm())
   }
 
+  // Tahsilat kalan alacağı aşamaz (alacak TL bazlı; yabancı para hesapta çevrilir).
+  const collectionOverflow = (() => {
+    if (!payingDebt || payingDebt.direction !== 'owed') return false
+    const account = accounts.find(a => a.id === payForm.accountId)
+    const amount  = parseCurrencyInput(payForm.amountStr)
+    if (!account || !amount) return false
+    return toBaseTry(amount, account.currency) > payingDebt.remainingAmount + 0.005
+  })()
+
   async function handlePay() {
     if (!payingDebt) return
     const amount  = parseCurrencyInput(payForm.amountStr)
     const account = accounts.find(a => a.id === payForm.accountId)
     if (!amount || amount <= 0 || !account) return
+    // Alacak: ödeme bana gelir → gelir tipli, debtId'li TAHSİLAT satırı
+    // (isDebtCollectionTx). Para hesaba girer ama gelir sayılmaz; işlem
+    // eklemedeki "Gelir | Alacak" moduyla birebir aynı satır.
+    const collect = payingDebt.direction === 'owed'
+    if (collect && collectionOverflow) return
     setPayLoading(true)
     try {
       const now = new Date().toISOString()
       await addTx({
         id:            crypto.randomUUID(),
-        type:          'transfer',
+        type:          collect ? 'income' : 'transfer',
         amount,
         currency:      account.currency,
         accountId:     account.id,
-        description:   `${payingDebt.name} ödemesi`,
+        description:   collect ? `${payingDebt.name} tahsilatı` : `${payingDebt.name} ödemesi`,
+        ...(collect ? { icon: DEBT_COLLECTION_ICON } : {}),
         isInstallment: false,
         debtId:        payingDebt.id,
         date:          payForm.date,
@@ -568,9 +583,9 @@ export default function DebtsPage() {
           <Button size="sm" variant="secondary" className="flex-1 shrink" onClick={() => setSelectedDebt(debt)}>
             Detay
           </Button>
-          {debt.direction === 'owe' && !settled && (
+          {!settled && (
             <Button size="sm" className="flex-1 shrink" onClick={() => openPay(debt)}>
-              Ödeme Yap
+              {debt.direction === 'owe' ? 'Ödeme Yap' : 'Tahsilat Al'}
             </Button>
           )}
         </div>
@@ -694,8 +709,10 @@ export default function DebtsPage() {
                   </span>
                   {selectedDebt.isSettled && <Badge variant="ok">Kapandı</Badge>}
                 </div>
-                {selectedDebt.direction === 'owe' && !selectedDebt.isSettled && (
-                  <Button size="sm" onClick={() => openPay(selectedDebt)}>Ödeme Yap</Button>
+                {!selectedDebt.isSettled && (
+                  <Button size="sm" onClick={() => openPay(selectedDebt)}>
+                    {selectedDebt.direction === 'owe' ? 'Ödeme Yap' : 'Tahsilat Al'}
+                  </Button>
                 )}
               </div>
               <div className="h-[2px] bg-muted mb-1.5">
@@ -907,17 +924,26 @@ export default function DebtsPage() {
       </Modal>
 
       {/* Ödeme yap modal */}
-      <Modal open={!!payingDebt} onClose={closePay} title="Ödeme Yap" size="sm">
+      <Modal open={!!payingDebt} onClose={closePay} title={payingDebt?.direction === 'owed' ? 'Tahsilat Al' : 'Ödeme Yap'} size="sm">
         {payingDebt && (
           <div className="flex flex-col gap-3">
-            <div className="text-sm text-muted-foreground">{payingDebt.name}</div>
+            <div className="text-sm text-muted-foreground">
+              {payingDebt.name}
+              {payingDebt.direction === 'owed' && (
+                <> · kalan {formatCurrency(payingDebt.remainingAmount)}</>
+              )}
+            </div>
 
             <CurrencyInput
-              label="Ödeme Tutarı"
+              label={payingDebt.direction === 'owed' ? 'Tahsil Edilen Tutar' : 'Ödeme Tutarı'}
               value={payForm.amountStr}
               currency={accounts.find(a => a.id === payForm.accountId)?.currency}
               onChange={v => setPayForm(f => ({ ...f, amountStr: v }))}
+              error={collectionOverflow ? `Tutar kalan alacaktan fazla (kalan ${formatCurrency(payingDebt.remainingAmount)})` : undefined}
             />
+            {payingDebt.direction === 'owed' && (
+              <p className="-mt-1 text-xs text-muted-foreground">Para hesaba girer; gelir olarak sayılmaz.</p>
+            )}
 
             <Select
               label="Hesap"
@@ -938,10 +964,10 @@ export default function DebtsPage() {
               <Button
                 onClick={handlePay}
                 loading={payLoading}
-                disabled={!parseCurrencyInput(payForm.amountStr) || !payForm.accountId}
+                disabled={!parseCurrencyInput(payForm.amountStr) || !payForm.accountId || collectionOverflow}
                 fullWidth
               >
-                Ödemeyi Kaydet
+                {payingDebt.direction === 'owed' ? 'Tahsilatı Kaydet' : 'Ödemeyi Kaydet'}
               </Button>
               <Button variant="secondary" onClick={closePay} fullWidth>İptal</Button>
             </div>
