@@ -3,9 +3,9 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { computeTransactionEffect, excludeFuture } from '@/lib/utils/calculations'
-import type { Account, InvestmentTransaction, Transaction } from '@/types'
+import type { Account, Debt, InvestmentTransaction, Transaction } from '@/types'
 import { useTransactionStore } from './transactions.store'
-import { useDebtStore } from './debts.store'
+import { useDebtStore, debtPaymentPatches } from './debts.store'
 import { useRecurringStore } from './recurring.store'
 import { useInvestmentStore } from './investment.store'
 import { isLive } from '@/lib/sync/tombstone'
@@ -88,6 +88,13 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
         await useDebtStore.getState().revertPayment(tx.debtId, baseAmount(tx))
       }
     }
+    //    Karşı bacak da bir borç ödemesi olabilir (alanlar arası borç ödemesi):
+    //    borcu genelde BAŞKA alandadır, bellekte yoktur → yamalar Dexie'den
+    //    hesaplanıp aşağıdaki atomik bloğa girer.
+    const peerPayments = peerTxs.filter(t => t.debtId)
+    const peerDebtPatches = peerPayments.length === 0
+      ? new Map<string, Partial<Debt>>()
+      : await debtPaymentPatches(peerPayments.map(t => ({ debtId: t.debtId!, amount: baseAmount(t) })), -1)
 
     // 3+4. Hesabı VE bağlı işlemleri TEK atomik blokta tombstone'la (C5): ikisi
     // ya birlikte silinir ya da hiç — yarıda kalıp dangling (hesapsız işlem /
@@ -99,7 +106,9 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
         ? [{ kind: 'patchMany' as const, table: 'transactions' as const, ids: linkedTxIds, patch: { deleted_at: ts } }]
         : []),
       { kind: 'patch' as const, table: 'accounts' as const, id, patch: { deleted_at: ts } },
+      ...[...peerDebtPatches].map(([debtId, patch]) => ({ kind: 'patch' as const, table: 'debts' as const, id: debtId, patch })),
     ])
+    if (peerDebtPatches.size > 0) useDebtStore.getState().applyLocal(peerDebtPatches)
 
     // 4b. Bu hesaba bağlı tekrarlayan işlemleri sil — aksi halde silinmiş
     // hesaba yeni işlemler üretilmeye devam eder
@@ -142,8 +151,9 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     }
 
     // 5. Store'ları güncelle
+    const removedTxIds = new Set(linkedTxIds)
     const remainingTxs = useTransactionStore.getState().transactions.filter(
-      t => t.accountId !== id && t.toAccountId !== id,
+      t => t.accountId !== id && t.toAccountId !== id && !removedTxIds.has(t.id),
     )
     useTransactionStore.setState({ transactions: remainingTxs })
     set(s => ({ accounts: s.accounts.filter(a => a.id !== id) }))

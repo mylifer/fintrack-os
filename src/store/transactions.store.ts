@@ -2,18 +2,18 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import type { Transaction, TransactionFilters } from '@/types'
+import type { Debt, Transaction, TransactionFilters } from '@/types'
 import { isInRange, today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
-import { useDebtStore } from './debts.store'
+import { useDebtStore, debtPaymentPatches } from './debts.store'
 import { usePeopleStore } from './people.store'
 import { useCategoryStore } from './categories.store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, softDeleteMany, reconcilingPull, localBatch, type BatchOp } from '@/lib/sync/engine'
-import { rowInActiveWorkspace } from '@/lib/workspace-context'
+import { rowInActiveWorkspace, rowInWorkspace } from '@/lib/workspace-context'
 import { useWorkspaceStore } from './workspace.store'
 import { toBaseTry, fromBaseTry, baseAmount, baseSnapshot } from '@/lib/utils/fx'
 import { txTouchesAccount } from '@/lib/utils/calculations'
@@ -66,20 +66,23 @@ function investRank(tx: Transaction): number {
 }
 
 // Silinen satır(lar) çalışma alanları arası bir transferin bacağıysa, karşı
-// bacağı ham Dexie'den bulur — karşı bacak başka bir çalışma alanına ait
-// olduğundan bu store'da YÜKLENMEMİŞTİR (get().transactions'da yoktur).
-async function findTransferPeerIds(group: Transaction[]): Promise<string[]> {
-  const groupIds = new Set(group.map(t => t.id))
-  const peerIds: string[] = []
-  for (const t of group) {
-    if (!t.workspaceTransferId) continue
-    const peer = await db.transactions
-      .where('workspaceTransferId').equals(t.workspaceTransferId)
-      .filter(p => p.id !== t.id && !groupIds.has(p.id))
-      .first()
-    if (peer && isLive(peer)) peerIds.push(peer.id)
+// bacak(lar)ı ham Dexie'den bulur. Sıradan transferde tek karşı bacak vardır ve
+// başka alana aittir (bu store'da YÜKLÜ DEĞİL). Borç ödemeli transferde üç
+// bacak vardır (kaynak gider + hedef giriş + hedef borç ödemesi): hedef alanın
+// iki bacağı aktif alandaysa bellekte de bulunur — çağıran onları da düşürür.
+async function findTransferPeers(group: Transaction[]): Promise<Transaction[]> {
+  const seen = new Set(group.map(t => t.id))
+  const linkIds = new Set(group.flatMap(t => (t.workspaceTransferId ? [t.workspaceTransferId] : [])))
+  const peers: Transaction[] = []
+  for (const linkId of linkIds) {
+    const rows = await db.transactions.where('workspaceTransferId').equals(linkId).toArray()
+    for (const p of rows) {
+      if (seen.has(p.id) || !isLive(p)) continue
+      seen.add(p.id)
+      peers.push(p)
+    }
   }
-  return peerIds
+  return peers
 }
 
 /** Satırları (ve karşı bacaklarını) tombstone'lar ya da geri getirir; bağlı
@@ -87,21 +90,32 @@ async function findTransferPeerIds(group: Transaction[]): Promise<string[]> {
  *  işleminde (denetim #22). Eskiden her satır ve her borç ayrı yazılıyordu:
  *  araya giren bir sekme kapanışı taksit grubunun bir kısmını silinmiş, borcu
  *  yarı geri alınmış bırakabiliyordu. Borç tutarı TRY tabanlıdır (baseAmount). */
-async function setDeletedWithDebts(group: Transaction[], peerIds: string[], deleted: boolean): Promise<void> {
-  const debts = useDebtStore.getState()
-  const patches = debts.paymentPatches(
-    group.filter(t => t.debtId).map(t => ({ debtId: t.debtId!, amount: baseAmount(t) })),
+async function setDeletedWithDebts(group: Transaction[], peers: Transaction[], deleted: boolean): Promise<void> {
+  // Karşı bacaklar da borç ödemesi taşıyabilir (alanlar arası borç ödemesi):
+  // borç başka alandaysa bellekte yoktur → debtPaymentPatches Dexie'den okur.
+  const patches = await debtPaymentPatches(
+    [...group, ...peers].filter(t => t.debtId).map(t => ({ debtId: t.debtId!, amount: baseAmount(t) })),
     deleted ? -1 : 1,
   )
   await localBatch([
     {
       kind: 'patchMany', table: 'transactions',
-      ids: [...group.map(t => t.id), ...peerIds],
+      ids: [...group.map(t => t.id), ...peers.map(t => t.id)],
       patch: { deleted_at: deleted ? new Date().toISOString() : null },
     },
     ...[...patches].map(([id, patch]): BatchOp => ({ kind: 'patch', table: 'debts', id, patch })),
   ])
-  debts.applyLocal(patches)
+  useDebtStore.getState().applyLocal(patches)
+}
+
+/** Silinen grup + karşı bacakları bellekteki listeden düşürür. `removed`,
+ *  bellekte bulunan karşı bacaklardır (undo onları geri ekler). */
+function dropRemoved(all: Transaction[], group: Transaction[], peers: Transaction[]) {
+  const groupIds = new Set(group.map(t => t.id))
+  const peerIds = new Set(peers.map(t => t.id))
+  const removed = all.filter(t => peerIds.has(t.id))
+  const remaining = all.filter(t => !groupIds.has(t.id) && !peerIds.has(t.id))
+  return { removed, remaining }
 }
 
 function txSortComparator(a: Transaction, b: Transaction): number {
@@ -120,6 +134,9 @@ export interface CrossWorkspaceTransferInput {
   date: string
   description: string
   notes?: string
+  /** Verilirse para hedef alandaki bu borcu öder: hedef hesaba giriş + aynı
+   *  hesaptan borç ödemesi (hedef hesabın bakiyesi net değişmez). */
+  targetDebtId?: string
 }
 
 interface TransactionState {
@@ -205,7 +222,20 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     if (!sourceAccount) throw new Error('Kaynak hesap bulunamadı')
 
     const targetAccount = await db.accounts.get(input.targetAccountId)
-    if (!targetAccount || !isLive(targetAccount)) throw new Error('Hedef hesap bulunamadı')
+    if (!targetAccount || !isLive(targetAccount) || !rowInWorkspace(targetAccount, input.targetWorkspaceId)) {
+      throw new Error('Hedef hesap bulunamadı')
+    }
+
+    // Borç ödemesi: borç hedef alana ait ve ödenecek yönde (benim borcum) olmalı.
+    // Hedef alan yüklü olmadığından borç da ham Dexie'den okunur.
+    let targetDebt: Debt | undefined
+    if (input.targetDebtId) {
+      targetDebt = await db.debts.get(input.targetDebtId)
+      if (!targetDebt || !isLive(targetDebt) || !rowInWorkspace(targetDebt, input.targetWorkspaceId)
+        || targetDebt.direction !== 'owe' || targetDebt.isSettled) {
+        throw new Error('Ödenecek borç bulunamadı')
+      }
+    }
 
     const sourceCurrency = sourceAccount.currency
     const targetCurrency = targetAccount.currency
@@ -255,10 +285,32 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       peerWorkspaceId: sourceWorkspaceId,
     }
 
+    // Alanlar arası borç ödemesi: hedef alanda, giriş bacağının yattığı hesaptan
+    // sıradan bir borç ödemesi (debtId'li transfer — borçlar sayfasındaki
+    // "Ödeme Yap" ile aynı biçim). Böylece hedef alanın borç geçmişi, ödeme
+    // takibi ve silme/geri alma akışları ödemeyi kendi satırı olarak görür;
+    // hedef hesabın bakiyesi ise giriş + ödeme ile net değişmez. Üç satır da
+    // aynı workspaceTransferId'yi taşır → herhangi biri silinince hepsi silinir.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { icon: _icon, ...incomingFields } = incoming
+    const payment: Transaction | undefined = targetDebt && {
+      ...incomingFields,
+      id: crypto.randomUUID(),
+      type: 'transfer',
+      debtId: targetDebt.id,
+    }
+    // Borç tutarları TRY bazlıdır (M4) — ödeme satırının TL değeriyle aynı kural.
+    const debtPatches = payment
+      ? await debtPaymentPatches([{ debtId: payment.debtId!, amount: amountTry }], 1)
+      : new Map<string, Partial<Debt>>()
+
     await localBatch([
       { kind: 'upsert', table: 'transactions', entity: outgoing },
       { kind: 'upsert', table: 'transactions', entity: incoming },
+      ...(payment ? [{ kind: 'upsert', table: 'transactions', entity: payment } as BatchOp] : []),
+      ...[...debtPatches].map(([id, patch]): BatchOp => ({ kind: 'patch', table: 'debts', id, patch })),
     ])
+    useDebtStore.getState().applyLocal(debtPatches)
 
     // Sadece AKTİF alana ait bacak belleğe alınır — karşı bacak o alan
     // yüklenmediği için burada yok; o alana geçilince reconcilingPull getirir.
@@ -652,20 +704,20 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       ? all.filter(t => t.installGroupId === tx.installGroupId)
       : tx ? [tx] : []
 
-    // Çalışma alanları arası transferin karşı bacağı bu store'da YÜKLÜ DEĞİL
-    // (başka bir çalışma alanına ait) — ham Dexie'den bulunup o da
-    // tombstone'lanır (yetim kayıt kalmasın; mimari kısıt olarak onaylandı:
-    // düzenleme karşı bacağa yansımaz ama silme yansır).
-    const peerIds = await findTransferPeerIds(group)
+    // Çalışma alanları arası transferin karşı bacak(lar)ı ham Dexie'den bulunup
+    // onlar da tombstone'lanır (yetim kayıt kalmasın; mimari kısıt olarak
+    // onaylandı: düzenleme karşı bacağa yansımaz ama silme yansır).
+    const peers = await findTransferPeers(group)
 
     // Soft delete (C3) via the durable outbox: syncs as an UPDATE and cannot
     // resurrect on the next reconciling pull. Bağlı borca katkı TRY tabanıyla
     // geri alınır ve paidInstallments de azalır (M3, M4) — atomik (#22).
-    await setDeletedWithDebts(group, peerIds, true)
+    await setDeletedWithDebts(group, peers, true)
 
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
-    const removedIds = new Set(group.map(t => t.id))
-    const remaining = get().transactions.filter(t => !removedIds.has(t.id))
+    // Aktif alandaki karşı bacaklar (alanlar arası borç ödemesi) bellekte de
+    // durur → onlar da düşer ve undo'da geri gelir.
+    const { removed: localPeers, remaining } = dropRemoved(get().transactions, group, peers)
     set({ transactions: remaining })
     useAccountStore.getState().recomputeBalances(remaining)
 
@@ -675,8 +727,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     if (group.length && opts?.undoable !== false) {
       const label = group.length > 1 ? `Taksitli işlem silindi (${group.length} taksit)` : 'İşlem silindi'
       useUndoStore.getState().pushUndo(label, async () => {
-        await setDeletedWithDebts(group, peerIds, false)
-        const next = [...group, ...get().transactions]
+        await setDeletedWithDebts(group, peers, false)
+        const next = [...group, ...localPeers, ...get().transactions]
         next.sort(txSortComparator)
         set({ transactions: next })
         useAccountStore.getState().recomputeBalances(next)
@@ -708,19 +760,18 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
     // Karşı bacağı da tombstone'la (bkz. remove() yorumu) — grup içinde her
     // iki bacak birden seçilmişse (nadir) zaten grupta olan tekrar eklenmez.
-    const peerIds = await findTransferPeerIds(group)
+    const peers = await findTransferPeers(group)
 
-    await setDeletedWithDebts(group, peerIds, true)
+    await setDeletedWithDebts(group, peers, true)
 
-    const removedIds = new Set(group.map(t => t.id))
-    const remaining = get().transactions.filter(t => !removedIds.has(t.id))
+    const { removed: localPeers, remaining } = dropRemoved(get().transactions, group, peers)
     set({ transactions: remaining })
     useAccountStore.getState().recomputeBalances(remaining)
 
     const label = group.length > 1 ? `${group.length} işlem silindi` : 'İşlem silindi'
     useUndoStore.getState().pushUndo(label, async () => {
-      await setDeletedWithDebts(group, peerIds, false)
-      const next = [...group, ...get().transactions]
+      await setDeletedWithDebts(group, peers, false)
+      const next = [...group, ...localPeers, ...get().transactions]
       next.sort(txSortComparator)
       set({ transactions: next })
       useAccountStore.getState().recomputeBalances(next)
