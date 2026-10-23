@@ -10,6 +10,7 @@ import { useNotificationsStore } from '@/store/notifications.store'
 import { currentMonthYear, today } from '@/lib/utils/date'
 import { maybeAutoBackup } from '@/lib/auto-backup'
 import { installErrorReporter } from '@/lib/error-reporter'
+import { fixForeignInvestmentLedger } from '@/lib/fix-investment-ledger'
 
 // Otomatik yedeğin kapsadığı tablolar (auto-backup.ts readSnapshot ile aynı küme).
 const BACKUP_TABLES: SyncTable[] = [
@@ -65,6 +66,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (BACKUP_TABLES.every(t => lastPullWasAuthoritative(t))) {
         maybeAutoBackup().catch(err => console.warn('[auto-backup]', err))
       }
+
+      // Döviz hesabındaki eski yatırım satırlarının tek seferlik onarımı
+      // (bulursa bildirir, yoksa sessiz). Hatası açılışı etkilemesin.
+      fixForeignInvestmentLedger().catch(err => console.warn('[investment-ledger-fix]', err))
 
       // Canlı senkron: başka cihazdaki değişiklik ilgili tabloyu yeniden yükler
       // (bkz. sync/realtime.ts). init sayfa oturumunda bir kez koştuğu için
