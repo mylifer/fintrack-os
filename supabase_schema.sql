@@ -22,6 +22,9 @@
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
 -- çalıştırdıktan SONRA supabase/migrations/0001..0023'ü sırayla uygulayın.
+-- Doğru sıra ve kontroller: supabase/fresh-install/run.sh (CI'da her PR'da
+-- boş bir Postgres'te çalışır — bu zincir kırılırsa ya da bir tablonun
+-- izni unutulursa PR kırmızı olur).
 -- Yalnızca burada olmayan, migration'lara bağlı parçalar:
 --   • user_backups tablosu + RLS'i            → 0005
 --   • restore_user_backup() RPC'si            → 0004, 0009 (0009 önce F1 için
@@ -83,6 +86,39 @@ create table if not exists public.workspaces (
 -- alınır (RLS ihlalinden FARKLI bir hata; RLS engeli boş sonuç/"new row
 -- violates row-level security policy" verir, bu ise tablo-seviyesi izin).
 grant select, insert, update, delete on public.workspaces to authenticated;
+grant all on public.workspaces to service_role;
+
+-- ── Ana 8 tablo: temel tanım ────────────────────────────────────────────────
+-- Canlı projede bu tablolar Supabase Studio'dan oluşturulmuştu ve depoda
+-- tanımları YOKTU: sıfırdan kurulan bir projede (felaket kurtarma, test) bu
+-- dosya ilk ALTER'da "relation public.accounts does not exist" ile duruyordu.
+-- Burada yalnız iskelet (id + user_id) kurulur; sütunların tamamı aşağıdaki
+-- "add column if not exists" bloklarından gelir — tek kaynak orası kalsın.
+-- Canlı projede `if not exists` hiçbir şey yapmaz.
+--
+-- Kimlikler text: istemci uuid üretir ama çalışma alanı kimlikleri ve
+-- referans sütunları (accountId, workspaceId, …) bu dosyada zaten text.
+--
+-- GRANT ŞART: Supabase 30 Ekim 2026'dan beri public şemasındaki YENİ
+-- tablolara Data API izni otomatik vermiyor (eskiden Studio veriyordu).
+-- Canlı projede tekrar çalıştırmak zararsızdır (izin zaten var).
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    'accounts', 'transactions', 'categories', 'budgets', 'debts',
+    'investment_transactions', 'people', 'recurring_transactions'
+  ] loop
+    execute format(
+      'create table if not exists public.%I (
+         id text primary key,
+         user_id uuid not null default auth.uid() references auth.users (id) on delete cascade
+       );', t);
+    execute format('grant select, insert, update, delete on public.%I to authenticated;', t);
+    execute format('grant all on public.%I to service_role;', t);
+  end loop;
+end $$;
 
 -- ── Ödeme Takibi (0011) ─────────────────────────────────────────────────────
 -- Kredi kartı + borç aylık ödemeleri. Ayrıntılı açıklama ve deploy sırası:
@@ -128,6 +164,8 @@ create table if not exists public.payment_occurrences (
 
 grant select, insert, update, delete on public.payment_plans to authenticated;
 grant select, insert, update, delete on public.payment_occurrences to authenticated;
+grant all on public.payment_plans to service_role;
+grant all on public.payment_occurrences to service_role;
 
 -- ── Birikim Hedefleri (0015) ────────────────────────────────────────────────
 -- Ayrıntı ve deploy sırası: supabase/migrations/0015_savings_goals.sql.
@@ -148,6 +186,7 @@ create table if not exists public.savings_goals (
 );
 
 grant select, insert, update, delete on public.savings_goals to authenticated;
+grant all on public.savings_goals to service_role;
 
 -- ── Reusable installer ──────────────────────────────────────────────────────
 -- A DO block applies the identical hardening to each table so no table can be
