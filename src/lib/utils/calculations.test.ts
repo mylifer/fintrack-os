@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { addMonths, format } from 'date-fns'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { awaitsApproval, buildDebtBurdenSeries, calcAvailableCredit, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
+import { awaitsApproval, buildDebtBurdenSeries, calcAvailableCredit, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isFlowTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -101,6 +101,38 @@ describe('borç anaparası akıştan hariç', () => {
       tx({ type: 'expense', amount: 5000,   icon: '🤝', description: "Ahmet'e Borç — verilen borç" }),
     ])
     expect(effect).toBe(115000)
+  })
+})
+
+/* Çalışma alanları arası transfer: iki alan da aynı kullanıcının — para yalnız
+   kendi cepleri arasında yer değiştirir. Hedef alandaki giriş GELİR, kaynak
+   alandaki çıkış GİDER sayılmaz; bakiyeler ise gerçekten değişir. */
+describe('çalışma alanları arası transfer akıştan hariç', () => {
+  const legs = [
+    tx({ type: 'income',  amount: 1500, amountTry: 1500, icon: '⇄', description: 'Ev Kredisi ödemesi', workspaceTransferId: 'w1' }),
+    tx({ type: 'expense', amount: 1500, amountTry: 1500, icon: '⇄', description: 'Ev Kredisi ödemesi', workspaceTransferId: 'w1' }),
+  ]
+
+  it('isPrincipalMoveTx / isFlowTx: transfer bacakları akış değildir', () => {
+    for (const t of legs) {
+      expect(isPrincipalMoveTx(t)).toBe(true)
+      expect(isFlowTx(t, '2026-12-31')).toBe(false)
+    }
+  })
+
+  it('calcPeriodFlow: giriş gelire, çıkış gidere yazılmaz', () => {
+    const r = calcPeriodFlow([
+      ...legs,
+      tx({ type: 'income',  amount: 1000, amountTry: 1000, description: 'Maaş' }),
+      tx({ type: 'expense', amount: 300,  amountTry: 300,  description: 'Market' }),
+    ], '2026-01-01', '2026-01-31')
+    expect(r).toEqual({ income: 1000, expense: 300, net: 700 })
+  })
+
+  it('bakiyeyi ise gerçekten oynatır', () => {
+    const account = { id: 'a', currency: 'TRY' as const }
+    expect(computeTransactionEffect(account, [legs[0]])).toBe(1500)
+    expect(computeTransactionEffect(account, [legs[1]])).toBe(-1500)
   })
 })
 
