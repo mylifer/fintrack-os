@@ -4,6 +4,8 @@ import { impliedTaxRate, interestTaxId, isInterestCategory, splitInterest, withL
 describe('splitInterest', () => {
   it('brüt girilince stopaj brüt × oran', () => {
     expect(splitInterest(308.22, 17.5, 'gross')).toEqual({ gross: 308.22, tax: 53.94, net: 254.28 })
+    // Banka ekranındaki gerçek örnek: 22,27 brüt faizden 3,90 stopaj
+    expect(splitInterest(22.27, 17.5, 'gross')).toEqual({ gross: 22.27, tax: 3.9, net: 18.37 })
   })
 
   it('net girilince hesaba etki girilen tutarla aynı kalır', () => {

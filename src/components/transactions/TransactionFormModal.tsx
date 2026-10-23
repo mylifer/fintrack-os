@@ -501,13 +501,9 @@ export function TransactionFormModal() {
   // Sign of the amount. Always +1 except when editing a refund (negative
   // expense), where we preserve the negative so a save doesn't flip it positive.
   const [amountSign, setAmountSign] = useState(() => isEdit && editingTx && editingTx.amount < 0 ? -1 : 1)
-  // Faiz stopajı: girilen tutar net (bankanın yatırdığı) mı brüt mü; oran
-  // null = hesabın mevduat stopajı / varsayılan. Düzenlemede kayıtlı satır
-  // brüttür ve oran kayıtlı stopajdan geri çıkarılır.
-  const [interestMode, setInterestMode] = useState<'net' | 'gross'>(() => {
-    if (!isEdit || !editingTx) return 'net'
-    return 'gross'
-  })
+  // Faiz stopajı: girilen tutar her zaman BRÜT faizdir (bankalar kazanılan
+  // faizi brüt gösterir, stopajı ayrıca keser). Oran null = hesabın mevduat
+  // stopajı / varsayılan; düzenlemede kayıtlı stopajdan geri çıkarılır.
   const [interestRateStr, setInterestRateStr] = useState<string | null>(() => {
     if (!isEdit || !editingTx) return null
     const tax = useTransactionStore.getState().transactions.find(t => t.id === interestTaxId(editingTx.id))
@@ -664,7 +660,7 @@ export function TransactionFormModal() {
     ? defaultTaxRate
     : (parseFloat(interestRateStr.replace(',', '.')) || 0)
   const interestSplit = isInterest
-    ? splitInterest(parseCurrencyInput(amountStr), taxRate, interestMode)
+    ? splitInterest(parseCurrencyInput(amountStr), taxRate, 'gross')
     : null
 
   const receivableRemaining = selectedReceivable
@@ -1885,22 +1881,7 @@ export function TransactionFormModal() {
             <div className="-mt-1 flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
                 <span className={cn("text-sm font-medium", errors.interestRate && "text-destructive")}>Stopaj</span>
-                <div className="flex rounded border border-input overflow-hidden text-[11px]" title="Girdiğin tutar bankanın yatırdığı net tutar mı, brüt faiz mi?">
-                  {(['net', 'gross'] as const).map((m, i) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setInterestMode(m)}
-                      className={cn(
-                        "px-2 py-0.5 transition-colors",
-                        i > 0 && "border-l border-input",
-                        interestMode === m ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {m === 'net' ? 'Net girdim' : 'Brüt girdim'}
-                    </button>
-                  ))}
-                </div>
+                <span className="text-[11px] text-muted-foreground">Tutar brüt faizdir</span>
               </div>
               <div className="grid grid-cols-3 rounded-lg border border-input overflow-hidden text-xs">
                 <div className="flex flex-col gap-0.5 px-3 py-2 min-w-0">
