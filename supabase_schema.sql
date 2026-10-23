@@ -47,6 +47,12 @@
 -- Sütunlar aşağıda tutulmaya çalışılıyor ama geçmişte kaydı: `categorySplits`
 -- (0007) uzun süre yalnızca migration'da kaldı. Yeni bir sütun eklerken HEM
 -- migration'a HEM buraya yazın. (Güvenlik denetimi 2026-08-29 → H2.)
+-- YENİ TABLO: 30 Ekim 2026'dan beri Supabase public şemasındaki yeni
+-- tablolara Data API izni VERMİYOR. Tabloyu oluşturan migration'a aynı
+-- dosyada `grant select, insert, update, delete on public.<tablo> to
+-- authenticated;` (ve `grant all … to service_role;`) eklenmeli; yoksa
+-- uygulama o tabloda "permission denied" alır. anon'a izin verilmez —
+-- uygulama her istekte oturum açmış kullanıcıyla çalışır.
 -- ============================================================================
 
 -- Tables covered (Supabase/Postgres names). Keep this list in sync with the

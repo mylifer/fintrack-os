@@ -33,6 +33,15 @@ create policy error_logs_insert_own on public.error_logs
   for insert to authenticated
   with check (user_id = (select auth.uid()));
 
+-- Data API erişimi AÇIKÇA verilir: Supabase 30 Ekim 2026'dan itibaren public
+-- şemasında yeni oluşturulan tablolara otomatik izin vermiyor. Bu satır
+-- olmadan sıfırdan kurulan bir projede (test, felaket kurtarma) her kayıt
+-- "permission denied" alır ve hata kaydı sessizce çalışmaz. Yalnız ekleme —
+-- okuma politikası yok, kayıtlar panelden okunur. (Kimlik sütunu GENERATED
+-- ALWAYS AS IDENTITY olduğundan ayrıca sequence izni gerekmez.)
+grant insert on table public.error_logs to authenticated;
+grant all on table public.error_logs to service_role;
+
 -- 30 günden eski kayıtları temizle (ekleme başına bir kez; kullanıcı silme
 -- yetkisi olmadığı için security definer)
 create or replace function public.prune_error_logs()
