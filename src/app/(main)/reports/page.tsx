@@ -21,7 +21,7 @@ import { SelectField } from '@/components/ui/Select'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, buildDebtBurdenSeries, sumExpenseByKey, sumIncomeByKey, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { excludeFuture, calcNetWorth, calcNetRaw, calcPeriodFlow, buildDebtBurdenSeries, sumExpenseByKey, sumIncomeByKey, isRealizedInvestmentPnlTx, isPrincipalMoveTx } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { expandByCategory, txHasCategory } from '@/lib/utils/categorySplits'
 import { buildCashFlowData } from '@/lib/utils/cashflow'
@@ -851,7 +851,9 @@ export default function ReportsPage() {
                 label="Toplam Gelir"
                 value={<AnimatedNumber value={incomeTotal} format={formatCurrency} />}
                 sub={(() => {
-                  const n = filteredTxs.filter(t => t.type === 'income').length
+                  // Sayı tutarla aynı kümeden: anapara hareketleri (alacak tahsilatı,
+                  // borç/yatırım anaparası, alanlar arası transfer) gelir değildir.
+                  const n = filteredTxs.filter(t => t.type === 'income' && !isPrincipalMoveTx(t)).length
                   // Anahtar açık + pozitif getiri → gelire DAHİL (dashboard ile aynı).
                   // Negatif dönem getirisi eklenmez; yalnız bilgi olarak gösterilir.
                   if (includeInvestmentIncome && fundPeriodNet > 0.005)
@@ -865,7 +867,7 @@ export default function ReportsPage() {
               <KPICard
                 label="Toplam Gider"
                 value={<AnimatedNumber value={kpi.expense} format={formatCurrency} />}
-                sub={`${filteredTxs.filter(t => t.type === 'expense').length} işlem`}
+                sub={`${filteredTxs.filter(t => t.type === 'expense' && !isPrincipalMoveTx(t)).length} işlem`}
                 color="danger"
               />
               <KPICard

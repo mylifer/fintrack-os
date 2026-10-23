@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { addMonths, format } from 'date-fns'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { awaitsApproval, buildDebtBurdenSeries, calcAvailableCredit, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtPrincipalTx, isFlowTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
+import { awaitsApproval, buildDebtBurdenSeries, calcAvailableCredit, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtCollectionTx, isDebtPrincipalTx, isFlowTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -101,6 +101,43 @@ describe('borç anaparası akıştan hariç', () => {
       tx({ type: 'expense', amount: 5000,   icon: '🤝', description: "Ahmet'e Borç — verilen borç" }),
     ])
     expect(effect).toBe(115000)
+  })
+})
+
+/* Alacak tahsilatı: verdiğim borcun geri ödemesi gelir tipli, debtId'li bir
+   satırdır. Para hesaba girer ama gelir DEĞİLDİR — hiçbir akış ya da dağılım
+   toplamına girmez; bakiye ise gerçekten artar. */
+describe('alacak tahsilatı akıştan hariç', () => {
+  const collection = tx({ type: 'income', amount: 5000, amountTry: 5000, icon: '🤝', description: 'Ahmet geri ödeme', debtId: 'd1', categoryId: undefined })
+
+  it('isDebtCollectionTx yalnız debtId taşıyan GELİR satırını işaretler', () => {
+    expect(isDebtCollectionTx(collection)).toBe(true)
+    expect(isDebtCollectionTx({ type: 'transfer', debtId: 'd1' })).toBe(false)
+    expect(isDebtCollectionTx({ type: 'income' })).toBe(false)
+  })
+
+  it('isPrincipalMoveTx / isFlowTx: tahsilat akış değildir', () => {
+    expect(isPrincipalMoveTx(collection)).toBe(true)
+    expect(isFlowTx(collection, '2026-12-31')).toBe(false)
+    // İkonu kaybolmuş olsa bile debtId yeterlidir
+    expect(isFlowTx({ ...collection, icon: undefined }, '2026-12-31')).toBe(false)
+  })
+
+  it('calcPeriodFlow: tahsilat gelire yazılmaz', () => {
+    const r = calcPeriodFlow([
+      collection,
+      tx({ type: 'income',  amount: 1000, amountTry: 1000, description: 'Maaş' }),
+    ], '2026-01-01', '2026-01-31')
+    expect(r).toEqual({ income: 1000, expense: 0, net: 1000 })
+  })
+
+  it('kategori dağılımına girmez (ikon düşmüş olsa bile)', () => {
+    const m = sumIncomeByKey([{ ...collection, icon: undefined }, tx({ type: 'income', amount: 1000, amountTry: 1000, categoryId: 'c1' })], t => t.categoryId ?? '__none__')
+    expect([...m.entries()]).toEqual([['c1', 1000]])
+  })
+
+  it('bakiyeyi ise gerçekten artırır', () => {
+    expect(computeTransactionEffect({ id: 'a', currency: 'TRY' }, [collection])).toBe(5000)
   })
 })
 
