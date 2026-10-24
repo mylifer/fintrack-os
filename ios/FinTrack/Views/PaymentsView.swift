@@ -4,12 +4,19 @@ import FinTrackData
 
 /// Ödeme Takibi (web /payments liste görünümü): kart ekstreleri ve kredi
 /// taksitleri ay ay. "Öde" web payRow: ödeme işlemi + ayın kaydı "ödendi".
-/// Tutar/gün düzenleme ve "atla" web'de (Ayarlar → Web).
+/// Satıra basılı tutun / kaydırın: düzenle, atla, ödendiyi geri al, sıfırla.
 struct PaymentsView: View {
     @Environment(AppModel.self) private var model
     @Environment(Router.self) private var router
     @State private var month = String(DateUtil.today().prefix(7))
     @State private var paying: PaymentRow?
+    @State private var editingRow: PaymentRow?
+    @State private var settingsTarget: TargetBox?
+    @State private var unpaying: PaymentRow?
+    @State private var showTracking = false
+    @State private var errorMessage: String?
+
+    struct TargetBox: Identifiable { var target: PaymentTarget; var id: String { target.key } }
     @State private var cached: (key: String, board: (targets: [PaymentTarget], monthRows: [PaymentRow], carryRows: [PaymentRow]))?
 
     /// Takvim (kart ödemesi tanıma dahil) ay ve veri değişmedikçe yeniden kurulmaz
@@ -30,10 +37,12 @@ struct PaymentsView: View {
             }
             if !setup.isEmpty {
                 Section {
-                    Link(destination: WebLinks.cardCalendar) {
-                        Label("\(setup.count) kartın son ödeme günü girilmedi: \(setup.map(\.name).joined(separator: ", ")). Web'de Kart Takvimi'nden girin.",
-                              systemImage: "exclamationmark.circle")
-                            .font(.footnote)
+                    ForEach(setup, id: \.key) { t in
+                        Button { settingsTarget = TargetBox(target: t) } label: {
+                            Label("\(t.name): son ödeme günü girilmedi — girmek için dokunun",
+                                  systemImage: "exclamationmark.circle")
+                                .font(.footnote)
+                        }
                     }
                 }
             }
@@ -55,6 +64,30 @@ struct PaymentsView: View {
         .navigationTitle("Ödeme Takibi")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $paying) { PayRowSheet(row: $0) }
+        .sheet(item: $editingRow) { PaymentEditSheet(row: $0) }
+        .sheet(item: $settingsTarget) { PlanSettingsSheet(target: $0.target) }
+        .sheet(isPresented: $showTracking) { TrackingListSheet(month: month) }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showTracking = true } label: { Image(systemName: "slider.horizontal.3") }
+                    .accessibilityLabel("Takip edilenler")
+            }
+        }
+        .confirmationDialog("Ödendi işareti kaldırılsın mı?", isPresented: Binding(get: { unpaying != nil },
+                                                                                set: { if !$0 { unpaying = nil } }),
+                            titleVisibility: .visible) {
+            if let r = unpaying {
+                if r.occurrence?.transactionId != nil {
+                    Button("İşaret ve ödeme işlemi silinsin", role: .destructive) { run { try await model.unpayRow(r, deleteTransaction: true) } }
+                }
+                Button("Yalnız işaret kalksın") { run { try await model.unpayRow(r, deleteTransaction: false) } }
+            }
+        } message: {
+            Text("Ödeme işlemi silinirse bakiye (ve borçta ödenen tutar) geri alınır.")
+        }
+        .alert("Kaydedilemedi", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("Tamam", role: .cancel) {}
+        } message: { Text(errorMessage ?? "") }
         .task(id: cacheKey) { cached = (cacheKey, model.paymentBoard(month: month)) }
     }
 
@@ -105,7 +138,7 @@ struct PaymentsView: View {
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
             if s.unknownCount > 0 {
-                Text("\(s.unknownCount) ödemenin tutarı girilmedi (web'de girilir).")
+                Text("\(s.unknownCount) ödemenin tutarı girilmedi (satıra basılı tutup Düzenle).")
                     .font(.caption).foregroundStyle(Theme.warning)
             }
             if let next = s.next {
@@ -122,6 +155,19 @@ struct PaymentsView: View {
             Section {
                 ForEach(rows) { r in
                     PaymentRowView(row: r, showMonth: showMonth) { pay(r) }
+                        .contentShape(Rectangle())
+                        .onTapGesture { editingRow = r }
+                        .contextMenu { rowActions(r) }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            if r.state == .paid && r.occurrence?.status == "paid" {
+                                Button("Geri al") { unpaying = r }.tint(.orange)
+                            } else if r.state == .skipped {
+                                Button("Atlamayı kaldır") { run { try await model.setRowSkipped(r, false) } }.tint(Theme.income)
+                            } else if r.isActionable {
+                                Button("Atla") { run { try await model.setRowSkipped(r, true) } }.tint(.gray)
+                            }
+                            Button("Düzenle") { editingRow = r }.tint(Theme.planned)
+                        }
                 }
             } header: {
                 HStack {
@@ -137,6 +183,75 @@ struct PaymentsView: View {
     }
 
     private func pay(_ r: PaymentRow) { paying = r }
+
+    @ViewBuilder private func rowActions(_ r: PaymentRow) -> some View {
+        if r.isActionable { Button { pay(r) } label: { Label("Öde", systemImage: "checkmark.circle") } }
+        Button { editingRow = r } label: { Label("Düzenle", systemImage: "pencil") }
+        if r.state == .skipped {
+            Button { run { try await model.setRowSkipped(r, false) } } label: { Label("Atlamayı kaldır", systemImage: "arrow.uturn.backward") }
+        } else if r.isActionable {
+            Button { run { try await model.setRowSkipped(r, true) } } label: { Label("Bu ayı atla", systemImage: "forward") }
+        }
+        if r.occurrence?.status == "paid" {
+            Button { unpaying = r } label: { Label("Ödendi işaretini kaldır", systemImage: "arrow.uturn.backward.circle") }
+        }
+        if r.custom.amount || r.custom.dueDate || r.custom.fromAccount {
+            Button { run { try await model.resetRowOverrides(r) } } label: { Label("Bu ayın özel değerlerini sıfırla", systemImage: "eraser") }
+        }
+        Button { settingsTarget = TargetBox(target: r.target) } label: { Label("\(r.target.name) ayarları", systemImage: "gearshape") }
+    }
+
+    private func run(_ op: @escaping () async throws -> Void) {
+        Task {
+            do { try await op(); Haptics.success() }
+            catch { errorMessage = error.localizedDescription }
+        }
+    }
+}
+
+/// Takip edilen kartlar ve borçlar (web TrackingManagerModal): aç / kapat, ayarlar.
+struct TrackingListSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let month: String
+    @State private var settings: PaymentsView.TargetBox?
+
+    /// Güncel hedefler (aç/kapat anında yansısın)
+    private var targets: [PaymentTarget] { model.paymentBoard(month: month).targets }
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(targets, id: \.key) { t in
+                    HStack {
+                        IconBadge(symbol: t.kind == .card ? "creditcard" : "building.columns", color: Color(hex: t.color), size: 30)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(t.name)
+                            Text(t.needsSetup ? "Ödeme günü girilmedi" : t.dayOfMonth.map { "Her ayın \($0)'i" } ?? "")
+                                .font(.caption).foregroundStyle(t.needsSetup ? Theme.warning : .secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(get: { t.isActive }, set: { on in
+                            Task {
+                                do { try await model.setTracking(t, on) } catch { errorMessage = error.localizedDescription }
+                            }
+                        }))
+                        .labelsHidden()
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { settings = PaymentsView.TargetBox(target: t) }
+                }
+            }
+            .navigationTitle("Takip edilenler")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Bitti") { dismiss() } } }
+            .sheet(item: $settings) { PlanSettingsSheet(target: $0.target) }
+            .alert("Kaydedilemedi", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+                Button("Tamam", role: .cancel) {}
+            } message: { Text(errorMessage ?? "") }
+        }
+    }
 }
 
 struct PaymentRowView: View {

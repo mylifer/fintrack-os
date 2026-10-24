@@ -1133,6 +1133,65 @@ public final class AppModel {
         }
     }
 
+    // MARK: Ödeme Takibi düzenlemeleri (web payments/actions.ts)
+
+    private func applyPaymentWrites(_ w: PaymentEdits.Writes) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        try await batched {
+            var first = true
+            if let plan = w.plan {
+                try await write(plan, in: \.paymentPlans)
+                first = false
+            }
+            for o in w.occurrences {
+                if first { try await write(o, in: \.paymentOccurrences); first = false }
+                else { await writeFollowUp(o, in: \.paymentOccurrences) }
+            }
+        }
+    }
+
+    /// "Ödendi" işaretini kaldır; `deleteTransaction` ise bağlı ödeme işlemi de silinir
+    /// (bakiye ve borç geri alınır). İşlem önce silinir; olmazsa işaret kalır.
+    public func unpayRow(_ row: PaymentRow, deleteTransaction: Bool) async throws {
+        if deleteTransaction, let id = row.occurrence?.transactionId,
+           let t = all.transactions.first(where: { $0.id == id && $0.isLive }) {
+            try await delete(t)
+        }
+        try await applyPaymentWrites(.init(occurrences: [
+            PaymentEdits.unpay(row, existing: all.paymentOccurrences, workspaceId: activeWorkspaceId, now: Self.nowISO()),
+        ]))
+    }
+
+    public func setRowSkipped(_ row: PaymentRow, _ on: Bool) async throws {
+        try await applyPaymentWrites(.init(occurrences: [
+            PaymentEdits.setStatus(row, skipped: on, existing: all.paymentOccurrences, workspaceId: activeWorkspaceId,
+                                   now: Self.nowISO()),
+        ]))
+    }
+
+    public func resetRowOverrides(_ row: PaymentRow) async throws {
+        guard let o = PaymentEdits.resetOverrides(row, existing: all.paymentOccurrences, workspaceId: activeWorkspaceId,
+                                                  now: Self.nowISO()) else { return }
+        try await applyPaymentWrites(.init(occurrences: [o]))
+    }
+
+    public func saveRowEdit(_ row: PaymentRow, values: PaymentEdits.RowValues, scope: PaymentEdits.Scope) async throws {
+        try await applyPaymentWrites(PaymentEdits.saveRowEdit(
+            row, values: values, scope: scope, occurrences: all.paymentOccurrences, plans: all.paymentPlans,
+            transactions: transactions, accounts: accounts, fx: fx, workspaceId: activeWorkspaceId, now: Self.nowISO()))
+    }
+
+    public func savePlanSettings(_ target: PaymentTarget, values: PaymentEdits.PlanValues) async throws {
+        try await applyPaymentWrites(PaymentEdits.savePlanSettings(
+            target, values: values, occurrences: all.paymentOccurrences, plans: all.paymentPlans,
+            transactions: transactions, accounts: accounts, fx: fx, workspaceId: activeWorkspaceId, now: Self.nowISO()))
+    }
+
+    public func setTracking(_ target: PaymentTarget, _ on: Bool) async throws {
+        try await applyPaymentWrites(.init(plan: PaymentEdits.setTracking(target, on, plans: all.paymentPlans,
+                                                                          workspaceId: activeWorkspaceId, now: Self.nowISO())))
+    }
+
     // MARK: Kart ekstresi
 
     /// Kredi kartının açık dönemi ve son `count` ekstresi (web CardStatementPanel).
