@@ -79,7 +79,11 @@ public struct WidgetSnapshot: Codable, Hashable, Sendable {
         upcoming = try c.decodeIfPresent([UpcomingLine].self, forKey: .upcoming) ?? []
     }
 
-    public static let appGroup = "group.com.mylifer.fintrack"
+    /// Uygulama ve widget'ın ortak App Group'u (Info.plist FTAppGroup ← Base.xcconfig)
+    public static let appGroup: String = {
+        if let g = Bundle.main.object(forInfoDictionaryKey: "FTAppGroup") as? String, !g.isEmpty, !g.hasPrefix("$(") { return g }
+        return "group.com.mylifer.fintrack"
+    }()
     static let key = "fintrack.widgetSnapshot"
 
     public static func load() -> WidgetSnapshot? {

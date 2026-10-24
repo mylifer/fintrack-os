@@ -8,3 +8,8 @@
 07-odeme-takibi|-tab accounts -payments
 08-tahmin|-tab accounts -forecast
 09-ayarlar|-settings
+10-istatistik|-stats
+11-kart-takvimi|-tab accounts -cardcalendar
+12-yeni-hesap|-tab accounts -newaccount
+13-yeni-borc|-tab accounts -newdebt
+14-yatirim-sat|-tab investments -trade

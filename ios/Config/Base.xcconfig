@@ -2,3 +2,12 @@
 // (scripts/make-secrets.sh .env.local'dan üretir). Dosya yoksa derleme
 // yine geçer; uygulama "anahtar yok" ekranı gösterir.
 #include? "Secrets.xcconfig"
+
+// Paket kimliği: App Store'da yayın yok, yalnız kendi iPhone'unuz. Xcode
+// "identifier is not available" derse (ör. daha önce başka bir ekiple/ücretsiz
+// hesapla kurulduysa) git dışı Local.xcconfig'te değiştirin — widget ve App
+// Group kimlikleri buradan türetilir. Ekip kimliği de oraya yazılabilir
+// (DEVELOPMENT_TEAM = ABCDE12345). Örnek: Local.example.xcconfig
+FT_BUNDLE_ID = com.mylifer.fintrack
+#include? "Local.xcconfig"
+FT_APP_GROUP = group.$(FT_BUNDLE_ID)

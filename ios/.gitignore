@@ -1,5 +1,6 @@
 # Supabase anahtarları — repo herkese açık, ASLA commit edilmez
 Config/Secrets.xcconfig
+Config/Local.xcconfig
 
 # Xcode / SwiftPM
 xcuserdata/

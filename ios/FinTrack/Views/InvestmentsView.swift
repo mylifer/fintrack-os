@@ -74,6 +74,11 @@ struct InvestmentsView: View {
                 }
             }
             .sheet(item: $trade) { r in InvestmentTradeView(initialType: r.type, initialAsset: r.asset) }
+            .onAppear {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-trade") { trade = TradeRoute(type: "sell") }
+                #endif
+            }
         }
     }
 

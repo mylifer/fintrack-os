@@ -10,6 +10,7 @@ struct SummaryView: View {
     @State private var settings = false
     @State private var reportPath = false
     @State private var monthlyPath = false
+    @State private var statsPath = false
     @State private var editing: Transaction?
 
     private var month: MonthYear { .current() }
@@ -50,12 +51,14 @@ struct SummaryView: View {
             .navigationDestination(for: ForecastRoute.self) { _ in ForecastView() }
             .navigationDestination(for: MonthlySummaryRoute.self) { _ in MonthlySummaryView() }
             .navigationDestination(isPresented: $monthlyPath) { MonthlySummaryView() }
+            .navigationDestination(isPresented: $statsPath) { StatisticsView() }
             .sheet(isPresented: $settings) { SettingsView() }
             .onAppear {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-settings") { settings = true }
                 if ProcessInfo.processInfo.arguments.contains("-report") { reportPath = true }
                 if ProcessInfo.processInfo.arguments.contains("-monthly") { monthlyPath = true }
+                if ProcessInfo.processInfo.arguments.contains("-stats") { statsPath = true }
                 #endif
             }
             .sheet(item: $editing) { TransactionFormView(editing: $0) }

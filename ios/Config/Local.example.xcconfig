@@ -1,0 +1,9 @@
+// Kopyalayın: cp ios/Config/Local.example.xcconfig ios/Config/Local.xcconfig
+// (git dışı). Yalnız gerekeni açın.
+
+// Apple Developer ekip kimliği (developer.apple.com → Membership → Team ID).
+// Yazarsanız Xcode'da her seferinde ekip seçmeniz gerekmez.
+// DEVELOPMENT_TEAM = ABCDE12345
+
+// Paket kimliği başka bir ekipte kayıtlıysa kendinize özgü bir ad verin:
+// FT_BUNDLE_ID = com.adiniz.fintrack

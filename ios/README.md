@@ -3,15 +3,55 @@
 Web ile aynı Supabase'e bağlanan, günlük kullanım için native iPhone uygulaması.
 Plan ve veri kuralları: [docs/ios-native-plan.md](../docs/ios-native-plan.md).
 
-## Kurulum
+## iPhone'a kurulum (Apple Developer hesabıyla, App Store'suz)
 
-1. Anahtarları üret (repo kökündeki `.env.local`'dan; çıktı git dışı):
+Uygulama App Store'da yayınlanmaz; Xcode doğrudan sizin iPhone'unuza kurar. Ücretli
+Apple Developer hesabıyla kurulan uygulama **1 yıl** çalışır (ücretsiz hesapta 7 gün).
+
+**Bir kez (Mac'te):**
+
+1. App Store'dan **Xcode 27** (ya da daha yenisi). İlk açılışta iOS bileşenlerini indirin.
+2. Repoyu alın ve bu dala geçin:
+   ```sh
+   git clone https://github.com/mylifer/fintrack-os.git && cd fintrack-os
+   git checkout claude/clever-davinci-dm7r4v      # birleştirildiyse: master
+   ```
+3. Windows'taki `.env.local`'ı repo köküne kopyalayın (USB / iCloud Drive; sohbete ya da GitHub'a
+   yapıştırmayın), sonra anahtar dosyasını üretin:
    ```sh
    ios/scripts/make-secrets.sh
    ```
-2. `ios/FinTrack.xcodeproj`'u Xcode'da aç.
-3. Telefona kurmak için: FinTrack hedefi → Signing & Capabilities → Team = Apple kimliğin.
-   Paket kimliği (`com.mylifer.fintrack`) başka bir hesapta alınmışsa değiştir.
+4. `ios/FinTrack.xcodeproj`'u açın. **Xcode → Settings → Accounts → +** ile Developer hesabınızın
+   Apple kimliğini ekleyin.
+5. Sol panelde **FinTrack** projesi → **FinTrack** hedefi → **Signing & Capabilities** →
+   *Automatically manage signing* açık, **Team** = Developer ekibiniz (Personal Team DEĞİL).
+   Aynısını **FinTrackWidget** hedefinde yapın.
+   - "*… identifier is not available*" hatası çıkarsa (kimlik daha önce başka ekiple/ücretsiz
+     hesapla alınmışsa): `cp ios/Config/Local.example.xcconfig ios/Config/Local.xcconfig`, içinde
+     `FT_BUNDLE_ID = com.adiniz.fintrack` satırını açın; Xcode'u kapatıp açın. Widget ve App Group
+     kimlikleri buradan türetilir. İsterseniz `DEVELOPMENT_TEAM` da oraya yazılır.
+6. iPhone'u kabloyla bağlayın → telefonda "Bu bilgisayara güven". **Ayarlar → Gizlilik ve Güvenlik →
+   Geliştirici Modu**'nu açın (telefon yeniden başlar).
+7. Xcode'un üst çubuğunda hedef olarak iPhone'unuzu seçin. Günlük kullanım için hızlı derleme:
+   **Product → Scheme → Edit Scheme → Run → Build Configuration: Release**.
+8. **Product → Run (⌘R)**. Uygulama telefona kurulur ve açılır; kabloyu çıkarabilirsiniz.
+   "Güvenilmeyen geliştirici" uyarısı çıkarsa: **Ayarlar → Genel → VPN ve Aygıt Yönetimi** →
+   Developer uygulaması → Güven.
+
+**Güncellerken:** `git pull`, sonra yine ⌘R (veriler bulutta, telefondaki oturum kalır).
+Bir yıl dolmadan bir kez daha ⌘R yapmak süreyi yeniler.
+
+**Kablosuz / Mac'siz kurulum (isteğe bağlı): TestFlight.** App Store Connect'te uygulama kaydı
+açılıp **Product → Archive → Distribute App → TestFlight (Internal Only)** ile yüklenirse,
+iPhone'daki TestFlight uygulamasından kurulur; incelemeye gönderilmez, herkese açılmaz. Her yükleme
+90 gün geçerlidir.
+
+## Geliştirme
+
+- Örnek veriyle simülatör: Scheme → Run → Arguments → `-demo` (aşağıda).
+- Testler: `cd ios/FinTrackKit && swift test` (Linux'ta da çalışır: FinTrackCore).
+- GitHub Actions (`.github/workflows/ios.yml`): her `ios/` değişikliğinde Mac'te test, simülatör
+  derlemesi ve örnek veriyle ekran görüntüleri.
 
 ## Yapı
 
@@ -81,18 +121,26 @@ her sekme birkaç saniye içinde açılmalı.
 - Hedefler: iOS tüm alanları yazar; "Ekle/Çıkar" yalnız `savedAmount` (işlem oluşturmaz).
 - Borç ödemesi: tek bacaklı transfer (`debtId`, `toAccountId` yok, "<ad> ödemesi") + borç satırı
   (`paidAmount` += TRY değeri, `paidInstallments` +1, `isSettled`). Düz borç ödemesi silinince borç
-  geri alınır; düzenlemesi web'de.
+  geri alınır; düzenlenince tutar/borç farkı borca yansır (web mutabakatı).
+- Alacak tahsilatı: gelir tipli, `debtId`'li, 🤝 ikonlu satır; gelir sayılmaz, kalan alacağı aşamaz.
+- Faiz stopajı: Faiz kategorili gelir BRÜT yazılır; stopaj ayrı gider (Vergi, alıcı İTC), kimliği
+  `interest-tax:<faiz id>`'den türetilir; düzenleme/silme birlikte.
+- Çalışma alanları arası transfer: iki (borç ödemeli üç) satır, ortak `workspaceTransferId`; hiçbiri
+  akışa girmez; herhangi bir bacak silinince hepsi silinir ve borç ödemesi geri alınır.
 - Etiketler: web `tags.ts` kuralı — yazmada `Tags.dedupe` (boşluk kırpma, Türkçe büyük/küçük harf
-  tekrarı atılır); etikete dokunulmadıysa ham liste aynen kalır. Yeniden adlandırma web'de.
+  tekrarı atılır); etikete dokunulmadıysa ham liste aynen kalır. Toplu yeniden adlandırma web'de.
 - Abonelik = gider üzerinde `abonelik` etiketi; diğer etiketler korunur.
-- Kişiler (web `people`): iOS yalnız okur ve işleme atar (`familyMemberId`, `recipientId`); transferde
-  boş yazılır (web formu gibi), dokunulmazsa ham satır aynen kalır. Kişi ekleme/düzenleme web'de.
+- Kişiler (web `people`): ekle, yeniden adlandır, arşivle (silinmez); işlemde `familyMemberId`,
+  `recipientId`; transferde boş yazılır (web formu gibi).
+- Hesaplar / borçlar / kategoriler / yatırımlar / çalışma alanları: iOS'tan eklenir ve düzenlenir;
+  kurallar web formlarıyla aynı (bkz. `FinTrackCore/*Draft.swift`, `InvestmentTrade.swift`).
 - Çevrimdışı: ağ yoksa satır cihazdaki kuyruğa (`Outbox`) girer, bağlantı gelince gönderilir;
   sunucudaki `keep_newer_row` sırayı korur.
 - Ödeme Takibi: takvim web `schedule.ts` ile birebir. "Öde" = web `payRow`: isteğe bağlı ödeme
   işlemi (+ borçta borç satırı) ve ayın `payment_occurrences` kaydı "ödendi" (deterministik
-  kimlik, var olan satırın üstüne birleştirilir; tutar/vade dondurulur). Tutar/gün düzenleme ve
-  "atla" web'de; `payment_plans` yalnız okunur.
+  kimlik, var olan satırın üstüne birleştirilir; tutar/vade dondurulur). Düzenle (bu ay / bu ve
+  sonraki aylar), atla, ödendiyi geri al, sıfırla ve plan ayarları web `actions.ts` ile aynı
+  (`PaymentEdits.swift`); Kart Takvimi web `CardCalendar` ile aynı yazımlar.
 - Bakiye eşitleme: web `ReconcileBalanceModal` — fark tek satır, `systemKind='reconciliation'`,
   `#BakiyeEşitleme`; akışlara/bütçelere/ekstreye girmez. Eşitleme satırı silinebilir.
 - Vadeli mevduat: web `deposit.ts` (basit faiz, stopaj, net). "Faizi işle" = web
@@ -100,7 +148,7 @@ her sekme birkaç saniye içinde açılmalı.
   kimliği web ile AYNI formülden (`deposit:<hesap>:<vade sonu>`): iki cihaz aynı vadeyi işlese de tek
   satır. O vadenin faizi (kimlikle ya da eski rastgele kimlikli satır içerikle) zaten varsa yazılmaz. Net faiz vade
   sonu tarihli gelir; hesapta yalnız `deposit*` sütunları KISMİ güncellenir (`update … eq id`, tam satır
-  değil — web'in değiştirdiği alanlar ezilmez). Vade koşulları web'de girilir.
+  değil — web'in değiştirdiği alanlar ezilmez). Vade koşulları hesap formunda girilir.
 - Taksitli alışveriş: web `addInstallmentGroup` (kuruş hassas bölme, ilk taksitlere artan,
   aylık tarihler, hepsi onaylı, ortak `installGroupId`). Silme tüm grubu siler; düzenleme web'de.
 

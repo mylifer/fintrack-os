@@ -9,6 +9,7 @@ struct AccountsView: View {
     @State private var path = NavigationPath()
     @State private var addingAccount = false
     @State private var addingDebt = false
+    @State private var cardCalendar = false
 
     private var openOwe: [Debt] { model.debts.filter { $0.owe && !$0.isSettled }.sorted { $0.remaining > $1.remaining } }
     private var openOwed: [Debt] { model.debts.filter { !$0.owe && !$0.isSettled }.sorted { $0.remaining > $1.remaining } }
@@ -94,6 +95,7 @@ struct AccountsView: View {
             .navigationDestination(for: ForecastRoute.self) { _ in ForecastView() }
             .onAppear(perform: openDebugAccount)
             .sheet(isPresented: $addingAccount) { AccountFormView(editing: nil) }
+            .navigationDestination(isPresented: $cardCalendar) { CardCalendarView() }
             .sheet(isPresented: $addingDebt) { DebtFormView(editing: nil) }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -122,6 +124,9 @@ extension AccountsView {
     fileprivate func openDebugAccount() {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
+        if args.contains("-newaccount") { addingAccount = true }
+        if args.contains("-newdebt") { addingDebt = true }
+        if args.contains("-cardcalendar") { cardCalendar = true; return }
         if path.isEmpty, args.contains("-payments") { path.append(PaymentsRoute()); return }
         if path.isEmpty, args.contains("-forecast") { path.append(ForecastRoute()); return }
         if path.isEmpty, let i = args.firstIndex(of: "-debt"), i + 1 < args.count,
