@@ -39,6 +39,7 @@ struct SettingsView: View {
                     NavigationLink { CategoriesManageView() } label: { Label("Kategoriler", systemImage: "square.grid.2x2") }
                     NavigationLink { PeopleManageView() } label: { Label("Kişiler", systemImage: "person.2") }
                     NavigationLink { WorkspacesManageView() } label: { Label("Çalışma alanları", systemImage: "rectangle.stack") }
+                    NavigationLink { CardCalendarView() } label: { Label("Kart Takvimi", systemImage: "creditcard") }
                     NavigationLink { FundTaxSettingsView() } label: { Label("Fon stopajı", systemImage: "percent") }
                 }
 
@@ -103,16 +104,10 @@ struct SettingsView: View {
                     Link(destination: WebLinks.base) {
                         Label("Web'de aç", systemImage: "safari")
                     }
-                    Link(destination: WebLinks.payments) {
-                        Label("Ödeme Takibi (web)", systemImage: "calendar.badge.checkmark")
-                    }
-                    Link(destination: WebLinks.cardCalendar) {
-                        Label("Kart Takvimi (web)", systemImage: "creditcard")
-                    }
                 } header: {
                     Text("Web")
                 } footer: {
-                    Text("Toplu içe aktarma, yedekleme, raporlar, kart kesim/son ödeme günleri ve Ödeme Takibi web'de.")
+                    Text("Toplu içe aktarma (banka ekstresi), yedekleme / geri yükleme ve kategori yeniden düzenleme web'de.")
                 }
 
                 Section("Hakkında") {

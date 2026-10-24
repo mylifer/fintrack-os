@@ -1192,6 +1192,72 @@ public final class AppModel {
                                                                           workspaceId: activeWorkspaceId, now: Self.nowISO())))
     }
 
+    // MARK: Kart Takvimi (web CardCalendar)
+
+    private func patchAccount(_ a: Account, _ patch: [String: JSONValue]) async throws -> Account {
+        var raw = (all.accounts.first { $0.id == a.id } ?? a).raw
+        for (k, v) in patch { raw[k] = v }
+        let out = Account(raw: raw)
+        try await write(out, in: \.accounts)
+        return out
+    }
+
+    private func patchCardPlan(_ a: Account, dayOfMonth: Int?) async {
+        let id = PaymentSchedule.planIdFor(.card, a.id)
+        var raw: JSONObject = all.paymentPlans.first { $0.id == id }?.raw ?? [
+            "id": .string(id), "targetKind": "card", "targetId": .string(a.id), "isActive": .bool(true),
+            "createdAt": .string(Self.nowISO()), "workspaceId": JSONValue(a.workspaceId ?? activeWorkspaceId),
+        ]
+        raw["dayOfMonth"] = dayOfMonth.map { .number(Double($0)) } ?? .null
+        raw["deleted_at"] = .null
+        await writeFollowUp(PaymentPlan(raw: raw), in: \.paymentPlans)
+    }
+
+    /// Kesim günü: son ödeme kendiliğinden kesim + fark (bankada 10 gün)
+    public func setCardStatementDay(_ a: Account, _ day: Int?) async throws {
+        let resolved = BankRules.resolveCardDays(account: a, plan: CardStatements.plan(for: a, in: paymentPlans))
+        let updated = try await patchAccount(a, ["statementDay": day.map { .number(Double($0)) } ?? .null])
+        guard let day else { return }
+        let g = resolved.days.gapDays ?? resolved.rule.gapDays
+        _ = try await patchAccount(updated, ["dueGapDays": .number(Double(g))])
+        await patchCardPlan(updated, dayOfMonth: BankRules.nominalDueDay(day, g))
+    }
+
+    /// Kesimden son ödemeye gün farkı (nil = sabit son ödeme günü)
+    public func setCardGap(_ a: Account, _ gap: Int?) async throws {
+        let updated = try await patchAccount(a, ["dueGapDays": gap.map { .number(Double($0)) } ?? .null])
+        if let gap, let sd = updated.statementDay { await patchCardPlan(updated, dayOfMonth: BankRules.nominalDueDay(sd, gap)) }
+    }
+
+    /// Son ödeme günü elle: sabit gün modu (fark silinir)
+    public func setCardDueDay(_ a: Account, _ day: Int?) async throws {
+        let updated = try await patchAccount(a, ["dueGapDays": .null])
+        await patchCardPlan(updated, dayOfMonth: day)
+    }
+
+    public func setCardMinPct(_ a: Account, _ pct: Double?) async throws {
+        _ = try await patchAccount(a, ["minPayPct": pct.map { .number($0) } ?? .null])
+    }
+
+    public func setCardHolidayRule(_ a: Account, _ rule: HolidayRule) async throws {
+        _ = try await patchAccount(a, ["holidayRule": .string(rule.rawValue)])
+    }
+
+    /// Bir ayın kesim / son ödeme tarihini özelleştir; varsayılana eşitse özel değer kalkar.
+    public func setCardCycleDate(_ a: Account, month: String, closing: String?, due: String?) async throws {
+        let plan = CardStatements.plan(for: a, in: paymentPlans)
+        let days = BankRules.resolveCardDays(account: a, plan: plan).days
+        let ovs = CardStatements.overrides(for: a, in: paymentOccurrences)
+        let def = CardCycles.cardCycle(days, month, override: nil, prevOverride: ovs[CardCycles.shiftMonthKey(month, -1)])
+        var patch: [String: JSONValue] = [:]
+        if let closing { patch["statementDate"] = closing == def.closing ? .null : .string(closing) }
+        if let due { patch["dueDate"] = due == def.dueDate ? .null : .string(due) }
+        guard !patch.isEmpty else { return }
+        let o = PaymentEdits.patched(.card, a.id, month, patch, existing: all.paymentOccurrences,
+                                     workspaceId: a.workspaceId ?? activeWorkspaceId, now: Self.nowISO())
+        try await write(o, in: \.paymentOccurrences)
+    }
+
     // MARK: Kart ekstresi
 
     /// Kredi kartının açık dönemi ve son `count` ekstresi (web CardStatementPanel).

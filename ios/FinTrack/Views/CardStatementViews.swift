@@ -119,8 +119,10 @@ struct CardStatementsView: View {
                 Section {
                     Text(cycleText(model.cardDays(account)))
                         .font(.footnote).foregroundStyle(.secondary)
-                    Link(destination: WebLinks.cardCalendar) {
-                        Label("Kesim / son ödeme günlerini düzenle (web)", systemImage: "safari")
+                    NavigationLink {
+                        CardCalendarDetail(accountId: account.id)
+                    } label: {
+                        Label("Kesim / son ödeme günlerini düzenle", systemImage: "calendar")
                             .font(.footnote)
                     }
                 }
