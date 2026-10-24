@@ -52,6 +52,9 @@ enum Icons {
         "user": "person", "tag": "tag", "star": "star", "cake": "birthday.cake", "pizza": "fork.knife",
     ]
 
+    /// Kategori formundaki simge seçicisi (web Tabler adları)
+    static let tablerNames: [String] = tabler.keys.sorted()
+
     /// (SF Symbol, emoji) — ikisinden biri dolu.
     static func category(_ name: String?) -> (symbol: String?, emoji: String?) {
         guard let name, !name.isEmpty else { return ("tag", nil) }

@@ -35,6 +35,13 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Düzenle") {
+                    NavigationLink { CategoriesManageView() } label: { Label("Kategoriler", systemImage: "square.grid.2x2") }
+                    NavigationLink { PeopleManageView() } label: { Label("Kişiler", systemImage: "person.2") }
+                    NavigationLink { WorkspacesManageView() } label: { Label("Çalışma alanları", systemImage: "rectangle.stack") }
+                    NavigationLink { FundTaxSettingsView() } label: { Label("Fon stopajı", systemImage: "percent") }
+                }
+
                 Section {
                     Toggle("\(lock.biometryName) kilidi", isOn: $lock.isEnabled)
                     if lock.isEnabled {

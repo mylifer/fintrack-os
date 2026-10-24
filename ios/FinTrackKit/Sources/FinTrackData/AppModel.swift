@@ -1363,6 +1363,68 @@ public final class AppModel {
         }
     }
 
+    // MARK: Kategoriler, kişiler, çalışma alanları
+
+    public func saveCategory(_ draft: CategoryDraft, editing: Category?,
+                             newId: String = UUID().uuidString.lowercased()) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        if let e = draft.validationError(editing: editing, categories) { throw ServiceError.message(e) }
+        let current = editing.flatMap { e in all.categories.first { $0.id == e.id } } ?? editing
+        try await write(draft.build(editing: current, categories: categories, workspaceId: activeWorkspaceId, id: newId),
+                        in: \.categories)
+    }
+
+    /// Arşivle / geri getir. Sistem kategorisi arşivlenemez (web remove).
+    public func setCategoryArchived(_ c: Category, _ on: Bool) async throws {
+        if on && c.isSystem { throw ServiceError.message("Sistem kategorisi arşivlenemez.") }
+        let current = all.categories.first { $0.id == c.id } ?? c
+        try await write(current.archived(on), in: \.categories)
+    }
+
+    @discardableResult
+    public func addPerson(_ name: String, role: Person.Role) async throws -> Person {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw ServiceError.message("Ad girin.") }
+        let p = Person.make(name: trimmed, role: role, workspaceId: activeWorkspaceId, now: Self.nowISO())
+        try await write(p, in: \.people)
+        return p
+    }
+
+    public func renamePerson(_ p: Person, to name: String) async throws {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ServiceError.message("Ad girin.") }
+        let current = all.people.first { $0.id == p.id } ?? p
+        try await write(current.renamed(name), in: \.people)
+    }
+
+    public func setPersonArchived(_ p: Person, _ on: Bool) async throws {
+        let current = all.people.first { $0.id == p.id } ?? p
+        try await write(current.archived(on), in: \.people)
+    }
+
+    /// Yeni çalışma alanı (web workspace.store add). Kategoriler alan ilk kez
+    /// web'de açıldığında varsayılanlarla kurulur; iPhone'dan da eklenebilir.
+    @discardableResult
+    public func addWorkspace(_ name: String) async throws -> Workspace {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ServiceError.message("Ad girin.") }
+        let w = Workspace.make(name: name, now: Self.nowISO())
+        try await write(w, in: \.workspaces)
+        workspaces = all.workspaces.filter(\.isLive).sorted {
+            $0.isDefault != $1.isDefault ? $0.isDefault : $0.createdAt < $1.createdAt
+        }
+        return w
+    }
+
+    public func renameWorkspace(_ w: Workspace, to name: String) async throws {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ServiceError.message("Ad girin.") }
+        let current = all.workspaces.first { $0.id == w.id } ?? w
+        try await write(current.renamed(name), in: \.workspaces)
+        workspaces = all.workspaces.filter(\.isLive).sorted {
+            $0.isDefault != $1.isDefault ? $0.isDefault : $0.createdAt < $1.createdAt
+        }
+    }
+
     // MARK: Hedefler
 
     public func goalProgress(_ g: SavingsGoal) -> Goals.Progress {
