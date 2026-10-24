@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var confirmSignOut = false
     @State private var remindersOn = Reminders.isEnabled
     @State private var remindersDenied = false
+    @State private var debugManage: String?
 
     private var appVersion: String {
         let info = Bundle.main.infoDictionary
@@ -127,6 +128,20 @@ struct SettingsView: View {
             }
             .navigationTitle("Ayarlar")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: Binding(get: { debugManage != nil }, set: { if !$0 { debugManage = nil } })) {
+                switch debugManage {
+                case "people": PeopleManageView()
+                case "workspaces": WorkspacesManageView()
+                case "cards": CardCalendarView()
+                default: CategoriesManageView()
+                }
+            }
+            .onAppear {
+                #if DEBUG
+                let args = ProcessInfo.processInfo.arguments
+                if let i = args.firstIndex(of: "-manage"), i + 1 < args.count { debugManage = args[i + 1] }
+                #endif
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Bitti") { dismiss() } }
             }

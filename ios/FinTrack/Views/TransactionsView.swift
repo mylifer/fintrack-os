@@ -102,6 +102,7 @@ struct TransactionsView: View {
                     #if DEBUG
                     let args = ProcessInfo.processInfo.arguments
                     if args.contains("-tags") { showTags = true }
+                    if args.contains("-bulk") { bulkEditing = true }
                     // `-edit <açıklama>`: o işlemin düzenleyicisini aç
                     if editing == nil, let i = args.firstIndex(of: "-edit"), i + 1 < args.count {
                         editing = model.transactions.first { $0.description == args[i + 1] }

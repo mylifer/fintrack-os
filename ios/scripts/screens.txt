@@ -13,3 +13,9 @@
 12-yeni-hesap|-tab accounts -newaccount
 13-yeni-borc|-tab accounts -newdebt
 14-yatirim-sat|-tab investments -trade
+15-tekrarlayan|-tab budgets -plan recurring
+16-kategoriler|-settings -manage categories
+17-kisiler|-settings -manage people
+18-alanlar|-settings -manage workspaces
+19-toplu-duzenle|-tab transactions -bulk
+20-etiketler|-tab transactions -tags
