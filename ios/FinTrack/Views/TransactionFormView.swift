@@ -31,7 +31,15 @@ struct TransactionFormView: View {
 
     private static let lastAccountKey = "fintrack.lastAccountId"
     /// Borç ödemesi / alacak tahsilatı düzenlenebilir (borç mutabakatıyla); diğer bağlılar salt okunur
-    private var readOnly: Bool { editing.map { $0.isLinked && !$0.isPlainDebtLink } ?? false }
+    private var readOnly: Bool { editing.map { $0.isLinked && !$0.isPlainDebtLink && !$0.isPlainInstallment } ?? false }
+    /// Taksitli grubun satırı düzenleniyor (tutar = grubun toplamı)
+    private var editingGroup: Bool { editing?.isPlainInstallment == true }
+    /// Taksit seçeneği: yeni gider, taksitli grup ya da sonradan taksitlendirilebilir tekil gider
+    private var installmentAllowed: Bool {
+        guard draft.type == .expense, draft.splits == nil || editing != nil else { return false }
+        guard let editing else { return true }
+        return editing.isPlainInstallment || Installments.isConvertible(editing)
+    }
     private var account: Account? { model.account(draft.accountId) }
 
     var body: some View {
@@ -45,8 +53,6 @@ struct TransactionFormView: View {
                               ? "İade satırı: düzenlenemez; silinebilir (silinince iade geri alınır)."
                               : editing?.isPlainReconciliation == true
                               ? "Bakiye eşitleme satırı: gelir/gidere girmez, yalnız bakiyeyi düzeltir. Düzenleme web'de; silinebilir."
-                              : editing?.isPlainInstallment == true
-                              ? "Taksitli işlem (\(editing?.installIndex ?? 1)/\(editing?.installTotal ?? 1)): düzenleme web'de. Silerseniz TÜM taksitler silinir."
                               : "Bu işlem başka kayıtlara bağlı (taksit, borç, yatırım ya da bölünmüş kategori). Düzenlemek ve silmek için web'i kullanın.",
                               systemImage: "link")
                             .font(.footnote)
@@ -157,10 +163,11 @@ struct TransactionFormView: View {
                             Toggle(isOn: $draft.isSubscription) {
                                 Label("Abonelik", systemImage: "repeat.circle")
                             }
-                            if editing == nil {
+                            if installmentAllowed {
                                 Toggle(isOn: $installments.animation()) {
-                                    Label("Taksitli", systemImage: "square.stack.3d.up")
+                                    Label(editingGroup ? "Taksitli (tutar = toplam)" : "Taksitli", systemImage: "square.stack.3d.up")
                                 }
+                                .disabled(editingGroup)
                                 if installments {
                                     Stepper(value: $installmentCount, in: Installments.countRange) {
                                         LabeledContent("Taksit sayısı", value: "\(installmentCount)")
@@ -178,6 +185,13 @@ struct TransactionFormView: View {
                                     }
                                     Text(installmentSummary)
                                         .font(.footnote).foregroundStyle(.secondary)
+                                    if editingGroup {
+                                        Text("Değişiklik tüm taksitlere uygulanır; sayı azalırsa fazla taksitler silinir.")
+                                            .font(.footnote).foregroundStyle(.secondary)
+                                    } else if editing != nil {
+                                        Text("Bu işlem 1. taksit olur, kalanlar sonraki aylara eklenir.")
+                                            .font(.footnote).foregroundStyle(.secondary)
+                                    }
                                 }
                             }
                         }
@@ -587,6 +601,15 @@ struct TransactionFormView: View {
     private func setUp() {
         if let editing {
             draft = TransactionDraft(editing: editing)
+            if editing.isPlainInstallment, let g = editing.installGroupId {
+                // Grup düzenlemesi: tutar = taksitlerin toplamı, tarih = ilk taksit
+                let rows = model.transactions.filter { $0.installGroupId == g }
+                    .sorted { ($0.installIndex ?? 0) < ($1.installIndex ?? 0) }
+                draft.amountText = Fmt.amountInput(Money.sum(rows.map(\.amount)))
+                if let first = rows.first { draft.date = DateUtil.parseDay(first.date) ?? draft.date }
+                installments = true
+                installmentCount = max(rows.count, 2)
+            }
             if let tax = model.linkedInterestTax(editing) {
                 draft.interestRateText = Fmt.amountInput(InterestTax.impliedRate(gross: editing.amount, tax: tax.amount))
             }
@@ -685,7 +708,10 @@ struct TransactionFormView: View {
         saving = true
         Task {
             do {
-                if editing == nil && installments && draft.type == .expense {
+                if let editing, installments && draft.type == .expense
+                    && (editing.isPlainInstallment || Installments.isConvertible(editing)) {
+                    try await model.saveInstallmentGroup(draft, editing: editing, count: installmentCount, seed: newId)
+                } else if editing == nil && installments && draft.type == .expense {
                     try await model.saveInstallments(draft, count: installmentCount, seed: newId)
                 } else {
                     try await model.save(draft, editing: editing, newId: newId)

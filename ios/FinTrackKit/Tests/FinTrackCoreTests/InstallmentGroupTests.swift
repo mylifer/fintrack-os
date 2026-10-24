@@ -54,3 +54,46 @@ struct InstallmentGroupTests {
         }
     }
 }
+
+@Suite("taksit grubu düzenleme / sonradan taksitlendirme")
+struct InstallmentRegroupTests {
+    let acc = Account(raw: ["id": "a", "name": "Kart", "type": "credit_card", "currency": "TRY", "initialBalance": 0])
+
+    func draft(_ total: String, _ day: String = "2026-01-10") -> TransactionDraft {
+        var d = TransactionDraft()
+        d.accountId = "a"; d.amountText = total; d.description = "Telefon"; d.categoryId = "c"
+        d.date = DateUtil.parseDay(day)!
+        return d
+    }
+
+    @Test func convertKeepsHeadId() throws {
+        let single = tx(["id": "s", "amount": 1200, "amountTry": 1200, "description": "Telefon", "categoryId": "c"])
+        #expect(Installments.isConvertible(single))
+        let r = try Installments.regroup(draft("1200"), count: 3, existing: [single], account: acc, fx: fx, now: "n",
+                                         groupId: "g", newIds: ["n1", "n2"])
+        #expect(r.rows.map(\.id) == ["s", "n1", "n2"])
+        #expect(r.rows.map(\.amount) == [400, 400, 400])
+        #expect(r.rows.map(\.date) == ["2026-01-10", "2026-02-10", "2026-03-10"])
+        #expect(r.rows.allSatisfy { $0.installGroupId == "g" && $0.isInstallment && $0.installTotal == 3 })
+        #expect(r.rows[1].approvalStatus == .approved && r.removed.isEmpty)
+    }
+
+    @Test func shrinkGroupRemovesTail() throws {
+        let rows = (1...4).map { i in
+            tx(["id": .string("r\(i)"), "amount": 250, "installGroupId": "g", "isInstallment": true,
+                "installIndex": .number(Double(i)), "installTotal": 4, "description": "Telefon"])
+        }
+        let r = try Installments.regroup(draft("1000"), count: 2, existing: Installments.groupRows("g", in: rows),
+                                         account: acc, fx: fx, now: "n", groupId: "g", newIds: [])
+        #expect(r.rows.map(\.amount) == [500, 500] && r.rows.map(\.id) == ["r1", "r2"])
+        #expect(r.removed.map(\.id) == ["r3", "r4"] && r.removed.allSatisfy { !$0.isLive })
+    }
+
+    @Test func splitsScaledPerInstallment() throws {
+        var d = draft("1000")
+        d.splits = [.init(categoryId: "a", amount: 400), .init(categoryId: "b", amount: 600)]
+        let single = tx(["id": "s", "amount": 1000, "description": "Telefon"])
+        let r = try Installments.regroup(d, count: 2, existing: [single], account: acc, fx: fx, now: "n", groupId: "g", newIds: ["n1"])
+        #expect(r.rows[0].categorySplits?.map(\.amount) == [200, 300] && r.rows[0].categoryId == "b")
+    }
+}

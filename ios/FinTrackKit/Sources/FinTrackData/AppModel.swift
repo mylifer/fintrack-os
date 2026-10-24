@@ -754,6 +754,37 @@ public final class AppModel {
         }
     }
 
+    /// Taksitli grubu düzenle ya da tekil gideri sonradan taksitlendir (web
+    /// updateInstallmentGroup / convertToInstallmentGroup). Girilen tutar TOPLAM;
+    /// ilk taksit formun tarihi, sonrakiler +1 ay; sayı azalırsa fazlalar silinir.
+    public func saveInstallmentGroup(_ draft: TransactionDraft, editing: Transaction, count: Int,
+                                     seed: String = UUID().uuidString.lowercased()) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        guard let account = account(draft.accountId) else { throw ServiceError.message("Hesap bulunamadı.") }
+        let current = all.transactions.first { $0.id == editing.id } ?? editing
+        let existing: [Transaction]
+        let groupId: String
+        if current.isPlainInstallment, let g = current.installGroupId {
+            existing = Installments.groupRows(g, in: all.transactions)
+            groupId = g
+        } else if Installments.isConvertible(current) {
+            existing = [current]
+            groupId = DeterministicID.uuid("inst-group:\(seed)")
+        } else {
+            throw ServiceError.message("Bu işlem taksitlendirilemez.")
+        }
+        let now = Self.nowISO()
+        let newIds = (0..<max(0, count - existing.count)).map { DeterministicID.uuid("inst:\(seed):\($0)") }
+        let r = try Installments.regroup(draft, count: count, existing: existing, account: account, fx: fx,
+                                         now: now, groupId: groupId, newIds: newIds)
+        guard let first = r.rows.first else { return }
+        try await batched {
+            try await write(first, in: \.transactions)
+            for row in r.rows.dropFirst() { await writeFollowUp(row, in: \.transactions) }
+            for row in r.removed { await writeFollowUp(row, in: \.transactions) }
+        }
+    }
+
     /// Silme = tombstone (deleted_at), gerçek DELETE yok.
     /// Borç ödemesi / tahsilat silinirse borcun ödenen tutarı ve taksit sayacı geri
     /// alınır; faiz satırının stopajı ve alanlar arası transferin tüm bacakları
