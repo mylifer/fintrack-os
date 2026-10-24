@@ -74,6 +74,7 @@ struct CategoriesManageView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Kategoriler")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { editing = CategoryRoute() } label: { Image(systemName: "plus") }.accessibilityLabel("Kategori ekle")
@@ -255,6 +256,7 @@ struct PeopleManageView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Kişiler")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { nameText = ""; adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("Kişi ekle")
@@ -357,6 +359,7 @@ struct WorkspacesManageView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Çalışma alanları")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { nameText = ""; adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("Alan ekle")
