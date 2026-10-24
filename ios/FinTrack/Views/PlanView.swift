@@ -456,6 +456,16 @@ struct RecurringContent: View {
                     Text("Kaydet, birikmiş her dönem için işlemi yazar. Atla yalnız bu dönemi geçer.")
                 }
             }
+            let suggestions = model.recurringSuggestions
+            if !suggestions.isEmpty {
+                Section {
+                    ForEach(suggestions) { sg in suggestionRow(sg) }
+                } header: {
+                    Text("Önerilen")
+                } footer: {
+                    Text("Geçmişinizde her ay benzer gün ve tutarda tekrarlayan işlemler. Eklerseniz şablon bir sonraki ödemeden başlar; geçmiş aylar yeniden yazılmaz.")
+                }
+            }
             if !active.isEmpty {
                 Section("Etkin") {
                     ForEach(active.sorted { $0.nextDueDate < $1.nextDueDate }) { r in
@@ -523,6 +533,33 @@ struct RecurringContent: View {
             }
             .controlSize(.small)
             .disabled(busy.contains(r.id))
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func suggestionRow(_ sg: RecurringDetect.Suggestion) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sg.name).lineLimit(1)
+                    Text("Her ayın \(sg.dayOfMonth)'i · \(sg.count) ay · sıradaki \(DateUtil.display(sg.nextDate, "d MMM"))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text((sg.amountVaries ? "≈ " : "") + Fmt.currency(sg.amount, sg.currency))
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(sg.type == .income ? Theme.income : .primary)
+            }
+            HStack(spacing: 10) {
+                Button { run(sg.key) { try await model.addRecurring(from: sg) } } label: {
+                    Label("Tekrarlayan yap", systemImage: "plus").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).tint(Theme.accent).foregroundStyle(Theme.onAccent)
+                Button { model.dismissSuggestion(sg) } label: { Text("Gizle").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
+            }
+            .controlSize(.small)
+            .disabled(busy.contains(sg.key))
         }
         .padding(.vertical, 2)
     }

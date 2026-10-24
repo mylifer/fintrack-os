@@ -1358,6 +1358,30 @@ public final class AppModel {
         BankRules.resolveCardDays(account: a, plan: CardStatements.plan(for: a, in: paymentPlans)).days
     }
 
+    // MARK: Tekrarlayan önerileri (web recurring-detect)
+
+    private static let dismissedSuggestionsKey = "fintrack.recurringSuggestions.dismissed"
+    public private(set) var dismissedSuggestions: Set<String> =
+        Set(UserDefaults.standard.stringArray(forKey: AppModel.dismissedSuggestionsKey) ?? [])
+
+    /// Geçmişte her ay tekrarlayan, şablonu olmayan işlemler
+    public var recurringSuggestions: [RecurringDetect.Suggestion] {
+        RecurringDetect.detect(transactions, recurring: recurring, asOf: DateUtil.today(), dismissed: dismissedSuggestions)
+    }
+
+    public func dismissSuggestion(_ s: RecurringDetect.Suggestion) {
+        dismissedSuggestions.insert(s.key)
+        UserDefaults.standard.set(Array(dismissedSuggestions), forKey: Self.dismissedSuggestionsKey)
+    }
+
+    /// Öneriden şablon: bir sonraki ödemeden başlar
+    public func addRecurring(from s: RecurringDetect.Suggestion) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let r = RecurringDetect.template(s, id: DeterministicID.uuid("recur-suggest:\(s.key)"), now: Self.nowISO(),
+                                         workspaceId: activeWorkspaceId)
+        try await write(r, in: \.recurring)
+    }
+
     public func saveRecurring(_ draft: RecurringDraft, editing: RecurringTransaction?,
                               newId: String = UUID().uuidString.lowercased()) async throws {
         if let e = draft.validationError() { throw ServiceError.message(e) }
