@@ -1,0 +1,10 @@
+# Supabase anahtarları — repo herkese açık, ASLA commit edilmez
+Config/Secrets.xcconfig
+
+# Xcode / SwiftPM
+xcuserdata/
+DerivedData/
+build/
+.build/
+*.xcuserstate
+.swiftpm/

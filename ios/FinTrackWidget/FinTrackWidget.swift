@@ -1,0 +1,547 @@
+import WidgetKit
+import SwiftUI
+import AppIntents
+import FinTrackCore
+
+/* ── Ana ekran / kilit ekranı widget'ları ─────────────────────────────────
+   Widget ağa çıkmaz, oturum taşımaz: uygulamanın App Group'a yazdığı özeti
+   (WidgetSnapshot) gösterir. Uygulama her veri değişiminde özeti yazıp
+   widget'ı yeniler; widget ayrıca saatte bir kendini tazeler (ay dönümü,
+   "x dk önce" yazısı). "Tutarları gizle" açıksa tutarlar ₺••• görünür.
+─────────────────────────────────────────────────────────────────────────── */
+
+struct Entry: TimelineEntry {
+    let date: Date
+    let snapshot: WidgetSnapshot?
+}
+
+struct Provider: TimelineProvider {
+    func placeholder(in context: Context) -> Entry { Entry(date: .now, snapshot: .sample) }
+
+    func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) {
+        completion(Entry(date: .now, snapshot: context.isPreview ? (WidgetSnapshot.load() ?? .sample) : WidgetSnapshot.load()))
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
+        let entry = Entry(date: .now, snapshot: WidgetSnapshot.load())
+        let next = Calendar.current.date(byAdding: .hour, value: 1, to: .now)!
+        completion(Timeline(entries: [entry], policy: .after(next)))
+    }
+}
+
+// MARK: - Biçim
+
+private let accent = Color(red: 0, green: 0.85, blue: 0.85)
+private let expenseRed = Color(red: 0.86, green: 0.24, blue: 0.24)
+private let incomeGreen = Color(red: 0.13, green: 0.66, blue: 0.36)
+private let warn = Color(red: 0.96, green: 0.62, blue: 0.04)
+
+private func money(_ v: Double, _ s: WidgetSnapshot) -> String {
+    s.amountsHidden ? "₺•••" : Fmt.whole(v)
+}
+
+private func signedWhole(_ v: Double, _ s: WidgetSnapshot) -> String {
+    s.amountsHidden ? "₺•••" : "\(v < 0 ? "−" : "+")\(Fmt.whole(abs(v)))"
+}
+
+private func hex(_ h: String) -> Color {
+    var s = h.hasPrefix("#") ? String(h.dropFirst()) : h
+    if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
+    let v = UInt64(s, radix: 16) ?? 0x6B7280
+    return Color(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+}
+
+private func statusColor(_ status: String) -> Color {
+    status == "exceeded" ? expenseRed : status == "warning" ? warn : accent
+}
+
+private extension WidgetSnapshot {
+    var budgetRatio: Double { budgetLimit > 0 ? min(1, budgetSpent / budgetLimit) : 0 }
+    var budgetPercent: Int { budgetLimit > 0 ? (budgetSpent / budgetLimit * 100).rounded().safeInt : 0 }
+    var budgetColor: Color {
+        let p = budgetLimit > 0 ? budgetSpent / budgetLimit * 100 : 0
+        return p >= 100 ? expenseRed : p >= 80 ? warn : accent
+    }
+    var monthName: String { monthTitle.components(separatedBy: " ").first ?? monthTitle }
+
+    static let sample = WidgetSnapshot(
+        month: String(DateUtil.today().prefix(7)), monthTitle: DateUtil.monthTitle(.current()),
+        expense: 32_071, income: 68_000, net: 35_929, netWorth: 125_268,
+        budgetSpent: 8_071, budgetLimit: 15_600,
+        budgets: [
+            .init(name: "Market", colorHex: "#22C55E", spent: 4_821, limit: 7_800, percent: 62, status: "ok"),
+            .init(name: "Ulaşım", colorHex: "#3B82F6", spent: 1_890, limit: 4_000, percent: 47, status: "ok"),
+            .init(name: "Kahve ve Cafe", colorHex: "#713F12", spent: 355, limit: 800, percent: 44, status: "ok"),
+        ],
+        amountsHidden: false, updatedAt: .now, pendingCount: 1,
+        upcoming: [
+            .init(title: "Kira", date: DateUtil.day(Date().addingTimeInterval(86_400 * 2)), amount: 22_000,
+                  currency: "TRY", isIncome: false, kind: "recurring"),
+            .init(title: "Bonus Kart son ödeme", date: DateUtil.day(Date().addingTimeInterval(86_400 * 4)), amount: 12_450,
+                  currency: "TRY", isIncome: false, kind: "cardDue"),
+            .init(title: "Maaş", date: DateUtil.day(Date().addingTimeInterval(86_400 * 5)), amount: 68_000,
+                  currency: "TRY", isIncome: true, kind: "recurring"),
+        ])
+}
+
+// MARK: - Görünümler
+
+struct EmptyState: View {
+    var text = "Uygulamayı açıp giriş yapın."
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: "chart.line.uptrend.xyaxis").foregroundStyle(accent)
+            Text("FinTrack").font(.headline)
+            Text(text).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// "N onay bekliyor" — dokununca Özet'teki onay kartı.
+struct PendingNote: View {
+    let s: WidgetSnapshot
+    var body: some View {
+        if s.pendingCount > 0 {
+            Label("\(s.pendingCount) onay bekliyor", systemImage: "bell.badge.fill")
+                .font(.caption2.bold())
+                .foregroundStyle(warn)
+                .lineLimit(1)
+        }
+    }
+}
+
+struct StaleNote: View {
+    let s: WidgetSnapshot
+    var body: some View {
+        if !s.isCurrentMonth {
+            Text("Yeni ay — uygulamayı açın").font(.caption2).foregroundStyle(warn)
+        } else {
+            (Text("Güncelleme ") + Text(s.updatedAt, style: .time))
+                .font(.caption2).foregroundStyle(.tertiary)
+        }
+    }
+}
+
+struct SmallView: View {
+    let s: WidgetSnapshot
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text("\(s.monthName) harcaması").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 0)
+                if s.pendingCount > 0 {
+                    Text("\(s.pendingCount)")
+                        .font(.caption2.bold().monospacedDigit())
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background(warn, in: Circle())
+                        .accessibilityLabel("\(s.pendingCount) onay bekliyor")
+                }
+            }
+            Text(money(s.expense, s))
+                .font(.system(size: 26, weight: .bold).monospacedDigit())
+                .minimumScaleFactor(0.5).lineLimit(1)
+                .privacySensitive()
+            Spacer(minLength: 0)
+            if s.budgetLimit > 0 {
+                HStack {
+                    Text("Bütçe").font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("%\(s.budgetPercent)").font(.caption2.bold().monospacedDigit())
+                        .foregroundStyle(s.budgetPercent >= 80 ? s.budgetColor : Color.secondary)
+                }
+                ProgressView(value: s.budgetRatio).tint(s.budgetColor)
+            } else {
+                Text("Net \(signedWhole(s.net, s))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(s.net >= 0 ? incomeGreen : expenseRed)
+                    .privacySensitive()
+            }
+            StaleNote(s: s)
+        }
+    }
+}
+
+struct MediumView: View {
+    let s: WidgetSnapshot
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(s.monthName) harcaması").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(money(s.expense, s))
+                    .font(.system(size: 24, weight: .bold).monospacedDigit())
+                    .minimumScaleFactor(0.5).lineLimit(1)
+                    .privacySensitive()
+                HStack(spacing: 4) {
+                    Text("Gelir").foregroundStyle(.secondary)
+                    Text(money(s.income, s)).foregroundStyle(incomeGreen).privacySensitive()
+                }
+                .font(.caption.monospacedDigit()).lineLimit(1)
+                HStack(spacing: 4) {
+                    Text("Net").foregroundStyle(.secondary)
+                    Text(signedWhole(s.net, s))
+                        .foregroundStyle(s.net >= 0 ? incomeGreen : expenseRed)
+                        .privacySensitive()
+                }
+                .font(.caption.monospacedDigit()).lineLimit(1)
+                Spacer(minLength: 0)
+                HStack {
+                    if s.pendingCount > 0 { PendingNote(s: s) } else { StaleNote(s: s) }
+                    Spacer()
+                    Link(destination: URL(string: "fintrack://add")!) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Color(red: 0.02, green: 0.15, blue: 0.15))
+                            .frame(width: 28, height: 28)
+                            .background(accent, in: Circle())
+                    }
+                    .accessibilityLabel("İşlem ekle")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 8) {
+                if s.budgets.isEmpty {
+                    Text("Bütçe yok").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(s.budgets.prefix(3).enumerated()), id: \.offset) { _, b in
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 4) {
+                                Circle().fill(hex(b.colorHex)).frame(width: 6, height: 6)
+                                Text(b.name).font(.caption2).lineLimit(1)
+                                Spacer(minLength: 2)
+                                Text("%\(b.percent.rounded().safeInt)")
+                                    .font(.caption2.bold().monospacedDigit())
+                                    .foregroundStyle(b.status == "ok" ? Color.secondary : statusColor(b.status))
+                            }
+                            ProgressView(value: b.limit > 0 ? min(1, b.spent / b.limit) : 0)
+                                .tint(statusColor(b.status))
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .widgetURL(URL(string: "fintrack://budgets"))
+        }
+    }
+}
+
+struct LargeView: View {
+    let s: WidgetSnapshot
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(s.monthName) harcaması").font(.caption).foregroundStyle(.secondary)
+                    Text(money(s.expense, s))
+                        .font(.system(size: 30, weight: .bold).monospacedDigit())
+                        .minimumScaleFactor(0.5).lineLimit(1)
+                        .privacySensitive()
+                }
+                Spacer()
+                Link(destination: URL(string: "fintrack://add")!) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(red: 0.02, green: 0.15, blue: 0.15))
+                        .frame(width: 34, height: 34)
+                        .background(accent, in: Circle())
+                }
+                .accessibilityLabel("İşlem ekle")
+            }
+            HStack(spacing: 16) {
+                stat("Gelir", money(s.income, s), incomeGreen)
+                stat("Net", signedWhole(s.net, s), s.net >= 0 ? incomeGreen : expenseRed)
+                stat("Net değer", money(s.netWorth, s), .primary)
+            }
+            Divider()
+            if s.budgets.isEmpty {
+                Text("Bütçe yok").font(.caption).foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(s.budgets.prefix(5).enumerated()), id: \.offset) { _, b in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Circle().fill(hex(b.colorHex)).frame(width: 7, height: 7)
+                            Text(b.name).font(.caption).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text("\(money(b.spent, s)) / \(money(b.limit, s))")
+                                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                                .privacySensitive()
+                            Text("%\(b.percent.rounded().safeInt)")
+                                .font(.caption2.bold().monospacedDigit())
+                                .foregroundStyle(b.status == "ok" ? Color.secondary : statusColor(b.status))
+                        }
+                        ProgressView(value: b.limit > 0 ? min(1, b.spent / b.limit) : 0).tint(statusColor(b.status))
+                    }
+                    .widgetURL(URL(string: "fintrack://budgets"))
+                }
+            }
+            Spacer(minLength: 0)
+            if s.pendingCount > 0 { PendingNote(s: s) } else { StaleNote(s: s) }
+        }
+    }
+
+    private func stat(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+            Text(value).font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(color)
+                .lineLimit(1).minimumScaleFactor(0.7).privacySensitive()
+        }
+    }
+}
+
+/// Net değer: hesaplar + yatırımlar − borç; altında bu ayın neti.
+struct NetWorthView: View {
+    @Environment(\.widgetFamily) private var family
+    let s: WidgetSnapshot
+    var body: some View {
+        if family == .accessoryRectangular {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Net değer").font(.caption2).widgetAccentable()
+                Text(money(s.netWorth, s)).font(.headline.monospacedDigit()).minimumScaleFactor(0.6).privacySensitive()
+                Text("Bu ay \(signedWhole(s.net, s))").font(.caption2).foregroundStyle(.secondary).privacySensitive()
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Net değer", systemImage: "chart.line.uptrend.xyaxis").font(.caption).foregroundStyle(.secondary)
+                Text(money(s.netWorth, s))
+                    .font(.system(size: 24, weight: .bold).monospacedDigit())
+                    .minimumScaleFactor(0.5).lineLimit(1)
+                    .privacySensitive()
+                Spacer(minLength: 0)
+                HStack(spacing: 4) {
+                    Text("\(s.monthName) neti").foregroundStyle(.secondary)
+                    Text(signedWhole(s.net, s)).foregroundStyle(s.net >= 0 ? incomeGreen : expenseRed).privacySensitive()
+                }
+                .font(.caption.monospacedDigit()).lineLimit(1)
+                StaleNote(s: s)
+            }
+            .widgetURL(URL(string: "fintrack://accounts"))
+        }
+    }
+}
+
+struct FinTrackNetWorthWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "FinTrackNetWorth", provider: Provider()) { entry in
+            Group {
+                if let s = entry.snapshot { NetWorthView(s: s) } else { EmptyState() }
+            }
+            .containerBackground(for: .widget) { Color(.systemBackground) }
+        }
+        .configurationDisplayName("Net değer")
+        .description("Hesaplar + yatırımlar − borç ve bu ayın neti.")
+        .supportedFamilies([.systemSmall, .accessoryRectangular])
+    }
+}
+
+struct RectangularView: View {
+    let s: WidgetSnapshot
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text("\(s.monthName) harcaması").font(.caption2).widgetAccentable()
+            Text(money(s.expense, s)).font(.headline.monospacedDigit()).minimumScaleFactor(0.6)
+                .privacySensitive()
+            if s.budgetLimit > 0 {
+                ProgressView(value: s.budgetRatio)
+                Text("Bütçe %\(s.budgetPercent)").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+struct CircularView: View {
+    let s: WidgetSnapshot
+    var body: some View {
+        Gauge(value: s.budgetRatio) {
+            Image(systemName: "chart.pie")
+        } currentValueLabel: {
+            Text("\(s.budgetPercent)").monospacedDigit()
+        }
+        .gaugeStyle(.accessoryCircular)
+    }
+}
+
+struct WidgetRoot: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: Entry
+
+    var body: some View {
+        Group {
+            if let s = entry.snapshot {
+                switch family {
+                case .systemMedium: MediumView(s: s)
+                case .systemLarge: LargeView(s: s)
+                case .accessoryRectangular: RectangularView(s: s)
+                case .accessoryCircular: CircularView(s: s)
+                case .accessoryInline:
+                    Text("\(s.monthName): \(money(s.expense, s)) harcandı").privacySensitive()
+                default: SmallView(s: s)
+                }
+            } else {
+                switch family {
+                case .accessoryRectangular, .accessoryCircular, .accessoryInline: Text("FinTrack")
+                default: EmptyState()
+                }
+            }
+        }
+        .containerBackground(for: .widget) { Color(.systemBackground) }
+        .widgetURL(URL(string: "fintrack://summary"))
+    }
+}
+
+struct FinTrackSummaryWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "FinTrackSummary", provider: Provider()) { WidgetRoot(entry: $0) }
+            .configurationDisplayName("Bu ay")
+            .description("Bu ayın harcaması, geliri ve bütçe durumu.")
+            .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryCircular, .accessoryInline])
+    }
+}
+
+// MARK: - Yaklaşanlar
+
+/// Gösterim anına göre: geçmiş günler düşer, "Bugün / Yarın / 3 gün" yeniden hesaplanır.
+private func visibleUpcoming(_ s: WidgetSnapshot, at date: Date) -> [WidgetSnapshot.UpcomingLine] {
+    let today = DateUtil.day(date)
+    return s.upcoming.filter { $0.date >= today }
+}
+
+private func relativeDay(_ iso: String, from date: Date) -> String {
+    guard let d = DateUtil.parseDay(iso) else { return iso }
+    let n = DateUtil.calendar.dateComponents([.day], from: DateUtil.calendar.startOfDay(for: date), to: d).day ?? 0
+    switch n {
+    case 0: return "Bugün"
+    case 1: return "Yarın"
+    default: return "\(n) gün"
+    }
+}
+
+private func kindIcon(_ k: String) -> String {
+    switch k {
+    case "cardDue": "creditcard"
+    case "planned": "calendar"
+    default: "arrow.triangle.2.circlepath"
+    }
+}
+
+private func upcomingAmount(_ u: WidgetSnapshot.UpcomingLine, _ s: WidgetSnapshot) -> String {
+    if s.amountsHidden { return "₺•••" }
+    let c = CurrencyCode(rawValue: u.currency) ?? .TRY
+    return (u.isIncome ? "+" : "−") + Fmt.whole(u.amount, c)
+}
+
+struct UpcomingRow: View {
+    let u: WidgetSnapshot.UpcomingLine
+    let s: WidgetSnapshot
+    let date: Date
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: kindIcon(u.kind)).font(.caption).foregroundStyle(accent).frame(width: 16)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(u.title).font(.caption.weight(.medium)).lineLimit(1)
+                Text("\(relativeDay(u.date, from: date)) · \(DateUtil.display(u.date, "d MMM"))")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Text(upcomingAmount(u, s)).font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(u.isIncome ? incomeGreen : .primary)
+                .lineLimit(1).privacySensitive()
+        }
+    }
+}
+
+struct UpcomingWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: Entry
+
+    var body: some View {
+        Group {
+            if let s = entry.snapshot {
+                let items = visibleUpcoming(s, at: entry.date)
+                switch family {
+                case .accessoryRectangular:
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Yaklaşanlar").font(.caption2).widgetAccentable()
+                        if let u = items.first {
+                            Text(u.title).font(.headline).lineLimit(1)
+                            Text("\(relativeDay(u.date, from: entry.date)) · \(upcomingAmount(u, s))")
+                                .font(.caption2).privacySensitive()
+                        } else {
+                            Text("14 gün içinde yok").font(.caption)
+                        }
+                    }
+                default:
+                    let limit = family == .systemLarge ? 8 : 3
+                    VStack(alignment: .leading, spacing: family == .systemLarge ? 8 : 5) {
+                        HStack {
+                            Label("Yaklaşanlar", systemImage: "calendar.badge.clock").font(.caption.weight(.semibold))
+                                .foregroundStyle(accent)
+                            Spacer()
+                            if items.count > limit {
+                                Text("+\(items.count - limit)").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                        if items.isEmpty {
+                            Spacer()
+                            Text("Önümüzdeki 14 günde ödeme ya da tekrarlayan işlem yok.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                        } else {
+                            ForEach(Array(items.prefix(limit).enumerated()), id: \.offset) { _, u in
+                                UpcomingRow(u: u, s: s, date: entry.date)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            } else {
+                switch family {
+                case .accessoryRectangular: Text("FinTrack")
+                default: EmptyState()
+                }
+            }
+        }
+        .containerBackground(for: .widget) { Color(.systemBackground) }
+        .widgetURL(URL(string: "fintrack://summary"))
+    }
+}
+
+struct FinTrackUpcomingWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "FinTrackUpcoming", provider: Provider()) { UpcomingWidgetView(entry: $0) }
+            .configurationDisplayName("Yaklaşanlar")
+            .description("Kart son ödeme günleri, tekrarlayan ve planlı işlemler (14 gün).")
+            .supportedFamilies([.systemMedium, .systemLarge, .accessoryRectangular])
+    }
+}
+
+/// Denetim Merkezi / kilit ekranı / Eylem düğmesi: tek dokunuşla hızlı ekleme (iOS 18).
+@available(iOS 18.0, *)
+struct QuickAddControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "FinTrackQuickAdd") {
+            ControlWidgetButton(action: OpenURLIntent(URL(string: "fintrack://add")!)) {
+                Label("İşlem ekle", systemImage: "plus.circle.fill")
+            }
+        }
+        .displayName("FinTrack: İşlem ekle")
+        .description("FinTrack'i yeni işlem sayfasıyla açar.")
+    }
+}
+
+@main
+struct FinTrackWidgets: WidgetBundle {
+    var body: some Widget {
+        FinTrackSummaryWidget()
+        FinTrackNetWorthWidget()
+        FinTrackUpcomingWidget()
+        if #available(iOS 18.0, *) { QuickAddControl() }
+    }
+}
+
+#Preview(as: .systemMedium) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }
+#Preview(as: .systemSmall) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }
+#Preview(as: .systemLarge) { FinTrackSummaryWidget() } timeline: { Entry(date: .now, snapshot: .sample) }
+#Preview(as: .systemMedium) { FinTrackUpcomingWidget() } timeline: { Entry(date: .now, snapshot: .sample) }

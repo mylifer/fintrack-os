@@ -1,0 +1,4 @@
+// Ortak ayarlar. Supabase anahtarları git DIŞI Secrets.xcconfig'te
+// (scripts/make-secrets.sh .env.local'dan üretir). Dosya yoksa derleme
+// yine geçer; uygulama "anahtar yok" ekranı gösterir.
+#include? "Secrets.xcconfig"
