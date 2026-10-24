@@ -150,6 +150,9 @@ struct TagRoute: Hashable { var key: String; var tag: String }
 struct TagsView: View {
     @Environment(AppModel.self) private var model
     @State private var query = ""
+    @State private var renaming: Tags.Aggregate?
+    @State private var newName = ""
+    @State private var errorMessage: String?
 
     var body: some View {
         let all = model.knownTags
@@ -160,9 +163,15 @@ struct TagsView: View {
                 Section {
                     ForEach(list) { t in
                         NavigationLink(value: TagRoute(key: t.key, tag: t.tag)) { row(t) }
+                            .swipeActions {
+                                Button("Yeniden adlandır") { newName = t.tag; renaming = t }.tint(Theme.tint)
+                            }
+                            .contextMenu {
+                                Button { newName = t.tag; renaming = t } label: { Label("Yeniden adlandır", systemImage: "pencil") }
+                            }
                     }
                 } footer: {
-                    Text("Etiket eklemek için işlemi açın. Yeniden adlandırma web'de.")
+                    Text("Etiket eklemek için işlemi açın. Sola kaydırın: yeniden adlandırın (aynı ada sahip etiketle birleşir).")
                 }
             }
         }
@@ -182,6 +191,24 @@ struct TagsView: View {
         .searchable(text: $query, prompt: "Etiket ara")
         .navigationTitle("Etiketler")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Etiketi yeniden adlandır", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Yeni ad", text: $newName)
+            Button("Kaydet") {
+                guard let t = renaming else { return }
+                let n = newName
+                renaming = nil
+                Task {
+                    do { try await model.renameTag(t.tag, to: n); Haptics.success() }
+                    catch { errorMessage = error.localizedDescription }
+                }
+            }
+            Button("Vazgeç", role: .cancel) {}
+        } message: {
+            Text("Bu etiketi taşıyan \(renaming?.count ?? 0) işlemin hepsi güncellenir.")
+        }
+        .alert("Kaydedilemedi", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("Tamam", role: .cancel) {}
+        } message: { Text(errorMessage ?? "") }
     }
 
     private func row(_ t: Tags.Aggregate) -> some View {

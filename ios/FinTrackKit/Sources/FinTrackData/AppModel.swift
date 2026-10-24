@@ -669,6 +669,48 @@ public final class AppModel {
 
     public func refundRemaining(_ original: Transaction) -> Double { Refund.remaining(original, in: all.transactions) }
 
+    /// Toplu düzenleme (web updateMany): uygun satırlara aynı yama. Döner: düzenlenen sayı.
+    @discardableResult
+    public func bulkUpdate(_ txs: [Transaction], _ patch: BulkEdit.Patch) async throws -> Int {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let targets = txs.compactMap { t in all.transactions.first { $0.id == t.id } }.filter(BulkEdit.canEdit)
+        guard let first = targets.first, !patch.isEmpty else { return 0 }
+        try await batched {
+            try await write(BulkEdit.apply(first, patch), in: \.transactions)
+            for t in targets.dropFirst() { await writeFollowUp(BulkEdit.apply(t, patch), in: \.transactions) }
+        }
+        return targets.count
+    }
+
+    /// Toplu silme (web removeMany): her satır kendi kuralıyla (taksit grubu, borç,
+    /// stopaj, karşı bacaklar). Silinemeyenler atlanır. Döner: silinen sayı.
+    @discardableResult
+    public func bulkDelete(_ txs: [Transaction]) async throws -> Int {
+        var done = 0
+        var seenGroups = Set<String>()
+        for t in txs {
+            guard let cur = all.transactions.first(where: { $0.id == t.id && $0.isLive }), cur.canDeleteOnIOS else { continue }
+            let key = cur.installGroupId ?? cur.workspaceTransferId ?? cur.id
+            guard seenGroups.insert(key).inserted else { continue }
+            try await delete(cur)
+            done += 1
+        }
+        return done
+    }
+
+    /// Etiketi tüm işlemlerde yeniden adlandır (web renameTag). Döner: değişen işlem sayısı.
+    @discardableResult
+    public func renameTag(_ old: String, to new: String) async throws -> Int {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let rows = BulkEdit.renameTag(old, to: new, in: transactions)
+        guard let first = rows.first else { return 0 }
+        try await batched {
+            try await write(first, in: \.transactions)
+            for r in rows.dropFirst() { await writeFollowUp(r, in: \.transactions) }
+        }
+        return rows.count
+    }
+
     /// Bakiye eşitleme (web ReconcileBalanceModal): gerçek bakiyeyle fark tek satır.
     public func reconcile(_ account: Account, actual input: Double, id: String = UUID().uuidString.lowercased()) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }

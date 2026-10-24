@@ -61,6 +61,7 @@ struct TransactionsView: View {
     @State private var pendingDelete: Transaction?
     @State private var errorMessage: String?
     @State private var showTags = false
+    @State private var bulkEditing = false
 
     var body: some View {
         NavigationStack {
@@ -93,6 +94,7 @@ struct TransactionsView: View {
                 .transactionEditor($editing)
                 .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
                 .navigationDestination(isPresented: $showTags) { TagsView() }
+                .sheet(isPresented: $bulkEditing) { BulkEditSheet(transactions: exportList) }
                 // Kişi ve etiket alana özgü: alan değişince süzgeçte asılı kalmasın
                 .onChange(of: model.activeWorkspaceId) { filter.personId = nil; filter.tagKey = nil }
                 .navigationDestination(for: TagRoute.self) { TagTransactionsView(route: $0) }
@@ -193,6 +195,7 @@ struct TransactionsView: View {
                 Button("Süzgeci temizle", role: .destructive) { filter = TxFilter() }
             }
             Divider()
+            Button { bulkEditing = true } label: { Label("Görünenleri toplu düzenle", systemImage: "checklist") }
             Button { showTags = true } label: { Label("Etiketler", systemImage: "tag") }
             ShareLink(item: CSVFile(transactions: exportList, categories: model.categories,
                                     accounts: model.accounts, name: csvName),
