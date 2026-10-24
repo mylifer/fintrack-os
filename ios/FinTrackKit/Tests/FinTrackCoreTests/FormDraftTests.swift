@@ -188,3 +188,36 @@ struct InvestmentTradeTests {
         #expect(Fmt.quantity(0.12345) == "0,1235")
     }
 }
+
+@Suite("iade")
+struct RefundTests {
+    let original = tx(["id": "o", "type": "expense", "amount": 1000, "amountTry": 1000, "categoryId": "c",
+                       "description": "Kulaklık", "tags": .array(["#Tatil"])])
+
+    @Test func fullRefundNetsOriginal() throws {
+        let r = try Refund.make(original, amount: nil, date: "2026-01-20", all: [original], fx: fx, now: "n", id: "r", today: "2026-02-01")
+        #expect(r.amount == -1000 && r.type == .expense && r.refundOfId == "o" && r.categoryId == "c")
+        #expect(r.description == "[İade] Kulaklık" && r.tags == ["#Tatil", "#İade"])
+        let flow = Calc.periodFlow([original, r], from: "2026-01-01", to: "2026-01-31", fx: fx, asOf: "2026-02-01")
+        #expect(flow.expense == 0 && flow.income == 0)
+        #expect(r.isPlainRefund && r.canDeleteOnIOS)
+    }
+
+    @Test func cumulativeGuard() throws {
+        let p = try Refund.make(original, amount: 400, date: "2026-01-20", all: [original], fx: fx, now: "n", id: "p1")
+        #expect(Refund.remaining(original, in: [original, p]) == 600)
+        #expect(throws: Refund.RefundError.exceeds(600)) {
+            try Refund.make(original, amount: 700, date: "2026-01-21", all: [original, p], fx: fx, now: "n")
+        }
+        let rest = try Refund.make(original, amount: nil, date: "2026-01-21", all: [original, p], fx: fx, now: "n", id: "p2")
+        #expect(rest.amount == -600)
+        #expect(throws: Refund.RefundError.alreadyRefunded) {
+            try Refund.make(original, amount: nil, date: "2026-01-22", all: [original, p, rest], fx: fx, now: "n")
+        }
+    }
+
+    @Test func splitsRescaled() {
+        let s = Refund.rescaleSplits([.init(categoryId: "a", amount: 300), .init(categoryId: "b", amount: 700)], to: -500)
+        #expect(s.map(\.amount) == [-150, -350])
+    }
+}

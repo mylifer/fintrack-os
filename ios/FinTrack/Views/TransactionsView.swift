@@ -243,6 +243,7 @@ struct TransactionList: View {
     /// Sayfalama: çok büyük listede SwiftUI tüm satır kimliklerini hesaplıyor
     /// (20 bin satırda saniyeler). Önce son `pageSize`, istenirse fazlası.
     @State private var limit = TransactionList.pageSize
+    @State private var refunding: Transaction?
     static let pageSize = 400
 
     /// Gelecek/onay bekleyen satırlar en üstte ayrı bölümde. Kimlik gün anahtarı
@@ -309,6 +310,9 @@ struct TransactionList: View {
                                     Label("Kopyasını ekle", systemImage: "plus.square.on.square")
                                 }
                             }
+                            if Refund.canRefund(t) {
+                                Button { refunding = t } label: { Label("İade işle", systemImage: "arrow.uturn.backward.circle") }
+                            }
                             if t.canDeleteOnIOS {
                                 Button(role: .destructive) { pendingDelete = t } label: {
                                     Label("Sil", systemImage: "trash")
@@ -321,6 +325,7 @@ struct TransactionList: View {
             loadMore
         }
         .listStyle(.insetGrouped)
+        .sheet(item: $refunding) { RefundSheet(original: $0) }
     }
 
     @ViewBuilder private var loadMore: some View {

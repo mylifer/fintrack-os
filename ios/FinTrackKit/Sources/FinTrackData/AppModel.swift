@@ -658,6 +658,17 @@ public final class AppModel {
         }
     }
 
+    /// İade (web RefundModal): negatif gider satırı; `amount` nil = tam iade.
+    public func refund(_ original: Transaction, amount: Double?, date: Date,
+                       id: String = UUID().uuidString.lowercased()) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let t = try Refund.make(original, amount: amount, date: DateUtil.day(date), all: all.transactions,
+                                fx: fx, now: Self.nowISO(), id: id)
+        try await write(t, in: \.transactions)
+    }
+
+    public func refundRemaining(_ original: Transaction) -> Double { Refund.remaining(original, in: all.transactions) }
+
     /// Bakiye eşitleme (web ReconcileBalanceModal): gerçek bakiyeyle fark tek satır.
     public func reconcile(_ account: Account, actual input: Double, id: String = UUID().uuidString.lowercased()) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }

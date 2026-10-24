@@ -72,7 +72,7 @@ struct CardCalendarDetail: View {
                         ForEach(1...31, id: \.self) { Text("\($0)").tag($0) }
                     }
                     .disabled(days.gapDays != nil && card.statementDay != nil)
-                    Picker("Tatil / hafta sonu", selection: Binding(get: { days.holidayRule },
+                    Picker("Tatil / hafta sonu", selection: Binding(get: { days.holidayRule ?? .due },
                                                                     set: { r in run { try await model.setCardHolidayRule(card, r) } })) {
                         Text("Son ödeme ilk iş gününe kayar").tag(HolidayRule.due)
                         Text("Kesim de kayar (fark sabit)").tag(HolidayRule.both)

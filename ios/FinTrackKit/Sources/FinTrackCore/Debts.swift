@@ -136,7 +136,7 @@ extension Transaction {
     /// da taksit satırı (tüm grup silinir).
     public var canDeleteOnIOS: Bool {
         !isLinked || isPlainDebtPayment || isPlainDebtCollection || isPlainInstallment || isPlainReconciliation
-            || isWorkspaceTransferLeg
+            || isWorkspaceTransferLeg || isPlainRefund
     }
 
     /// Yalnız borç ödemesi olan (başka bağı olmayan) satır: iOS silebilir, borç geri alınır.

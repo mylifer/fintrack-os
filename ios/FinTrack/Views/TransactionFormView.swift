@@ -26,6 +26,7 @@ struct TransactionFormView: View {
     @State private var saving = false
     @State private var errorMessage: String?
     @State private var confirmDelete = false
+    @State private var refunding = false
     @FocusState private var amountFocused: Bool
 
     private static let lastAccountKey = "fintrack.lastAccountId"
@@ -40,6 +41,8 @@ struct TransactionFormView: View {
                     Section {
                         Label(editing?.isWorkspaceTransferLeg == true
                               ? "Çalışma alanları arası transfer: düzenlenemez. Silerseniz diğer alandaki bacak (ve varsa borç ödemesi) da silinir."
+                              : editing?.isPlainRefund == true
+                              ? "İade satırı: düzenlenemez; silinebilir (silinince iade geri alınır)."
                               : editing?.isPlainReconciliation == true
                               ? "Bakiye eşitleme satırı: gelir/gidere girmez, yalnız bakiyeyi düzeltir. Düzenleme web'de; silinebilir."
                               : editing?.isPlainInstallment == true
@@ -225,6 +228,15 @@ struct TransactionFormView: View {
                     }
                 }
 
+                if let editing, Refund.canRefund(editing) {
+                    Section {
+                        Button { refunding = true } label: { Label("İade işle", systemImage: "arrow.uturn.backward.circle") }
+                    } footer: {
+                        let r = model.refundRemaining(editing)
+                        if r < editing.amount { Text("Daha önce \(Fmt.currency(Money.sub(editing.amount, r), editing.currency)) iade edildi.") }
+                    }
+                }
+
                 if let editing, editing.canDeleteOnIOS {
                     Section {
                         Button("İşlemi sil", role: .destructive) { confirmDelete = true }
@@ -269,6 +281,7 @@ struct TransactionFormView: View {
             }
         }
         .presentationDetents([.large])
+        .sheet(isPresented: $refunding) { if let editing { RefundSheet(original: editing) } }
         .onAppear(perform: setUp)
         .onChange(of: draft.description) { _, d in
             // Daha önce aynı açıklamayla girilmiş işlemin kategorisi (kullanıcı
