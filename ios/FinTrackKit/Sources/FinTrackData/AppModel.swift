@@ -487,17 +487,163 @@ public final class AppModel {
     /// Yeni işlem ya da var olan işlemin düzenlemesi.
     /// `newId`: formun bir kez ürettiği kimlik — belirsiz hatadan sonra tekrar
     /// denemede aynı satır güncellenir, ikinci işlem oluşmaz.
+    /// Web TransactionFormModal kuralları: borç ödemesi / alacak tahsilatı borcun
+    /// ödenen tutarını değiştirir; Faiz kategorili gelirde stopaj ayrı gider olur;
+    /// başka çalışma alanına transfer iki (borç ödemeli: üç) satır yazar.
     public func save(_ draft: TransactionDraft, editing: Transaction?, newId: String? = nil) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }
         if let e = draft.validationError() { throw ServiceError.message(e) }
         guard let account = account(draft.accountId) else { throw ServiceError.message("Hesap bulunamadı.") }
-        if let editing, editing.isLinked {
+        if let editing, editing.isLinked, !editing.isPlainDebtLink {
             throw ServiceError.message("Bu işlem başka kayıtlara bağlı; web'den düzenleyin.")
         }
-        let record = editing.map { draft.applying(to: $0, account: account, fx: fx) }
-            ?? draft.makeNew(id: newId ?? UUID().uuidString.lowercased(), account: account,
-                             workspaceId: activeWorkspaceId, fx: fx, now: Self.nowISO())
-        try await write(record, in: \.transactions)
+        let id = newId ?? UUID().uuidString.lowercased()
+        if draft.isCrossWorkspace {
+            guard editing == nil else { throw ServiceError.message("Alanlar arası transfer düzenlenemez; silip yeniden ekleyin.") }
+            try await saveWorkspaceTransfer(draft, source: account, seed: id)
+            return
+        }
+
+        // Faiz stopajı: yeni girişte Faiz kategorisi seçiliyse; düzenlemede yalnız
+        // satırın zaten bir stopaj kaydı varsa (eski faiz satırlarına gider eklenmesin)
+        let linkedTax = editing.flatMap { e in all.transactions.first { $0.id == InterestTax.taxId(for: e.id) && $0.isLive } }
+        let interest = interestApplies(draft, editing: editing) ? draft.interestSplit(account: account) : nil
+        if interest != nil {
+            let r = draft.interestRate(account: account)
+            guard r >= 0 && r < 100 else { throw ServiceError.message("Stopaj oranı 0 ile 99 arasında olmalı.") }
+        }
+        let now = Self.nowISO()
+        let record = editing.map { draft.applying(to: $0, account: account, fx: fx, amount: interest?.gross) }
+            ?? draft.makeNew(id: id, account: account, workspaceId: activeWorkspaceId, fx: fx, now: now,
+                             amount: interest?.gross)
+
+        let touchesDebt = record.isPlainDebtLink || editing?.isPlainDebtLink == true
+        if touchesDebt {
+            if record.isPlainDebtLink, fx.baseSnapshot(record.amount, record.currency) == nil {
+                throw DebtPayments.PaymentError.noRate
+            }
+            try await serializedDebtOp {
+                if record.isPlainDebtCollection, let debtId = record.debtId,
+                   let debt = self.all.debts.first(where: { $0.id == debtId && $0.isLive }) {
+                    // Kalan alacak (düzenlenen tahsilatın eski payı geri eklenir — web)
+                    let own = editing.flatMap { $0.isPlainDebtCollection && $0.debtId == debtId ? self.fx.baseAmount($0) : nil } ?? 0
+                    let remaining = Money.add(debt.remaining, own)
+                    if self.fx.baseAmount(record) > remaining + 0.005 { throw DebtPayments.PaymentError.overflow(remaining) }
+                }
+                try await self.write(record, in: \.transactions)
+                let fresh = self.all.transactions.first { $0.id == record.id } ?? record
+                for d in DebtPayments.reconcileEdit(old: editing, new: fresh, debts: self.all.debts, fx: self.fx) {
+                    await self.writeFollowUp(d, in: \.debts)
+                }
+            }
+        } else {
+            try await write(record, in: \.transactions)
+        }
+
+        // Bağlı stopaj satırı: yeni ya da güncellenen faizle birlikte; faiz artık
+        // faiz değilse ya da stopaj 0'a indiyse silinir (web)
+        let saved = all.transactions.first { $0.id == record.id } ?? record
+        if let interest, interest.tax > 0 {
+            if var tax = linkedTax {
+                let before = tax
+                tax.amount = interest.tax
+                tax.currency = saved.currency
+                tax.accountId = saved.accountId
+                tax.date = String(saved.date.prefix(10))
+                tax.description = InterestTax.taxDescription(saved.description)
+                if Money.toMinor(before.amount) != Money.toMinor(tax.amount) || before.currency != tax.currency {
+                    tax.amountTry = fx.baseSnapshot(tax.amount, tax.currency)
+                }
+                await writeFollowUp(tax, in: \.transactions)
+            } else {
+                let itc = await ensureRecipient("İTC")
+                await writeFollowUp(InterestTax.makeTaxRow(interest: saved, tax: interest.tax, categories: categories,
+                                                           recipientId: itc, fx: fx, now: now), in: \.transactions)
+            }
+        } else if let linkedTax {
+            await writeFollowUp(linkedTax.tombstoned(at: now), in: \.transactions)
+        }
+    }
+
+    /// Formda stopaj şeridi görünür mü (web isInterest): gelir, alacak değil,
+    /// Faiz kategorisi; düzenlemede yalnız bağlı stopaj satırı varsa.
+    public func interestApplies(_ draft: TransactionDraft, editing: Transaction?) -> Bool {
+        guard draft.type == .income, !draft.isCollection,
+              InterestTax.isInterestCategory(draft.categoryId, categories) else { return false }
+        guard let editing else { return true }
+        return linkedInterestTax(editing) != nil
+    }
+
+    /// Faiz satırının stopaj gideri (varsa)
+    public func linkedInterestTax(_ t: Transaction) -> Transaction? {
+        let id = InterestTax.taxId(for: t.id)
+        return all.transactions.first { $0.id == id && $0.isLive }
+    }
+
+    /// Adı verilen alıcı (yoksa oluşturulur; web taxRecipientId). Yazılamazsa nil.
+    private func ensureRecipient(_ name: String) async -> String? {
+        let key = BankRules.foldText(name)
+        if let p = people.first(where: { $0.role == .recipient && BankRules.foldText($0.name) == key }) { return p.id }
+        let now = Self.nowISO()
+        let p = Person(raw: ["id": .string(UUID().uuidString.lowercased()), "name": .string(name), "role": "recipient",
+                             "createdAt": .string(now), "updatedAt": .string(now), "deleted_at": .null,
+                             "workspaceId": JSONValue(activeWorkspaceId)])
+        do { try await write(p, in: \.people); return p.id } catch { return nil }
+    }
+
+    // MARK: Çalışma alanları arası transfer
+
+    /// Satırın çalışma alanı (alanı olmayan eski satır varsayılan alana aittir)
+    private func workspaceOf<T: SyncRecord>(_ r: T) -> String? { r.workspaceId ?? defaultWorkspaceId }
+
+    /// Etkin alan dışındaki alanlar
+    public var otherWorkspaces: [Workspace] { workspaces.filter { $0.id != activeWorkspaceId } }
+
+    /// Bir alanın arşivlenmemiş hesapları (alanlar arası transfer hedefi)
+    public func accounts(inWorkspace id: String) -> [Account] {
+        all.accounts.filter { $0.isLive && !$0.isArchived && workspaceOf($0) == id }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    /// Bir alanın ödenecek (borçluyum, kapanmamış) borçları
+    public func payableDebts(inWorkspace id: String) -> [Debt] {
+        all.debts.filter { $0.isLive && $0.owe && !$0.isSettled && workspaceOf($0) == id }
+    }
+
+    /// Etkin alanın ödenecek borçları (transfer → Borç)
+    public var payableDebts: [Debt] { debts.filter { $0.owe && !$0.isSettled } }
+    /// Etkin alanın tahsil edilecek alacakları (gelir → Alacak)
+    public var receivables: [Debt] { debts.filter { !$0.owe && !$0.isSettled } }
+
+    /// Başka alana transfer (web addCrossWorkspaceTransfer): giden + gelen (+ borç ödemesi).
+    private func saveWorkspaceTransfer(_ d: TransactionDraft, source: Account, seed: String) async throws {
+        guard let ws = activeWorkspaceId, let tws = d.targetWorkspaceId else { throw ServiceError.message("Çalışma alanı seçin.") }
+        guard let target = all.accounts.first(where: { $0.id == d.toAccountId && $0.isLive && workspaceOf($0) == tws })
+        else { throw ServiceError.message("Hedef hesap bulunamadı.") }
+        let debt: Debt?
+        if d.crossPayDebt {
+            guard let found = all.debts.first(where: { $0.id == d.targetDebtId && $0.isLive && workspaceOf($0) == tws })
+            else { throw ServiceError.message("Ödenecek borç bulunamadı.") }
+            debt = found
+        } else {
+            debt = nil
+        }
+        let input = WorkspaceTransfer.Input(source: source, sourceWorkspaceId: ws, target: target, targetWorkspaceId: tws,
+                                            amount: d.amount, date: DateUtil.day(d.date), description: d.description,
+                                            notes: d.notes, targetDebt: debt)
+        let ids = (0..<4).map { DeterministicID.uuid("xws:\(seed):\($0)") }
+        try await serializedDebtOp {
+            // Borcun EN GÜNCEL hali (sırada bekleyen başka ödeme olabilir)
+            var fresh = input
+            if let d = debt { fresh.targetDebt = self.all.debts.first { $0.id == d.id } ?? d }
+            let out = try WorkspaceTransfer.make(fresh, fx: self.fx, now: Self.nowISO(), ids: ids)
+            guard let first = out.rows.first else { return }
+            try await self.batched {
+                try await self.write(first, in: \.transactions)
+                for r in out.rows.dropFirst() { await self.writeFollowUp(r, in: \.transactions) }
+                if let debt = out.debt { await self.writeFollowUp(debt, in: \.debts) }
+            }
+        }
     }
 
     /// Bakiye eşitleme (web ReconcileBalanceModal): gerçek bakiyeyle fark tek satır.
@@ -586,13 +732,15 @@ public final class AppModel {
     }
 
     /// Silme = tombstone (deleted_at), gerçek DELETE yok.
-    /// Borç ödemesi silinirse borcun ödenen tutarı ve taksit sayacı geri alınır (web).
+    /// Borç ödemesi / tahsilat silinirse borcun ödenen tutarı ve taksit sayacı geri
+    /// alınır; faiz satırının stopajı ve alanlar arası transferin tüm bacakları
+    /// birlikte silinir (web remove).
     public func delete(_ t: Transaction) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }
         guard t.canDeleteOnIOS else { throw ServiceError.message("Bu işlem başka kayıtlara bağlı; web'den silin.") }
+        let now = Self.nowISO()
         if t.isPlainInstallment, let group = t.installGroupId {
             // Taksit: TÜM grup silinir (web remove)
-            let now = Self.nowISO()
             let rows = all.transactions.filter { $0.installGroupId == group && $0.isLive }
             guard let first = rows.first else { return }
             try await batched {
@@ -601,26 +749,45 @@ public final class AppModel {
             }
             return
         }
-        guard t.isPlainDebtPayment, let debtId = t.debtId else {
-            try await write(t.tombstoned(at: Self.nowISO()), in: \.transactions)
+        let group = InterestTax.withLinkedTax([t], all: all.transactions)
+        let rows = group + WorkspaceTransfer.peers(of: group, in: all.transactions)
+        let debtRows = rows.filter { $0.debtId != nil && ($0.isPlainDebtLink || $0.isWorkspaceTransferLeg) }
+        guard !debtRows.isEmpty else {
+            try await batched {
+                try await write(t.tombstoned(at: now), in: \.transactions)
+                for r in rows where r.id != t.id { await writeFollowUp(r.tombstoned(at: now), in: \.transactions) }
+            }
             return
         }
         try await serializedDebtOp {
-            try await self.write(t.tombstoned(at: Self.nowISO()), in: \.transactions)
-            // Borcun EN GÜNCEL hali, işlem yazıldıktan sonra okunur
-            if let debt = self.all.debts.first(where: { $0.id == debtId && $0.isLive }) {
-                await self.writeFollowUp(DebtPayments.revert(debt, payment: t, fx: self.fx), in: \.debts)
+            try await self.batched {
+                try await self.write(t.tombstoned(at: now), in: \.transactions)
+                for r in rows where r.id != t.id { await self.writeFollowUp(r.tombstoned(at: now), in: \.transactions) }
+                // Borcun EN GÜNCEL hali, işlemler yazıldıktan sonra; aynı borca iki satır birikir
+                var working: [String: Debt] = [:]
+                var order: [String] = []
+                for r in debtRows {
+                    guard let id = r.debtId, let debt = working[id] ?? self.all.debts.first(where: { $0.id == id && $0.isLive })
+                    else { continue }
+                    if working[id] == nil { order.append(id) }
+                    working[id] = DebtPayments.revert(debt, payment: r, fx: self.fx)
+                }
+                for id in order { if let d = working[id] { await self.writeFollowUp(d, in: \.debts) } }
             }
         }
     }
 
-    /// Borç ödemesi (web debts/page handlePay): işlem + borç satırı.
+    /// Borç ödemesi (web debts/page handlePay): işlem + borç satırı. Alacakta
+    /// (alacaklıyım) "Tahsilat Al": gelir tipli 🤝 tahsilat, kalan alacağı aşamaz.
     public func payDebt(_ debt: Debt, accountId: String?, amount: Double, date: Date,
                         id: String = UUID().uuidString.lowercased()) async throws {
         guard let account = account(accountId), !account.isArchived else { throw ServiceError.message("Hesap seçin.") }
         try await serializedDebtOp {
             let latest = self.all.debts.first { $0.id == debt.id } ?? debt
-            let out = try DebtPayments.pay(latest, from: account, amount: amount, date: DateUtil.day(date), fx: self.fx,
+            let out = try latest.owe
+                ? DebtPayments.pay(latest, from: account, amount: amount, date: DateUtil.day(date), fx: self.fx,
+                                   workspaceId: self.activeWorkspaceId, now: Self.nowISO(), id: id)
+                : DebtPayments.collect(latest, into: account, amount: amount, date: DateUtil.day(date), fx: self.fx,
                                            workspaceId: self.activeWorkspaceId, now: Self.nowISO(), id: id)
             try await self.write(out.transaction, in: \.transactions)
             let fresh = self.all.debts.first { $0.id == debt.id } ?? latest

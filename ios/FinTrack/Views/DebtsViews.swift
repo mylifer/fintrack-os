@@ -76,10 +76,11 @@ struct DebtDetailView: View {
                 }
                 .padding(.vertical, 4)
             }
-            if d.owe && !d.isSettled {
+            if !d.isSettled {
                 Section {
                     Button { paying = true } label: {
-                        Label("Ödeme yap", systemImage: "arrow.up.right.circle.fill")
+                        Label(d.owe ? "Ödeme yap" : "Tahsilat al",
+                              systemImage: d.owe ? "arrow.up.right.circle.fill" : "arrow.down.left.circle.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -135,9 +136,10 @@ struct DebtDetailView: View {
                             }
                     }
                 } header: {
-                    Text("Ödemeler")
+                    Text(d.owe ? "Ödemeler" : "Tahsilatlar")
                 } footer: {
-                    Text("Silinen ödeme borcun ödenen tutarından da düşülür.")
+                    Text(d.owe ? "Silinen ödeme borcun ödenen tutarından da düşülür."
+                               : "Silinen tahsilat alacağa geri eklenir.")
                 }
             }
         }
@@ -163,7 +165,8 @@ struct DebtDetailView: View {
     }
 }
 
-/// Borç ödemesi (web "Ödeme Yap"): tutar sıradaki taksit, hesap borcun hesabı.
+/// Borç ödemesi (web "Ödeme Yap") ya da alacak tahsilatı ("Tahsilat Al"):
+/// tutar sıradaki taksit (alacakta kalan), hesap borcun hesabı.
 struct DebtPaySheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -178,6 +181,13 @@ struct DebtPaySheet: View {
     @FocusState private var focused: Bool
 
     private var account: Account? { model.account(accountId) }
+
+    /// Tahsilat kalan alacağı aşamaz (alacak TL bazlı; döviz hesapta çevrilir — web)
+    private var overflow: Bool {
+        guard !debt.owe, let a = account else { return false }
+        let amount = Fmt.parseAmount(amountText)
+        return amount > 0 && model.fx.toBaseTry(amount, a.currency) > debt.remaining + 0.005
+    }
 
     var body: some View {
         NavigationStack {
@@ -195,10 +205,17 @@ struct DebtPaySheet: View {
                             }
                     }
                 } footer: {
-                    if let a = account, a.currency != .TRY {
-                        Text("Tutar \(a.currency.rawValue) cinsinden; borca güncel kurla TL olarak yazılır.")
-                    } else {
-                        Text("Kalan \(Fmt.currency(debt.remaining)).")
+                    VStack(alignment: .leading, spacing: 4) {
+                        if overflow {
+                            Text("Tutar kalan alacaktan fazla (kalan \(Fmt.currency(debt.remaining))).")
+                                .foregroundStyle(Theme.expense)
+                        }
+                        if let a = account, a.currency != .TRY {
+                            Text("Tutar \(a.currency.rawValue) cinsinden; \(debt.owe ? "borca" : "alacağa") güncel kurla TL olarak yazılır.")
+                        } else {
+                            Text("Kalan \(Fmt.currency(debt.remaining)).")
+                        }
+                        if !debt.owe { Text("Para hesaba girer; gelir olarak sayılmaz.") }
                     }
                 }
                 Section {
@@ -209,17 +226,20 @@ struct DebtPaySheet: View {
                     DatePicker("Tarih", selection: $date, displayedComponents: .date)
                         .environment(\.locale, Locale(identifier: "tr_TR"))
                 } footer: {
-                    Text("Hesaptan \"\(debt.name) ödemesi\" olarak düşülür\(DateUtil.day(date) > DateUtil.today() ? "; gelecek tarihli ödeme onay bekler" : "").")
+                    Text(debt.owe
+                         ? "Hesaptan \"\(debt.name) ödemesi\" olarak düşülür\(DateUtil.day(date) > DateUtil.today() ? "; gelecek tarihli ödeme onay bekler" : "")."
+                         : "Hesaba \"\(debt.name) tahsilatı\" olarak eklenir\(DateUtil.day(date) > DateUtil.today() ? "; gelecek tarihli tahsilat onay bekler" : "").")
                 }
             }
             .disabled(busy)
-            .navigationTitle("Ödeme yap")
+            .navigationTitle(debt.owe ? "Ödeme yap" : "Tahsilat al")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Vazgeç") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     if busy { ProgressView() } else {
-                        Button("Öde", action: pay).bold().disabled(Fmt.parseAmount(amountText) <= 0 || accountId == nil)
+                        Button(debt.owe ? "Öde" : "Kaydet", action: pay).bold()
+                            .disabled(Fmt.parseAmount(amountText) <= 0 || accountId == nil || overflow)
                     }
                 }
             }

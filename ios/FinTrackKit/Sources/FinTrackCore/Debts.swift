@@ -134,11 +134,14 @@ extension Debt {
 extension Transaction {
     /// iOS'ta silinebilir mi: bağsız satır, düz borç ödemesi (borç geri alınır) ya
     /// da taksit satırı (tüm grup silinir).
-    public var canDeleteOnIOS: Bool { !isLinked || isPlainDebtPayment || isPlainInstallment || isPlainReconciliation }
+    public var canDeleteOnIOS: Bool {
+        !isLinked || isPlainDebtPayment || isPlainDebtCollection || isPlainInstallment || isPlainReconciliation
+            || isWorkspaceTransferLeg
+    }
 
     /// Yalnız borç ödemesi olan (başka bağı olmayan) satır: iOS silebilir, borç geri alınır.
     public var isPlainDebtPayment: Bool {
-        debtId != nil && debtPrincipalId == nil && installGroupId == nil && !isInstallment
+        type != .income && debtId != nil && debtPrincipalId == nil && installGroupId == nil && !isInstallment
             && workspaceTransferId == nil && icon == nil && systemKind == nil
             && (categorySplits?.count ?? 0) <= 1 && refundOfId == nil
     }
@@ -150,13 +153,16 @@ public enum DebtPayments {
     /// hesabından ödeme reddedilir (web ham tutarı TRY sayıyor — tutarsız).
     public static func pay(_ debt: Debt, from account: Account, amount: Double, date: String, fx: FX,
                            workspaceId: String?, now: String, id: String = UUID().uuidString.lowercased(),
+                           description: String? = nil, notes: String? = nil,
                            today: String = DateUtil.today()) throws -> (transaction: Transaction, debt: Debt) {
         guard amount > 0 else { throw PaymentError.amount }
         guard let tryValue = fx.baseSnapshot(amount, account.currency) else { throw PaymentError.noRate }
+        let desc = description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         var raw: JSONObject = [
             "id": .string(id), "type": .string(TransactionType.transfer.rawValue), "amount": .number(amount),
             "currency": .string(account.currency.rawValue), "accountId": .string(account.id),
-            "description": .string("\(debt.name) ödemesi"), "isInstallment": .bool(false),
+            "description": .string(desc.isEmpty ? "\(debt.name) ödemesi" : desc), "isInstallment": .bool(false),
+            "notes": JSONValue(notes),
             "debtId": .string(debt.id), "date": .string(date), "amountTry": .number(tryValue),
             "createdAt": .string(now), "updatedAt": .string(now), "deleted_at": .null,
             "workspaceId": JSONValue(workspaceId),
@@ -172,9 +178,12 @@ public enum DebtPayments {
 
     public enum PaymentError: LocalizedError {
         case amount, noRate
+        /// Tahsilat kalan alacaktan fazla (kalan, TL)
+        case overflow(Double)
         public var errorDescription: String? {
             switch self {
             case .amount: "Tutar girin."
+            case .overflow(let r): "Tutar kalan alacaktan fazla (kalan \(Fmt.currency(r)))."
             case .noRate: "Kur alınamadı; döviz hesabından ödeme için internete bağlanıp yeniden deneyin."
             }
         }

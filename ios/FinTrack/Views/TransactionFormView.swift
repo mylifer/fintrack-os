@@ -29,7 +29,8 @@ struct TransactionFormView: View {
     @FocusState private var amountFocused: Bool
 
     private static let lastAccountKey = "fintrack.lastAccountId"
-    private var readOnly: Bool { editing?.isLinked ?? false }
+    /// Borç ödemesi / alacak tahsilatı düzenlenebilir (borç mutabakatıyla); diğer bağlılar salt okunur
+    private var readOnly: Bool { editing.map { $0.isLinked && !$0.isPlainDebtLink } ?? false }
     private var account: Account? { model.account(draft.accountId) }
 
     var body: some View {
@@ -37,8 +38,8 @@ struct TransactionFormView: View {
             Form {
                 if readOnly {
                     Section {
-                        Label(editing?.isPlainDebtPayment == true
-                              ? "Borç ödemesi: düzenleme web'de. Silerseniz borcun ödenen tutarından da düşülür."
+                        Label(editing?.isWorkspaceTransferLeg == true
+                              ? "Çalışma alanları arası transfer: düzenlenemez. Silerseniz diğer alandaki bacak (ve varsa borç ödemesi) da silinir."
                               : editing?.isPlainReconciliation == true
                               ? "Bakiye eşitleme satırı: gelir/gidere girmez, yalnız bakiyeyi düzeltir. Düzenleme web'de; silinebilir."
                               : editing?.isPlainInstallment == true
@@ -84,6 +85,26 @@ struct TransactionFormView: View {
                         }
                     }
 
+                    if draft.type == .income && (!model.receivables.isEmpty || draft.isCollection) {
+                        Section {
+                            Picker("Gelir türü", selection: $draft.isCollection) {
+                                Text("Gelir").tag(false)
+                                Text("Alacak tahsilatı").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets())
+                        } footer: {
+                            if draft.isCollection {
+                                Text("Verdiğiniz borcun geri ödemesi: para hesaba girer, alacaktan düşer; gelir sayılmaz.")
+                            }
+                        }
+                    }
+
+                    if model.interestApplies(draft, editing: editing) {
+                        interestSection
+                    }
+
                     Section {
                         Picker(draft.type == .transfer ? "Kaynak hesap" : "Hesap", selection: $draft.accountId) {
                             Text("Seçin").tag(String?.none)
@@ -92,12 +113,9 @@ struct TransactionFormView: View {
                             }
                         }
                         if draft.type == .transfer {
-                            Picker("Hedef hesap", selection: $draft.toAccountId) {
-                                Text("Seçin").tag(String?.none)
-                                ForEach(model.activeAccounts.filter { $0.id != draft.accountId }) { a in
-                                    Text("\(a.name) · \(a.currency.rawValue)").tag(Optional(a.id))
-                                }
-                            }
+                            transferTargetRows
+                        } else if draft.isDebtCollection {
+                            receivableRows
                         } else {
                             NavigationLink {
                                 CategoryPicker(type: draft.type, selection: Binding(
@@ -118,7 +136,7 @@ struct TransactionFormView: View {
                                 }
                             }
                         }
-                        if draft.type != .transfer {
+                        if draft.type != .transfer && !draft.isDebtCollection {
                             PersonPicker(title: "Aile üyesi", role: .familyMember, selection: $draft.familyMemberId)
                             PersonPicker(title: "Alıcı", role: .recipient, selection: $draft.recipientId)
                         }
@@ -166,7 +184,7 @@ struct TransactionFormView: View {
                             .lineLimit(1...4)
                     }
 
-                    if editing == nil {
+                    if editing == nil && !draft.isCrossWorkspace {
                         Section {
                             Button {
                                 save(another: true)
@@ -238,6 +256,16 @@ struct TransactionFormView: View {
             } message: { Text(errorMessage ?? "") }
             .confirmationDialog("İşlem silinsin mi?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Sil", role: .destructive, action: delete)
+            } message: {
+                if let editing {
+                    if model.linkedInterestTax(editing) != nil {
+                        Text("Bağlı stopaj gideri de silinir.")
+                    } else if editing.isWorkspaceTransferLeg {
+                        Text("Diğer çalışma alanındaki bacak (ve varsa borç ödemesi) da silinir.")
+                    } else if editing.isPlainDebtLink {
+                        Text(editing.isPlainDebtCollection ? "Tutar alacağa geri eklenir." : "Tutar borcun ödenen kısmından düşülür.")
+                    }
+                }
             }
         }
         .presentationDetents([.large])
@@ -245,7 +273,7 @@ struct TransactionFormView: View {
         .onChange(of: draft.description) { _, d in
             // Daha önce aynı açıklamayla girilmiş işlemin kategorisi (kullanıcı
             // kategoriyi kendisi seçmediyse)
-            guard editing == nil, !categoryTouched, draft.type != .transfer,
+            guard editing == nil, !categoryTouched, draft.type != .transfer, !draft.isCollection,
                   let c = model.derived?.suggestionIndex.exactCategory(d, type: draft.type)
                       ?? Suggestions.exactCategory(d, type: draft.type, in: model.transactions),
                   model.category(c).map({ !$0.isArchived }) ?? false
@@ -261,12 +289,213 @@ struct TransactionFormView: View {
                c.scope != (newType == .income ? .income : .expense) {
                 draft.categoryId = nil
             }
+            if newType != .income { draft.isCollection = false }
+            if newType != .transfer { draft.transferTarget = .account }
         }
+        .onChange(of: draft.transferTarget) { old, new in
+            // Hedef türü değişince başka türün seçimi kalmasın
+            if old == .workspace || new == .workspace { draft.toAccountId = nil }
+            if new != .debt && !draft.isCollection { draft.debtId = nil }
+        }
+        .onChange(of: draft.isCollection) { _, on in
+            if on { draft.categoryId = nil } else if draft.transferTarget != .debt { draft.debtId = nil }
+        }
+        .onChange(of: draft.targetWorkspaceId) { _, _ in
+            draft.toAccountId = nil
+            draft.targetDebtId = nil
+        }
+    }
+
+    // MARK: Transfer hedefi (web "Hesap | Borç | Diğer Alan")
+
+    private var transferTargets: [TransactionDraft.TransferTarget] {
+        var out: [TransactionDraft.TransferTarget] = [.account]
+        if !model.payableDebts.isEmpty || draft.transferTarget == .debt { out.append(.debt) }
+        if editing == nil && !model.otherWorkspaces.isEmpty { out.append(.workspace) }
+        return out
+    }
+
+    private func targetLabel(_ t: TransactionDraft.TransferTarget) -> String {
+        switch t {
+        case .account: "Hesaba"
+        case .debt: "Borca"
+        case .workspace: "Diğer alana"
+        }
+    }
+
+    @ViewBuilder private var transferTargetRows: some View {
+        if transferTargets.count > 1 {
+            Picker("Hedef", selection: $draft.transferTarget) {
+                ForEach(transferTargets, id: \.self) { Text(targetLabel($0)).tag($0) }
+            }
+            .pickerStyle(.segmented)
+        }
+        switch draft.transferTarget {
+        case .account:
+            Picker("Hedef hesap", selection: $draft.toAccountId) {
+                Text("Seçin").tag(String?.none)
+                ForEach(model.activeAccounts.filter { $0.id != draft.accountId }) { a in
+                    Text("\(a.name) · \(a.currency.rawValue)").tag(Optional(a.id))
+                }
+            }
+        case .debt:
+            Picker("Borç", selection: Binding(get: { draft.debtId }, set: { id in
+                draft.debtId = id
+                if let d = model.debts.first(where: { $0.id == id }),
+                   draft.description.trimmingCharacters(in: .whitespaces).isEmpty {
+                    draft.description = d.name
+                }
+            })) {
+                Text("Seçin").tag(String?.none)
+                ForEach(debtChoices(model.payableDebts)) { d in
+                    Text("\(d.name) · kalan \(Fmt.currency(d.remaining))").tag(Optional(d.id))
+                }
+            }
+        case .workspace:
+            Picker("Çalışma alanı", selection: $draft.targetWorkspaceId) {
+                Text("Seçin").tag(String?.none)
+                ForEach(model.otherWorkspaces) { Text($0.name).tag(Optional($0.id)) }
+            }
+            if let ws = draft.targetWorkspaceId {
+                Picker("Para ne olacak", selection: $draft.crossPayDebt) {
+                    Text("Hesaba yatır").tag(false)
+                    Text("Borç öde").tag(true)
+                }
+                .pickerStyle(.segmented)
+                if draft.crossPayDebt {
+                    let debts = model.payableDebts(inWorkspace: ws)
+                    if debts.isEmpty {
+                        Text("Bu alanda aktif borç yok").foregroundStyle(.secondary)
+                    } else {
+                        Picker("Borç", selection: Binding(get: { draft.targetDebtId }, set: { id in
+                            draft.targetDebtId = id
+                            guard let d = debts.first(where: { $0.id == id }) else { return }
+                            // Borcun kendi ödeme hesabı bu alandaysa ara hesap olarak öner
+                            if let a = d.accountId, model.accounts(inWorkspace: ws).contains(where: { $0.id == a }) {
+                                draft.toAccountId = a
+                            }
+                            if draft.description.trimmingCharacters(in: .whitespaces).isEmpty {
+                                draft.description = "\(d.name) ödemesi"
+                            }
+                        })) {
+                            Text("Seçin").tag(String?.none)
+                            ForEach(debts) { Text("\($0.name) · kalan \(Fmt.currency($0.remaining))").tag(Optional($0.id)) }
+                        }
+                    }
+                }
+                let targets = model.accounts(inWorkspace: ws)
+                if targets.isEmpty {
+                    Text("Bu alanda hesap bulunamadı").foregroundStyle(.secondary)
+                } else {
+                    Picker(draft.crossPayDebt ? "Ödemenin geçeceği hesap" : "Hedef hesap", selection: $draft.toAccountId) {
+                        Text("Seçin").tag(String?.none)
+                        ForEach(targets) { Text("\($0.name) · \($0.currency.rawValue)").tag(Optional($0.id)) }
+                    }
+                }
+                Text(draft.crossPayDebt
+                     ? "Para seçilen hesaba girer ve borca ödenir — o hesabın bakiyesi değişmez. Hiçbir alanda gelir/gider sayılmaz."
+                     : "İki alanda da gelir/gider sayılmaz; yalnız bakiyeler değişir.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Seçilebilir borçlar + düzenlenen satırın borcu (kapanmış olsa da)
+    private func debtChoices(_ list: [Debt]) -> [Debt] {
+        guard let id = draft.debtId, !list.contains(where: { $0.id == id }),
+              let current = model.debts.first(where: { $0.id == id }) else { return list }
+        return [current] + list
+    }
+
+    // MARK: Alacak tahsilatı
+
+    private var selectedReceivable: Debt? { model.debts.first { $0.id == draft.debtId } }
+
+    /// Kalan alacak (düzenlenen tahsilatın eski payı geri eklenir — web)
+    private var receivableRemaining: Double? {
+        guard let d = selectedReceivable else { return nil }
+        let own = editing.flatMap { $0.isPlainDebtCollection && $0.debtId == d.id ? model.fx.baseAmount($0) : nil } ?? 0
+        return Money.add(d.remaining, own)
+    }
+
+    @ViewBuilder private var receivableRows: some View {
+        Picker("Alacak", selection: Binding(get: { draft.debtId }, set: { id in
+            draft.debtId = id
+            if let d = model.debts.first(where: { $0.id == id }),
+               draft.description.trimmingCharacters(in: .whitespaces).isEmpty {
+                draft.description = "\(d.name) tahsilatı"
+            }
+        })) {
+            Text("Seçin").tag(String?.none)
+            ForEach(debtChoices(model.receivables)) { d in
+                Text("\(d.name) · kalan \(Fmt.currency(d.remaining))").tag(Optional(d.id))
+            }
+        }
+        if let remaining = receivableRemaining {
+            let tryValue = model.fx.toBaseTry(draft.amount, account?.currency ?? .TRY)
+            let over = tryValue > remaining + 0.005
+            LabeledContent("Kalan alacak", value: Fmt.currency(remaining))
+            if draft.amount > 0 {
+                LabeledContent("Kayıttan sonra", value: over ? "Tutar kalandan fazla" : Fmt.currency(max(0, Money.sub(remaining, tryValue))))
+                    .foregroundStyle(over ? Theme.expense : .secondary)
+            }
+        }
+    }
+
+    // MARK: Faiz stopajı (web Brüt · Stopaj · Hesaba geçen)
+
+    @ViewBuilder private var interestSection: some View {
+        let split = draft.interestSplit(account: account)
+        let cur = account?.currency ?? .TRY
+        Section {
+            Picker("Girdiğim tutar", selection: $draft.interestMode) {
+                Text("Net (hesaba geçen)").tag(InterestTax.Mode.net)
+                Text("Brüt faiz").tag(InterestTax.Mode.gross)
+            }
+            .pickerStyle(.segmented)
+            HStack {
+                Text("Stopaj oranı")
+                Spacer()
+                Text("%").foregroundStyle(.secondary)
+                TextField(Fmt.amountInput(draft.interestRate(account: account)), text: Binding(
+                    get: { draft.interestRateText ?? Fmt.amountInput(draft.interestRate(account: account)) },
+                    set: { draft.interestRateText = Fmt.normalizeTypedAmount($0) }
+                ))
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 70)
+            }
+            HStack(spacing: 0) {
+                interestCell("Brüt faiz", Fmt.currency(split.gross, cur), Theme.income, "Gelir · Faiz")
+                Divider()
+                interestCell("Stopaj", "−" + Fmt.currency(split.tax, cur), Theme.expense, "Gider · Vergi")
+                Divider()
+                interestCell("Hesaba geçen", Fmt.currency(split.net, cur), .primary, "Net")
+            }
+        } header: {
+            Text("Stopaj")
+        } footer: {
+            Text("Faiz geliri brüt yazılır; stopaj Vergi kategorisine, alıcısı İTC olan ayrı gider olarak eklenir. Hesaba etkisi net tutardır.")
+        }
+    }
+
+    private func interestCell(_ title: String, _ value: String, _ color: Color, _ sub: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.uppercased(with: Locale(identifier: "tr_TR"))).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            Text(value).font(.subheadline.monospacedDigit().weight(.semibold)).foregroundStyle(color)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text(sub).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
     }
 
     private func setUp() {
         if let editing {
             draft = TransactionDraft(editing: editing)
+            if let tax = model.linkedInterestTax(editing) {
+                draft.interestRateText = Fmt.amountInput(InterestTax.impliedRate(gross: editing.amount, tax: tax.amount))
+            }
         } else if let template {
             draft = template
             if model.account(draft.accountId).map({ $0.isArchived }) ?? true { draft.accountId = defaultAccountId }

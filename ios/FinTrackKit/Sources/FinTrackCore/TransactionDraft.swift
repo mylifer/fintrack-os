@@ -22,6 +22,22 @@ public struct TransactionDraft: Equatable, Sendable {
     public var familyMemberId: String?
     public var recipientId: String?
 
+    /// Transferin hedefi (web "Hesap | Borç | Diğer Alan")
+    public enum TransferTarget: String, Sendable, CaseIterable { case account, debt, workspace }
+    public var transferTarget: TransferTarget = .account
+    /// Borç bağı: transfer + .debt → borç ödemesi; gelir + isCollection → alacak tahsilatı
+    public var debtId: String?
+    /// Gelir sekmesinde "Gelir | Alacak" (web isCollection)
+    public var isCollection = false
+    /// Diğer çalışma alanına transfer: hedef alan; hedef hesap `toAccountId`
+    public var targetWorkspaceId: String?
+    /// Diğer alanda borç öde (web crossWsDebt) ve ödenecek borç
+    public var crossPayDebt = false
+    public var targetDebtId: String?
+    /// Faiz stopajı: girilen tutar net mi brüt mü; oran metni (nil = hesabın/varsayılan)
+    public var interestMode: InterestTax.Mode = .net
+    public var interestRateText: String?
+
     public init() {}
 
     public init(editing t: Transaction) {
@@ -37,6 +53,36 @@ public struct TransactionDraft: Equatable, Sendable {
         tags = (t.tags ?? []).filter { !Subscriptions.isSubscriptionTag($0) }
         familyMemberId = t.familyMemberId
         recipientId = t.recipientId
+        if t.isPlainDebtPayment && t.toAccountId == nil {
+            type = .transfer
+            transferTarget = .debt
+            debtId = t.debtId
+        } else if t.isPlainDebtCollection {
+            isCollection = true
+            debtId = t.debtId
+            categoryId = nil
+        }
+        // Düzenlemede kayıtlı faiz satırı BRÜTTÜR (web)
+        interestMode = .gross
+    }
+
+    /// Borç ödemesi (transfer → borç)
+    public var isDebtPayment: Bool { type == .transfer && transferTarget == .debt }
+    /// Alacak tahsilatı (gelir → alacak)
+    public var isDebtCollection: Bool { type == .income && isCollection }
+    /// Başka çalışma alanına transfer
+    public var isCrossWorkspace: Bool { type == .transfer && transferTarget == .workspace }
+    /// Yazılacak borç bağı (yoksa nil)
+    public var linkedDebtId: String? { isDebtPayment || isDebtCollection ? debtId : nil }
+
+    /// Stopaj oranı: elle girilen, yoksa hesabın mevduat stopajı, yoksa %17,5.
+    public func interestRate(account: Account?) -> Double {
+        if let t = interestRateText { return Fmt.parseAmount(t) }
+        return account?.raw.num("depositTaxPct") ?? InterestTax.defaultRate
+    }
+
+    public func interestSplit(account: Account?) -> InterestTax.Split {
+        InterestTax.split(amount, ratePct: interestRate(account: account), mode: interestMode)
     }
 
     /// Yazılacak etiket listesi: temizlenmiş etiketler + abonelik. Abonelik
@@ -54,9 +100,22 @@ public struct TransactionDraft: Equatable, Sendable {
     public func validationError() -> String? {
         if amount == 0 { return "Tutar girin." }
         guard let accountId else { return "Hesap seçin." }
-        if type == .transfer {
+        if isDebtPayment {
+            if debtId == nil { return "Borç seçin." }
+            if amount < 0 { return "Tutar girin." }
+        } else if isCrossWorkspace {
+            if targetWorkspaceId == nil { return "Çalışma alanı seçin." }
+            if crossPayDebt && targetDebtId == nil { return "Borç seçin." }
+            if toAccountId == nil { return crossPayDebt ? "Ödemenin geçeceği hesabı seçin." : "Hedef hesabı seçin." }
+            if amount < 0 { return "Tutar girin." }
+            if description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Açıklama girin." }
+        } else if type == .transfer {
             guard let to = toAccountId else { return "Hedef hesabı seçin." }
             if to == accountId { return "Kaynak ve hedef hesap aynı olamaz." }
+        }
+        if isDebtCollection {
+            if debtId == nil { return "Alacak seçin." }
+            if amount < 0 { return "Tutar girin." }
         }
         return nil
     }
@@ -73,8 +132,11 @@ public struct TransactionDraft: Equatable, Sendable {
 
     /// Yeni işlem satırı. `now` ISO damgası (createdAt/updatedAt).
     public func makeNew(id: String = UUID().uuidString.lowercased(), account: Account,
-                        workspaceId: String?, fx: FX, now: String, today: String = DateUtil.today()) -> Transaction {
+                        workspaceId: String?, fx: FX, now: String, today: String = DateUtil.today(),
+                        amount override: Double? = nil) -> Transaction {
         let day = DateUtil.day(date)
+        let amount = override ?? self.amount
+        let debtLink = linkedDebtId
         var raw: JSONObject = [
             "id": .string(id),
             "type": .string(type.rawValue),
@@ -97,14 +159,26 @@ public struct TransactionDraft: Equatable, Sendable {
         ]
         if let snap = fx.baseSnapshot(amount, account.currency) { raw["amountTry"] = .number(snap) }
         if day > today { raw["approvalStatus"] = .string(ApprovalStatus.pending.rawValue) }
+        if let debtLink {
+            // Borç ödemesi: tek bacaklı transfer; tahsilat: kategorisiz 🤝 gelir (web)
+            raw["debtId"] = .string(debtLink)
+            raw["toAccountId"] = .null
+            raw["categoryId"] = .null
+            if isDebtCollection {
+                raw["icon"] = .string(Calc.debtCollectionIcon)
+            } else {
+                raw["familyMemberId"] = .null
+                raw["recipientId"] = .null
+            }
+        }
         return Transaction(raw: raw)
     }
 
     /// Var olan işlemin düzenlenmiş hali. Para birimi hesaptan gelir (web formu gibi).
-    public func applying(to t: Transaction, account: Account, fx: FX) -> Transaction {
+    public func applying(to t: Transaction, account: Account, fx: FX, amount override: Double? = nil) -> Transaction {
         var out = t
         out.type = type
-        out.amount = amount
+        out.amount = override ?? amount
         out.currency = account.currency
         out.date = DateUtil.day(date)
         out.accountId = account.id
@@ -129,11 +203,30 @@ public struct TransactionDraft: Equatable, Sendable {
         if Money.toMinor(t.amount) != Money.toMinor(out.amount) || t.currency != out.currency {
             out.amountTry = fx.baseSnapshot(out.amount, out.currency)
         }
-        return out
+        // Borç bağı (web collectionFields): ödeme/tahsilat ↔ sıradan işlem
+        if let link = linkedDebtId {
+            out.raw["debtId"] = .string(link)
+            out.toAccountId = nil
+            out.categoryId = nil
+            out.raw["icon"] = isDebtCollection ? .string(Calc.debtCollectionIcon) : .null
+            if isDebtPayment { out.raw["familyMemberId"] = .null; out.raw["recipientId"] = .null }
+        } else if t.isPlainDebtLink {
+            out.raw["debtId"] = .null
+            if t.isPlainDebtCollection { out.raw["icon"] = .null }
+        }
+        return out.rebuilt()
     }
 }
 
 extension Transaction {
+    /// Ham satırı değiştirilmiş kayıt: değişkenler ham satıra yazılır, salt okunur
+    /// alanlar (debtId, icon …) ham satırdan yeniden okunur.
+    public func rebuilt() -> Transaction {
+        var r = raw
+        for (k, v) in ownedColumns() { r[k] = v }
+        return Transaction(raw: r)
+    }
+
     /// Silme = tombstone: deleted_at damgalanır, satır yerinde kalır.
     public func tombstoned(at now: String) -> Transaction {
         var out = self
