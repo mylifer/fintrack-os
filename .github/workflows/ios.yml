@@ -76,6 +76,20 @@ jobs:
           done
           ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i fintrack | head || true
 
+      - name: Ekran görüntüleri (günlükte, küçültülmüş)
+        if: always()
+        working-directory: ios
+        continue-on-error: true
+        # Ek dosya indirilemeyen ortamlarda da görülebilsin: JPEG, base64
+        run: |
+          for f in shots/*.png; do
+            [ -f "$f" ] || continue
+            sips -s format jpeg -s formatOptions 40 -Z 760 "$f" --out "${f%.png}.jpg" >/dev/null
+            echo "SHOT-BEGIN $(basename "${f%.png}")"
+            base64 -i "${f%.png}.jpg" | fold -w 2000
+            echo "SHOT-END"
+          done
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
