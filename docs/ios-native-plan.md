@@ -1,7 +1,9 @@
 # FinTrack iOS — native (SwiftUI) uygulama planı
 
-**Durum (2026-09-26):** Karar SwiftUI; henüz kod yok. Bu not, Windows'taki Claude oturumundan
-Mac'e devir içindir — Mac'teki oturum buradan devam eder.
+**Durum (2026-10-24):** Uygulama `ios/` altında; web'in günlük kullanım özelliklerinin neredeyse
+tamamı iPhone'da (bkz. `ios/README.md` → Ekranlar). Web'de kalanlar: içe aktarma, yedek/geri yükleme,
+kategori ağacını toplu düzenleme. Kurulum: `ios/README.md` → "iPhone'a kurulum".
+(İlk not 2026-09-26: Windows'tan Mac'e devir; aşağıdaki kurallar hâlâ geçerli.)
 
 ## Karar
 

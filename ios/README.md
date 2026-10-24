@@ -75,18 +75,24 @@ değişirse iki taraf birlikte güncellenir.
 
 | Sekme | İçerik |
 | --- | --- |
-| Özet | Onay bekleyenler (tek dokunuşla onay), ay harcaması + geçen ayın aynı dönemi, kategori halkası (dokun → kategori raporu), yaklaşanlar (7 gün), son 6 ay grafiği (→ aylık özet: gelir/gider/net/tasarruf, önceki ay ve geçen yılla kıyas, paylaş), hesaplar, bütçeler, son işlemler |
-| İşlemler | Arama, süzgeç (tür/dönem/hesap/etiket/kişi/onay bekleyen), etiketler (sayı, toplam → işlemler), sonuç toplamı, CSV paylaş, tekrarlayanların gelecek dönemleri; kaydır: düzenle · sil · kopyala · onayla |
-| Hesaplar | Net değer, Ödeme Takibi, nakit akışı tahmini, hesaplar (90 gün bakiye seyri; vadeli hesapta vade özeti + faizi işle), borçlar (ödeme yap, taksit planı); kredi kartında dönem içi / son ekstre, ekstre geçmişi, "Ekstreyi öde" |
-| Yatırımlar | Portföy, K/Z, günlük değişim |
-| Plan | Bütçe · Hedef · Tekrarlayan · Abonelik |
+| Özet | Onay bekleyenler, ay harcaması, kategori halkası, yaklaşanlar, son 6 ay, hesaplar, bütçeler, **Raporlar** (İstatistikler + net varlık trendi, Aylık özet, Kategori raporu, Nakit akışı tahmini), son işlemler |
+| İşlemler | Arama, süzgeç, etiketler (yeniden adlandır), CSV; kaydır/basılı tut: düzenle · sil · kopyala · onayla · **iade**; **görünenleri toplu düzenle/sil** |
+| Hesaplar | + **hesap / borç ekle**; hesap detayı → **düzenle, arşivle, sil**; Ödeme Takibi (öde, **düzenle, atla, geri al, plan ayarları**), tahmin, borçlar (**düzenle, sil, ödeme yap / tahsilat al**), kart ekstreleri, **Kart Takvimi** |
+| Yatırımlar | Portföy; + **alım / satım** (bağlı defter satırları, K/Z, fon stopajı), işlemi düzenle / sil |
+| Plan | Bütçe · Hedef · Tekrarlayan (**geçmişten öneriler**) · Abonelik |
+
+İşlem formu: gider/gelir/transfer; **transfer → hesaba / borca / diğer çalışma alanına (borç öde dahil)**;
+gelir → **alacak tahsilatı**; Faiz kategorisinde **stopaj** (brüt · stopaj · net); **kategorilere böl**;
+**taksitli** (yeni, mevcut grubu düzenle, sonradan taksitlendir); **fiş / fatura fotoğrafı**; etiket, kişiler.
+
+Ayarlar → Düzenle: **Kategoriler, Kişiler, Çalışma alanları (paylaşım / davet), Kart Takvimi, Fon stopajı**.
 
 Bildirimler (Ayarlar → Hatırlatmalar): kart son ödeme günü, tekrarlayan ve planlı işlemler (sabah 9),
-bütçe uyarı eşiği geçilince / aşılınca (web bildirim merkezindeki gibi bütçe + ay + durum başına bir kez).
+bütçe uyarı eşiği geçilince / aşılınca. Hızlı erişim: simgeye basılı tut, widget'lar, Denetim Merkezi
+düğmesi (iOS 18), Siri ("FinTrack ile harcama ekle", "FinTrack bu ay ne kadar harcadım").
 
-Hızlı erişim: uygulama simgesine basılı tut (gider / gelir / transfer ekle, bütçeler), ana ekran / kilit ekranı widget'ları (Bu ay, Net değer, Yaklaşanlar), Denetim Merkezi düğmesi (iOS 18), Siri
-("FinTrack ile harcama ekle", "FinTrack bu ay ne kadar harcadım" — uygulamayı açmadan cevaplar; cihaz
-kilitliyse önce kilit açılır, "Tutarları gizle" açıksa tutar söylenmez).
+Web'de kalanlar: banka ekstresi / CSV **içe aktarma**, **yedekleme / geri yükleme**, kategori ağacını
+toplu yeniden düzenleme, PIN kilidi (iPhone'da Face ID).
 
 ## Simülatörde örnek veriyle çalıştırma
 
@@ -95,7 +101,8 @@ Debug derlemede `-demo` başlatma argümanı gerçek hesap yerine örnek veri y�
 Ekran doğrulaması için ek argümanlar (yalnız DEBUG): `-tab transactions|accounts|investments|budgets`,
 `-plan budgets|goals|recurring|subscriptions`, `-quickadd`, `-search <metin>`,
 `-account <hesap-id> [-statements] [-reconcile] [-processdeposit]`, `-debt <id>`, `-payments`, `-forecast`, `-report`, `-monthly`, `-tags`, `-edit <açıklama>`, `-openurl <fintrack://…>`,
-`-settings`, `-newrecurring`, `-newbudget`, `-lock -noautounlock`.
+`-settings`, `-newrecurring`, `-newbudget`, `-lock -noautounlock`, `-stats`, `-cardcalendar`, `-newaccount`,
+`-newdebt`, `-trade`, `-bulk`, `-manage categories|people|workspaces|cards` (`-settings` ile).
 
 Performans: `-demo -stress` örnek veriye 20 bin işlem ekler. Ağır hesaplar (aylık akış,
 kategori dağılımı, bütçe durumları, kart ekstreleri, öneri dizini) arka planda bir kez yapılır
