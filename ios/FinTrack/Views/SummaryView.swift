@@ -29,6 +29,7 @@ struct SummaryView: View {
                     if hasHistory { trendCard }
                     netWorthCard
                     budgetsCard
+                    reportsCard
                     recentCard
                 }
                 .padding(16)
@@ -193,6 +194,35 @@ struct SummaryView: View {
             Text(label).font(.caption).foregroundStyle(.secondary)
             Text(value).font(.subheadline.weight(.semibold).monospacedDigit()).foregroundStyle(color)
         }
+    }
+
+    /// Raporlar (web /reports, /statistics, /reports/monthly)
+    private var reportsCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Raporlar").font(.headline).padding(.bottom, 8)
+            reportLink("İstatistikler", "chart.bar.xaxis") { StatisticsView() }
+            Divider()
+            reportLink("Aylık özet", "calendar") { MonthlySummaryView() }
+            Divider()
+            reportLink("Kategori raporu", "chart.pie") { CategoryReportView() }
+            Divider()
+            reportLink("Nakit akışı tahmini", "chart.line.uptrend.xyaxis") { ForecastView() }
+        }
+        .card()
+    }
+
+    private func reportLink<D: View>(_ title: String, _ icon: String, @ViewBuilder _ dest: @escaping () -> D) -> some View {
+        NavigationLink { dest() } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon).frame(width: 24).foregroundStyle(Theme.tint)
+                Text(title).foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var netWorthCard: some View {
