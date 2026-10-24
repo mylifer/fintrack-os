@@ -190,3 +190,33 @@ struct DraftDebtLinkTests {
         #expect(d.interestRate(account: dep) == 10)
     }
 }
+
+@Suite("işlem formu — kategori bölme")
+struct DraftSplitTests {
+    let acc = Account(raw: ["id": "a", "name": "a", "type": "checking", "currency": "TRY", "initialBalance": 0])
+
+    @Test func writesSplitsAndPrimary() {
+        var d = TransactionDraft()
+        d.accountId = "a"; d.amountText = "1000"; d.date = DateUtil.parseDay("2026-01-10")!
+        d.splits = [.init(categoryId: "market", amount: 300), .init(categoryId: "ev", amount: 600)]
+        #expect(d.validationError()?.hasPrefix("Payların toplamı") == true)
+        d.splits?[1].amount = 700
+        #expect(d.validationError() == nil)
+        let t = d.makeNew(id: "t", account: acc, workspaceId: nil, fx: fx, now: "n", today: "2026-02-01")
+        #expect(t.categorySplits?.count == 2 && t.categoryId == "ev" && !t.isLinked)
+        #expect(Calc.amountByCategory([t], type: .expense, fx: fx) == ["market": 300, "ev": 700])
+        // Düzenlemede bölme kaldırılırsa paylar silinir
+        var e = TransactionDraft(editing: t)
+        #expect(e.splits?.count == 2)
+        e.splits = nil; e.categoryId = "market"
+        let out = e.applying(to: t, account: acc, fx: fx)
+        #expect(out.categorySplits == nil && out.categoryId == "market")
+    }
+
+    @Test func duplicateCategoryRejected() {
+        var d = TransactionDraft()
+        d.accountId = "a"; d.amountText = "100"
+        d.splits = [.init(categoryId: "x", amount: 50), .init(categoryId: "x", amount: 50)]
+        #expect(d.validationError() == "Aynı kategori iki kez seçilemez.")
+    }
+}

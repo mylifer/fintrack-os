@@ -580,7 +580,7 @@ public final class AppModel {
     /// Formda stopaj şeridi görünür mü (web isInterest): gelir, alacak değil,
     /// Faiz kategorisi; düzenlemede yalnız bağlı stopaj satırı varsa.
     public func interestApplies(_ draft: TransactionDraft, editing: Transaction?) -> Bool {
-        guard draft.type == .income, !draft.isCollection,
+        guard draft.type == .income, !draft.isCollection, draft.splits == nil,
               InterestTax.isInterestCategory(draft.categoryId, categories) else { return false }
         guard let editing else { return true }
         return linkedInterestTax(editing) != nil

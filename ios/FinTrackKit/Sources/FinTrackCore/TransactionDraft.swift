@@ -37,6 +37,9 @@ public struct TransactionDraft: Equatable, Sendable {
     /// Faiz stopajı: girilen tutar net mi brüt mü; oran metni (nil = hesabın/varsayılan)
     public var interestMode: InterestTax.Mode = .net
     public var interestRateText: String?
+    /// Kategori bölme (web categorySplits): nil = bölünmemiş. Tutarlar POZİTİF
+    /// tutulur; yazarken işlemin işaretini alır. En az 2 pay.
+    public var splits: [CategorySplit]?
 
     public init() {}
 
@@ -64,6 +67,32 @@ public struct TransactionDraft: Equatable, Sendable {
         }
         // Düzenlemede kayıtlı faiz satırı BRÜTTÜR (web)
         interestMode = .gross
+        if let sp = t.categorySplits, sp.count > 1 {
+            splits = sp.map { CategorySplit(categoryId: $0.categoryId, amount: abs($0.amount)) }
+        }
+    }
+
+    /// Bölünmüş ve geçerli payların kaydı (işaretli); bölünmemişse nil
+    func splitsForWrite(amount: Double) -> [CategorySplit]? {
+        guard type != .transfer, !isDebtCollection, let s = splits, s.count >= 2 else { return nil }
+        let sign: Double = amount < 0 ? -1 : 1
+        return s.map { CategorySplit(categoryId: $0.categoryId, amount: $0.amount * sign) }
+    }
+
+    /// En büyük payın kategorisi (web primarySplitCategoryId)
+    public static func primaryCategory(_ s: [CategorySplit]) -> String? {
+        guard var best = s.first else { return nil }
+        for x in s where abs(Money.toMinor(x.amount)) > abs(Money.toMinor(best.amount)) { best = x }
+        return best.categoryId.isEmpty ? nil : best.categoryId
+    }
+
+    /// Kalan (bölünmemiş) tutar: |tutar| − payların toplamı
+    public var splitRemainder: Double {
+        Money.sub(abs(amount), Money.sum((splits ?? []).map(\.amount)))
+    }
+
+    static func splitsJSON(_ s: [CategorySplit]) -> JSONValue {
+        .array(s.map { .object(["categoryId": .string($0.categoryId), "amount": .number($0.amount)]) })
     }
 
     /// Borç ödemesi (transfer → borç)
@@ -117,6 +146,15 @@ public struct TransactionDraft: Equatable, Sendable {
             if debtId == nil { return "Alacak seçin." }
             if amount < 0 { return "Tutar girin." }
         }
+        if type != .transfer && !isDebtCollection, let sp = splits {
+            if sp.count < 2 { return "En az iki pay girin ya da bölmeyi kaldırın." }
+            if sp.contains(where: { $0.categoryId.isEmpty }) { return "Her pay için kategori seçin." }
+            if Set(sp.map(\.categoryId)).count != sp.count { return "Aynı kategori iki kez seçilemez." }
+            if sp.contains(where: { $0.amount < 0.01 }) { return "Her payın tutarı girilmeli." }
+            if Money.toMinor(Money.sum(sp.map(\.amount))) != Money.toMinor(abs(amount)) {
+                return "Payların toplamı tutara eşit olmalı (kalan \(Fmt.amountInput(splitRemainder)))."
+            }
+        }
         return nil
     }
 
@@ -159,6 +197,10 @@ public struct TransactionDraft: Equatable, Sendable {
         ]
         if let snap = fx.baseSnapshot(amount, account.currency) { raw["amountTry"] = .number(snap) }
         if day > today { raw["approvalStatus"] = .string(ApprovalStatus.pending.rawValue) }
+        if let sp = splitsForWrite(amount: amount) {
+            raw["categorySplits"] = Self.splitsJSON(sp)
+            raw["categoryId"] = JSONValue(Self.primaryCategory(sp))
+        }
         if let debtLink {
             // Borç ödemesi: tek bacaklı transfer; tahsilat: kategorisiz 🤝 gelir (web)
             raw["debtId"] = .string(debtLink)
@@ -202,6 +244,13 @@ public struct TransactionDraft: Equatable, Sendable {
         // kayan nokta gürültüsü yüzünden tarihî TRY değeri değişmesin
         if Money.toMinor(t.amount) != Money.toMinor(out.amount) || t.currency != out.currency {
             out.amountTry = fx.baseSnapshot(out.amount, out.currency)
+        }
+        // Kategori bölme: paylar işaretli yazılır, ana kategori en büyük pay
+        if let sp = splitsForWrite(amount: out.amount) {
+            out.raw["categorySplits"] = Self.splitsJSON(sp)
+            out.categoryId = Self.primaryCategory(sp)
+        } else if (t.categorySplits?.count ?? 0) > 0 {
+            out.raw["categorySplits"] = .null
         }
         // Borç bağı (web collectionFields): ödeme/tahsilat ↔ sıradan işlem
         if let link = linkedDebtId {

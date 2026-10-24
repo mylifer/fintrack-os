@@ -119,6 +119,8 @@ struct TransactionFormView: View {
                             transferTargetRows
                         } else if draft.isDebtCollection {
                             receivableRows
+                        } else if draft.splits != nil {
+                            splitRows
                         } else {
                             NavigationLink {
                                 CategoryPicker(type: draft.type, selection: Binding(
@@ -137,6 +139,12 @@ struct TransactionFormView: View {
                                         Text("Yok").foregroundStyle(.secondary)
                                     }
                                 }
+                            }
+                            if !readOnly && !installments {
+                                Button { startSplit() } label: {
+                                    Label("Kategorilere böl", systemImage: "square.split.2x1")
+                                }
+                                .font(.subheadline)
                             }
                         }
                         if draft.type != .transfer && !draft.isDebtCollection {
@@ -294,7 +302,7 @@ struct TransactionFormView: View {
             draft.categoryId = c
         }
         // Web'de "Ödeme tipi" tek seçim: abonelik ve taksit birlikte olmaz
-        .onChange(of: installments) { _, on in if on { draft.isSubscription = false } }
+        .onChange(of: installments) { _, on in if on { draft.isSubscription = false; draft.splits = nil } }
         .onChange(of: draft.isSubscription) { _, on in if on { installments = false } }
         .onChange(of: draft.type) { _, newType in
             // Tür değişince uymayan kategori düşer
@@ -304,6 +312,7 @@ struct TransactionFormView: View {
             }
             if newType != .income { draft.isCollection = false }
             if newType != .transfer { draft.transferTarget = .account }
+            draft.splits = nil   // paylar kapsama bağlı (gider/gelir kategorileri)
         }
         .onChange(of: draft.transferTarget) { old, new in
             // Hedef türü değişince başka türün seçimi kalmasın
@@ -418,6 +427,78 @@ struct TransactionFormView: View {
         guard let id = draft.debtId, !list.contains(where: { $0.id == id }),
               let current = model.debts.first(where: { $0.id == id }) else { return list }
         return [current] + list
+    }
+
+    // MARK: Kategori bölme (web categorySplits)
+
+    private func startSplit() {
+        let total = abs(draft.amount)
+        let first = draft.categoryId ?? ""
+        let parts = Money.split(total, 2)
+        draft.splits = [CategorySplit(categoryId: first, amount: parts.first ?? 0),
+                        CategorySplit(categoryId: "", amount: parts.last ?? 0)]
+        installments = false
+    }
+
+    @ViewBuilder private var splitRows: some View {
+        let splits = draft.splits ?? []
+        ForEach(Array(splits.enumerated()), id: \.offset) { i, sp in
+            HStack(spacing: 8) {
+                NavigationLink {
+                    CategoryPicker(type: draft.type, selection: Binding(
+                        get: { (draft.splits?[safe: i]?.categoryId).flatMap { $0.isEmpty ? nil : $0 } },
+                        set: { if draft.splits?.indices.contains(i) == true { draft.splits?[i].categoryId = $0 ?? "" } }
+                    ))
+                } label: {
+                    if let c = model.category(sp.categoryId) {
+                        let ic = Icons.category(c.icon)
+                        HStack(spacing: 6) {
+                            IconBadge(symbol: ic.symbol, emoji: ic.emoji, color: Color(hex: c.color), size: 22)
+                            Text(c.name).lineLimit(1)
+                        }
+                    } else {
+                        Text("Kategori seçin").foregroundStyle(Theme.expense)
+                    }
+                }
+                TextField("0", text: Binding(
+                    get: { draft.splits?[safe: i].map { $0.amount == 0 ? "" : Fmt.amountInput($0.amount) } ?? "" },
+                    set: { if draft.splits?.indices.contains(i) == true { draft.splits?[i].amount = Fmt.parseAmount(Fmt.normalizeTypedAmount($0)) } }
+                ))
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 96)
+            }
+            .swipeActions {
+                if splits.count > 2 {
+                    Button(role: .destructive) { draft.splits?.remove(at: i) } label: { Label("Sil", systemImage: "trash") }
+                }
+            }
+        }
+        let rem = draft.splitRemainder
+        HStack {
+            Button { draft.splits?.append(CategorySplit(categoryId: "", amount: max(0, rem))) } label: {
+                Label("Pay ekle", systemImage: "plus")
+            }
+            Spacer()
+            Button("Eşit dağıt") {
+                let n = draft.splits?.count ?? 0
+                let parts = Money.split(abs(draft.amount), max(n, 1))
+                for j in 0..<n { draft.splits?[j].amount = parts[j] }
+            }
+        }
+        .buttonStyle(.borderless)
+        .font(.subheadline)
+        HStack {
+            Text(rem == 0 ? "Paylar tutarla eşit" : "Kalan \(Fmt.currency(rem, account?.currency ?? .TRY))")
+                .font(.footnote).foregroundStyle(rem == 0 ? Theme.income : Theme.warning)
+            Spacer()
+            Button("Bölmeyi kaldır", role: .destructive) {
+                draft.categoryId = draft.splits.flatMap(TransactionDraft.primaryCategory) ?? draft.categoryId
+                draft.splits = nil
+            }
+            .font(.footnote)
+            .buttonStyle(.borderless)
+        }
     }
 
     // MARK: Alacak tahsilatı
@@ -732,4 +813,9 @@ struct CategoryPicker: View {
         .navigationTitle("Kategori")
         .navigationBarTitleDisplayMode(.inline)
     }
+}
+
+extension Array {
+    /// Sınır dışında nil (bağlamalarda silinen paya erişim çökmesin)
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }

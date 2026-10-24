@@ -375,13 +375,13 @@ public struct Transaction: SyncRecord, Hashable {
         systemKind == "planned-recurring" ? raw.str("recurringId") : nil
     }
 
-    /// Web'de başka kayıtlarla BAĞI olan satırlar: düzenleme/silme yan etkileri
-    /// (borç ödemesi geri alma, taksit grubu, çalışma alanı transferinin karşı
-    /// bacağı, yatırım bağlı satırlar, kategori payları, mutabakat) yalnız web'de
-    /// doğru uygulanıyor. iOS bunları salt okunur gösterir.
+    /// Başka kayıtlarla BAĞI olan satırlar (borç, taksit grubu, alanlar arası
+    /// transfer, yatırım bağlı, mutabakat, iade): düz formla düzenlenmez; iOS'ta
+    /// yalnız kendi akışlarıyla (borç ödemesi, iade sil, …) değişir. Kategori
+    /// payları (bölünmüş işlem) bağ sayılmaz — formda düzenlenir.
     public var isLinked: Bool {
         debtId != nil || debtPrincipalId != nil || installGroupId != nil || isInstallment
             || workspaceTransferId != nil || icon != nil || systemKind != nil
-            || (categorySplits?.count ?? 0) > 1 || refundOfId != nil
+            || refundOfId != nil
     }
 }
