@@ -221,3 +221,23 @@ struct RefundTests {
         #expect(s.map(\.amount) == [-150, -350])
     }
 }
+
+@Suite("net varlık trendi")
+struct NetWorthHistoryTests {
+    @Test func walksBackFromToday() {
+        let acc = Account(raw: ["id": "a", "type": "checking", "currency": "TRY", "initialBalance": 0])
+        let txs = [tx(["id": "1", "type": "income", "amount": 1000, "amountTry": 1000, "date": "2026-08-15"]),
+                   tx(["id": "2", "type": "expense", "amount": 300, "amountTry": 300, "date": "2026-09-10"])]
+        let bal = Calc.balance(of: acc, posted: txs, fx: fx)
+        let s = NetWorthHistory.monthly(accounts: [acc], balances: ["a": bal], transactions: txs, investments: [],
+                                        prices: PriceBook(), debts: [], fx: fx, months: 3, today: "2026-09-20")
+        #expect(s.map(\.date) == ["2026-06-30", "2026-07-31", "2026-08-31", "2026-09-20"])
+        #expect(s.map(\.value) == [0, 0, 1000, 700])
+    }
+
+    @Test func debtBurdenAddsBackLaterPayments() {
+        let d = Debt(raw: ["id": "d", "direction": "owe", "totalAmount": 1000, "paidAmount": 400, "startDate": "2026-01-01"])
+        let pay = tx(["id": "p", "type": "transfer", "amount": 400, "amountTry": 400, "debtId": "d", "date": "2026-03-01"])
+        #expect(NetWorthHistory.debtBurdenSeries([d], [pay], dates: ["2025-12-31", "2026-02-01", "2026-04-01"], fx: fx) == [0, 1000, 600])
+    }
+}

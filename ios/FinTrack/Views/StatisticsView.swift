@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import FinTrackCore
 import FinTrackData
 
@@ -51,6 +52,8 @@ struct StatisticsView: View {
                 LabeledContent("Toplam", value: "\(s.counts.total)").bold()
             }
 
+            netWorthSection
+
             ranks("En çok harcanan kategoriler", s.topExpenseCategories)
             ranks("En çok gelir getiren kategoriler", s.topIncomeCategories)
             ranks("En çok ödeme yapılan alıcılar", s.topExpensePayees)
@@ -59,6 +62,46 @@ struct StatisticsView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("İstatistikler")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Net varlık trendi (web Raporlar): son 12 ay sonu + bugün
+    @ViewBuilder private var netWorthSection: some View {
+        let pts = NetWorthHistory.monthly(accounts: model.accounts, balances: model.balances,
+                                          transactions: model.transactions, investments: model.investments,
+                                          prices: model.prices, debts: model.debts, fx: model.fx)
+        if pts.count > 1, let lo = pts.map(\.value).min(), let hi = pts.map(\.value).max() {
+            Section {
+                Chart {
+                    ForEach(Array(pts.enumerated()), id: \.offset) { _, p in
+                        if let d = DateUtil.parseDay(p.date) {
+                            AreaMark(x: .value("Tarih", d), yStart: .value("Alt", lo), yEnd: .value("Net", p.value))
+                                .foregroundStyle(Theme.tint.opacity(0.15))
+                            LineMark(x: .value("Tarih", d), y: .value("Net", p.value))
+                                .foregroundStyle(Theme.tint)
+                        }
+                    }
+                }
+                .chartYScale(domain: lo...(hi == lo ? lo + 1 : hi))
+                .chartXAxis { AxisMarks(values: .stride(by: .month, count: 3)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated)) } }
+                .frame(height: 160)
+                .environment(\.locale, Locale(identifier: "tr_TR"))
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("En yüksek").font(.caption2).foregroundStyle(.secondary)
+                        Text(Fmt.whole(hi)).font(.caption.monospacedDigit())
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing) {
+                        Text("Bugün").font(.caption2).foregroundStyle(.secondary)
+                        Text(Fmt.whole(pts.last?.value ?? 0)).font(.caption.monospacedDigit().bold())
+                    }
+                }
+            } header: {
+                Text("Net varlık (12 ay)")
+            } footer: {
+                Text("Hesaplar + yatırımlar − kalan borç. Yatırımlar güncel fiyatla değerlenir (web ile aynı).")
+            }
+        }
     }
 
     private func averages(_ title: String, _ a: Statistics.Average, _ color: Color) -> some View {
