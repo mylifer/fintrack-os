@@ -80,6 +80,18 @@ public final class AppModel {
     private var isDemo = false
     private static let activeKey = "fintrack.activeWorkspaceId"
     private static let pricesKey = "fintrack.prices"
+    private static let fundTaxKey = "fintrack.fundTax"
+
+    /// TEFAS fon stopajı ayarı (web Ayarlar → Yatırım; cihazda saklanır)
+    public var fundTax: FundTaxConfig = {
+        guard let d = UserDefaults.standard.data(forKey: AppModel.fundTaxKey),
+              let c = try? JSONDecoder().decode(FundTaxConfig.self, from: d) else { return FundTaxConfig() }
+        return c
+    }() {
+        didSet {
+            if let d = try? JSONEncoder().encode(fundTax) { UserDefaults.standard.set(d, forKey: Self.fundTaxKey) }
+        }
+    }
 
     public init() {
         // Son fiyatlar: çevrimdışı açılışta portföy ve döviz hesapları sıfır görünmesin
@@ -1251,6 +1263,56 @@ public final class AppModel {
                 }
             }
         }
+    }
+
+    // MARK: Yatırımlar (web investment.store)
+
+    /// Alım / satım ekle ya da düzenle: yatırım satırı + hesaba bağlı defter satırları.
+    /// `seed`: formun bir kez ürettiği kimlik tohumu (tekrar denemede aynı satırlar).
+    public func saveInvestment(_ input: InvestmentTrade.Input, editing: InvestmentTransaction?,
+                               seed: String = UUID().uuidString.lowercased()) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let acc = input.accountId.flatMap { account($0) }
+        let now = Self.nowISO()
+        let current = editing.flatMap { e in all.investments.first { $0.id == e.id } } ?? editing
+        let ids = (0..<4).map { DeterministicID.uuid("inv:\(seed):\($0)") }
+        let out = try InvestmentTrade.make(input, editing: current, account: acc, investments: investments,
+                                           fundTax: fundTax, categories: categories, fx: fx,
+                                           workspaceId: activeWorkspaceId, now: now, ids: ids)
+        let stale = current.map { InvestmentTrade.linkedLedgerIds($0, in: all.transactions) } ?? []
+        let isNewAsset = !all.investments.contains { $0.isLive && $0.asset == input.asset }
+        try await batched {
+            try await write(out.investment, in: \.investments)
+            for id in stale where !out.ledger.contains(where: { $0.id == id }) {
+                if let t = all.transactions.first(where: { $0.id == id && $0.isLive }) {
+                    await writeFollowUp(t.tombstoned(at: now), in: \.transactions)
+                }
+            }
+            for l in out.ledger { await writeFollowUp(l, in: \.transactions) }
+        }
+        if isNewAsset { Task { await refreshPrices() } }
+    }
+
+    /// Yatırım işlemini ve bağlı defter satırlarını sil (web removeTransaction).
+    public func deleteInvestment(_ t: InvestmentTransaction) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let now = Self.nowISO()
+        let current = all.investments.first { $0.id == t.id } ?? t
+        let ledger = InvestmentTrade.linkedLedgerIds(current, in: all.transactions)
+        try await batched {
+            try await write(current.tombstoned(at: now), in: \.investments)
+            for id in ledger {
+                if let row = all.transactions.first(where: { $0.id == id && $0.isLive }) {
+                    await writeFollowUp(row.tombstoned(at: now), in: \.transactions)
+                }
+            }
+        }
+    }
+
+    /// Bir varlığın işlemleri (yeni → eski)
+    public func investmentTransactions(_ asset: String) -> [InvestmentTransaction] {
+        investments.filter { $0.asset == asset }
+            .sorted { $0.date != $1.date ? $0.date > $1.date : $0.createdAt > $1.createdAt }
     }
 
     // MARK: Borçlar (web debts/page.tsx)

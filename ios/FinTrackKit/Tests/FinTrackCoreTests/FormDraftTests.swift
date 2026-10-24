@@ -98,3 +98,93 @@ struct DebtDraftTests {
         #expect(Set(DebtDraft.linkedTransactions(debt, in: [p, pay.transaction, tx(["id": "z"])]).map(\.id)) == ["p", "q"])
     }
 }
+
+@Suite("yatırım alım / satımı")
+struct InvestmentTradeTests {
+    let acc = Account(raw: ["id": "a", "name": "Vadesiz", "type": "checking", "currency": "TRY", "initialBalance": 0])
+    let usd = Account(raw: ["id": "u", "name": "Dolar", "type": "checking", "currency": "USD", "initialBalance": 0])
+    let ids = ["inv", "led", "pnl", "tax"]
+
+    func inv(_ id: String, _ type: String, _ q: Double, _ p: Double, _ d: String, asset: String = "GOLD_GRAM") -> InvestmentTransaction {
+        InvestmentTransaction(raw: ["id": .string(id), "type": .string(type), "asset": .string(asset), "quantity": .number(q),
+                                    "pricePerUnit": .number(p), "date": .string(d), "createdAt": .string(d + "T10:00:00.000Z")])
+    }
+
+    @Test func buyWritesLinkedExpense() throws {
+        let out = try InvestmentTrade.make(.init(type: "buy", asset: "GOLD_GRAM", quantity: 10, pricePerUnit: 3000,
+                                                 date: "2026-01-10", accountId: "a", note: nil),
+                                           editing: nil, account: acc, investments: [], fundTax: .init(), categories: [],
+                                           fx: fx, workspaceId: "w", now: "n", ids: ids, today: "2026-02-01")
+        #expect(out.ledger.count == 1)
+        let l = out.ledger[0]
+        #expect(l.type == .expense && l.amount == 30_000 && l.icon == "Au" && l.description == "10 Gr Altın Alımı")
+        #expect(Calc.isInvestmentPrincipal(l) && !Calc.isFlow(l, asOf: "2026-12-31"))
+        #expect(out.investment.linkedTransactionId == "led" && out.investment.sourceAccountId == "a")
+    }
+
+    @Test func sellAtProfitWithFundTax() throws {
+        let history = [inv("b1", "buy", 100, 10, "2026-01-01", asset: "TEFAS:AFA")]
+        let out = try InvestmentTrade.make(.init(type: "sell", asset: "TEFAS:AFA", quantity: 50, pricePerUnit: 14,
+                                                 date: "2026-02-01", accountId: "a", note: "kısmi"),
+                                           editing: nil, account: acc, investments: history,
+                                           fundTax: .init(enabled: true, defaultRate: 10), categories: [],
+                                           fx: fx, workspaceId: "w", now: "2026-02-01T12:00:00.000Z", ids: ids, today: "2026-02-01")
+        #expect(out.ledger.map(\.description) == ["50 AFA Satışı", "AFA Satış Kârı", "AFA Satış Stopajı"])
+        #expect(out.ledger.map(\.amount) == [500, 200, 20])
+        #expect(out.ledger[1].type == .income && out.ledger[2].type == .expense)
+        #expect(out.investment.pnlLinkedTransactionId == "pnl" && out.investment.taxLinkedTransactionId == "tax")
+    }
+
+    @Test func sellAtLossNoTax() throws {
+        let history = [inv("b1", "buy", 10, 100, "2026-01-01")]
+        let out = try InvestmentTrade.make(.init(type: "sell", asset: "GOLD_GRAM", quantity: 10, pricePerUnit: 90,
+                                                 date: "2026-02-01", accountId: "a", note: nil),
+                                           editing: nil, account: acc, investments: history,
+                                           fundTax: .init(enabled: true, defaultRate: 10), categories: [],
+                                           fx: fx, workspaceId: "w", now: "2026-02-01T12:00:00.000Z", ids: ids, today: "2026-02-01")
+        #expect(out.ledger.map(\.description) == ["10 Gr Altın Satışı", "Gr Altın Satış Zararı"])
+        #expect(out.ledger[1].type == .expense && out.ledger[1].amount == 100)
+    }
+
+    @Test func cannotSellMoreThanHeld() {
+        #expect(throws: InvestmentTrade.TradeError.sellExceeds(5)) {
+            try InvestmentTrade.make(.init(type: "sell", asset: "GOLD_GRAM", quantity: 6, pricePerUnit: 1, date: "2026-02-01",
+                                           accountId: nil, note: nil), editing: nil, account: nil,
+                                     investments: [inv("b", "buy", 5, 1, "2026-01-01")], fundTax: .init(), categories: [],
+                                     fx: fx, workspaceId: nil, now: "n", ids: ids)
+        }
+    }
+
+    @Test func foreignAccountConverted() throws {
+        let out = try InvestmentTrade.make(.init(type: "buy", asset: "GOLD_GRAM", quantity: 1, pricePerUnit: 3450,
+                                                 date: "2026-01-10", accountId: "u", note: nil),
+                                           editing: nil, account: usd, investments: [], fundTax: .init(), categories: [],
+                                           fx: fx, workspaceId: "w", now: "n", ids: ids, today: "2026-02-01")
+        #expect(out.ledger[0].currency == .USD && out.ledger[0].amount == 100)
+        #expect(throws: InvestmentTrade.TradeError.noRate("USD")) {
+            try InvestmentTrade.make(.init(type: "buy", asset: "GOLD_GRAM", quantity: 1, pricePerUnit: 3450,
+                                           date: "2026-01-10", accountId: "u", note: nil),
+                                     editing: nil, account: usd, investments: [], fundTax: .init(), categories: [],
+                                     fx: FX(), workspaceId: "w", now: "n", ids: ids)
+        }
+    }
+
+    @Test func avgCostAtIgnoresLaterBuys() {
+        let txs = [inv("b1", "buy", 10, 100, "2026-01-01"), inv("b2", "buy", 10, 300, "2026-03-01")]
+        #expect(InvestmentTrade.avgCostAt(txs, asset: "GOLD_GRAM", date: "2026-02-01", createdAt: "z") == 100)
+        #expect(InvestmentTrade.avgCostAt(txs, asset: "GOLD_GRAM", date: "2026-04-01", createdAt: "z") == 200)
+    }
+
+    @Test func cleanupIds() {
+        var raw = inv("s", "sell", 1, 1, "2026-02-01").raw
+        raw["targetAccountId"] = "a"; raw["linkedTransactionId"] = "x"; raw["taxLinkedTransactionId"] = "t"
+        let pnl = tx(["id": "p", "accountId": "a", "date": "2026-02-01", "description": "Gr Altın Satış Kârı"])
+        #expect(InvestmentTrade.linkedLedgerIds(InvestmentTransaction(raw: raw), in: [pnl]) == ["x", "p", "t"])
+    }
+
+    @Test func quantityText() {
+        #expect(Fmt.quantity(1000) == "1.000")
+        #expect(Fmt.quantity(2.5) == "2,5")
+        #expect(Fmt.quantity(0.12345) == "0,1235")
+    }
+}

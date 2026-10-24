@@ -68,6 +68,18 @@ public enum Fmt {
         return f.string(from: NSNumber(value: n)) ?? ""
     }
 
+    /// Miktar (web fmtQty): tam sayıda gruplu, küsuratta en çok 4 hane — "1.000", "2,5", "0,1234"
+    public static func quantity(_ q: Double) -> String {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "tr_TR")
+        f.numberStyle = .decimal
+        f.usesGroupingSeparator = true
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = q.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 4
+        f.roundingMode = .halfUp   // JS toLocaleString yarımı yukarı yuvarlar
+        return f.string(from: NSNumber(value: q)) ?? "\(q)"
+    }
+
     /// Tutar alanına yazılırken: ondalık ayraç virgül. Harici klavyeden/yapıştırmadan
     /// gelen tek "." virgüle çevrilir; ama metinde zaten virgül varsa ya da "."
     /// binlik ayraç biçimindeyse ("1.250.000") dokunulmaz.

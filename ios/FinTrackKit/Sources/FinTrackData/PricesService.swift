@@ -211,6 +211,16 @@ public enum PricesService {
         return .init(name: name, price: c.price * fx.price, prevPrice: c.prevPrice.map { $0 * prevFx }, date: c.date)
     }
 
+    /// Yeni fon / hisse / kripto kodunu doğrula (web lookupQuote): kotasyon yoksa nil.
+    public static func lookup(asset: String) async -> PriceBook.Quote? {
+        switch Asset.kind(asset) {
+        case .fund: return await tefasFund(Asset.code(asset))
+        case .stock: return await marketQuote(asset, usdTry: nil)
+        case .crypto: return await marketQuote(asset, usdTry: await yahooChart("TRY=X"))
+        default: return nil
+        }
+    }
+
     // MARK: Hepsi
 
     /// Temel fiyatlar + portföydeki fon/hisse/kripto kotasyonları. Alınamayan

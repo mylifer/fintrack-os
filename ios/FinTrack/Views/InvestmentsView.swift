@@ -3,9 +3,10 @@ import FinTrackCore
 import FinTrackData
 
 /// Portföy: toplam değer, maliyet, K/Z ve günlük değişim; varlıklar sınıfa göre.
-/// Alım/satım web'de (bağlı defter satırları ve stopaj orada yazılıyor).
+/// Alım/satım buradan da yapılır (bağlı defter satırları web ile aynı).
 struct InvestmentsView: View {
     @Environment(AppModel.self) private var model
+    @State private var trade: TradeRoute?
 
     private var groups: [(kind: AssetKind, items: [Holding], value: Double)] {
         AssetKind.allCases.compactMap { k in
@@ -46,8 +47,13 @@ struct InvestmentsView: View {
             .listStyle(.insetGrouped)
             .overlay {
                 if model.holdings.isEmpty {
-                    ContentUnavailableView("Yatırım yok", systemImage: "chart.line.uptrend.xyaxis",
-                                           description: Text("Alım ve satımlar web'den eklenir."))
+                    ContentUnavailableView {
+                        Label("Yatırım yok", systemImage: "chart.line.uptrend.xyaxis")
+                    } description: {
+                        Text("Altın, döviz, fon, hisse ya da kripto alımı ekleyin.")
+                    } actions: {
+                        Button("Alım ekle") { trade = TradeRoute(type: "buy") }.buttonStyle(.borderedProminent)
+                    }
                 }
             }
             .refreshable {
@@ -55,6 +61,19 @@ struct InvestmentsView: View {
             }
             .navigationTitle("Yatırımlar")
             .navigationDestination(for: String.self) { InvestmentDetailView(asset: $0) }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { trade = TradeRoute(type: "buy") } label: { Label("Alım", systemImage: "plus.circle") }
+                        if !model.holdings.isEmpty {
+                            Button { trade = TradeRoute(type: "sell") } label: { Label("Satış", systemImage: "minus.circle") }
+                        }
+                        NavigationLink { FundTaxSettingsView() } label: { Label("Fon stopajı", systemImage: "percent") }
+                    } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Alım / satım")
+                }
+            }
+            .sheet(item: $trade) { r in InvestmentTradeView(initialType: r.type, initialAsset: r.asset) }
         }
     }
 
@@ -182,9 +201,20 @@ struct HoldingRow: View {
     }
 }
 
+/// Alım/satım sayfasını açan seçim
+struct TradeRoute: Identifiable, Hashable {
+    var type: String
+    var asset: String? = nil
+    var id: String { "\(type):\(asset ?? "")" }
+}
+
 struct InvestmentDetailView: View {
     @Environment(AppModel.self) private var model
     let asset: String
+    @State private var trade: TradeRoute?
+    @State private var editing: InvestmentTransaction?
+    @State private var pendingDelete: InvestmentTransaction?
+    @State private var errorMessage: String?
 
     private var holding: Holding? { model.holdings.first { $0.asset == asset } }
     private var txs: [InvestmentTransaction] {
@@ -220,8 +250,54 @@ struct InvestmentDetailView: View {
                     if let quoteName { Text(quoteName).textCase(nil) }
                 }
             }
+            Section {
+                HStack(spacing: 12) {
+                    Button { trade = TradeRoute(type: "buy", asset: asset) } label: {
+                        Label("Al", systemImage: "plus.circle.fill").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent).tint(Theme.accent).foregroundStyle(Theme.onAccent)
+                    if (holding?.quantity ?? 0) > 0.000001 {
+                        Button { trade = TradeRoute(type: "sell", asset: asset) } label: {
+                            Label("Sat", systemImage: "minus.circle.fill").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+            }
             Section("İşlemler") {
                 ForEach(txs) { t in
+                    Button { editing = t } label: { tradeRow(t) }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { pendingDelete = t } label: { Label("Sil", systemImage: "trash") }
+                        }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(Asset.label(asset))
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $trade) { r in InvestmentTradeView(initialType: r.type, initialAsset: r.asset) }
+        .sheet(item: $editing) { InvestmentTradeView(editing: $0) }
+        .confirmationDialog("İşlem silinsin mi?", isPresented: Binding(get: { pendingDelete != nil },
+                                                                     set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible) {
+            Button("Sil", role: .destructive) {
+                guard let t = pendingDelete else { return }
+                Task {
+                    do { try await model.deleteInvestment(t); Haptics.success() }
+                    catch { errorMessage = error.localizedDescription }
+                }
+            }
+        } message: { Text("Hesaba yazılan bağlı satırlar da silinir.") }
+        .alert("Silinemedi", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("Tamam", role: .cancel) {}
+        } message: { Text(errorMessage ?? "") }
+    }
+
+    private func tradeRow(_ t: InvestmentTransaction) -> some View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(t.type == "buy" ? "Alım" : "Satış")
@@ -236,12 +312,7 @@ struct InvestmentDetailView: View {
                                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         }
                     }
-                }
-            }
-        }
-        .listStyle(.insetGrouped)
-        .navigationTitle(Asset.label(asset))
-        .navigationBarTitleDisplayMode(.inline)
+                    .contentShape(Rectangle())
     }
 
     private func row(_ label: String, _ value: String, _ color: Color = .primary) -> some View {
