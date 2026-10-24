@@ -1173,6 +1173,134 @@ public final class AppModel {
         Set(budgets.filter { $0.id != id }.flatMap(Calc.budgetCategoryIds))
     }
 
+    // MARK: Hesaplar (web AccountFormModal + accounts.store)
+
+    /// Kartın ödeme planı (son ödeme günü burada)
+    public func cardPlan(_ a: Account) -> PaymentPlan? {
+        let id = PaymentSchedule.planIdFor(.card, a.id)
+        return all.paymentPlans.first { $0.id == id && $0.isLive }
+    }
+
+    /// Yeni hesap ya da düzenleme; kartta son ödeme günü plana yazılır.
+    @discardableResult
+    public func saveAccount(_ draft: AccountDraft, editing: Account?,
+                            newId: String = UUID().uuidString.lowercased()) async throws -> Account {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        if let e = draft.validationError() { throw ServiceError.message(e) }
+        let now = Self.nowISO()
+        let a = draft.build(editing: editing.flatMap { e in all.accounts.first { $0.id == e.id } } ?? editing,
+                            workspaceId: activeWorkspaceId, id: newId, now: now)
+        try await write(a, in: \.accounts)
+        if let plan = draft.cardPlan(for: a, existing: cardPlan(a), workspaceId: activeWorkspaceId, now: now) {
+            await writeFollowUp(plan, in: \.paymentPlans)
+        }
+        return a
+    }
+
+    public func setAccountArchived(_ a: Account, _ on: Bool) async throws {
+        let current = all.accounts.first { $0.id == a.id } ?? a
+        try await write(current.archived(on), in: \.accounts)
+    }
+
+    /// Hesaba bağlı canlı işlem sayısı (silme onayında gösterilir)
+    public func linkedTransactionCount(_ a: Account) -> Int {
+        all.transactions.filter { $0.isLive && Calc.touchesAccount($0, a.id) }.count
+    }
+
+    /// Hesabı sil (web accounts.store remove): bağlı işlemler (ve alanlar arası
+    /// karşı bacakları) silinir, borç ödemeleri geri alınır, bağlı tekrarlayanlar
+    /// silinir; yatırım ve borçlardaki hesap bağlantısı temizlenir.
+    public func deleteAccount(_ a: Account) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let now = Self.nowISO()
+        let linked = all.transactions.filter { $0.isLive && Calc.touchesAccount($0, a.id) }
+        let peers = WorkspaceTransfer.peers(of: linked, in: all.transactions)
+        let current = all.accounts.first { $0.id == a.id } ?? a
+        try await serializedDebtOp {
+            try await self.batched {
+                try await self.write(current.tombstoned(at: now), in: \.accounts)
+                for t in linked + peers { await self.writeFollowUp(t.tombstoned(at: now), in: \.transactions) }
+                var working: [String: Debt] = [:]
+                var order: [String] = []
+                for t in linked + peers {
+                    guard let id = t.debtId, let d = working[id] ?? self.all.debts.first(where: { $0.id == id && $0.isLive })
+                    else { continue }
+                    if working[id] == nil { order.append(id) }
+                    working[id] = DebtPayments.revert(d, payment: t, fx: self.fx)
+                }
+                // Borçların bu hesaba işaret eden ödeme hesabı bağlantısı temizlenir
+                for d in self.all.debts where d.isLive && d.accountId == a.id {
+                    if working[d.id] == nil { order.append(d.id) }
+                    var raw = (working[d.id] ?? d).raw
+                    raw["accountId"] = .null
+                    working[d.id] = Debt(raw: raw)
+                }
+                for id in order { if let d = working[id] { await self.writeFollowUp(d, in: \.debts) } }
+                for r in self.all.recurring where r.isLive && (r.accountId == a.id || r.toAccountId == a.id) {
+                    var raw = r.raw
+                    raw["deleted_at"] = .string(now)
+                    await self.writeFollowUp(RecurringTransaction(raw: raw), in: \.recurring)
+                }
+                for t in self.all.investments where t.isLive
+                    && (t.raw.str("sourceAccountId") == a.id || t.raw.str("targetAccountId") == a.id) {
+                    var raw = t.raw
+                    raw["linkedTransactionId"] = .null
+                    if raw.str("sourceAccountId") == a.id { raw["sourceAccountId"] = .null }
+                    if raw.str("targetAccountId") == a.id { raw["targetAccountId"] = .null }
+                    await self.writeFollowUp(InvestmentTransaction(raw: raw), in: \.investments)
+                }
+            }
+        }
+    }
+
+    // MARK: Borçlar (web debts/page.tsx)
+
+    public func debtPrincipal(_ d: Debt) -> Transaction? { DebtDraft.findPrincipal(d, in: all.transactions) }
+
+    /// Yeni borç (+ isteğe bağlı anapara satırı) ya da düzenleme (+ anapara tarihini taşı).
+    public func saveDebt(_ draft: DebtDraft, editing: Debt?, newId: String = UUID().uuidString.lowercased()) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        if let e = draft.validationError() { throw ServiceError.message(e) }
+        let now = Self.nowISO()
+        let before = editing.flatMap { e in all.debts.first { $0.id == e.id } } ?? editing
+        let d = draft.build(editing: before, workspaceId: activeWorkspaceId, id: newId, now: now)
+        if let deposit = account(draft.depositAccountId), editing == nil, d.totalAmount > 0,
+           deposit.currency != .TRY, fx.rate(deposit.currency) == nil {
+            throw DebtPayments.PaymentError.noRate
+        }
+        try await serializedDebtOp {
+            try await self.write(d, in: \.debts)
+            if let before {
+                if let moved = DebtDraft.movedPrincipal(before: before, borrowDate: draft.borrowDate,
+                                                        txs: self.all.transactions, now: now) {
+                    await self.writeFollowUp(moved, in: \.transactions)
+                }
+            } else if let deposit = self.account(draft.depositAccountId), d.totalAmount > 0 {
+                let tx = DebtDraft.principalTx(for: d, account: deposit, borrowDate: draft.borrowDate, fx: self.fx, now: now,
+                                               id: DeterministicID.uuid("debt-principal:\(d.id)"))
+                await self.writeFollowUp(tx, in: \.transactions)
+            }
+        }
+    }
+
+    public func debtLinkedTransactions(_ d: Debt) -> [Transaction] {
+        DebtDraft.linkedTransactions(d, in: all.transactions)
+    }
+
+    /// Borcu sil; `withTransactions` ise ödemeleri ve anaparayı da (web deleteDebtWithTransactions).
+    public func deleteDebt(_ d: Debt, withTransactions: Bool) async throws {
+        guard userId != nil else { throw ServiceError.notSignedIn }
+        let now = Self.nowISO()
+        let current = all.debts.first { $0.id == d.id } ?? d
+        let linked = withTransactions ? debtLinkedTransactions(current) : []
+        try await serializedDebtOp {
+            try await self.batched {
+                try await self.write(current.tombstoned(at: now), in: \.debts)
+                for t in linked { await self.writeFollowUp(t.tombstoned(at: now), in: \.transactions) }
+            }
+        }
+    }
+
     // MARK: Hedefler
 
     public func goalProgress(_ g: SavingsGoal) -> Goals.Progress {

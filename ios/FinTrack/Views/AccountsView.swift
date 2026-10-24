@@ -7,6 +7,8 @@ struct AccountsView: View {
     @State private var showArchived = false
     @State private var showSettled = false
     @State private var path = NavigationPath()
+    @State private var addingAccount = false
+    @State private var addingDebt = false
 
     private var openOwe: [Debt] { model.debts.filter { $0.owe && !$0.isSettled }.sorted { $0.remaining > $1.remaining } }
     private var openOwed: [Debt] { model.debts.filter { !$0.owe && !$0.isSettled }.sorted { $0.remaining > $1.remaining } }
@@ -74,8 +76,13 @@ struct AccountsView: View {
             .listStyle(.insetGrouped)
             .overlay {
                 if model.accounts.isEmpty {
-                    ContentUnavailableView("Hesap yok", systemImage: "building.columns",
-                                           description: Text("Hesaplar web'den eklenir."))
+                    ContentUnavailableView {
+                        Label("Hesap yok", systemImage: "building.columns")
+                    } description: {
+                        Text("Nakit, banka ya da kredi kartı hesabı ekleyin.")
+                    } actions: {
+                        Button("Hesap ekle") { addingAccount = true }.buttonStyle(.borderedProminent)
+                    }
                 }
             }
             .refreshable { await model.refresh() }
@@ -86,7 +93,18 @@ struct AccountsView: View {
             .navigationDestination(for: PaymentsRoute.self) { _ in PaymentsView() }
             .navigationDestination(for: ForecastRoute.self) { _ in ForecastView() }
             .onAppear(perform: openDebugAccount)
+            .sheet(isPresented: $addingAccount) { AccountFormView(editing: nil) }
+            .sheet(isPresented: $addingDebt) { DebtFormView(editing: nil) }
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { addingAccount = true } label: { Label("Hesap ekle", systemImage: "building.columns") }
+                        Button { addingDebt = true } label: { Label("Borç / alacak ekle", systemImage: "arrow.left.arrow.right") }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Ekle")
+                }
                 if model.accounts.contains(where: \.isArchived) {
                     ToolbarItem(placement: .topBarTrailing) {
                         Toggle(isOn: $showArchived) { Image(systemName: "archivebox") }
@@ -217,6 +235,11 @@ struct AccountDetailView: View {
 
     @AppStorage("fintrack.showPlanned") private var showPlanned = true
     @State private var reconciling = false
+    @State private var editingAccount = false
+    @Environment(\.dismiss) private var dismiss
+
+    /// Güncel hali (düzenleme sonrası)
+    private var current: Account { model.account(account.id) ?? account }
 
     /// Hesabın işlemleri + tekrarlayanların önümüzdeki 60 gündeki dönemleri (web ile aynı)
     private var txs: [Transaction] {
@@ -230,6 +253,7 @@ struct AccountDetailView: View {
     }
 
     var body: some View {
+        let account = current
         let balance = model.balances[account.id] ?? account.initialBalance
         let txs = self.txs
         TransactionList(transactions: txs, perspectiveAccountId: account.id,
@@ -270,6 +294,7 @@ struct AccountDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button { editingAccount = true } label: { Label("Hesabı düzenle", systemImage: "pencil") }
                         Button { reconciling = true } label: { Label("Bakiyeyi eşitle", systemImage: "equal.circle") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -278,6 +303,7 @@ struct AccountDetailView: View {
                 }
             }
             .sheet(isPresented: $reconciling) { ReconcileSheet(account: account) }
+            .sheet(isPresented: $editingAccount) { AccountFormView(editing: account, onDeleted: { dismiss() }) }
             .onAppear {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-reconcile") { reconciling = true }

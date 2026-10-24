@@ -2,7 +2,7 @@ import SwiftUI
 import FinTrackCore
 import FinTrackData
 
-/// Borç satırı: kalan tutar ve ilerleme. Ödeme kaydı web'de (bağlı işlem + taksit sayacı).
+/// Borç satırı: kalan tutar ve ilerleme.
 struct DebtRow: View {
     let debt: Debt
 
@@ -52,6 +52,8 @@ struct DebtDetailView: View {
     @State private var pendingDelete: Transaction?
     @State private var errorMessage: String?
     @State private var showPlan = false
+    @State private var editingDebt = false
+    @Environment(\.dismiss) private var dismiss
 
     /// Güncel hali (ödeme sonrası)
     private var d: Debt { model.debts.first { $0.id == debt.id } ?? debt }
@@ -147,6 +149,10 @@ struct DebtDetailView: View {
         .navigationTitle(d.name)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $paying) { DebtPaySheet(debt: d) }
+        .sheet(isPresented: $editingDebt) { DebtFormView(editing: d, onDeleted: { dismiss() }) }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { Button("Düzenle") { editingDebt = true } }
+        }
         .sheet(item: $editing) { TransactionFormView(editing: $0) }
         .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
     }
