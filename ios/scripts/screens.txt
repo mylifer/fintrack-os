@@ -1,0 +1,10 @@
+# CI ekran görüntüleri: ad|başlatma argümanları (-demo her zaman eklenir)
+01-ozet|
+02-islemler|-tab transactions
+03-hesaplar|-tab accounts
+04-yatirimlar|-tab investments
+05-plan|-tab budgets
+06-hizli-ekle|-quickadd
+07-odeme-takibi|-tab accounts -payments
+08-tahmin|-tab accounts -forecast
+09-ayarlar|-settings
