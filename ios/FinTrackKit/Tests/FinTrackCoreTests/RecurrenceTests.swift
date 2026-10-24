@@ -86,7 +86,12 @@ struct RecurrenceTests {
     @Test func vadesiGelen() {
         #expect(Recurrence.isDue(rec(["nextDueDate": "2026-03-01"]), asOf: "2026-03-01"))
         #expect(!Recurrence.isDue(rec(["nextDueDate": "2026-03-01", "isActive": false]), asOf: "2026-03-05"))
-        #expect(!Recurrence.isDue(rec(["nextDueDate": "2026-03-01", "endDate": "2026-03-02"]), asOf: "2026-03-05"))
+        // Bitiş sıradaki döneme kıyaslanır (web denetim #18): bitişten önceki
+        // üretilmemiş dönem bekler; sıradaki dönem bitişten sonraysa şablon bitmiştir
+        #expect(Recurrence.isDue(rec(["nextDueDate": "2026-03-01", "endDate": "2026-03-02"]), asOf: "2026-03-05"))
+        #expect(Recurrence.isDue(rec(["nextDueDate": "2026-09-15", "endDate": "2026-09-30"]), asOf: "2026-10-05"))
+        #expect(!Recurrence.isDue(rec(["nextDueDate": "2026-10-15", "endDate": "2026-09-30"]), asOf: "2026-10-20"))
+        #expect(!Recurrence.isUpcoming(rec(["nextDueDate": "2026-03-04", "endDate": "2026-03-02"]), today: "2026-03-01"))
         #expect(Recurrence.isUpcoming(rec(["nextDueDate": "2026-03-08"]), today: "2026-03-01"))
         #expect(!Recurrence.isUpcoming(rec(["nextDueDate": "2026-03-09"]), today: "2026-03-01"))
     }

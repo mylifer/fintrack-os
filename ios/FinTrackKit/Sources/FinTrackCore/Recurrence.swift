@@ -78,12 +78,15 @@ public enum Recurrence {
 
     /// Onay bekleyen mi? (web getDue)
     public static func isDue(_ r: RecurringTransaction, asOf: String = DateUtil.today()) -> Bool {
-        r.isActive && !(r.endDate.map { $0 < asOf } ?? false) && !r.nextDueDate.isEmpty && r.nextDueDate <= asOf
+        // Bitiş BUGÜNE değil sıradaki döneme kıyaslanır (web denetim #18): bitişi
+        // geçmiş şablonun bitişten önceki, üretilmemiş dönemleri hâlâ bekler.
+        r.isActive && !(r.endDate.map { r.nextDueDate > $0 } ?? false) && !r.nextDueDate.isEmpty && r.nextDueDate <= asOf
     }
 
     /// Önümüzdeki `days` gün içinde (bugün hariç) sırası gelecek mi? (web recurring-upcoming)
     public static func isUpcoming(_ r: RecurringTransaction, today: String = DateUtil.today(), days: Int = 7) -> Bool {
-        guard r.isActive, !(r.endDate.map { $0 < today } ?? false),
+        // Sıradaki dönem bitişten sonraysa şablon bitmiştir — yaklaşan da yok
+        guard r.isActive, !(r.endDate.map { r.nextDueDate > $0 } ?? false),
               let t = DateUtil.parseDay(today),
               let h = DateUtil.calendar.date(byAdding: .day, value: days, to: t) else { return false }
         return r.nextDueDate > today && r.nextDueDate <= DateUtil.day(h)

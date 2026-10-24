@@ -103,8 +103,26 @@ public enum Calc {
         t.icon != nil && (t.description.hasSuffix("borç girişi") || t.description.hasSuffix("verilen borç"))
     }
 
+    /// Çalışma alanları arası transferin bacağı (kaynakta gider, hedefte gelir;
+    /// borç ödemeli transferde ayrıca ödeme satırı). İki alan da aynı kullanıcının:
+    /// para yalnız yer değiştirir — bakiyeye girer, akışa girmez (web isWorkspaceTransferTx).
+    public static func isWorkspaceTransfer(_ t: Transaction) -> Bool {
+        t.workspaceTransferId != nil
+    }
+
+    /// Alacak tahsilatı satırının ikonu: `icon == nil` ile süzen dağılımlar da dışlasın.
+    public static let debtCollectionIcon = "🤝"
+
+    /// Alacak TAHSİLATI — verdiğim borcun geri ödemesi (gelir tipli, debtId'li
+    /// satır). Para hesaba girer ama gelir değildir (web isDebtCollectionTx).
+    public static func isDebtCollection(_ t: Transaction) -> Bool {
+        t.type == .income && t.debtId != nil
+    }
+
+    /// Anapara hareketi: yatırım özsermayesi, borç anaparası, alacak tahsilatı ya
+    /// da çalışma alanları arası transfer bacağı — akıştan dışlanır, bakiyeye girer.
     public static func isPrincipalMove(_ t: Transaction) -> Bool {
-        isInvestmentPrincipal(t) || isDebtPrincipal(t)
+        isInvestmentPrincipal(t) || isDebtPrincipal(t) || isWorkspaceTransfer(t) || isDebtCollection(t)
     }
 
     /// Gelir/gider/net toplamlarına giren satır: işlenmiş, mutabakat değil, anapara değil.
@@ -291,7 +309,7 @@ public enum Calc {
     /// hariç, kategori payları açılarak). Kategorisiz = "".
     public static func amountByCategory(_ txs: [Transaction], type: TransactionType, fx: FX) -> [String: Double] {
         var minor: [String: Int] = [:]
-        for t in txs where t.type == type && t.icon == nil && !isReconciliation(t) {
+        for t in txs where t.type == type && t.icon == nil && !isReconciliation(t) && !isDebtCollection(t) {
             for s in categorySlices(t) {
                 minor[s.categoryId ?? "", default: 0] += Money.toMinor(s.amountTry ?? fx.toBaseTry(s.amount, t.currency))
             }

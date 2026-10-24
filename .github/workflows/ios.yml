@@ -18,15 +18,18 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
       - name: Xcode sürümü
         run: |
-          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          ls -d /Applications/Xcode*.app
+          # Proje Xcode 27 ile oluşturuldu (LastUpgradeCheck 2700): en yenisi seçilir
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | grep -v beta | sort -V | tail -1)"
           xcodebuild -version
+          xcrun simctl list runtimes | tail -5
 
       - name: FinTrackKit testleri
         working-directory: ios/FinTrackKit
