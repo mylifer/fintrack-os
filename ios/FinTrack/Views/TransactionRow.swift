@@ -15,7 +15,13 @@ struct TransactionRow: View {
             icon
         } title: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.body).lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(title).font(.body).lineLimit(1)
+                    if t.receipt != nil {
+                        Image(systemName: "paperclip").font(.caption).foregroundStyle(.secondary)
+                            .accessibilityLabel("Fiş ekli")
+                    }
+                }
                 HStack(spacing: 4) {
                     Text(subtitle).lineLimit(1)
                     if showsBadge, let badge {

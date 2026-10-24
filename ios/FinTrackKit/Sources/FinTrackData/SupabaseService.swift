@@ -260,6 +260,41 @@ public final class SupabaseService: Sendable {
         }
     }
 
+    // MARK: Fiş / fatura eki (web lib/receipts.ts, migration 0019)
+
+    static let receiptBucket = "receipts"
+
+    func uploadReceipt(path: String, data: Data, contentType: String) async throws {
+        do {
+            _ = try await client.storage.from(Self.receiptBucket)
+                .upload(path, data: data, options: FileOptions(contentType: contentType, upsert: false))
+        } catch { throw Self.receiptFriendly(error) }
+    }
+
+    /// Kısa ömürlü (2 dk) imzalı bağlantı
+    func receiptURL(path: String) async throws -> URL {
+        do { return try await client.storage.from(Self.receiptBucket).createSignedURL(path: path, expiresIn: 120) }
+        catch { throw Self.receiptFriendly(error) }
+    }
+
+    func removeReceipt(path: String) async throws {
+        do { _ = try await client.storage.from(Self.receiptBucket).remove(paths: [path]) }
+        catch { throw Self.receiptFriendly(error) }
+    }
+
+    static func receiptFriendly(_ error: Error) -> Error {
+        let msg = "\(error)".lowercased()
+        if msg.contains("bucket not found") { return ServiceError.message("Sunucu tarafı hazır değil (0019 migration uygulanmamış).") }
+        if msg.contains("row-level security") || msg.contains("unauthori") || msg.contains("jwt") {
+            return ServiceError.message("Oturum doğrulanamadı — tekrar giriş yapıp deneyin.")
+        }
+        if msg.contains("exceeded") || msg.contains("too large") || msg.contains("payload") {
+            return ServiceError.message("Dosya çok büyük (en çok 5 MB).")
+        }
+        if isNetworkError(error) { return ServiceError.message("Bağlantı yok — fiş eklemek için internet gerekli.") }
+        return ServiceError.message("Fiş yüklenemedi, tekrar deneyin.")
+    }
+
     // MARK: Çalışma alanı paylaşımı (web lib/sharing.ts, migration 0021)
 
     public struct Member: Decodable, Hashable, Sendable, Identifiable {

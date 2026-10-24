@@ -250,6 +250,10 @@ struct TransactionFormView: View {
                     }
                 }
 
+                if let editing, editing.plannedRecurringId == nil, editing.isLive {
+                    ReceiptSection(transaction: editing)
+                }
+
                 if let editing, Refund.canRefund(editing) {
                     Section {
                         Button { refunding = true } label: { Label("İade işle", systemImage: "arrow.uturn.backward.circle") }

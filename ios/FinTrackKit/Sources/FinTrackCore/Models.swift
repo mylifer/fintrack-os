@@ -370,6 +370,19 @@ public struct Transaction: SyncRecord, Hashable {
         ]
     }
 
+    /// Fiş / fatura eki (Supabase Storage "receipts"; satırda yalnız yol ve bilgiler)
+    public struct Receipt: Hashable, Sendable {
+        public var path: String
+        public var name: String
+        public var type: String
+        public var size: Double
+    }
+
+    public var receipt: Receipt? {
+        guard let o = raw["receipt"]?.object, let p = o.str("path") else { return nil }
+        return Receipt(path: p, name: o.str("name") ?? "fiş", type: o.str("type") ?? "", size: o.num("size") ?? 0)
+    }
+
     /// Tekrarlayandan türetilmiş sanal (yazılmamış) satır mı? Şablon kimliği.
     public var plannedRecurringId: String? {
         systemKind == "planned-recurring" ? raw.str("recurringId") : nil

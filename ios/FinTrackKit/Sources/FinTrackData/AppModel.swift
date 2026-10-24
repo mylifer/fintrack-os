@@ -711,6 +711,39 @@ public final class AppModel {
         return rows.count
     }
 
+    // MARK: Fiş eki (web ReceiptField)
+
+    /// Görseli (önceden küçültülmüş JPEG) ya da PDF'i yükle, işleme bağla; eskisi silinir.
+    public func attachReceipt(_ t: Transaction, data: Data, name: String, contentType: String) async throws {
+        guard let service, let uid = userId, !isDemo else { throw ServiceError.message("Örnek veri modunda fiş eklenemez.") }
+        guard data.count <= 5 * 1024 * 1024 else { throw ServiceError.message("Dosya çok büyük (en çok 5 MB).") }
+        let ext = contentType == "application/pdf" ? "pdf" : contentType == "image/png" ? "png" : "jpg"
+        let path = "\(uid)/\(t.id)-\(UUID().uuidString.lowercased().prefix(8)).\(ext)"
+        try await service.uploadReceipt(path: path, data: data, contentType: contentType)
+        let current = all.transactions.first { $0.id == t.id } ?? t
+        let old = current.receipt
+        var raw = current.raw
+        raw["receipt"] = .object(["path": .string(path), "name": .string(String(name.prefix(120))),
+                                  "type": .string(contentType), "size": .number(Double(data.count))])
+        try await write(Transaction(raw: raw), in: \.transactions)
+        if let old { try? await service.removeReceipt(path: old.path) }
+    }
+
+    public func receiptURL(_ t: Transaction) async throws -> URL? {
+        guard let service, let r = t.receipt else { return nil }
+        return try await service.receiptURL(path: r.path)
+    }
+
+    public func removeReceipt(_ t: Transaction) async throws {
+        guard let service else { return }
+        let current = all.transactions.first { $0.id == t.id } ?? t
+        guard let r = current.receipt else { return }
+        var raw = current.raw
+        raw["receipt"] = .null
+        try await write(Transaction(raw: raw), in: \.transactions)
+        try? await service.removeReceipt(path: r.path)
+    }
+
     /// Bakiye eşitleme (web ReconcileBalanceModal): gerçek bakiyeyle fark tek satır.
     public func reconcile(_ account: Account, actual input: Double, id: String = UUID().uuidString.lowercased()) async throws {
         guard userId != nil else { throw ServiceError.notSignedIn }
