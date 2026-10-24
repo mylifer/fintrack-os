@@ -260,6 +260,73 @@ public final class SupabaseService: Sendable {
         }
     }
 
+    // MARK: Çalışma alanı paylaşımı (web lib/sharing.ts, migration 0021)
+
+    public struct Member: Decodable, Hashable, Sendable, Identifiable {
+        public let workspace_id: String
+        public let user_id: String
+        public let role: String
+        public let email: String?
+        public let created_at: String
+        public var id: String { workspace_id + user_id }
+    }
+
+    func listMembers(_ workspaceId: String) async throws -> [Member] {
+        do {
+            return try await client.from("workspace_members")
+                .select("workspace_id, user_id, role, email, created_at")
+                .eq("workspace_id", value: workspaceId)
+                .order("created_at", ascending: true)
+                .execute().value
+        } catch { throw Self.friendly(error) }
+    }
+
+    /// Davet kodu (tek kullanımlık, 7 gün) — yalnız bir kez döner
+    func createInvite(_ workspaceId: String) async throws -> String {
+        do {
+            let token: String = try await client.rpc("create_workspace_invite", params: ["p_workspace": workspaceId])
+                .execute().value
+            return token
+        } catch { throw Self.friendly(error) }
+    }
+
+    /// Daveti kabul et; katılınan alanın kimliği döner
+    func acceptInvite(_ token: String) async throws -> String {
+        do {
+            let ws: String = try await client.rpc("accept_workspace_invite", params: ["p_token": token]).execute().value
+            return ws
+        } catch { throw Self.friendly(error) }
+    }
+
+    /// Sahip üyeyi çıkarır ya da üye kendisi ayrılır
+    func removeMember(_ workspaceId: String, userId: String) async throws {
+        do {
+            let res = try await client.from("workspace_members").delete(count: .exact)
+                .eq("workspace_id", value: workspaceId).eq("user_id", value: userId).execute()
+            if res.count == 0 { throw ServiceError.message("Üyelik bulunamadı ya da bu işlem için yetkiniz yok.") }
+        } catch let e as ServiceError { throw e } catch { throw Self.friendly(error) }
+    }
+
+    /// Web friendly(): sunucu iletilerini anlaşılır Türkçeye çevirir
+    static func friendly(_ error: Error) -> Error {
+        let msg = "\(error)"
+        if msg.contains("42P01") || msg.contains("PGRST205") || msg.contains("PGRST202") || msg.contains("does not exist") {
+            return ServiceError.message("Sunucu tarafı hazır değil (0021 migration uygulanmamış).")
+        }
+        if msg.contains("geçersiz ya da süresi dolmuş") {
+            return ServiceError.message("Davet geçersiz, kullanılmış ya da süresi dolmuş. Yeni bağlantı isteyin.")
+        }
+        if msg.contains("kendi alanınıza") { return ServiceError.message("Bu davet sizin kendi alanınız için — eşinizle paylaşın.") }
+        if msg.contains("varsayılan alan") {
+            return ServiceError.message("Varsayılan \"Genel\" alan paylaşılamaz. Aile için ayrı bir alan oluşturun.")
+        }
+        if msg.contains("42501") || msg.contains("row-level security") || msg.contains("yetki yok") || msg.contains("alan bulunamadı") {
+            return ServiceError.message("Bu işlem için yetkiniz yok. İki adımlı doğrulama açıksa kodla giriş yaptığınızdan emin olun.")
+        }
+        if isNetworkError(error) { return ServiceError.message("Bağlantı yok — paylaşım için internet gerekli.") }
+        return ServiceError.message("İşlem tamamlanamadı, tekrar deneyin.")
+    }
+
     /// Hazır (damgalı) satırı yaz — çevrimdışı kuyruğun gönderimi de bunu kullanır.
     func upsertRow(_ table: String, _ row: JSONObject, userId: String) async throws {
         var row = row

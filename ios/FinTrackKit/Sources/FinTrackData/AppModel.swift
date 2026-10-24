@@ -1658,6 +1658,54 @@ public final class AppModel {
         }
     }
 
+    // MARK: Paylaşım (web SharingSettings)
+
+    public typealias Member = SupabaseService.Member
+
+    /// Bu alanın sahibi miyim (paylaşılan alanlarda başkasınındır)
+    public func isOwner(_ w: Workspace) -> Bool { !memberIds.contains(w.id) }
+    public func isSharedWithMe(_ w: Workspace) -> Bool { memberIds.contains(w.id) }
+
+    public func members(of w: Workspace) async throws -> [Member] {
+        guard let service, !isDemo else { return [] }
+        return try await service.listMembers(w.id)
+    }
+
+    /// Davet bağlantısı (web: <site>/davet/<kod>); karşı taraf web'de ya da iPhone'da kodla katılır
+    public func createInviteLink(_ w: Workspace, base: URL) async throws -> (url: URL, token: String) {
+        guard let service, !isDemo else { throw ServiceError.message("Örnek veri modunda paylaşım yok.") }
+        if w.isDefault { throw ServiceError.message("Varsayılan \"Genel\" alan paylaşılamaz. Aile için ayrı bir alan oluşturun.") }
+        let token = try await service.createInvite(w.id)
+        return (base.appendingPathComponent("davet").appendingPathComponent(token), token)
+    }
+
+    /// Davet bağlantısını ya da kodunu kabul et; alan listesi yenilenir ve o alana geçilir
+    public func acceptInvite(_ input: String) async throws {
+        guard let service, !isDemo else { throw ServiceError.message("Örnek veri modunda paylaşım yok.") }
+        let token = input.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "/").last.map(String.init) ?? ""
+        guard token.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
+            throw ServiceError.message("Davet kodu tanınmadı. Bağlantının tamamını yapıştırın.")
+        }
+        let ws = try await service.acceptInvite(token)
+        await refresh()
+        if workspaces.contains(where: { $0.id == ws }) { setActiveWorkspace(ws) }
+    }
+
+    /// Üyeyi çıkar (sahip) ya da alandan ayrıl (üye)
+    public func removeMember(_ m: Member) async throws {
+        guard let service, !isDemo else { return }
+        try await service.removeMember(m.workspace_id, userId: m.user_id)
+        await refresh()
+    }
+
+    public func leaveWorkspace(_ w: Workspace) async throws {
+        guard let service, let uid = userId, !isDemo else { return }
+        try await service.removeMember(w.id, userId: uid)
+        if activeWorkspaceId == w.id, let d = defaultWorkspaceId { setActiveWorkspace(d) }
+        await refresh()
+    }
+
     // MARK: Hedefler
 
     public func goalProgress(_ g: SavingsGoal) -> Goals.Progress {

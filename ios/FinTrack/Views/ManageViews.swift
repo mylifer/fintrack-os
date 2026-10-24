@@ -308,6 +308,8 @@ struct PeopleManageView: View {
 
 struct WorkspacesManageView: View {
     @Environment(AppModel.self) private var model
+    @State private var joining = false
+    @State private var inviteText = ""
     @State private var adding = false
     @State private var renaming: Workspace?
     @State private var nameText = ""
@@ -328,11 +330,29 @@ struct WorkspacesManageView: View {
                         }
                     }
                     .swipeActions(edge: .trailing) {
-                        Button("Yeniden adlandır") { nameText = w.name; renaming = w }.tint(Theme.tint)
+                        if model.isOwner(w) {
+                            Button("Yeniden adlandır") { nameText = w.name; renaming = w }.tint(Theme.tint)
+                        }
                     }
                 }
             } footer: {
-                Text("Dokunun: alana geçin. Sola kaydırın: yeniden adlandırın. Paylaşım ve davetler web'de (Ayarlar → Çalışma alanları).")
+                Text("Dokunun: alana geçin. Sola kaydırın: yeniden adlandırın.")
+            }
+            Section {
+                ForEach(model.workspaces.filter { !$0.isDefault }) { w in
+                    NavigationLink { WorkspaceSharingView(workspace: w) } label: {
+                        HStack {
+                            Text(w.name)
+                            Spacer()
+                            Text(model.isSharedWithMe(w) ? "benimle paylaşıldı" : "paylaş").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Button { inviteText = ""; joining = true } label: { Label("Davetle bir alana katıl", systemImage: "person.badge.plus") }
+            } header: {
+                Text("Paylaşım")
+            } footer: {
+                Text("Eşinizle ortak bütçe için ayrı bir alan açıp davet bağlantısı gönderin; o kendi hesabıyla katılır ve alanın tüm verisini görür, düzenler. Varsayılan alan paylaşılamaz.")
             }
         }
         .listStyle(.insetGrouped)
@@ -341,6 +361,19 @@ struct WorkspacesManageView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { nameText = ""; adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("Alan ekle")
             }
+        }
+        .alert("Davetle katıl", isPresented: $joining) {
+            TextField("Davet bağlantısı ya da kodu", text: $inviteText)
+            Button("Katıl") {
+                let t = inviteText
+                Task {
+                    do { try await model.acceptInvite(t); Haptics.success() }
+                    catch { errorMessage = error.localizedDescription }
+                }
+            }
+            Button("Vazgeç", role: .cancel) {}
+        } message: {
+            Text("Size gönderilen bağlantıyı yapıştırın.")
         }
         .alert("Yeni çalışma alanı", isPresented: $adding) {
             TextField("Ad (örn. Ev, İş)", text: $nameText)
@@ -406,5 +439,95 @@ struct PersonDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .transactionEditor($editing)
             .deleteConfirmation($pendingDelete, errorMessage: $errorMessage)
+    }
+}
+
+/// Bir alanın paylaşımı (web SharingSettings): üyeler, davet bağlantısı, çıkar / ayrıl.
+struct WorkspaceSharingView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let workspace: Workspace
+    @State private var members: [AppModel.Member] = []
+    @State private var loading = true
+    @State private var link: URL?
+    @State private var busy = false
+    @State private var errorMessage: String?
+    @State private var confirmLeave = false
+
+    var body: some View {
+        List {
+            Section("Üyeler") {
+                if loading { ProgressView() }
+                ForEach(members) { m in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(m.email ?? "—")
+                            Text(m.role == "owner" ? "Sahip" : "Düzenleyebilir").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .swipeActions {
+                        if model.isOwner(workspace) && m.role != "owner" {
+                            Button("Çıkar", role: .destructive) { run { try await model.removeMember(m); await load() } }
+                        }
+                    }
+                }
+                if !loading && members.isEmpty { Text("Henüz kimseyle paylaşılmadı").foregroundStyle(.secondary) }
+            }
+            if model.isOwner(workspace) {
+                Section {
+                    if let link {
+                        ShareLink(item: link, subject: Text("FinTrack davet"),
+                                  message: Text("FinTrack'te \"\(workspace.name)\" alanına katıl")) {
+                            Label("Bağlantıyı gönder", systemImage: "square.and.arrow.up")
+                        }
+                        Text(link.absoluteString).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                    } else {
+                        Button { createLink() } label: { Label("Davet bağlantısı oluştur", systemImage: "link") }
+                            .disabled(busy)
+                    }
+                } footer: {
+                    Text("Bağlantı tek kullanımlık ve 7 gün geçerli. Karşı taraf web'de açabilir ya da iPhone'da Çalışma alanları → Davetle katıl'a yapıştırır.")
+                }
+            } else {
+                Section {
+                    Button("Bu alandan ayrıl", role: .destructive) { confirmLeave = true }
+                } footer: {
+                    Text("Ayrılınca alanın verisi bu hesapta görünmez; alan sahibinde kalır.")
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(workspace.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+        .refreshable { await load() }
+        .confirmationDialog("Alandan ayrılınsın mı?", isPresented: $confirmLeave, titleVisibility: .visible) {
+            Button("Ayrıl", role: .destructive) { run { try await model.leaveWorkspace(workspace); dismiss() } }
+        }
+        .alert("İşlem yapılamadı", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("Tamam", role: .cancel) {}
+        } message: { Text(errorMessage ?? "") }
+    }
+
+    private func load() async {
+        loading = true
+        do { members = try await model.members(of: workspace) } catch { errorMessage = error.localizedDescription }
+        loading = false
+    }
+
+    private func createLink() {
+        busy = true
+        Task {
+            do { link = try await model.createInviteLink(workspace, base: WebLinks.base).url }
+            catch { errorMessage = error.localizedDescription }
+            busy = false
+        }
+    }
+
+    private func run(_ op: @escaping () async throws -> Void) {
+        Task {
+            do { try await op(); Haptics.success() } catch { errorMessage = error.localizedDescription }
+        }
     }
 }
