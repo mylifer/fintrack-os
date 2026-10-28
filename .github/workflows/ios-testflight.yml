@@ -62,9 +62,19 @@ jobs:
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
-          key="$RUNNER_TEMP/AuthKey.p8"
-          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          # Not Defteri'nden yapıştırılan metinde \r ve boşluklar olabilir; Xcode bunları kabul etmez
+          kid=$(printf '%s' "$ASC_KEY_ID" | tr -d '[:space:]')
+          iss=$(printf '%s' "$ASC_ISSUER_ID" | tr -d '[:space:]')
+          echo "::add-mask::$kid"
+          echo "ASC_KEY_ID=$kid" >> "$GITHUB_ENV"
+          echo "ASC_ISSUER_ID=$iss" >> "$GITHUB_ENV"
+          key="$RUNNER_TEMP/private_keys/AuthKey_$kid.p8"
+          mkdir -p "$(dirname "$key")"
+          printf '%s\n' "$ASC_KEY_P8" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^$' > "$key"
+          echo "Key ID ${#kid} karakter, Issuer ID ${#iss} karakter; anahtar $(wc -l < "$key" | tr -d ' ') satır"
+          head -1 "$key" | grep -q 'BEGIN PRIVATE KEY' || echo "::warning::.p8 metni '-----BEGIN PRIVATE KEY-----' ile başlamıyor"
           echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+          export ASC_KEY_ID="$kid" ASC_ISSUER_ID="$iss"
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install -q 'pyjwt[crypto]'
           ASC_KEY_PATH="$key" "$RUNNER_TEMP/venv/bin/python" ios/scripts/asc.py
@@ -139,4 +149,4 @@ jobs:
 
       - name: Gizli dosyaları temizle
         if: always()
-        run: rm -f "$RUNNER_TEMP/AuthKey.p8" ios/Config/Secrets.xcconfig ios/Config/Local.xcconfig
+        run: rm -rf "$RUNNER_TEMP/private_keys" ios/Config/Secrets.xcconfig ios/Config/Local.xcconfig
