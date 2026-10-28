@@ -11,10 +11,11 @@ sürümü kendisi günceller. App Store'da yayın yok: yalnız "iç test" (siz).
 
 Bir kerelik:
 1. **appstoreconnect.apple.com → Users and Access → Integrations → App Store Connect API**:
-   (ilk seferde "Request Access") **+** → ad `GitHub`, erişim **Admin** → **Download** (`.p8`
+   **Team Keys** sekmesi (ilk seferde "Request Access") **+** → ad `GitHub`, erişim **Admin** → **Download** (`.p8`
    yalnız bir kez indirilir). Sayfadaki **Issuer ID** ve anahtarın **Key ID**'si gerekir.
 2. **GitHub → depo → Settings → Secrets and variables → Actions → New repository secret**:
-   `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (.p8 dosyasının tüm metni). Supabase adresi ve
+   yalnız `ASC_KEY_P8` (.p8 dosyasının tüm metni). Key ID ve Issuer ID gizli değildir; iş akışında
+   yazılıdır (başka anahtar için `ASC_KEY_ID` / `ASC_ISSUER_ID` gizlileriyle değiştirilir). Supabase adresi ve
    herkese açık anahtar canlı siteden okunur (`scripts/site-keys.py`); okunamazsa
    `SUPABASE_URL`, `SUPABASE_ANON_KEY` gizlilerini de ekleyin.
 3. İş akışını çalıştırın (Actions → iOS TestFlight → Run workflow). İlk çalışma paket

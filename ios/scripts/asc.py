@@ -48,7 +48,8 @@ def ensure_bundle_id(identifier: str, name: str):
     q = urllib.parse.quote(identifier)
     st, res = call("GET", f"/bundleIds?filter[identifier]={q}&limit=5")
     if st == 401:
-        fail("App Store Connect anahtarı reddedildi: ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 gizlilerini kontrol edin.")
+        fail(f"App Store Connect anahtarı reddedildi (Key ID {os.environ['ASC_KEY_ID']}). ASC_KEY_P8 bu Key ID'li "
+             "Team Keys anahtarının dosyası olmalı; Individual Keys anahtarı çalışmaz.")
     if st == 403:
         fail("Anahtarın yetkisi yetmiyor: App Store Connect → Users and Access → Integrations'ta 'Admin' rolüyle yeni anahtar açın.")
     for d in res.get("data", []):
