@@ -19,7 +19,7 @@ struct LoginView: View {
                         .foregroundStyle(Theme.onAccent)
                         .frame(width: 56, height: 56)
                         .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    Text("FinTrack").font(.largeTitle.bold())
+                    Text("Orbit").font(.largeTitle.bold())
                     Text("Web'deki hesabınızla giriş yapın.")
                         .foregroundStyle(.secondary)
                 }

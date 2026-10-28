@@ -91,7 +91,7 @@ struct EmptyState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: "chart.line.uptrend.xyaxis").foregroundStyle(accent)
-            Text("FinTrack").font(.headline)
+            Text("Orbit").font(.headline)
             Text(text).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -381,7 +381,7 @@ struct WidgetRoot: View {
                 }
             } else {
                 switch family {
-                case .accessoryRectangular, .accessoryCircular, .accessoryInline: Text("FinTrack")
+                case .accessoryRectangular, .accessoryCircular, .accessoryInline: Text("Orbit")
                 default: EmptyState()
                 }
             }
@@ -498,7 +498,7 @@ struct UpcomingWidgetView: View {
                 }
             } else {
                 switch family {
-                case .accessoryRectangular: Text("FinTrack")
+                case .accessoryRectangular: Text("Orbit")
                 default: EmptyState()
                 }
             }
@@ -526,8 +526,8 @@ struct QuickAddControl: ControlWidget {
                 Label("İşlem ekle", systemImage: "plus.circle.fill")
             }
         }
-        .displayName("FinTrack: İşlem ekle")
-        .description("FinTrack'i yeni işlem sayfasıyla açar.")
+        .displayName("Orbit: İşlem ekle")
+        .description("Orbit'i yeni işlem sayfasıyla açar.")
     }
 }
 

@@ -480,8 +480,8 @@ struct WorkspaceSharingView: View {
             if model.isOwner(workspace) {
                 Section {
                     if let link {
-                        ShareLink(item: link, subject: Text("FinTrack davet"),
-                                  message: Text("FinTrack'te \"\(workspace.name)\" alanına katıl")) {
+                        ShareLink(item: link, subject: Text("Orbit davet"),
+                                  message: Text("Orbit'te \"\(workspace.name)\" alanına katıl")) {
                             Label("Bağlantıyı gönder", systemImage: "square.and.arrow.up")
                         }
                         Text(link.absoluteString).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)

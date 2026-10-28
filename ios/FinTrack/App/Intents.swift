@@ -1,11 +1,11 @@
 import AppIntents
 import FinTrackCore
 
-/// "FinTrack ile harcama ekle" — Siri, Kestirmeler, Spotlight ve Eylem düğmesi.
+/// "Orbit ile harcama ekle" — Siri, Kestirmeler, Spotlight ve Eylem düğmesi.
 /// Uygulamayı hızlı ekleme sayfasıyla açar (kilit açıksa Face ID sorulur).
 struct QuickAddIntent: AppIntent {
     static let title: LocalizedStringResource = "İşlem ekle"
-    static let description = IntentDescription("FinTrack'i yeni işlem sayfasıyla açar.")
+    static let description = IntentDescription("Orbit'i yeni işlem sayfasıyla açar.")
     static let openAppWhenRun = true
 
     @MainActor
@@ -41,12 +41,12 @@ struct MonthSpendIntent: AppIntent {
 
     static func answer(_ s: WidgetSnapshot?, today: String = DateUtil.today()) -> String {
         guard let s, s.month == String(today.prefix(7)) else {
-            return "Bu ayın özeti henüz yok. FinTrack'i bir kez açınca hazır olur."
+            return "Bu ayın özeti henüz yok. Orbit'i bir kez açınca hazır olur."
         }
         let month = s.monthTitle.components(separatedBy: " ").first ?? s.monthTitle
         var parts: [String] = []
         if s.amountsHidden {
-            parts.append("Tutarlar gizli. Ayrıntılar için FinTrack'i aç.")
+            parts.append("Tutarlar gizli. Ayrıntılar için Orbit'i aç.")
         } else {
             parts.append("\(month) ayında \(Fmt.whole(s.expense)) harcadın.")
             if s.income > 0 { parts.append("Gelir \(Fmt.whole(s.income)).") }

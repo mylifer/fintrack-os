@@ -1,6 +1,7 @@
-# FinTrack iOS (SwiftUI)
+# Orbit — iOS (SwiftUI)
 
-Web ile aynı Supabase'e bağlanan, günlük kullanım için native iPhone uygulaması.
+Web ile aynı Supabase'e bağlanan, günlük kullanım için native iPhone uygulaması. Telefonda görünen
+adı **Orbit**; kodda ve paket kimliğinde (`com.mylifer.fintrack`) eski adı FinTrack kalır.
 Plan ve veri kuralları: [docs/ios-native-plan.md](../docs/ios-native-plan.md).
 
 ## Mac'siz kurulum (TestFlight) — önerilen
@@ -20,7 +21,7 @@ Bir kerelik:
    `SUPABASE_URL`, `SUPABASE_ANON_KEY` gizlilerini de ekleyin.
 3. İş akışını çalıştırın (Actions → iOS TestFlight → Run workflow). İlk çalışma paket
    kimliklerini kaydeder ve "uygulama kaydı yok" diye durur.
-4. **App Store Connect → Apps → + → New App**: iOS, ad `FinTrack <adınız>` (ad tüm App Store'da
+4. **App Store Connect → Apps → + → New App**: iOS, ad `Orbit <adınız>` (ad tüm App Store'da
    benzersiz olmalı), dil Türkçe, Bundle ID `com.mylifer.fintrack`, SKU `fintrack`. İş akışını
    yeniden çalıştırın.
 5. Uygulama → **TestFlight → Internal Testing → +** grup açın, kendinizi ekleyin, "Automatically
@@ -115,7 +116,7 @@ Ayarlar → Düzenle: **Kategoriler, Kişiler, Çalışma alanları (paylaşım 
 
 Bildirimler (Ayarlar → Hatırlatmalar): kart son ödeme günü, tekrarlayan ve planlı işlemler (sabah 9),
 bütçe uyarı eşiği geçilince / aşılınca. Hızlı erişim: simgeye basılı tut, widget'lar, Denetim Merkezi
-düğmesi (iOS 18), Siri ("FinTrack ile harcama ekle", "FinTrack bu ay ne kadar harcadım").
+düğmesi (iOS 18), Siri ("Orbit ile harcama ekle", "Orbit bu ay ne kadar harcadım").
 
 Web'de kalanlar: banka ekstresi / CSV **içe aktarma**, **yedekleme / geri yükleme**, kategori ağacını
 toplu yeniden düzenleme, PIN kilidi (iPhone'da Face ID).

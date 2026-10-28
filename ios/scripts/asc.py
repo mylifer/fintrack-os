@@ -73,7 +73,7 @@ def main():
     st, res = call("GET", f"/apps?filter[bundleId]={urllib.parse.quote(bid)}&limit=1")
     if not res.get("data"):
         fail(f"App Store Connect'te uygulama kaydı yok. appstoreconnect.apple.com → Apps → + → New App: "
-             f"iOS, ad 'FinTrack <adınız>' (adlar tüm App Store'da benzersiz olmalı), dil Türkçe, "
+             f"iOS, ad 'Orbit <adınız>' (adlar tüm App Store'da benzersiz olmalı), dil Türkçe, "
              f"Bundle ID '{bid}', SKU 'fintrack'. Sonra bu iş akışını yeniden çalıştırın.")
     print(f"✓ uygulama kaydı: {res['data'][0]['attributes'].get('name')}")
     # Ekip kimliği = paket kimliğinin ön eki (seedId); gizli olarak verilmediyse buradan

@@ -80,7 +80,7 @@ final class AppLock {
             return
         }
         do {
-            if try await ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "FinTrack'i açmak için") {
+            if try await ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Orbit'i açmak için") {
                 isLocked = false
                 errorMessage = nil
             }
@@ -111,7 +111,7 @@ struct LockView: View {
                 .frame(width: 72, height: 72)
                 .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .accessibilityHidden(true)
-            Text("FinTrack kilitli").font(.title2.bold())
+            Text("Orbit kilitli").font(.title2.bold())
             if let e = lock.errorMessage {
                 Text(e).font(.footnote).foregroundStyle(.secondary)
             }
@@ -153,7 +153,7 @@ struct PrivacyCover: View {
                 .foregroundStyle(Theme.onAccent)
                 .frame(width: 64, height: 64)
                 .background(Theme.accent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            Text("FinTrack").font(.title3.bold())
+            Text("Orbit").font(.title3.bold())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))

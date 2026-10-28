@@ -200,7 +200,7 @@ struct TransactionsView: View {
             Button { showTags = true } label: { Label("Etiketler", systemImage: "tag") }
             ShareLink(item: CSVFile(transactions: exportList, categories: model.categories,
                                     accounts: model.accounts, name: csvName),
-                      preview: SharePreview("FinTrack işlemleri")) {
+                      preview: SharePreview("Orbit işlemleri")) {
                 Label("CSV olarak paylaş", systemImage: "square.and.arrow.up")
             }
         } label: {

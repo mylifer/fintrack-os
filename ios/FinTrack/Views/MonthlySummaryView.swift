@@ -266,7 +266,7 @@ struct MonthlySummaryView: View {
     }
 
     private func shareText(_ s: MonthlySummary) -> String {
-        var lines = ["FinTrack · \(DateUtil.monthTitle(month)) özeti" + (s.partial ? " (\(s.daysCounted). güne kadar)" : ""),
+        var lines = ["Orbit · \(DateUtil.monthTitle(month)) özeti" + (s.partial ? " (\(s.daysCounted). güne kadar)" : ""),
                      "Gelir: \(Fmt.currency(s.current.income))",
                      "Gider: \(Fmt.currency(s.current.expense))",
                      "Net: \(Fmt.currency(s.current.net))",
