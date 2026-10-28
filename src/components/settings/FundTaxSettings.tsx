@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { useInvestmentStore, useSettingsStore } from '@/store'
 import { isTefasAsset, tefasAsset, tefasCodesIn } from '@/lib/tefas'
@@ -24,6 +24,14 @@ function RateInput({ value, placeholder, onChange, label }: {
   onChange: (v: string) => void
   label: string
 }) {
+  // Yazılan metin yerelde tutulur: dışarıdan gelen değer sayıdan yeniden
+  // üretildiği için "0," / "0." gibi ara hâller silinip alan boşalıyordu.
+  const [text, setText] = useState(value)
+  const [lastValue, setLastValue] = useState(value)
+  if (value !== lastValue) {
+    setLastValue(value)
+    if (parseFloat(text.replace(',', '.')) !== parseFloat(value)) setText(value)
+  }
   return (
     <div className="relative w-[92px] flex-shrink-0">
       <input
@@ -32,10 +40,10 @@ function RateInput({ value, placeholder, onChange, label }: {
         min={0}
         max={100}
         step="0.1"
-        value={value}
+        value={text}
         placeholder={placeholder}
         aria-label={label}
-        onChange={e => onChange(e.target.value)}
+        onChange={e => { setText(e.target.value); onChange(e.target.value.replace(',', '.')) }}
         className="h-8 w-full rounded-lg border border-input bg-background dark:bg-muted pl-2.5 pr-6 text-sm tabular-nums transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
       />
       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>

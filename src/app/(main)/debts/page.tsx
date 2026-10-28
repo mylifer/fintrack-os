@@ -16,7 +16,7 @@ import { formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import { useCountUp } from '@/lib/hooks/useCountUp'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { parseCurrencyInput } from '@/lib/utils/currency'
-import { toBaseTry, fromBaseTry } from '@/lib/utils/fx'
+import { toBaseTry, fromBaseTry, rateFor } from '@/lib/utils/fx'
 import type { Account, Debt, DebtType, DebtDirection, DebtWithRemaining, Transaction } from '@/types'
 import { enrichDebt, DEBT_COLLECTION_ICON } from '@/lib/utils/calculations'
 import { debtPrincipalDescription, findDebtPrincipalTx, debtLinkedTransactions } from '@/lib/utils/debt-links'
@@ -215,7 +215,8 @@ function principalDate(borrowDate: string): string {
 }
 
 function emptyPayForm() {
-  return { amountStr: '', accountId: '', date: today() }
+  // amountEdited: kullanıcı tutara dokunduysa hesap değişince öneri yeniden yazılmaz
+  return { amountStr: '', accountId: '', date: today(), amountEdited: false }
 }
 
 function emptyForm() {
@@ -440,14 +441,27 @@ export default function DebtsPage() {
     await updateTx(tx.id, patch)
   }
 
+  /* Önerilen tutar: sıradaki taksit TL bazlıdır ama alan seçili hesabın para
+     biriminde girilir — çevrilmezse USD hesapta 5.000 TL'lik taksit $5.000
+     önerilir. Kur yoksa öneri boş kalır (yanlış tutar önermektense). */
+  function suggestedPayStr(debt: DebtWithRemaining, accountId: string): string {
+    const account = accounts.find(a => a.id === accountId)
+    const tryAmount = nextInstallmentAmount(debt)
+    if (!account || account.currency === 'TRY') return fmt(tryAmount)
+    const r = rateFor(account.currency)
+    return r ? fmt(fromBaseTry(tryAmount, account.currency)) : ''
+  }
+
   function openPay(debt: DebtWithRemaining) {
     setPayingDebt(debt)
+    const accountId = debt.accountId && accounts.some(a => a.id === debt.accountId)
+      ? debt.accountId
+      : (accounts[0]?.id ?? '')
     setPayForm({
-      amountStr: fmt(nextInstallmentAmount(debt)),
-      accountId: debt.accountId && accounts.some(a => a.id === debt.accountId)
-        ? debt.accountId
-        : (accounts[0]?.id ?? ''),
+      amountStr: suggestedPayStr(debt, accountId),
+      accountId,
       date: today(),
+      amountEdited: false,
     })
   }
 
@@ -938,7 +952,7 @@ export default function DebtsPage() {
               label={payingDebt.direction === 'owed' ? 'Tahsil Edilen Tutar' : 'Ödeme Tutarı'}
               value={payForm.amountStr}
               currency={accounts.find(a => a.id === payForm.accountId)?.currency}
-              onChange={v => setPayForm(f => ({ ...f, amountStr: v }))}
+              onChange={v => setPayForm(f => ({ ...f, amountStr: v, amountEdited: true }))}
               error={collectionOverflow ? `Tutar kalan alacaktan fazla (kalan ${formatCurrency(payingDebt.remainingAmount)})` : undefined}
             />
             {payingDebt.direction === 'owed' && (
@@ -948,7 +962,14 @@ export default function DebtsPage() {
             <Select
               label="Hesap"
               value={payForm.accountId}
-              onChange={e => setPayForm(f => ({ ...f, accountId: e.target.value }))}
+              onChange={e => {
+                const accountId = e.target.value
+                setPayForm(f => ({
+                  ...f,
+                  accountId,
+                  amountStr: f.amountEdited ? f.amountStr : suggestedPayStr(payingDebt, accountId),
+                }))
+              }}
               options={accounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
               placeholder="Hesap seçin"
             />
