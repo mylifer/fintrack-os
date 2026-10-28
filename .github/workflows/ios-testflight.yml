@@ -109,17 +109,34 @@ jobs:
           printf 'DEVELOPMENT_TEAM = %s\nFT_BUNDLE_ID = %s\n' "$TEAM" "$FT_BUNDLE_ID" > Local.xcconfig
           echo "TEAM=$TEAM" >> "$GITHUB_ENV"
 
+      - name: İmza hazırlığı (sertifika, profiller, keychain)
+        if: steps.ready.outputs.ok == 'true'
+        # Xcode'un otomatik imzalaması CI'da "Authentication failed" veriyor; API ile elle
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" ios/scripts/asc_sign.py setup
+
       - name: Arşivle (imzalı)
         if: steps.ready.outputs.ok == 'true'
         working-directory: ios
         run: |
           set -o pipefail
+          {
+            echo "FT_PROFILE_FinTrack = $PROFILE_APP"
+            echo "FT_PROFILE_FinTrackWidget = $PROFILE_WIDGET"
+            echo 'PROVISIONING_PROFILE_SPECIFIER = $(FT_PROFILE_$(TARGET_NAME))'
+          } >> Config/Local.xcconfig
+          extra=()
+          if [ "$APP_GROUP_OK" != "true" ]; then
+            # Profilde App Group yok: o yetki olmadan imzala (widget'lar veri göremez)
+            printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict/></plist>\n' > "$RUNNER_TEMP/empty.entitlements"
+            extra+=(CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/empty.entitlements")
+          fi
           # Sürüm numarası her yüklemede artmalı
           build=$((GITHUB_RUN_NUMBER + 100))
           xcodebuild -project FinTrack.xcodeproj -scheme FinTrack -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/FinTrack.xcarchive" \
-            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $SIGN_KEYCHAIN" "${extra[@]}" \
             CURRENT_PROJECT_VERSION=$build archive 2>&1 \
             | grep -E "error:|BUILD|ARCHIVE|\*\*|Signing|provision" | head -200
 
@@ -133,20 +150,31 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
             <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
-            <key>signingStyle</key><string>automatic</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
             <key>teamID</key><string>$TEAM</string>
+            <key>provisioningProfiles</key><dict>
+              <key>$FT_BUNDLE_ID</key><string>$PROFILE_APP</string>
+              <key>$FT_BUNDLE_ID.widget</key><string>$PROFILE_WIDGET</string>
+            </dict>
             <key>testFlightInternalTestingOnly</key><true/>
             <key>manageAppVersionAndBuildNumber</key><false/>
             <key>uploadSymbols</key><true/>
           </dict></plist>
           EOF
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/FinTrack.xcarchive" \
-            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
-            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tail -60
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" 2>&1 | tail -30
+          ipa=$(ls "$RUNNER_TEMP"/export/*.ipa)
+          mkdir -p ~/.appstoreconnect/private_keys
+          cp "$ASC_KEY_PATH" ~/.appstoreconnect/private_keys/
+          xcrun altool --upload-app -t ios -f "$ipa" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tail -40
           echo "::notice::Yüklendi. Apple işlemesi ~10-30 dk sürer; sonra iPhone'daki TestFlight'ta görünür."
+
+      - name: Geçici sertifika ve profilleri sil
+        if: always() && steps.ready.outputs.ok == 'true'
+        run: '"$RUNNER_TEMP/venv/bin/python" ios/scripts/asc_sign.py cleanup || true'
 
       - name: Gizli dosyaları temizle
         if: always()
-        run: rm -rf "$RUNNER_TEMP/private_keys" ios/Config/Secrets.xcconfig ios/Config/Local.xcconfig
+        run: rm -rf "$RUNNER_TEMP/private_keys" ~/.appstoreconnect ios/Config/Secrets.xcconfig ios/Config/Local.xcconfig
