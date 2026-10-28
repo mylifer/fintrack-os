@@ -135,7 +135,7 @@ jobs:
           build=$((GITHUB_RUN_NUMBER + 100))
           xcodebuild -project FinTrack.xcodeproj -scheme FinTrack -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/FinTrack.xcarchive" \
-            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM="$TEAM" \
             OTHER_CODE_SIGN_FLAGS="--keychain $SIGN_KEYCHAIN" "${extra[@]}" \
             CURRENT_PROJECT_VERSION=$build archive 2>&1 \
             | grep -E "error:|BUILD|ARCHIVE|\*\*|Signing|provision" | head -200
