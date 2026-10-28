@@ -59,6 +59,7 @@ struct InvestmentsView: View {
             .refreshable {
                 await model.refresh()
             }
+            .orbitBackdrop()
             .navigationTitle("Yatırımlar")
             .navigationDestination(for: String.self) { InvestmentDetailView(asset: $0) }
             .toolbar {

@@ -86,6 +86,7 @@ struct TransactionsView: View {
                 }
                 .searchable(text: $query, prompt: "Açıklama, kategori, hesap, kişi, tutar")
                 .refreshable { await model.refresh() }
+                .orbitBackdrop()
                 .navigationTitle("İşlemler")
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) { filterMenu }

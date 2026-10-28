@@ -31,7 +31,7 @@ struct Provider: TimelineProvider {
 
 // MARK: - Biçim
 
-private let accent = Color(red: 0, green: 0.85, blue: 0.85)
+private let accent = Color(red: 0.23, green: 0.42, blue: 0.96)  // Orbit mavisi (#3B6CF6, simgeyle aynı)
 private let expenseRed = Color(red: 0.86, green: 0.24, blue: 0.24)
 private let incomeGreen = Color(red: 0.13, green: 0.66, blue: 0.36)
 private let warn = Color(red: 0.96, green: 0.62, blue: 0.04)
@@ -192,7 +192,7 @@ struct MediumView: View {
                     Link(destination: URL(string: "fintrack://add")!) {
                         Image(systemName: "plus")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Color(red: 0.02, green: 0.15, blue: 0.15))
+                            .foregroundStyle(.white)
                             .frame(width: 28, height: 28)
                             .background(accent, in: Circle())
                     }
@@ -244,7 +244,7 @@ struct LargeView: View {
                 Link(destination: URL(string: "fintrack://add")!) {
                     Image(systemName: "plus")
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(Color(red: 0.02, green: 0.15, blue: 0.15))
+                        .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
                         .background(accent, in: Circle())
                 }

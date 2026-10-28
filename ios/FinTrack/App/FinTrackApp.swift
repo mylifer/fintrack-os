@@ -104,7 +104,7 @@ struct RootView: View {
     @ViewBuilder private var content: some View {
         switch model.phase {
         case .starting:
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            SplashView()
         case .missingConfig:
             MissingConfigView()
         case .ready:

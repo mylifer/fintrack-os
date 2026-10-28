@@ -126,6 +126,7 @@ struct SettingsView: View {
                     Button("Çıkış yap", role: .destructive) { confirmSignOut = true }
                 }
             }
+            .orbitBackdrop()
             .navigationTitle("Ayarlar")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: Binding(get: { debugManage != nil }, set: { if !$0 { debugManage = nil } })) {

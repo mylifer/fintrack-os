@@ -105,12 +105,7 @@ struct LockView: View {
     var body: some View {
         VStack(spacing: 18) {
             Spacer()
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(Theme.onAccent)
-                .frame(width: 72, height: 72)
-                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .accessibilityHidden(true)
+            BrandMark(size: 96)
             Text("Orbit kilitli").font(.title2.bold())
             if let e = lock.errorMessage {
                 Text(e).font(.footnote).foregroundStyle(.secondary)
@@ -132,7 +127,7 @@ struct LockView: View {
             .padding(.bottom, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.backdrop.ignoresSafeArea())
         .task {
             #if DEBUG
             // `-noautounlock`: istem açılmasın (kilit penceresi ekran doğrulaması)
@@ -148,15 +143,11 @@ struct LockView: View {
 struct PrivacyCover: View {
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(Theme.onAccent)
-                .frame(width: 64, height: 64)
-                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            BrandMark(size: 88)
             Text("Orbit").font(.title3.bold())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.backdrop.ignoresSafeArea())
         .accessibilityHidden(true)
     }
 }

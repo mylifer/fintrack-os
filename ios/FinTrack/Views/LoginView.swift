@@ -14,11 +14,8 @@ struct LoginView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(Theme.onAccent)
-                        .frame(width: 56, height: 56)
-                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    BrandMark(size: 72)
+                        .padding(.bottom, 6)
                     Text("Orbit").font(.largeTitle.bold())
                     Text("Web'deki hesabınızla giriş yapın.")
                         .foregroundStyle(.secondary)
@@ -72,7 +69,7 @@ struct LoginView: View {
             }
             .padding(.horizontal, 24)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.backdrop.ignoresSafeArea())
         .onAppear { focus = .email }
     }
 
@@ -138,7 +135,7 @@ struct MFAView: View {
             Spacer()
         }
         .padding(.horizontal, 24)
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.backdrop.ignoresSafeArea())
         .onAppear { focused = true }
     }
 

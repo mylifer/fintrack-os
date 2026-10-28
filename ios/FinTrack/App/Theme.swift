@@ -1,16 +1,24 @@
 import SwiftUI
 import FinTrackCore
 
-/// Web tasarım dili (globals.css): turkuaz aksan (#00D9D9) + katmanlı nötr zemin.
-/// Turkuaz parlak — üstündeki yazı koyu (#062626) olmalı; açık zeminde METİN
-/// rengi olarak kullanılmaz, yalnız ikon/dolgu/ray. Gelir yeşil, gider kırmızı,
-/// planlı/gelecek sky.
+/// Orbit görünümü uygulama simgesinden (Mercek, ios/Design): grafik mavisi aksan
+/// (#3B6CF6), üstte açık mavi, aşağı doğru nötre inen zemin. Gelir yeşil, gider
+/// kırmızı, planlı/gelecek sky.
 enum Theme {
-    /// Dolgu/ikon/ray için parlak turkuaz.
-    static let accent = Color(hex: "#00D9D9")
-    /// Metin ve düğme tonu (tint): açık zeminde okunur koyu turkuaz, koyu zeminde parlak.
+    /// Dolgu/ikon/ray için simgedeki grafik mavisi; üstündeki yazı beyaz.
+    static let accent = Color(hex: "#3B6CF6")
+    /// Metin ve düğme tonu (tint): açık zeminde koyu mavi, koyu zeminde açık mavi.
     static let tint = Color("AccentColor")
-    static let onAccent = Color(hex: "#062626")
+    static let onAccent = Color.white
+    /// Zeminin üst tonu (simgedeki açık mavi); koyu modda gece mavisi.
+    static let backdropTop = Color(UIColor { t in
+        t.userInterfaceStyle == .dark ? UIColor(red: 0.07, green: 0.10, blue: 0.22, alpha: 1)
+                                      : UIColor(red: 0.88, green: 0.92, blue: 0.99, alpha: 1)
+    })
+    /// Ekran zemini: üstte açık mavi, ortadan sonra sistemin gruplu zemini (alt ekranlarla uyumlu).
+    static var backdrop: LinearGradient {
+        LinearGradient(colors: [backdropTop, Color(.systemGroupedBackground)], startPoint: .top, endPoint: .center)
+    }
     static let income = Color(red: 0.13, green: 0.66, blue: 0.36)
     static let expense = Color(red: 0.86, green: 0.24, blue: 0.24)
     static let planned = Color(hex: "#0EA5E9")
@@ -100,7 +108,40 @@ struct IconBadge: View {
     }
 }
 
+/// Uygulama simgesi (Mercek) — giriş, kilit, açılış ekranlarında marka işareti.
+struct BrandMark: View {
+    var size: CGFloat = 64
+
+    var body: some View {
+        Image("BrandMark")
+            .resizable()
+            .interpolation(.high)
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
+                .strokeBorder(.white.opacity(0.6), lineWidth: max(1, size / 90)))
+            .shadow(color: Color(hex: "#1E2A6B").opacity(0.18), radius: size * 0.14, y: size * 0.07)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Açılış ekranının (Info.plist UILaunchScreen) aynısı: veriler yüklenirken geçiş dikişsiz olsun.
+struct SplashView: View {
+    var body: some View {
+        ZStack {
+            Color("LaunchBackground").ignoresSafeArea()
+            Image("LaunchMark")
+        }
+    }
+}
+
 extension View {
+    /// Ana ekran zemini (simgeyle uyumlu açık mavi geçiş); listelerin kendi zemini gizlenir.
+    func orbitBackdrop() -> some View {
+        scrollContentBackground(.hidden)
+            .background(Theme.backdrop.ignoresSafeArea())
+    }
+
     /// Katmanlı kart yüzeyi (web --card).
     func card() -> some View {
         padding(16)

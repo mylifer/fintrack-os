@@ -87,6 +87,7 @@ struct AccountsView: View {
                 }
             }
             .refreshable { await model.refresh() }
+            .orbitBackdrop()
             .navigationTitle("Hesaplar")
             .navigationDestination(for: Account.self) { AccountDetailView(account: $0) }
             .navigationDestination(for: Debt.self) { DebtDetailView(debt: $0) }

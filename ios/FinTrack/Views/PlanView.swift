@@ -47,6 +47,7 @@ struct PlanView: View {
                 .background(.bar)
             }
             .refreshable { await model.refresh() }
+            .orbitBackdrop()
             .navigationTitle("Plan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

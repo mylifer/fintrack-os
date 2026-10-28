@@ -35,7 +35,7 @@ struct SummaryView: View {
                 }
                 .padding(16)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Theme.backdrop.ignoresSafeArea())
             .refreshable { await model.refresh() }
             .navigationTitle(workspaceTitle)
             .toolbar {
