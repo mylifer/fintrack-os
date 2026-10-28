@@ -76,6 +76,11 @@ def main():
              f"iOS, ad 'Orbit <adınız>' (adlar tüm App Store'da benzersiz olmalı), dil Türkçe, "
              f"Bundle ID '{bid}', SKU 'fintrack'. Sonra bu iş akışını yeniden çalıştırın.")
     print(f"✓ uygulama kaydı: {res['data'][0]['attributes'].get('name')}")
+    # Anahtarın yetkisi: Xcode bulut imzalama için Admin rolü gerekir
+    probes = {p: call("GET", p)[0] for p in ("/users?limit=1", "/certificates?limit=1", "/profiles?limit=1")}
+    print("yetki yoklaması:", ", ".join(f"{p.split('?')[0]} → {st}" for p, st in probes.items()))
+    if probes["/users?limit=1"] == 403:
+        print("::warning::Bu anahtar Admin değil gibi görünüyor; Xcode bulut imzalama Admin anahtarı ister.")
     # Ekip kimliği = paket kimliğinin ön eki (seedId); gizli olarak verilmediyse buradan
     if team and os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
