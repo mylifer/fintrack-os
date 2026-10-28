@@ -3,7 +3,32 @@
 Web ile aynı Supabase'e bağlanan, günlük kullanım için native iPhone uygulaması.
 Plan ve veri kuralları: [docs/ios-native-plan.md](../docs/ios-native-plan.md).
 
-## iPhone'a kurulum (Apple Developer hesabıyla, App Store'suz)
+## Mac'siz kurulum (TestFlight) — önerilen
+
+Mac, Xcode, kablo gerekmez. GitHub'ın Mac'i uygulamayı imzalayıp TestFlight'a yükler
+(`.github/workflows/ios-testflight.yml`); iPhone'daki **TestFlight** uygulaması kurar ve her yeni
+sürümü kendisi günceller. App Store'da yayın yok: yalnız "iç test" (siz).
+
+Bir kerelik:
+1. **appstoreconnect.apple.com → Users and Access → Integrations → App Store Connect API**:
+   (ilk seferde "Request Access") **+** → ad `GitHub`, erişim **Admin** → **Download** (`.p8`
+   yalnız bir kez indirilir). Sayfadaki **Issuer ID** ve anahtarın **Key ID**'si gerekir.
+2. **GitHub → depo → Settings → Secrets and variables → Actions → New repository secret**:
+   `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (.p8 dosyasının tüm metni),
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY` (web'deki `NEXT_PUBLIC_SUPABASE_URL` / `_ANON_KEY`;
+   Vercel → Settings → Environment Variables'ta da var).
+3. İş akışını çalıştırın (Actions → iOS TestFlight → Run workflow). İlk çalışma paket
+   kimliklerini kaydeder ve "uygulama kaydı yok" diye durur.
+4. **App Store Connect → Apps → + → New App**: iOS, ad `FinTrack <adınız>` (ad tüm App Store'da
+   benzersiz olmalı), dil Türkçe, Bundle ID `com.mylifer.fintrack`, SKU `fintrack`. İş akışını
+   yeniden çalıştırın.
+5. Uygulama → **TestFlight → Internal Testing → +** grup açın, kendinizi ekleyin, "Automatically
+   distribute" açık. iPhone'a **TestFlight**'ı App Store'dan kurun, gelen daveti kabul edin → **Yükle**.
+
+Sonrası: `ios/` her değiştiğinde yeni sürüm kendiliğinden gelir. TestFlight sürümleri 90 gün
+geçerlidir; iş akışı ayda bir de kendini yeniler (zamanlanmış çalışma yalnız `master`'da).
+
+## iPhone'a kurulum Mac ve Xcode ile (Apple Developer hesabıyla, App Store'suz)
 
 Uygulama App Store'da yayınlanmaz; Xcode doğrudan sizin iPhone'unuza kurar. Ücretli
 Apple Developer hesabıyla kurulan uygulama **1 yıl** çalışır (ücretsiz hesapta 7 gün).

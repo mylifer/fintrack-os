@@ -1,0 +1,141 @@
+# iPhone'a Mac'siz kurulum: GitHub'ın Mac'i uygulamayı imzalayıp TestFlight'a
+# yükler; telefondaki TestFlight uygulaması yeni sürümü kendisi kurar.
+# App Store'da YAYIN YOK — yalnız sizin (iç test) kullanımınız.
+#
+# Bir kerelik hazırlık: ios/README.md → "Mac'siz kurulum (TestFlight)".
+# Gizliler (Settings → Secrets and variables → Actions):
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8      App Store Connect API anahtarı (Admin)
+#   SUPABASE_URL, SUPABASE_ANON_KEY            web'deki NEXT_PUBLIC_SUPABASE_* ile aynı
+#   APPLE_TEAM_ID (isteğe bağlı)               yoksa Apple'dan okunur
+# Değişken (isteğe bağlı): FT_BUNDLE_ID
+name: iOS TestFlight
+
+on:
+  push:
+    branches: [master, claude/clever-davinci-dm7r4v]
+    paths: ['ios/**', '.github/workflows/ios-testflight.yml']
+  workflow_dispatch:
+  schedule:
+    # TestFlight sürümleri 90 gün geçerli: kod değişmese de ayda bir tazelenir
+    - cron: '17 4 1 * *'
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      FT_BUNDLE_ID: ${{ vars.FT_BUNDLE_ID || 'com.mylifer.fintrack' }}
+    steps:
+      - name: Hazırlık tamam mı?
+        id: ready
+        env:
+          K: ${{ secrets.ASC_KEY_ID }}
+          I: ${{ secrets.ASC_ISSUER_ID }}
+          P: ${{ secrets.ASC_KEY_P8 }}
+          U: ${{ secrets.SUPABASE_URL }}
+          A: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          missing=""
+          [ -n "$K" ] || missing="$missing ASC_KEY_ID"
+          [ -n "$I" ] || missing="$missing ASC_ISSUER_ID"
+          [ -n "$P" ] || missing="$missing ASC_KEY_P8"
+          [ -n "$U" ] || missing="$missing SUPABASE_URL"
+          [ -n "$A" ] || missing="$missing SUPABASE_ANON_KEY"
+          if [ -n "$missing" ]; then
+            echo "::notice::TestFlight atlandı — eksik gizliler:$missing (ios/README.md → Mac'siz kurulum)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.ok == 'true'
+
+      - name: Xcode
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | grep -v beta | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Apple hesabı (paket kimlikleri, uygulama kaydı)
+        id: asc
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q 'pyjwt[crypto]'
+          ASC_KEY_PATH="$key" "$RUNNER_TEMP/venv/bin/python" ios/scripts/asc.py
+
+      - name: Ayar dosyaları
+        if: steps.ready.outputs.ok == 'true'
+        working-directory: ios/Config
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID || steps.asc.outputs.team }}
+        run: |
+          [ -n "$TEAM" ] || { echo "::error::Ekip kimliği bulunamadı: APPLE_TEAM_ID gizlisini ekleyin (developer.apple.com → Membership)."; exit 1; }
+          url=$(printf '%s' "$SUPABASE_URL" | tr -d '[:space:]' | sed 's#//#/$()/#')
+          key=$(printf '%s' "$SUPABASE_ANON_KEY" | tr -d '[:space:]')
+          umask 077
+          printf 'SUPABASE_URL = %s\nSUPABASE_ANON_KEY = %s\n' "$url" "$key" > Secrets.xcconfig
+          printf 'DEVELOPMENT_TEAM = %s\nFT_BUNDLE_ID = %s\n' "$TEAM" "$FT_BUNDLE_ID" > Local.xcconfig
+          echo "TEAM=$TEAM" >> "$GITHUB_ENV"
+
+      - name: Arşivle (imzalı)
+        if: steps.ready.outputs.ok == 'true'
+        working-directory: ios
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          # Sürüm numarası her yüklemede artmalı
+          build=$((GITHUB_RUN_NUMBER + 100))
+          xcodebuild -project FinTrack.xcodeproj -scheme FinTrack -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/FinTrack.xcarchive" \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CURRENT_PROJECT_VERSION=$build archive 2>&1 \
+            | grep -E "error:|BUILD|ARCHIVE|\*\*|Signing|provision" | head -200
+
+      - name: TestFlight'a yükle
+        if: steps.ready.outputs.ok == 'true'
+        working-directory: ios
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>testFlightInternalTestingOnly</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/FinTrack.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tail -60
+          echo "::notice::Yüklendi. Apple işlemesi ~10-30 dk sürer; sonra iPhone'daki TestFlight'ta görünür."
+
+      - name: Gizli dosyaları temizle
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8" ios/Config/Secrets.xcconfig ios/Config/Local.xcconfig
