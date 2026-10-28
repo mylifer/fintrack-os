@@ -66,6 +66,37 @@ def ensure_bundle_id(identifier: str, name: str):
          f"Variables'a FT_BUNDLE_ID = com.<adınız>.fintrack ekleyin.")
 
 
+def ensure_testers(app_id: str):
+    """İç test grubu 'Ben' (tüm sürümlere erişim) ve ekibin tüm kullanıcıları test eden olarak.
+    Telefonda başka Apple ID kullanılıyorsa o hesap önce Users and Access'ten davet edilip
+    kabul edilmiş olmalı; sonraki çalışmada kendiliğinden eklenir. Hata olursa iş durmaz."""
+    st, res = call("GET", f"/apps/{app_id}/betaGroups?limit=50")
+    group = next((g for g in res.get("data", []) if g["attributes"].get("isInternalGroup")), None)
+    if not group:
+        st, res = call("POST", "/betaGroups", {"data": {"type": "betaGroups",
+            "attributes": {"name": "Ben", "isInternalGroup": True, "hasAccessToAllBuilds": True},
+            "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})
+        if st not in (200, 201):
+            print(f"::warning::İç test grubu açılamadı ({st}); App Store Connect → TestFlight'tan elle açın.")
+            return
+        group = res["data"]
+        print("✓ iç test grubu açıldı: Ben")
+    gid = group["id"]
+    st, res = call("GET", f"/betaGroups/{gid}/betaTesters?limit=200")
+    have = {t["attributes"].get("email", "").lower() for t in res.get("data", [])}
+    st, users = call("GET", "/users?limit=200")
+    for u in users.get("data", []):
+        email = (u["attributes"].get("username") or "").lower()
+        if not email or email in have:
+            continue
+        st, r = call("POST", "/betaTesters", {"data": {"type": "betaTesters",
+            "attributes": {"email": email, "firstName": u["attributes"].get("firstName") or "",
+                           "lastName": u["attributes"].get("lastName") or ""},
+            "relationships": {"betaGroups": {"data": [{"type": "betaGroups", "id": gid}]}}}})
+        print(f"test eden eklendi: {st}")  # e-posta günlüğe yazılmaz (depo herkese açık)
+    print(f"✓ iç test grubu: {len(users.get('data', []))} kullanıcı")
+
+
 def main():
     bid = os.environ["FT_BUNDLE_ID"]
     team = ensure_bundle_id(bid, "FinTrack")
@@ -76,6 +107,10 @@ def main():
              f"iOS, ad 'Orbit <adınız>' (adlar tüm App Store'da benzersiz olmalı), dil Türkçe, "
              f"Bundle ID '{bid}', SKU 'fintrack'. Sonra bu iş akışını yeniden çalıştırın.")
     print(f"✓ uygulama kaydı: {res['data'][0]['attributes'].get('name')}")
+    try:
+        ensure_testers(res["data"][0]["id"])
+    except Exception as e:  # test grubu iş akışını durdurmasın
+        print(f"::warning::Test grubu ayarlanamadı: {e}")
     # Anahtarın yetkisi: Xcode bulut imzalama için Admin rolü gerekir
     probes = {p: call("GET", p)[0] for p in ("/users?limit=1", "/certificates?limit=1", "/profiles?limit=1")}
     print("yetki yoklaması:", ", ".join(f"{p.split('?')[0]} → {st}" for p, st in probes.items()))
