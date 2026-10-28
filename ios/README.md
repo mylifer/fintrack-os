@@ -14,9 +14,9 @@ Bir kerelik:
    (ilk seferde "Request Access") **+** → ad `GitHub`, erişim **Admin** → **Download** (`.p8`
    yalnız bir kez indirilir). Sayfadaki **Issuer ID** ve anahtarın **Key ID**'si gerekir.
 2. **GitHub → depo → Settings → Secrets and variables → Actions → New repository secret**:
-   `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (.p8 dosyasının tüm metni),
-   `SUPABASE_URL`, `SUPABASE_ANON_KEY` (web'deki `NEXT_PUBLIC_SUPABASE_URL` / `_ANON_KEY`;
-   Vercel → Settings → Environment Variables'ta da var).
+   `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (.p8 dosyasının tüm metni). Supabase adresi ve
+   herkese açık anahtar canlı siteden okunur (`scripts/site-keys.py`); okunamazsa
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY` gizlilerini de ekleyin.
 3. İş akışını çalıştırın (Actions → iOS TestFlight → Run workflow). İlk çalışma paket
    kimliklerini kaydeder ve "uygulama kaydı yok" diye durur.
 4. **App Store Connect → Apps → + → New App**: iOS, ad `FinTrack <adınız>` (ad tüm App Store'da

@@ -5,9 +5,9 @@
 # Bir kerelik hazırlık: ios/README.md → "Mac'siz kurulum (TestFlight)".
 # Gizliler (Settings → Secrets and variables → Actions):
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8      App Store Connect API anahtarı (Admin)
-#   SUPABASE_URL, SUPABASE_ANON_KEY            web'deki NEXT_PUBLIC_SUPABASE_* ile aynı
+#   SUPABASE_URL, SUPABASE_ANON_KEY (isteğe bağlı) yoksa canlı siteden okunur
 #   APPLE_TEAM_ID (isteğe bağlı)               yoksa Apple'dan okunur
-# Değişken (isteğe bağlı): FT_BUNDLE_ID
+# Değişkenler (isteğe bağlı): FT_BUNDLE_ID, WEB_URL
 name: iOS TestFlight
 
 on:
@@ -36,15 +36,11 @@ jobs:
           K: ${{ secrets.ASC_KEY_ID }}
           I: ${{ secrets.ASC_ISSUER_ID }}
           P: ${{ secrets.ASC_KEY_P8 }}
-          U: ${{ secrets.SUPABASE_URL }}
-          A: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           missing=""
           [ -n "$K" ] || missing="$missing ASC_KEY_ID"
           [ -n "$I" ] || missing="$missing ASC_ISSUER_ID"
           [ -n "$P" ] || missing="$missing ASC_KEY_P8"
-          [ -n "$U" ] || missing="$missing SUPABASE_URL"
-          [ -n "$A" ] || missing="$missing SUPABASE_ANON_KEY"
           if [ -n "$missing" ]; then
             echo "::notice::TestFlight atlandı — eksik gizliler:$missing (ios/README.md → Mac'siz kurulum)"
             echo "ok=false" >> "$GITHUB_OUTPUT"
@@ -53,7 +49,6 @@ jobs:
           fi
 
       - uses: actions/checkout@v4
-        if: steps.ready.outputs.ok == 'true'
 
       - name: Xcode
         if: steps.ready.outputs.ok == 'true'
@@ -76,12 +71,26 @@ jobs:
           "$RUNNER_TEMP/venv/bin/pip" install -q 'pyjwt[crypto]'
           ASC_KEY_PATH="$key" "$RUNNER_TEMP/venv/bin/python" ios/scripts/asc.py
 
+      - name: Supabase bilgileri (gizli yoksa canlı siteden)
+        id: site
+        # Hazırlık eksikken de denenir (siteden okumanın çalıştığını erkenden görmek için)
+        continue-on-error: ${{ steps.ready.outputs.ok != 'true' }}
+        env:
+          U: ${{ secrets.SUPABASE_URL }}
+          A: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -n "$U" ] && [ -n "$A" ]; then
+            echo "Gizlilerden"; echo "url=$U" >> "$GITHUB_OUTPUT"; echo "key=$A" >> "$GITHUB_OUTPUT"
+          else
+            python3 ios/scripts/site-keys.py "${{ vars.WEB_URL || 'https://fintrack-os-ten.vercel.app' }}"
+          fi
+
       - name: Ayar dosyaları
         if: steps.ready.outputs.ok == 'true'
         working-directory: ios/Config
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ steps.site.outputs.url }}
+          SUPABASE_ANON_KEY: ${{ steps.site.outputs.key }}
           TEAM: ${{ secrets.APPLE_TEAM_ID || steps.asc.outputs.team }}
         run: |
           [ -n "$TEAM" ] || { echo "::error::Ekip kimliği bulunamadı: APPLE_TEAM_ID gizlisini ekleyin (developer.apple.com → Membership)."; exit 1; }
