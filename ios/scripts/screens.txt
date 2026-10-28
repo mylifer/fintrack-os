@@ -19,4 +19,4 @@
 18-alanlar|-settings -manage workspaces
 19-toplu-duzenle|-tab transactions -bulk
 20-etiketler|-tab transactions -tags
-21-kilit -lock -noautounlock
+21-kilit|-lock -noautounlock
