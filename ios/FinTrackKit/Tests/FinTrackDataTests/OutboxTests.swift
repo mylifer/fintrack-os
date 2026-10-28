@@ -36,6 +36,15 @@ struct OutboxTests {
         snap.overlay(table: "recurring_transactions", row: ["id": "r", "name": "Kira"])
         #expect(snap.transactions.map(\.amount) == [99, 1])
         #expect(snap.recurring.first?.name == "Kira")
+        // iOS'un yazdığı diğer tablolar da (kişi, kategori, yatırım, alan) üste gelir
+        snap.overlay(table: "people", row: ["id": "p", "name": "İTC"])
+        snap.overlay(table: "categories", row: ["id": "c", "name": "Market"])
+        snap.overlay(table: "investment_transactions", row: ["id": "i", "asset": "USD"])
+        snap.overlay(table: "workspaces", row: ["id": "w", "name": "Aile"])
+        #expect(snap.people.first?.name == "İTC")
+        #expect(snap.categories.first?.name == "Market")
+        #expect(snap.investments.first?.asset == "USD")
+        #expect(snap.workspaces.first?.name == "Aile")
     }
 }
 

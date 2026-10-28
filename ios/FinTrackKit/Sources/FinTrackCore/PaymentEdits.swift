@@ -147,8 +147,9 @@ public enum PaymentEdits {
                 "fromAccountId": values.fromAccountId == target.defaultFromAccountId ? .null : JSONValue(values.fromAccountId),
                 "note": note,
             ]
-            let empty = values.amount == nil && values.dueDate == defaultDue
-                && values.fromAccountId == target.defaultFromAccountId && note == .null
+            // Web ile aynı: yazılacak yamada hiçbir özel değer kalmadıysa (hesabı boşa
+            // çekmek de varsayılana dönmektir) kayıt tutulmaz
+            let empty = patch.values.allSatisfy { $0 == .null }
             if empty && row.occurrence?.status == nil {
                 if let t = tombstone(target.kind, target.id, row.month, existing: occurrences, now: now) { w.occurrences = [t] }
                 return w

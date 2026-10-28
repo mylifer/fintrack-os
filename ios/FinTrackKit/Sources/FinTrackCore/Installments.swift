@@ -146,7 +146,13 @@ extension Installments {
         guard !description.isEmpty else { throw InstallmentError.description }
         guard let head = existing.first else { throw InstallmentError.count }
         let total = abs(draft.amount)
-        let amounts = Money.split(total, count)
+        // Toplam ve taksit sayısı değişmediyse mevcut taksit tutarları korunur
+        // (web editöründe elle değiştirilmiş eşit olmayan taksitler yalnız açıklama
+        // düzenlenince eşit bölüşüme dönmesin); değiştiyse yeniden eşit bölünür.
+        let existingMinor = existing.reduce(0) { $0 + Money.toMinor(abs($1.amount)) }
+        let amounts = count == existing.count && existingMinor == Money.toMinor(total)
+            ? existing.map { abs($0.amount) }
+            : Money.split(total, count)
         let notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let hadSub = Subscriptions.hasSubscriptionTag(head.tags)
         let tags = draft.tagsForWrite(hadSubscription: hadSub)

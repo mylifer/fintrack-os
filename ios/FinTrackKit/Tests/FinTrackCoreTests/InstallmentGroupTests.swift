@@ -89,6 +89,21 @@ struct InstallmentRegroupTests {
         #expect(r.removed.map(\.id) == ["r3", "r4"] && r.removed.allSatisfy { !$0.isLive })
     }
 
+    @Test func unchangedTotalKeepsCustomAmounts() throws {
+        // Web editöründe elle değiştirilmiş taksitler: yalnız açıklama düzenlenince korunur
+        let rows = [700.0, 300.0].enumerated().map { i, a in
+            tx(["id": .string("r\(i + 1)"), "amount": .number(a), "installGroupId": "g", "isInstallment": true,
+                "installIndex": .number(Double(i + 1)), "installTotal": 2, "description": "Telefon"])
+        }
+        let existing = Installments.groupRows("g", in: rows)
+        let same = try Installments.regroup(draft("1000"), count: 2, existing: existing,
+                                            account: acc, fx: fx, now: "n", groupId: "g", newIds: [])
+        #expect(same.rows.map(\.amount) == [700, 300])
+        let changed = try Installments.regroup(draft("1200"), count: 2, existing: existing,
+                                               account: acc, fx: fx, now: "n", groupId: "g", newIds: [])
+        #expect(changed.rows.map(\.amount) == [600, 600])
+    }
+
     @Test func splitsScaledPerInstallment() throws {
         var d = draft("1000")
         d.splits = [.init(categoryId: "a", amount: 400), .init(categoryId: "b", amount: 600)]

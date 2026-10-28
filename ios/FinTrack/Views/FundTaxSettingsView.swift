@@ -7,6 +7,8 @@ import FinTrackData
 /// girilir; uygulama varsayılan oran kabul etmez. Ayar bu cihazda saklanır.
 struct FundTaxSettingsView: View {
     @Environment(AppModel.self) private var model
+    /// Yazılan oran metni (satır → metin): sayıdan geri biçimlenirse "17," yazarken virgül silinirdi
+    @State private var texts: [String: String] = [:]
 
     private var funds: [String] {
         Set(model.investments.map(\.asset).filter { Asset.kind($0) == .fund }).map(Asset.code).sorted()
@@ -46,8 +48,16 @@ struct FundTaxSettingsView: View {
             Text(title)
             Spacer()
             Text("%").foregroundStyle(.secondary)
-            TextField("0", text: Binding(get: { Fmt.amountInput(value.wrappedValue) },
-                                         set: { value.wrappedValue = Fmt.parseAmount($0) }))
+            TextField("0", text: Binding(
+                get: {
+                    if let t = texts[title], Fmt.parseAmount(t) == value.wrappedValue { return t }
+                    return Fmt.amountInput(value.wrappedValue)
+                },
+                set: {
+                    let t = Fmt.normalizeTypedAmount($0)
+                    texts[title] = t
+                    value.wrappedValue = Fmt.parseAmount(t)
+                }))
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
                 .frame(width: 70)

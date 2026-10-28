@@ -36,7 +36,8 @@ public enum Goals {
         let remaining = max(0, Money.sub(g.targetAmount, current))
         let done = g.targetAmount > 0 && current >= g.targetAmount
         let percent = g.targetAmount > 0 ? min(100, current / g.targetAmount * 100) : 0
-        let target = g.targetDate.map { String($0.prefix(10)) }
+        // Boş metin tarih yok sayılır (web `!!goal.targetDate`)
+        let target = g.targetDate.flatMap { $0.isEmpty ? nil : String($0.prefix(10)) }
         let overdue = !done && target.map { $0 < today } == true
         let left = target != nil && !overdue ? monthsLeft(today: today, target: target!) : nil
         let monthly = left != nil && !done ? (remaining / Double(left!) * 100).rounded() / 100 : nil

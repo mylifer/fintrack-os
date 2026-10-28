@@ -22,6 +22,9 @@ struct TransactionFormView: View {
     @State private var newId = UUID().uuidString.lowercased()
     @State private var installments = false
     @State private var installmentCount = 6
+    /// Pay tutarı alanlarının yazılan metni (sıra → metin): biçimlenmiş sayıdan
+    /// geri okunursa "12," yazarken virgül silinir, küsuratlı pay girilemezdi
+    @State private var splitAmountTexts: [Int: String] = [:]
     @FocusState private var descriptionFocused: Bool
     @State private var saving = false
     @State private var errorMessage: String?
@@ -320,8 +323,12 @@ struct TransactionFormView: View {
             draft.categoryId = c
         }
         // Web'de "Ödeme tipi" tek seçim: abonelik ve taksit birlikte olmaz
-        .onChange(of: installments) { _, on in if on { draft.isSubscription = false; draft.splits = nil } }
-        .onChange(of: draft.isSubscription) { _, on in if on { installments = false } }
+        // Var olan taksit grubu açılırken setUp de bu bayrağı açar: grubun payları
+        // ve etiketi o zaman silinmemeli (kaydedince tüm taksitlerden düşerdi)
+        .onChange(of: installments) { _, on in
+            if on && !editingGroup { draft.isSubscription = false; draft.splits = nil }
+        }
+        .onChange(of: draft.isSubscription) { _, on in if on && !editingGroup { installments = false } }
         .onChange(of: draft.type) { _, newType in
             // Tür değişince uymayan kategori düşer
             if let c = model.category(draft.categoryId),
@@ -479,8 +486,18 @@ struct TransactionFormView: View {
                     }
                 }
                 TextField("0", text: Binding(
-                    get: { draft.splits?[safe: i].map { $0.amount == 0 ? "" : Fmt.amountInput($0.amount) } ?? "" },
-                    set: { if draft.splits?.indices.contains(i) == true { draft.splits?[i].amount = Fmt.parseAmount(Fmt.normalizeTypedAmount($0)) } }
+                    get: {
+                        guard let amount = draft.splits?[safe: i]?.amount else { return "" }
+                        // Yazılan metin hâlâ aynı tutarı veriyorsa olduğu gibi göster
+                        if let t = splitAmountTexts[i], Fmt.parseAmount(t) == amount { return t }
+                        return amount == 0 ? "" : Fmt.amountInput(amount)
+                    },
+                    set: {
+                        guard draft.splits?.indices.contains(i) == true else { return }
+                        let text = Fmt.normalizeTypedAmount($0)
+                        splitAmountTexts[i] = text
+                        draft.splits?[i].amount = Fmt.parseAmount(text)
+                    }
                 ))
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
@@ -609,7 +626,11 @@ struct TransactionFormView: View {
                 // Grup düzenlemesi: tutar = taksitlerin toplamı, tarih = ilk taksit
                 let rows = model.transactions.filter { $0.installGroupId == g }
                     .sorted { ($0.installIndex ?? 0) < ($1.installIndex ?? 0) }
-                draft.amountText = Fmt.amountInput(Money.sum(rows.map(\.amount)))
+                let total = Money.sum(rows.map(\.amount))
+                draft.amountText = Fmt.amountInput(total)
+                // Paylar ilk taksitin tutarında; form toplamı gösterdiği için toplama ölçeklenir
+                // (regroup her taksite yeniden oranlar)
+                if let sp = draft.splits { draft.splits = Refund.rescaleSplits(sp, to: abs(total)) }
                 if let first = rows.first { draft.date = DateUtil.parseDay(first.date) ?? draft.date }
                 installments = true
                 installmentCount = max(rows.count, 2)

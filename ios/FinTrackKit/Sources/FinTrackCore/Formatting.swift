@@ -39,6 +39,15 @@ public enum Fmt {
 
     /// Tutar girişi: "1.234,56" (TR) / "1234.56" (EN) → 1234.56. Web parseCurrencyInput.
     public static func parseAmount(_ raw: String) -> Double {
+        let n = parseNumber(raw)
+        let rounded = (abs(n) * 100).rounded() / 100
+        return n < 0 ? -rounded : rounded
+    }
+
+    /// `parseAmount` ile aynı ayrıştırma, ama kuruşa YUVARLAMADAN — miktar ve
+    /// birim fiyat gibi 2 haneden fazla küsurat taşıyan değerler için (fon payı,
+    /// kripto, 6 haneli fon fiyatı; web parseFloat).
+    public static func parseNumber(_ raw: String) -> Double {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         let negative = trimmed.hasPrefix("-")
         let abs = String(trimmed.drop(while: { $0 == "-" })).trimmingCharacters(in: .whitespaces)
@@ -50,9 +59,8 @@ public enum Fmt {
         } else {
             normalized = abs
         }
-        guard let n = Double(normalized) else { return 0 }
-        let rounded = (n * 100).rounded() / 100
-        return negative ? -rounded : rounded
+        guard let n = Double(normalized), n.isFinite else { return 0 }
+        return negative ? -n : n
     }
 
     /// Kayıtlı sayıyı düzenleme alanına yazar: ondalık virgül, BİNLİK AYRAÇ YOK

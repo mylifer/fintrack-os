@@ -67,9 +67,15 @@ public struct Derived: Sendable {
         let inMonth = i.reportTransactions.filter { Calc.isFlow($0) && DateUtil.isInRange($0.date, r.from, r.to) }
         let board = paymentBoard(i, month: String(DateUtil.today().prefix(7)))
         var cards: [String: CardStatementResult] = [:]
-        for a in i.accounts where a.type == .credit_card && !a.isArchived {
+        let cardList = i.accounts.filter { $0.type == .credit_card && !$0.isArchived }
+        // Kart ödemesi eşlemesi tüm işlemler üzerinde tek geçiş — kart başına yeniden değil
+        let cardPayments: [String: [Transaction]] = cardList.isEmpty ? [:]
+            : CardPayments.assignCardPayments(accounts: i.accounts.filter(\.isLive),
+                                              transactions: i.transactions.filter(\.isLive))
+        for a in cardList {
             cards[a.id] = CardStatements.forCard(a, accounts: i.accounts, transactions: i.transactions,
-                                                 plans: i.plans, occurrences: i.occurrences, fx: i.fx, count: 12)
+                                                 plans: i.plans, occurrences: i.occurrences, fx: i.fx, count: 12,
+                                                 cardPayments: cardPayments)
         }
         return Derived(
             month: my,

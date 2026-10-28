@@ -206,12 +206,16 @@ public enum CardStatements {
         occurrences: [PaymentOccurrence],
         fx: FX,
         today: String = DateUtil.today(),
-        count: Int = 6
+        count: Int = 6,
+        cardPayments: [String: [Transaction]]? = nil
     ) -> CardStatementResult {
         let plan = plan(for: account, in: plans)
         let resolved = BankRules.resolveCardDays(account: account, plan: plan)
         let liveTx = transactions.filter(\.isLive)
-        let payments = CardPayments.assignCardPayments(accounts: accounts.filter(\.isLive), transactions: liveTx)[account.id] ?? []
+        // Birden çok kart için çağıran eşlemeyi bir kez hesaplayıp verebilir
+        let assigned = cardPayments
+            ?? CardPayments.assignCardPayments(accounts: accounts.filter(\.isLive), transactions: liveTx)
+        let payments = assigned[account.id] ?? []
         return buildCardStatements(
             account: account,
             transactions: liveTx,

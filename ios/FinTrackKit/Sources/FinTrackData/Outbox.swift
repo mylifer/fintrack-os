@@ -98,6 +98,10 @@ extension Snapshot {
         case Debt.table: put(\.debts)
         case PaymentOccurrence.table: put(\.paymentOccurrences)
         case PaymentPlan.table: put(\.paymentPlans)
+        case Person.table: put(\.people)
+        case Category.table: put(\.categories)
+        case InvestmentTransaction.table: put(\.investments)
+        case Workspace.table: put(\.workspaces)
         default: break
         }
     }

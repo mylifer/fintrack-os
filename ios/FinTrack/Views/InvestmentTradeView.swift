@@ -48,8 +48,9 @@ struct InvestmentTradeView: View {
         return k.prefix + code
     }
 
-    private var qty: Double { Fmt.parseAmount(qtyText) }
-    private var price: Double { Fmt.parseAmount(priceText) }
+    // Miktar ve birim fiyat kuruşa yuvarlanmaz (fon payı / kripto / 6 haneli fon fiyatı — web parseFloat)
+    private var qty: Double { Fmt.parseNumber(qtyText) }
+    private var price: Double { Fmt.parseNumber(priceText) }
     private var total: Double { qty * price }
 
     private var heldAssets: [String] {
@@ -132,7 +133,7 @@ struct InvestmentTradeView: View {
 
                 Section {
                     numberRow(type == "buy" ? "Alınan miktar" : "Satılan miktar", $qtyText) { v in
-                        let t = Fmt.parseAmount(totalText), q = Fmt.parseAmount(v)
+                        let t = Fmt.parseAmount(totalText), q = Fmt.parseNumber(v)
                         if t > 0 && q > 0 { priceText = Self.priceInput(t / q, asset: asset) }
                     }
                     numberRow("Birim fiyat (₺)", $priceText) { _ in totalText = "" }
@@ -258,13 +259,18 @@ struct InvestmentTradeView: View {
     /// Fon payı ve kripto fiyatı 6 hane, diğerleri kuruş (web priceDecimals)
     static func priceInput(_ p: Double, asset: String?) -> String {
         let six = asset.map { [.fund, .crypto].contains(Asset.kind($0)) } ?? false
+        return decimalInput(p, maxDigits: six ? 6 : 2)
+    }
+
+    /// Düzenleme alanı metni: ondalık virgül, gruplamasız, en çok `maxDigits` hane
+    static func decimalInput(_ v: Double, maxDigits: Int) -> String {
         let f = NumberFormatter()
         f.locale = Locale(identifier: "tr_TR")
         f.numberStyle = .decimal
         f.usesGroupingSeparator = false
         f.minimumFractionDigits = 0
-        f.maximumFractionDigits = six ? 6 : 2
-        return f.string(from: NSNumber(value: p)) ?? ""
+        f.maximumFractionDigits = maxDigits
+        return f.string(from: NSNumber(value: v)) ?? ""
     }
 
     // MARK: Eylemler
@@ -273,7 +279,7 @@ struct InvestmentTradeView: View {
         if let e = editing {
             type = e.type
             choice = e.asset
-            qtyText = Self.priceInput(e.quantity, asset: "TEFAS:X")   // 6 haneye kadar, gruplamasız
+            qtyText = Self.decimalInput(e.quantity, maxDigits: 10)   // kripto miktarı 8+ hane olabilir, gruplamasız
             priceText = Self.priceInput(e.pricePerUnit, asset: e.asset)
             date = DateUtil.parseDay(e.date) ?? Date()
             accountId = e.type == "buy" ? e.sourceAccountId : e.targetAccountId

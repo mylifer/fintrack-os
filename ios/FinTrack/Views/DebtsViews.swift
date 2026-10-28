@@ -184,9 +184,21 @@ struct DebtPaySheet: View {
     @State private var paymentId = UUID().uuidString.lowercased()
     @State private var busy = false
     @State private var errorMessage: String?
+    /// Son otomatik doldurulan tutar metni (kullanıcı değiştirmediyse hesap değişince yeniden doldurulur)
+    @State private var prefilled: String?
     @FocusState private var focused: Bool
 
     private var account: Account? { model.account(accountId) }
+
+    /// Önerilen tutar HESABIN para biriminde: borç TL bazlı, döviz hesapta kurla çevrilir
+    /// (TL taksiti döviz hesabına aynen yazmak ödemeyi kur katı büyütürdü)
+    private func suggestedAmount() -> String {
+        let next = debt.nextInstallmentAmount()
+        guard next > 0 else { return "" }
+        guard let a = account, a.currency != .TRY else { return Fmt.amountInput(next) }
+        guard model.fx.rate(a.currency) != nil else { return "" }
+        return Fmt.amountInput(Money.round(model.fx.fromBaseTry(next, a.currency)))
+    }
 
     /// Tahsilat kalan alacağı aşamaz (alacak TL bazlı; döviz hesapta çevrilir — web)
     private var overflow: Bool {
@@ -255,10 +267,16 @@ struct DebtPaySheet: View {
         }
         .presentationDetents([.medium, .large])
         .onAppear {
-            amountText = Fmt.amountInput(debt.nextInstallmentAmount())
             let accounts = model.activeAccounts
             accountId = accounts.first { $0.id == debt.accountId }?.id ?? accounts.first?.id
+            amountText = suggestedAmount()
+            prefilled = amountText
             focused = true
+        }
+        .onChange(of: accountId) { _, _ in
+            guard amountText == prefilled else { return }
+            amountText = suggestedAmount()
+            prefilled = amountText
         }
     }
 
