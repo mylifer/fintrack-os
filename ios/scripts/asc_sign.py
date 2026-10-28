@@ -141,9 +141,7 @@ def setup():
     widget_name, widget_ents = create_profile(state, bid + ".widget", widget_id)
     ok = all(group in (e.get("com.apple.security.application-groups") or []) for e in (app_ents, widget_ents))
     if not ok:
-        print(f"::warning::Profillerde {group} yok — bu sürüm App Group'suz imzalanır; widget'lar veri "
-              f"gösteremez. Kalıcı çözüm: developer.apple.com → Identifiers → App Groups → {group} ekleyip "
-              "iki paket kimliğine atamak.")
+        print(f"Profillerde {group} yok — App Group yerine ortak keychain ile imzalanır (widget verisi oradan).")
     env_out(PROFILE_APP=app_name, PROFILE_WIDGET=widget_name, APP_GROUP_OK="true" if ok else "false")
 
 

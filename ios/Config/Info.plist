@@ -4,6 +4,8 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>FTKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)$(FT_BUNDLE_ID).shared</string>
 	<key>FTAppGroup</key>
 	<string>$(FT_APP_GROUP)</string>
 	<key>SUPABASE_URL</key>

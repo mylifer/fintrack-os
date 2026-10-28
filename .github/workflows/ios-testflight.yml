@@ -127,9 +127,9 @@ jobs:
           } >> Config/Local.xcconfig
           extra=()
           if [ "$APP_GROUP_OK" != "true" ]; then
-            # Profilde App Group yok: o yetki olmadan imzala (widget'lar veri göremez)
-            printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict/></plist>\n' > "$RUNNER_TEMP/empty.entitlements"
-            extra+=(CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/empty.entitlements")
+            # Profilde App Group yok: yalnız ortak keychain ile imzala (widget veriyi oradan okur)
+            printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>keychain-access-groups</key><array><string>%s.%s.shared</string></array></dict></plist>\n' "$TEAM" "$FT_BUNDLE_ID" > "$RUNNER_TEMP/ci.entitlements"
+            extra+=(CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/ci.entitlements")
           fi
           # Sürüm numarası her yüklemede artmalı
           build=$((GITHUB_RUN_NUMBER + 100))
