@@ -27,6 +27,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard',    label: 'Ana Sayfa',   icon: IC.home },
       { href: '/accounts',     label: 'Hesaplar',    icon: IC.accounts, expand: 'accounts' },
       { href: '/transactions', label: 'İşlemler',    icon: IC.tx },
+      { href: '/ekstre-yukle', label: 'Ekstre Yükle', icon: IC.upload },
       { href: '/categories',   label: 'Kategoriler', icon: IC.categories },
       { href: '/tags',         label: 'Etiketler',   icon: IC.tags },
     ],
