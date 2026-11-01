@@ -6,10 +6,13 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { IconFileTypePdf, IconLoader2, IconCircleCheck, IconAlertTriangle, IconArrowBackUp } from '@tabler/icons-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { SelectField } from '@/components/ui/Select'
-import { useAccountStore, useCategoryStore, usePeopleStore, useTransactionStore, useWorkspaceStore } from '@/store'
+import { useAccountStore, useCategoryStore, usePaymentsStore, usePeopleStore, useTransactionStore, useWorkspaceStore } from '@/store'
+import { planIdFor } from '@/lib/payments/ids'
+import { cardCalendarUpdate, type CalendarUpdate } from '@/lib/statement-import/card-calendar'
 import { draftIdFor, useStatementDraftsStore } from '@/store/statement-drafts.store'
 import { localBatch, lastPullWasAuthoritative } from '@/lib/sync/engine'
 import { foldText } from '@/lib/auto-category'
+import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import { readPdfPages } from '@/lib/statement-import/pdf-text'
@@ -24,6 +27,7 @@ import { RowDrawer } from './RowDrawer'
 type Step = 'upload' | 'reading' | 'preview' | 'saving' | 'done'
 
 interface DoneState {
+  calendar: number
   created: number
   people: number
   deleted: number
@@ -61,6 +65,9 @@ export function StatementImport() {
   const [undoing, setUndoing]       = useState(false)
   const [offlineOk, setOfflineOk]   = useState(false)
   const [draftId, setDraftId]       = useState<string | null>(null)
+  const [applyCalendar, setApplyCalendar] = useState(true)
+  const payPlans       = usePaymentsStore(s => s.plans)
+  const payOccurrences = usePaymentsStore(s => s.occurrences)
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -100,6 +107,22 @@ export function StatementImport() {
       nowIso: new Date().toISOString(), todayStr: today(), newId: () => 'preview',
     })
   }, [plan, choices, edits, accountId, existing, people])
+
+  // Ekstrenin kesim / son ödeme tarihleri → Kart Takvimi (hesap seçiliyse)
+  const calendarFor = useCallback((st: ParsedStatement, accId: string): CalendarUpdate | null => {
+    const acc = useAccountStore.getState().accounts.find(a => a.id === accId)
+    if (!acc || acc.type !== 'credit_card') return null
+    const { plans, occurrences } = usePaymentsStore.getState()
+    return cardCalendarUpdate({
+      statement: st, account: acc, plan: plans.find(p => p.id === planIdFor('card', acc.id)),
+      occurrences, nowIso: new Date().toISOString(),
+    })
+  }, [])
+  const calendar = useMemo(() => {
+    if (!statement || !accountId) return null
+    void accounts; void payPlans; void payOccurrences
+    return calendarFor(statement, accountId)
+  }, [statement, accountId, accounts, payPlans, payOccurrences, calendarFor])
 
   // ── Yükleme ──────────────────────────────────────────────────────────────
   async function readFile(file: File) {
@@ -219,14 +242,20 @@ export function StatementImport() {
         setStep('preview')
         return
       }
-      await localBatch(res.ops)
+      // Kart Takvimi değişiklikleri kayıtlarla AYNI işlemde: ya hepsi ya hiçbiri
+      const cal = applyCalendar ? calendarFor(statement, accountId) : null
+      await localBatch([...res.ops, ...(cal?.ops ?? [])])
       rememberSkipped(accountId, res.skippedKeys)
       if (draftId) removeDraft(draftId)
-      await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load()])
+      await Promise.all([
+        useTransactionStore.getState().load(), usePeopleStore.getState().load(),
+        ...(cal?.ops.length ? [useAccountStore.getState().load(), usePaymentsStore.getState().load()] : []),
+      ])
       useAccountStore.getState().recomputeBalances(useTransactionStore.getState().transactions)
       setDone({
+        calendar: cal?.changes.length ?? 0,
         created: res.createdTxIds.length, people: res.createdPeople.length, deleted: res.deletedTxIds.length,
-        patched: res.patchedTxIds.length, undo: res.undo, skippedKeys: res.skippedKeys, accountId, undone: false,
+        patched: res.patchedTxIds.length, undo: [...res.undo, ...(cal?.undo ?? [])], skippedKeys: res.skippedKeys, accountId, undone: false,
       })
       setStep('done')
     } catch (err) {
@@ -242,7 +271,10 @@ export function StatementImport() {
     try {
       await localBatch(done.undo)
       forgetSkipped(done.accountId, done.skippedKeys)
-      await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load()])
+      await Promise.all([
+        useTransactionStore.getState().load(), usePeopleStore.getState().load(),
+        ...(done.calendar ? [useAccountStore.getState().load(), usePaymentsStore.getState().load()] : []),
+      ])
       useAccountStore.getState().recomputeBalances(useTransactionStore.getState().transactions)
       setDone({ ...done, undone: true })
     } finally {
@@ -304,7 +336,7 @@ export function StatementImport() {
           <div className="text-sm text-muted-foreground mt-1 tabular-nums">
             {done.undone
               ? 'Bütün değişiklikler geri alındı.'
-              : <>{done.created} kayıt eklendi{done.people ? `, ${done.people} yeni alıcı` : ''}{done.deleted ? `, ${done.deleted} kayıt silindi` : ''}{done.patched ? `, ${done.patched} kayıt güncellendi (onay / işyeri adı)` : ''}.</>}
+              : <>{done.created} kayıt eklendi{done.people ? `, ${done.people} yeni alıcı` : ''}{done.deleted ? `, ${done.deleted} kayıt silindi` : ''}{done.patched ? `, ${done.patched} kayıt güncellendi (onay / işyeri adı)` : ''}{done.calendar ? '; Kart Takvimi güncellendi' : ''}.</>}
           </div>
         </div>
         <div className="flex gap-2 flex-wrap justify-center">
@@ -327,7 +359,8 @@ export function StatementImport() {
   const problems = (preview?.problems ?? []).filter(p => p.message !== 'Karar verilmedi')
   const effect = preview ? commitEffect(preview.ops, accountId, existing) : 0
   const s = statement.summary
-  const calendarMismatch = account?.statementDay && +statement.statementDate.slice(8, 10) !== account.statementDay
+  const calChanges = calendar?.changes ?? []
+  const calValue = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(v, 'd MMM yyyy') : v ?? '—')
 
   function acceptRecommended() {
     const next = { ...choices }
@@ -382,13 +415,26 @@ export function StatementImport() {
               {plan.matchedLines}/{plan.totalLines} satır sistemdeki kayıtlarla eşleşti
             </span>
           )}
-          {calendarMismatch && (
-            <span className="text-orange-600">
-              Kesim günü sistemde {account?.statementDay}, ekstrede {+statement.statementDate.slice(8, 10)} —{' '}
-              <Link href="/kart-takvimi" className="underline">Kart Takvimi&apos;nde kontrol et</Link>
-            </span>
-          )}
         </div>
+        {calChanges.length > 0 && (
+          <div className="mt-1.5 border-t border-border/60 pt-2.5 flex flex-col gap-1.5">
+            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer w-fit">
+              <input type="checkbox" checked={applyCalendar} onChange={e => setApplyCalendar(e.target.checked)} className="accent-primary" />
+              Kart Takvimi ekstreye göre güncellensin
+            </label>
+            <ul className={cn('flex flex-col gap-0.5 text-xs tabular-nums pl-6', !applyCalendar && 'opacity-50')}>
+              {calChanges.map(c => (
+                <li key={c.label} className="text-muted-foreground">
+                  {c.label}: {c.from !== null && <><span className="line-through decoration-muted-foreground/50">{calValue(c.from)}</span> → </>}
+                  <span className="text-foreground font-medium">{c.to === null ? 'temizlenir' : calValue(c.to)}</span>
+                </li>
+              ))}
+            </ul>
+            <span className="text-[11px] text-muted-foreground pl-6">
+              Kayıtlarla birlikte yazılır ve birlikte geri alınır. <Link href="/kart-takvimi" className="underline">Kart Takvimi</Link>
+            </span>
+          </div>
+        )}
       </section>
 
       {!authoritative && (
