@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
@@ -8,8 +8,9 @@ import { clearLocalData } from '@/lib/auth'
 import { retryDeadLetters, pendingCount } from '@/lib/sync/engine'
 import {
   useAccountStore, useInvestmentStore, useRecurringStore,
-  useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore, usePaymentsStore,
+  useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore, usePaymentsStore, useWorkspaceStore,
 } from '@/store'
+import { useStatementDraftsStore } from '@/store/statement-drafts.store'
 import { assignCardPayments, buildSchedule, buildTargets, monthOf } from '@/lib/payments/schedule'
 import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
@@ -36,6 +37,11 @@ export function useSidebarData() {
   // Sayaç selector İÇİNDE hesaplanır: getDue fonksiyonunu seçmek (sabit referans)
   // tekrarlayanlar değişince yeniden render tetiklemiyor, rozet eskiyordu.
   const dueCount     = useRecurringStore(s => s.getDue(today()).length)
+
+  // Yarım kalan ekstreler (bu cihazdaki taslaklar, aktif çalışma alanı)
+  const activeWorkspace = useWorkspaceStore(s => s.activeId)
+  const draftCount = useStatementDraftsStore(s => s.drafts.filter(d => d.workspaceId === activeWorkspace).length)
+  useEffect(() => { useStatementDraftsStore.getState().load() }, [])
 
   // Ödeme Takibi rozeti: gecikmiş ya da son günü bugün olan kart/borç ödemesi.
   // Sayfadaki "Gecikmiş" ile aynı kaynak (buildSchedule), takip başlangıcından
@@ -111,6 +117,7 @@ export function useSidebarData() {
     allCategories,
     dueCount,
     paymentAlertCount,
+    draftCount,
     totalWealth,
     animTotalWealth,
     trendAmount,
