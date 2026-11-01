@@ -1,33 +1,35 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { IconChevronDown, IconSearch } from '@tabler/icons-react'
+import { IconChevronRight, IconSearch } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
+import { PersonAvatar } from '@/components/people/PersonAvatar'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { foldText } from '@/lib/auto-category'
 import { usePeopleStore } from '@/store'
-import type { Category } from '@/types'
+import type { Category, Person } from '@/types'
 import type { PlanRow, RowKind, RowStatus } from '@/lib/statement-import/classify'
 import type { RowEdit } from '@/lib/statement-import/commit'
 
 /* ── Önizleme listesi ────────────────────────────────────────────────────────
-   Hiyerarşi: Sorun → Kontrol et → Girilecek → Zaten sistemde → Kayda girmez.
-   Dikkat isteyenler açık ve en üstte; sorunsuzlar kapalı başlar. Karar gereken
-   satırın seçenekleri satırın içindedir — ayrıntıya girmeden karar verilebilir. */
-
-export type StatusFilter = 'all' | 'error' | RowStatus
+   Hiyerarşi: (Sorun) → Kontrol et → Girilecek → Zaten sistemde → Kayda girmez.
+   Dikkat isteyenler açık ve en üstte; sorunsuzlar kapalı başlar. Satır sade:
+   ad, altında tek gri satırda alıcı ve kategori (kendi ikonlarıyla), sağda
+   tutar. Bankanın ham metni adın üzerine gelince görünür. Karar gereken
+   satırın seçenekleri bitişik bir düğme grubudur. */
 
 export const STATUS_META: Record<'error' | RowStatus, { label: string; dot: string; hint: string }> = {
-  error:  { label: 'Sorun',          dot: 'bg-destructive',  hint: 'Bunlar çözülmeden kayıt yapılmaz.' },
-  review: { label: 'Kontrol et',     dot: 'bg-amber-500',    hint: 'Her biri için bir seçim yapın ya da önerilenleri topluca uygulayın.' },
-  new:    { label: 'Girilecek',      dot: 'bg-green-600',    hint: 'Yüksek güvenle eşleşti. Değiştirmek için satıra tıklayın.' },
-  exists: { label: 'Zaten sistemde', dot: 'bg-muted-foreground', hint: 'Sistemde karşılığı var, tekrar girilmez.' },
-  info:   { label: 'Kayda girmez',   dot: 'bg-sky-500',      hint: 'Bonus hareketleri; kart borcunu etkilemez.' },
+  error:  { label: 'Sorun',          dot: 'bg-destructive',       hint: 'Bunlar çözülmeden kayıt yapılmaz.' },
+  review: { label: 'Kontrol et',     dot: 'bg-orange-600',        hint: 'Her biri için bir seçim yapın' },
+  new:    { label: 'Girilecek',      dot: 'bg-green-600',         hint: 'Geçmiş kayıtlarınızdan öğrenilen alıcı ve kategoriyle' },
+  exists: { label: 'Zaten sistemde', dot: 'bg-muted-foreground/60', hint: 'Tekrar girilmeyecek' },
+  info:   { label: 'Kayda girmez',   dot: 'bg-sky-500',           hint: 'Bonus hareketleri, kart borcunu etkilemez' },
 }
 
-const ORDER: (keyof typeof STATUS_META)[] = ['error', 'review', 'new', 'exists', 'info']
+const ORDER: RowStatus[] = ['review', 'new', 'exists', 'info']
 
 const SUBGROUPS: Partial<Record<RowStatus, [string, (r: PlanRow) => boolean][]>> = {
   new: [
@@ -36,7 +38,7 @@ const SUBGROUPS: Partial<Record<RowStatus, [string, (r: PlanRow) => boolean][]>>
     ['Faiz ve ücretler', r => r.kind === 'fee'],
   ],
   exists: [
-    ['Tek çekim harcamalar ve iadeler', r => r.kind === 'purchase' || r.kind === 'refund' || r.kind === 'fee'],
+    ['Tek çekim ve iadeler', r => r.kind === 'purchase' || r.kind === 'refund' || r.kind === 'fee'],
     ['Taksitler', r => r.kind === 'installment' || r.kind === 'lump'],
     ['Açılış bakiyesindeki taksitler', r => r.kind === 'opening'],
     ['Ödemeler', r => r.kind === 'payment'],
@@ -45,46 +47,35 @@ const SUBGROUPS: Partial<Record<RowStatus, [string, (r: PlanRow) => boolean][]>>
 }
 
 const KIND_TAG: Partial<Record<RowKind, (r: PlanRow) => string>> = {
-  'installment-new': r => `Yeni taksit · ${r.installment!.count} ay`,
+  'installment-new': r => `${r.installment!.count} taksit`,
   'installment-missing': r => `Taksit ${r.installment!.index}/${r.installment!.count}`,
   installment: r => (r.installment ? `Taksit ${r.installment.index}/${r.installment.count}` : 'Taksit'),
-  opening: r => `Taksit ${r.installment!.index}/${r.installment!.count} · açılışta`,
+  opening: r => `Taksit ${r.installment!.index}/${r.installment!.count} · açılış bakiyesinde`,
   lump: r => `Taksit ${r.installment!.index}/${r.installment!.count} · tek kayıt`,
   'amount-diff': r => `Taksit ${r.installment!.index}/${r.installment!.count}`,
-  cancel: () => 'Taksitli iptal/iade',
-  refund: () => 'İade',
   fee: () => 'Faiz/ücret',
   payment: () => 'Kart ödemesi',
-  orphan: () => 'Ekstrede yok',
-  'net-zero': () => 'Net 0',
 }
 
-function Chip({ children, tone = 'default', title }: { children: React.ReactNode; tone?: 'default' | 'new' | 'guess' | 'tag' | 'ok' | 'bad'; title?: string }) {
-  return (
-    <span title={title} className={cn(
-      'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] whitespace-nowrap max-w-full truncate',
-      tone === 'default' && 'bg-muted text-foreground',
-      tone === 'new' && 'bg-primary/10 text-primary font-medium',
-      tone === 'guess' && 'border border-dashed border-muted-foreground/50 text-muted-foreground',
-      tone === 'tag' && 'border border-border text-muted-foreground',
-      tone === 'ok' && 'bg-green-600/10 text-green-700 dark:text-green-400',
-      tone === 'bad' && 'bg-destructive/10 text-destructive font-medium',
-    )}>{children}</span>
-  )
-}
+const sumMinor = (list: PlanRow[]) => list.reduce((t, r) => t + Math.round((r.amount ?? 0) * 100), 0) / 100
 
-function Amount({ row }: { row: PlanRow }) {
+/** Kart ekstresinde harcama olağan durumdur: harcama düz, alacak yeşil "+". */
+function Amount({ row, quiet }: { row: PlanRow; quiet?: boolean }) {
   if (row.amount === null) {
-    return <div className="text-right text-xs text-muted-foreground tabular-nums whitespace-nowrap">—<div>bonus {row.bonus! > 0 ? '+' : '−'}{formatCurrency(Math.abs(row.bonus!))}</div></div>
+    return <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">bonus {row.bonus! > 0 ? '+' : '−'}{formatCurrency(Math.abs(row.bonus!))}</span>
   }
   const credit = row.amount < 0
   return (
-    <div className={cn('text-right text-sm font-semibold tabular-nums whitespace-nowrap', credit && 'text-green-600')}>
-      {row.amount === 0 ? formatCurrency(0) : `${credit ? '+' : '−'}${formatCurrency(Math.abs(row.amount))}`}
-      {row.foreign && <div className="text-[11px] font-normal text-muted-foreground">{row.foreign.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {row.foreign.currency}</div>}
+    <div className="text-right whitespace-nowrap">
+      <div className={cn('text-sm tabular-nums', quiet ? 'font-medium text-muted-foreground' : 'font-semibold', credit && 'text-green-600')}>
+        {credit ? '+' : ''}{formatCurrency(Math.abs(row.amount))}
+      </div>
+      {row.foreign && <div className="text-[11px] text-muted-foreground tabular-nums">{row.foreign.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {row.foreign.currency}</div>}
     </div>
   )
 }
+
+const Dot = () => <span className="text-muted-foreground/50">·</span>
 
 interface ListProps {
   rows: PlanRow[]
@@ -93,8 +84,6 @@ interface ListProps {
   edits: Record<string, RowEdit>
   categories: Category[]
   problems: { rowKey: string; message: string }[]
-  filter: StatusFilter
-  onFilter: (f: StatusFilter) => void
   query: string
   onQuery: (q: string) => void
   onChoose: (key: string, index: number) => void
@@ -104,40 +93,100 @@ interface ListProps {
 }
 
 export function PreviewList(props: ListProps) {
-  const { rows, blockers, choices, edits, categories, problems, filter, onFilter, query, onQuery } = props
+  const { rows, blockers, choices, edits, categories, problems, query, onQuery } = props
   const [closed, setClosed] = useState<Record<string, boolean>>({ exists: true, info: true })
   const people = usePeopleStore(st => st.people)
-  const personName = useMemo(() => new Map(people.map(p => [p.id, p.name])), [people])
+  const personById = useMemo(() => new Map(people.map(p => [p.id, p])), [people])
+  const catById = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
 
-  const catName = useMemo(() => {
-    const byId = new Map(categories.map(c => [c.id, c]))
-    return (id?: string) => {
-      const parts: string[] = []
-      let c = id ? byId.get(id) : undefined
-      for (let i = 0; c && i < 4; i++) { parts.unshift(c.name); c = c.parentId ? byId.get(c.parentId) : undefined }
-      return parts.join(' › ') || undefined
-    }
-  }, [categories])
+  const catPath = (id?: string) => {
+    const parts: string[] = []
+    let c = id ? catById.get(id) : undefined
+    for (let i = 0; c && i < 4; i++) { parts.unshift(c.name); c = c.parentId ? catById.get(c.parentId) : undefined }
+    return parts.join(' › ') || undefined
+  }
 
   const problemByKey = useMemo(() => new Map(problems.filter(p => p.message !== 'Karar verilmedi').map(p => [p.rowKey, p.message])), [problems])
   const q = foldText(query)
-  const visible = (r: PlanRow) => !q || foldText([r.title, r.raw, r.recipientName ?? '', catName(r.categoryId) ?? '', r.amount !== null ? Math.abs(r.amount).toFixed(2).replace('.', ',') : ''].join(' ')).includes(q)
+  const visible = (r: PlanRow) => !q || foldText([r.title, r.raw, r.recipientName ?? '', catPath(r.categoryId) ?? '', r.amount !== null ? Math.abs(r.amount).toFixed(2).replace('.', ',') : ''].join(' ')).includes(q)
 
-  const counts: Record<string, number> = { error: blockers.length }
-  for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1
-  const pendingReview = rows.filter(r => r.status === 'review' && (choices[r.key] ?? null) === null).length
+  const byStatus = (s: RowStatus) => rows.filter(r => r.status === s)
+  const pendingReview = rows.filter(r => r.status === 'review' && choices[r.key] === undefined).length
   const recommendable = rows.filter(r => r.status === 'review' && choices[r.key] === undefined && r.recommended !== null).length
+
+  function jump(s: RowStatus) {
+    setClosed(c => ({ ...c, [s]: false }))
+    requestAnimationFrame(() => document.getElementById(`stmt-sec-${s}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+
+  // ── Alt satır: alıcı (avatar) · kategori (ikon) · etiket ──
+  const metaLine = (r: PlanRow) => {
+    const edit = edits[r.key]
+    const bits: React.ReactNode[] = []
+    if (r.kind !== 'bonus' && r.kind !== 'payment') {
+      const pickedExisting = edit?.recipientId !== undefined
+      const person: Person | undefined = pickedExisting
+        ? (edit.recipientId ? personById.get(edit.recipientId) : undefined)
+        : (r.recipientId ? personById.get(r.recipientId) : undefined)
+      const newName = !pickedExisting && r.newRecipient ? (edit?.newRecipient ?? r.recipientName) : undefined
+      if (person) {
+        bits.push(<span key="p" className="inline-flex items-center gap-1.5 min-w-0"><PersonAvatar person={person} size="xs" /><span className="truncate">{person.name}</span></span>)
+      } else if (newName) {
+        bits.push(
+          <span key="p" className="inline-flex items-center gap-1.5 min-w-0 text-primary font-medium">
+            <PersonAvatar person={{ name: newName, role: 'recipient' }} size="xs" />
+            <span className="truncate">Yeni: {newName}</span>
+          </span>,
+        )
+      }
+      const cat = catById.get(edit?.categoryId ?? r.categoryId ?? '')
+      if (cat) {
+        const guess = r.categoryGuess && !edit?.categoryId
+        bits.push(
+          <span key="c" className="inline-flex items-center gap-1.5 min-w-0" title={guess ? `${catPath(cat.id)} — bu işyerinde kategori değişken; en sık olanı önerildi` : catPath(cat.id)}>
+            <CategoryIcon icon={cat.icon} color={cat.color} size={10} />
+            <span className={cn('truncate', guess && 'border-b border-dashed border-muted-foreground/60')}>{cat.name}</span>
+          </span>,
+        )
+      }
+    }
+    const tag = KIND_TAG[r.kind]?.(r)
+    if (tag) bits.push(<span key="t" className="whitespace-nowrap">{tag}</span>)
+    if (r.note) bits.push(<span key="n" className="whitespace-nowrap">{r.note}</span>)
+    if (r.sideEffects.some(a => a.type === 'patch' && a.patch.approvalStatus === 'approved')) bits.push(<span key="a" className="text-green-600 whitespace-nowrap">onaylanacak</span>)
+    const problem = problemByKey.get(r.key)
+    if (problem) bits.push(<span key="x" className="text-destructive font-medium whitespace-nowrap">{problem}</span>)
+    if (!bits.length) return <span className="truncate text-muted-foreground/70">{r.raw}</span>
+    return bits.flatMap((b, i) => (i ? [<Dot key={`d${i}`} />, b] : [b]))
+  }
+
+  // ── Karar: konu + bitişik seçenek grubu ──
+  const decision = (r: PlanRow) => {
+    const sel = choices[r.key]
+    const decided = sel !== undefined
+    return (
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5" onClick={e => e.stopPropagation()}>
+        <span className={cn('text-xs font-semibold', decided ? 'text-muted-foreground' : 'text-orange-600')}>{decided ? '✓ ' : ''}{r.issue}</span>
+        <div className="inline-flex flex-wrap rounded-lg border border-border bg-muted/40 overflow-hidden">
+          {r.options.map((o, i) => (
+            <button
+              key={o.key} type="button" onClick={() => props.onChoose(r.key, i)}
+              className={cn('px-2.5 py-1 text-xs border-l border-border first:border-l-0 transition-colors',
+                sel === i ? 'bg-primary/10 text-primary font-semibold' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}
+              title={!decided && r.recommended === i ? 'Önerilen' : undefined}
+            >
+              {o.label}
+              {!decided && r.recommended === i && <span className="ml-1.5 inline-block size-1.5 rounded-full bg-primary align-middle" aria-label="önerilen" />}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   const rowView = (r: PlanRow) => {
     const edit = edits[r.key]
-    const sel = choices[r.key] ?? r.defaultOption
-    const decided = r.status !== 'review' || choices[r.key] !== undefined
-    const pickedExisting = edit?.recipientId !== undefined
-    const recipient = pickedExisting ? (edit.recipientId ? personName.get(edit.recipientId) : undefined) : (edit?.newRecipient ?? r.recipientName)
-    const showNew = !!r.newRecipient && !pickedExisting
-    const categoryId = edit?.categoryId ?? r.categoryId
-    const problem = problemByKey.get(r.key)
-    const tag = KIND_TAG[r.kind]?.(r)
+    const quiet = r.status === 'exists' || r.status === 'info'
     return (
       <div
         key={r.key}
@@ -145,65 +194,38 @@ export function PreviewList(props: ListProps) {
         onClick={() => props.onOpen(r.key)}
         onKeyDown={e => { if (e.key === 'Enter') props.onOpen(r.key) }}
         className={cn(
-          'grid grid-cols-[52px_minmax(0,1fr)_auto] md:grid-cols-[64px_minmax(0,1.4fr)_minmax(0,1.3fr)_140px] gap-x-3 gap-y-1.5 items-center px-4 py-2.5 border-b border-border/60 last:border-0 cursor-pointer hover:bg-muted/40',
+          'grid grid-cols-[48px_minmax(0,1fr)_auto] sm:grid-cols-[56px_minmax(0,1fr)_auto] gap-x-3 sm:gap-x-4 px-4 py-2.5 border-t border-border/60 first:border-t-0 cursor-pointer hover:bg-muted/40',
           props.openKey === r.key && 'bg-primary/5',
         )}
       >
-        <div className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">{formatDate(r.date, 'd MMM')}</div>
+        <div className="text-xs text-muted-foreground tabular-nums whitespace-nowrap pt-0.5">{formatDate(r.date, 'd MMM')}</div>
         <div className="min-w-0">
-          <div className="text-sm font-medium truncate">{edit?.description ?? r.title}</div>
-          <div className="text-[11px] text-muted-foreground/80 truncate tracking-wide">{r.raw}{r.lines.length > 1 ? ` · ${r.lines.length} satır` : ''}</div>
-        </div>
-        <div className="col-span-3 md:col-span-1 row-start-2 md:row-start-auto flex flex-wrap gap-1.5 min-w-0">
-          {r.kind !== 'bonus' && r.kind !== 'payment' && (
-            recipient ? <Chip tone={showNew ? 'new' : 'default'}>{showNew ? 'Yeni · ' : ''}{recipient}</Chip> : null
-          )}
-          {categoryId
-            ? <Chip tone={r.categoryGuess && !edit?.categoryId ? 'guess' : 'default'} title={r.categoryGuess ? 'Bu işyerinde kategori değişken; en sık olanı önerildi' : undefined}>
-                {catName(categoryId)}{r.categoryGuess && !edit?.categoryId ? ' · tahmin' : ''}
-              </Chip>
-            : null}
-          {tag && <Chip tone="tag">{tag}</Chip>}
-          {r.note && <Chip tone="tag">{r.note}</Chip>}
-          {r.sideEffects.some(a => a.type === 'patch' && a.patch.approvalStatus === 'approved') && <Chip tone="ok">onaylanacak</Chip>}
-          {problem && <Chip tone="bad">{problem}</Chip>}
-        </div>
-        <div className="row-start-1 col-start-3 md:col-start-4"><Amount row={r} /></div>
-        {r.status === 'review' && (
-          <div className="col-span-3 md:col-start-2 md:col-span-3 flex flex-wrap items-center gap-2" onClick={e => e.stopPropagation()}>
-            <span className={cn('text-xs font-semibold', decided ? 'text-muted-foreground' : 'text-amber-600')}>{decided ? '✓ ' : ''}{r.issue}</span>
-            {r.options.map((o, i) => (
-              <button
-                key={o.key} type="button" onClick={() => props.onChoose(r.key, i)}
-                className={cn(
-                  'rounded-lg border px-2.5 py-1 text-xs transition-colors',
-                  sel === i && decided ? 'border-primary bg-primary/10 text-primary font-semibold' : 'border-border hover:bg-muted',
-                )}
-              >
-                {o.label}{!decided && r.recommended === i && <span className="ml-1 text-[10px] font-semibold text-primary">önerilen</span>}
-              </button>
-            ))}
+          <div className={cn('text-sm truncate', quiet ? 'text-foreground/80' : 'font-medium')} title={r.raw}>
+            {edit?.description ?? r.title}{r.lines.length > 1 && <span className="text-muted-foreground font-normal"> · {r.lines.length} satır</span>}
           </div>
-        )}
+          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 overflow-hidden whitespace-nowrap">{metaLine(r)}</div>
+        </div>
+        <Amount row={r} quiet={quiet} />
+        {r.status === 'review' && <div className="col-start-2 col-span-2 mt-2">{decision(r)}</div>}
       </div>
     )
   }
 
-  const tabs: [StatusFilter, string, number, string][] = [
-    ['all', 'Tümü', rows.length, 'bg-foreground'],
-    ...ORDER.map(s => [s, STATUS_META[s].label, s === 'review' ? counts.review ?? 0 : counts[s] ?? 0, STATUS_META[s].dot] as [StatusFilter, string, number, string]),
+  const pills: [RowStatus, string, number][] = [
+    ['review', 'Kontrol et', pendingReview],
+    ['new', 'Girilecek', byStatus('new').length],
+    ['exists', 'Zaten sistemde', byStatus('exists').length],
+    ['info', 'Kayda girmez', byStatus('info').length],
   ]
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
-        {tabs.map(([k, label, c, dot]) => (
-          <button key={k} type="button" onClick={() => onFilter(k)}
-            className={cn('flex items-center gap-2 rounded-xl border bg-card px-3 py-2 text-left transition-colors hover:bg-muted/50',
-              filter === k ? 'border-foreground' : 'border-border')}>
-            <span className={cn('size-2 rounded-full', dot)} />
-            <span className="text-sm font-semibold tabular-nums">{c}</span>
-            <span className="text-xs text-muted-foreground">{label}</span>
+        {pills.filter(([s]) => byStatus(s).length > 0).map(([s, label, n]) => (
+          <button key={s} type="button" onClick={() => jump(s)}
+            className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 transition-colors">
+            <span className={cn('size-2 rounded-full', STATUS_META[s].dot)} />
+            <span className="text-sm font-semibold text-foreground tabular-nums">{s === 'review' && n === 0 ? '✓' : n}</span>{label}
           </button>
         ))}
       </div>
@@ -215,66 +237,69 @@ export function PreviewList(props: ListProps) {
         />
       </div>
 
-      {ORDER.filter(s => filter === 'all' || filter === s).map(s => {
-        if (s === 'error') {
-          return (
-            <section key={s} className="rounded-xl border border-border bg-card overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-                <span className={cn('size-2 rounded-full', STATUS_META.error.dot)} />
-                <h2 className="text-sm font-semibold">Sorun <span className="font-normal text-muted-foreground tabular-nums">{blockers.length}</span></h2>
-                <span className="text-xs text-muted-foreground hidden sm:inline">{STATUS_META.error.hint}</span>
-              </div>
-              {blockers.length
-                ? blockers.map(b => <div key={b} className="px-4 py-2.5 text-sm text-destructive border-b border-border/60 last:border-0">{b}</div>)
-                : <div className="px-4 py-3 text-xs text-muted-foreground">Sorun yok. Bütün satırlar okundu ve toplam, bankanın dönem borcuyla birebir tuttu.</div>}
-            </section>
-          )
-        }
-        const list = rows.filter(r => r.status === s && visible(r))
-        if (!list.length && filter === 'all') return null
-        const isClosed = filter === 'all' && closed[s]
+      {blockers.length > 0 && (
+        <section className="rounded-xl border border-destructive/40 bg-card overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+            <span className={cn('size-2 rounded-full', STATUS_META.error.dot)} />
+            <h2 className="text-sm font-semibold">Sorun <span className="font-normal text-muted-foreground tabular-nums">{blockers.length}</span></h2>
+            <span className="text-xs text-muted-foreground hidden sm:inline">{STATUS_META.error.hint}</span>
+          </div>
+          {blockers.map(b => <div key={b} className="px-4 py-2.5 text-sm text-destructive border-t border-border/60 first:border-t-0">{b}</div>)}
+        </section>
+      )}
+
+      {ORDER.map(s => {
+        const all = byStatus(s)
+        const list = all.filter(visible)
+        if (!list.length) return null
+        const isClosed = !!closed[s] && !q
         const subs = SUBGROUPS[s]
         let body: React.ReactNode
-        if (!list.length) body = <div className="px-4 py-3 text-xs text-muted-foreground">Eşleşen satır yok.</div>
-        else if (!subs) body = list.map(rowView)
+        if (!subs) body = list.map(rowView)
         else {
           const placed = new Set<string>()
           body = subs.map(([label, f]) => {
             const part = list.filter(r => !placed.has(r.key) && f(r))
             part.forEach(r => placed.add(r.key))
             if (!part.length) return null
-            const sum = part.reduce((t, r) => t + Math.round((r.amount ?? 0) * 100), 0) / 100
+            const sum = sumMinor(part)
             return (
               <div key={label}>
-                <div className="flex justify-between px-4 py-1.5 bg-muted/50 text-[11px] font-semibold text-muted-foreground border-b border-border/60 tabular-nums">
-                  <span>{label} {part.length}</span>
-                  <span>{sum < 0 ? '+' : '−'}{formatCurrency(Math.abs(sum))}</span>
+                <div className="flex justify-between px-4 py-1.5 bg-muted/50 text-[11px] font-semibold text-muted-foreground tabular-nums">
+                  <span>{label} <span className="font-normal">{part.length}</span></span>
+                  <span>{sum < 0 ? '+' : ''}{formatCurrency(Math.abs(sum))}</span>
                 </div>
                 {part.map(rowView)}
               </div>
             )
           })
         }
+        const sum = sumMinor(list)
         return (
-          <section key={s} className="rounded-xl border border-border bg-card overflow-hidden">
+          <section key={s} id={`stmt-sec-${s}`} className="rounded-xl border border-border bg-card overflow-hidden scroll-mt-20">
             <div
               role="button" tabIndex={0}
               onClick={() => setClosed(c => ({ ...c, [s]: !c[s] }))}
               onKeyDown={e => { if (e.key === 'Enter') setClosed(c => ({ ...c, [s]: !c[s] })) }}
-              className={cn('flex items-center gap-2 px-4 py-3 cursor-pointer select-none', !isClosed && 'border-b border-border')}
+              className="flex items-center gap-2.5 px-4 py-3 cursor-pointer select-none"
             >
-              <span className={cn('size-2 rounded-full', STATUS_META[s].dot)} />
-              <h2 className="text-sm font-semibold">{STATUS_META[s].label} <span className="font-normal text-muted-foreground tabular-nums">{list.length}</span></h2>
-              <span className="text-xs text-muted-foreground flex-1 hidden sm:inline">{STATUS_META[s].hint}</span>
-              <span className="flex-1 sm:hidden" />
-              {s === 'review' && pendingReview > 0 && recommendable > 0 && (
-                <Button size="sm" variant="outline" className="rounded-lg" onClick={e => { e.stopPropagation(); props.onAcceptRecommended() }}>
-                  Önerilenleri uygula ({recommendable})
-                </Button>
-              )}
-              <IconChevronDown className={cn('size-4 text-muted-foreground transition-transform', isClosed && '-rotate-90')} />
+              <span className={cn('size-2 rounded-full flex-shrink-0', STATUS_META[s].dot)} />
+              <h2 className="text-[15px] font-semibold whitespace-nowrap">
+                {STATUS_META[s].label}{' '}
+                <span className="font-normal text-muted-foreground tabular-nums">{s === 'review' && pendingReview ? `${pendingReview}/${list.length}` : list.length}</span>
+              </h2>
+              <span className="text-xs text-muted-foreground/80 hidden md:inline truncate">{STATUS_META[s].hint}</span>
+              <span className="flex-1" />
+              {s === 'review' && recommendable > 0
+                ? (
+                  <Button size="sm" variant="outline" className="rounded-lg" onClick={e => { e.stopPropagation(); props.onAcceptRecommended() }}>
+                    Önerilenleri uygula
+                  </Button>
+                )
+                : s === 'new' && <span className="text-sm text-muted-foreground tabular-nums">{sum < 0 ? '+' : ''}{formatCurrency(Math.abs(sum))}</span>}
+              <IconChevronRight className={cn('size-4 text-muted-foreground transition-transform flex-shrink-0', !isClosed && 'rotate-90')} />
             </div>
-            {!isClosed && body}
+            {!isClosed && <div className="border-t border-border">{body}</div>}
           </section>
         )
       })}

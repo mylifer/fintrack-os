@@ -16,7 +16,7 @@ import { buildImportPlan, type ImportPlan, type PlanRow } from '@/lib/statement-
 import { buildCommit, commitEffect, selectedOption, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
 import type { BatchOp } from '@/lib/sync/engine'
-import { PreviewList, STATUS_META, type StatusFilter } from './PreviewList'
+import { PreviewList, STATUS_META } from './PreviewList'
 import { RowDrawer } from './RowDrawer'
 
 type Step = 'upload' | 'reading' | 'preview' | 'saving' | 'done'
@@ -52,7 +52,6 @@ export function StatementImport() {
   const [suggested, setSuggested]   = useState<{ id: string; matched: number } | null>(null)
   const [choices, setChoices]       = useState<Record<string, number>>({})
   const [edits, setEdits]           = useState<Record<string, RowEdit>>({})
-  const [filter, setFilter]         = useState<StatusFilter>('all')
   const [query, setQuery]           = useState('')
   const [openKey, setOpenKey]       = useState<string | null>(null)
   const [dragging, setDragging]     = useState(false)
@@ -118,7 +117,6 @@ export function StatementImport() {
       setSuggested(best && best.matched > 0 ? { id: best.id, matched: best.matched } : null)
       setChoices({})
       setEdits({})
-      setFilter('all')
       setStep('preview')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dosya okunamadı.')
@@ -273,16 +271,16 @@ export function StatementImport() {
       {/* Başlık + hesap */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold">{statement.bankLabel} kredi kartı ekstresi</div>
-          <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-            Dönem {plan ? formatDate(plan.periodStart, 'd MMM') : '…'} – {formatDate(statement.statementDate, 'd MMM yyyy')}
+          <h2 className="text-xl font-semibold tracking-tight">{statement.bankLabel} kredi kartı ekstresi</h2>
+          <div className="text-sm text-muted-foreground mt-0.5 tabular-nums">
+            {plan ? formatDate(plan.periodStart, 'd MMM') : '…'} – {formatDate(statement.statementDate, 'd MMM yyyy')}
             {statement.dueDate && <> · son ödeme {formatDate(statement.dueDate, 'd MMM')}</>} · <span className="break-all">{fileName}</span>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={reset} className="rounded-lg">Vazgeç</Button>
+        <Button variant="outline" size="sm" onClick={reset} className="rounded-lg">Vazgeç</Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="text-sm font-semibold">Hesap</span>
         <SelectField
           value={accountId}
@@ -292,39 +290,36 @@ export function StatementImport() {
           className="w-56 bg-background"
         />
         {suggested && suggested.id === accountId && (
-          <span className="text-xs text-muted-foreground">önerildi: {suggested.matched} satır bu hesaptaki kayıtlarla eşleşti</span>
+          <span className="text-sm text-muted-foreground">{suggested.matched} satır bu hesaptaki kayıtlarla eşleşti</span>
         )}
       </div>
 
-      {/* Doğrulama */}
-      <section className="rounded-xl border border-border bg-card p-4 flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 justify-between">
+      {/* Doğrulama: tek bakışta "tuttu mu", ayrıntı gri */}
+      <section className="rounded-xl border border-border bg-card px-4 py-3.5 flex flex-col gap-1.5">
+        <div className="flex items-baseline justify-between gap-4">
           {statement.check.ok
-            ? <span className="flex items-center gap-1.5 text-sm font-semibold text-green-600"><IconCircleCheck className="size-4" />Ekstre tuttu</span>
-            : <span className="flex items-center gap-1.5 text-sm font-semibold text-destructive"><IconAlertTriangle className="size-4" />Ekstre okunamadı</span>}
-          {s && (
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums justify-end">
-              <span>Önceki dönem <b className="text-foreground font-semibold">{formatCurrency(s.previous)}</b></span><span>+</span>
-              <span>Harcamalar <b className="text-foreground font-semibold">{formatCurrency(s.spending)}</b></span><span>+</span>
-              <span>Faiz ve ücret <b className="text-foreground font-semibold">{formatCurrency(s.fees)}</b></span><span>−</span>
-              <span>Ödemeler <b className="text-foreground font-semibold">{formatCurrency(s.payments)}</b></span><span>=</span>
-              <span>Dönem borcu <b className="text-foreground font-semibold">{formatCurrency(s.debt)}</b></span>
-            </div>
+            ? <span className="flex items-center gap-1.5 text-sm font-semibold text-green-600"><IconCircleCheck className="size-4 self-center" />Ekstre bankayla birebir tuttu</span>
+            : <span className="flex items-center gap-1.5 text-sm font-semibold text-destructive"><IconAlertTriangle className="size-4 self-center" />Ekstre okunamadı</span>}
+          {s && <span className="text-lg font-semibold tabular-nums">{formatCurrency(s.debt)}</span>}
+        </div>
+        {s && (
+          <div className="text-xs text-muted-foreground tabular-nums">
+            Önceki dönem {formatCurrency(s.previous)} + harcamalar {formatCurrency(s.spending)} + faiz ve ücret {formatCurrency(s.fees)} − ödemeler {formatCurrency(s.payments)}
+          </div>
+        )}
+        <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs">
+          {plan && (
+            <span className="text-muted-foreground tabular-nums" title={plan.openingDate ? `Hesabın açılışı ${formatDate(plan.openingDate)}; bundan önceki alımların taksitleri açılış bakiyesinde sayılır.` : undefined}>
+              {plan.matchedLines}/{plan.totalLines} satır sistemdeki kayıtlarla eşleşti
+            </span>
+          )}
+          {calendarMismatch && (
+            <span className="text-orange-600">
+              Kesim günü sistemde {account?.statementDay}, ekstrede {+statement.statementDate.slice(8, 10)} —{' '}
+              <Link href="/kart-takvimi" className="underline">Kart Takvimi&apos;nde kontrol et</Link>
+            </span>
           )}
         </div>
-        {plan && (
-          <div className="text-xs text-muted-foreground tabular-nums">
-            Ekstredeki {plan.totalLines} borç/alacak satırından <b className="text-foreground">{plan.matchedLines}</b>&apos;i sistemdeki kayıtlarla eşleşti.
-            {plan.openingDate && <> Hesabın açılışı {formatDate(plan.openingDate)}; bundan önceki alımların taksitleri açılış bakiyesinde sayılır.</>}
-          </div>
-        )}
-        {calendarMismatch && (
-          <div className="text-xs text-amber-600">
-            Ekstreye göre kesim {formatDate(statement.statementDate, 'd MMM')}{statement.dueDate && <>, son ödeme {formatDate(statement.dueDate, 'd MMM')}</>}
-            {statement.nextStatementDate && <>; sonraki kesim {formatDate(statement.nextStatementDate, 'd MMM')}</>}. Kartın kesim günü sistemde {account?.statementDay} kayıtlı —{' '}
-            <Link href="/kart-takvimi" className="underline">Kart Takvimi&apos;nde</Link> kontrol edin.
-          </div>
-        )}
       </section>
 
       {!authoritative && (
@@ -344,8 +339,6 @@ export function StatementImport() {
           edits={edits}
           categories={categories}
           problems={preview?.problems ?? []}
-          filter={filter}
-          onFilter={setFilter}
           query={query}
           onQuery={setQuery}
           onChoose={(key, i) => setChoices(c => ({ ...c, [key]: i }))}
