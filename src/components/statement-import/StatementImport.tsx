@@ -1,11 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { IconFileTypePdf, IconLoader2, IconCircleCheck, IconAlertTriangle, IconArrowBackUp } from '@tabler/icons-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { SelectField } from '@/components/ui/Select'
-import { useAccountStore, useCategoryStore, usePeopleStore, useTransactionStore } from '@/store'
+import { useAccountStore, useCategoryStore, usePeopleStore, useTransactionStore, useWorkspaceStore } from '@/store'
+import { draftIdFor, useStatementDraftsStore } from '@/store/statement-drafts.store'
 import { localBatch, lastPullWasAuthoritative } from '@/lib/sync/engine'
 import { foldText } from '@/lib/auto-category'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -58,6 +60,16 @@ export function StatementImport() {
   const [done, setDone]             = useState<DoneState | null>(null)
   const [undoing, setUndoing]       = useState(false)
   const [offlineOk, setOfflineOk]   = useState(false)
+  const [draftId, setDraftId]       = useState<string | null>(null)
+
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const workspaceId  = useWorkspaceStore(s => s.activeId)
+  const drafts       = useStatementDraftsStore(s => s.drafts)
+  const saveDraft    = useStatementDraftsStore(s => s.save)
+  const removeDraft  = useStatementDraftsStore(s => s.remove)
+  useEffect(() => { useStatementDraftsStore.getState().load() }, [])
+  const draftCount = drafts.filter(d => d.workspaceId === workspaceId).length
 
   const cards = useMemo(() => accounts.filter(a => !a.isArchived && a.type === 'credit_card'), [accounts])
   const account = accounts.find(a => a.id === accountId)
@@ -111,12 +123,17 @@ export function StatementImport() {
         const matched = p?.matchedLines ?? 0
         if (!best || matched > best.matched || (matched === best.matched && byName && !best.byName)) best = { id: a.id, matched, byName }
       }
+      const id = draftIdFor(st)
+      const prev = useStatementDraftsStore.getState().get(id)
+      const prevAccount = prev && useAccountStore.getState().accounts.some(a => a.id === prev.accountId) ? prev.accountId : null
       setStatement(st)
       setFileName(file.name)
-      setAccountId(best?.id ?? '')
+      setDraftId(id)
+      setAccountId(prevAccount ?? best?.id ?? '')
       setSuggested(best && best.matched > 0 ? { id: best.id, matched: best.matched } : null)
-      setChoices({})
-      setEdits({})
+      setChoices(prevAccount ? prev!.choices : {})
+      setEdits(prevAccount ? prev!.edits : {})
+      if (prevAccount) setNotice('Bu ekstre daha önce yüklenip yarım bırakılmış; verdiğin kararlar geri getirildi.')
       setStep('preview')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dosya okunamadı.')
@@ -126,9 +143,54 @@ export function StatementImport() {
 
   function reset() {
     setStep('upload'); setStatement(null); setFileName(''); setAccountId(''); setChoices({}); setEdits({})
-    setError(''); setNotice(''); setDone(null); setOpenKey(null); setOfflineOk(false)
+    setError(''); setNotice(''); setDone(null); setOpenKey(null); setOfflineOk(false); setDraftId(null)
     if (fileRef.current) fileRef.current.value = ''
   }
+
+  // ── Yarım kalan ekstre: aç, otomatik kaydet ──────────────────────────────
+  const openDraft = useCallback(async (id: string) => {
+    // Mükerrer kontrolü taslağın kaydedildiği andaki değil, bugünkü kayıtlarla
+    // yapılır. (State güncellemeleri bu beklemeden SONRA: efektten çağrılıyor.)
+    await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load()])
+    const d = useStatementDraftsStore.getState().get(id)
+    setNotice('')
+    if (!d) { setError('Bu taslak bulunamadı (silinmiş ya da başka bir cihazda kalmış olabilir).'); return }
+    setError('')
+    const accountOk = useAccountStore.getState().accounts.some(a => a.id === d.accountId)
+    setStatement(d.statement)
+    setFileName(d.fileName)
+    setDraftId(d.id)
+    setAccountId(accountOk ? d.accountId : '')
+    setSuggested(null)
+    setChoices(accountOk ? d.choices : {})
+    setEdits(accountOk ? d.edits : {})
+    setStep('preview')
+  }, [])
+
+  // /ekstre-yukle?taslak=<id> → taslağı aç, adres çubuğunu temizle
+  const draftParam = searchParams.get('taslak')
+  useEffect(() => {
+    if (!draftParam) return
+    router.replace('/ekstre-yukle')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- bilinçli: adres çubuğundaki taslağı açar (dış durumla eşitleme); openDraft state'i ancak kayıtlar yüklendikten SONRA, eşzamansız günceller
+    void openDraft(draftParam)
+  }, [draftParam, openDraft, router])
+
+  // Önizlemedeki her değişiklik taslağa yazılır; içerik değişmediyse yazılmaz
+  const lastSaved = useRef('')
+  useEffect(() => {
+    if (step !== 'preview' || !statement || !draftId || !plan || !preview) return
+    const review = plan.rows.filter(r => r.status === 'review')
+    const progress = {
+      review: review.length,
+      pending: review.filter(r => selectedOption(r, choices) === null).length,
+      create: preview.createdTxIds.length,
+    }
+    const sig = JSON.stringify([draftId, accountId, choices, edits, progress])
+    if (sig === lastSaved.current) return
+    lastSaved.current = sig
+    saveDraft({ id: draftId, workspaceId, fileName, statement, accountId, choices, edits, progress })
+  }, [step, statement, draftId, accountId, choices, edits, fileName, plan, preview, workspaceId, saveDraft])
 
   // ── Onay ─────────────────────────────────────────────────────────────────
   const authoritative = lastPullWasAuthoritative('transactions')
@@ -159,6 +221,7 @@ export function StatementImport() {
       }
       await localBatch(res.ops)
       rememberSkipped(accountId, res.skippedKeys)
+      if (draftId) removeDraft(draftId)
       await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load()])
       useAccountStore.getState().recomputeBalances(useTransactionStore.getState().transactions)
       setDone({
@@ -221,6 +284,12 @@ export function StatementImport() {
           <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA kredi kartı ekstresi. PDF yalnız bu
           tarayıcıda okunur, hiçbir sunucuya gönderilmez. Diğer bankalar örnekleri geldikçe eklenecek.
         </div>
+        {draftCount > 0 && step === 'upload' && (
+          <Link href="/ekstre-yukle/taslaklar" className="rounded-xl border border-border bg-card px-4 py-3 text-sm flex items-center justify-between gap-3 hover:bg-muted/40 transition-colors">
+            <span><span className="font-semibold tabular-nums">{draftCount}</span> yarım kalan ekstre var</span>
+            <span className="text-primary font-medium">Devam et →</span>
+          </Link>
+        )}
         {error && <div className="text-xs text-destructive font-medium px-4 py-2.5 bg-destructive/10 rounded-xl">{error}</div>}
       </div>
     )
@@ -277,7 +346,7 @@ export function StatementImport() {
             {statement.dueDate && <> · son ödeme {formatDate(statement.dueDate, 'd MMM')}</>} · <span className="break-all">{fileName}</span>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={reset} className="rounded-lg">Vazgeç</Button>
+        <Button variant="outline" size="sm" onClick={reset} className="rounded-lg" title="Kararların kaybolmaz; ekstre Yarım Kalanlar'da saklanır">Kapat</Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
