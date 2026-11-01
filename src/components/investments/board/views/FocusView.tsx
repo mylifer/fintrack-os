@@ -8,6 +8,7 @@ import type { BuyPoint } from '@/components/investments/PriceHistoryChart'
 import { TransactionTable } from '../TransactionTable'
 import { ClassDot, DayCell, Sparkline } from '../bits'
 import { qtyTimelineFor } from '../timeline'
+import { cashFlowsOf } from '@/lib/utils/period-pnl'
 import { useHistories, daysAgo, histKey } from '../useAssetHistory'
 import {
   CLASS_META, chartGroupOf, fmtQty, fmtPct, pnlColor, sortRows,
@@ -172,6 +173,7 @@ export function FocusView({
           currentPrice={active.unitPrice || undefined}
           buyPoints={buyPoints}
           qtyTimeline={qtyTimelineFor(active.asset, transactions)}
+          cashFlows={cashFlowsOf(assetTxs)}
         />
 
         {/* Yalnızca bu varlığın işlemleri */}

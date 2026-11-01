@@ -9,6 +9,7 @@ import { buildPortfolioSeries } from './timeline'
 import { useHistories, daysAgo, type HistorySpec } from './useAssetHistory'
 import type { AssetRow } from './shared'
 import type { InvestmentTransaction } from '@/types'
+import { cashFlowsOf, periodPnl } from '@/lib/utils/period-pnl'
 
 /* ── Birleşik portföy grafiği ────────────────────────────────────────────────
  * Varlık başına ayrı grafik yerine TEK seri: portföyün toplam değeri ve maliyet
@@ -112,9 +113,20 @@ export function PortfolioValueChart({
     return out
   }, [data, period])
 
+  // Dönem K/Z'si: alımlar/satışlar para akışıdır, kâr/zarar değil — değer
+  // farkından düşülür (bkz. period-pnl).
+  // Yalnızca grafikteki varlıkların akışları (Dağılım görünümü kapsamlı satır,
+  // ama tüm işlemleri verir).
+  const flows = useMemo(() => {
+    const keep = new Set(rows.map(r => r.asset))
+    return cashFlowsOf(transactions.filter(t => keep.has(t.asset)))
+  }, [rows, transactions])
   const first = data[0]
-  const last  = data[data.length - 1]
-  const periodPct = first && first.value > 0 && last ? ((last.value - first.value) / first.value) * 100 : null
+  const pnlUntil = (row: { date: string; value: number }) => first
+    ? periodPnl({ startDate: first.date, startValue: first.value, endDate: row.date, endValue: row.value, flows })
+    : null
+  const last = data[data.length - 1]
+  const periodResult = last && data.length > 1 ? pnlUntil(last) : null
 
   return (
     <div className="rounded-xl border border-border/60 bg-card">
@@ -126,9 +138,11 @@ export function PortfolioValueChart({
             <span className="text-xl font-medium text-foreground" style={{ fontVariantNumeric: 'proportional-nums' }}>
               {formatCurrency(totalValue)}
             </span>
-            {periodPct !== null && (
-              <span className={`text-xs font-semibold tabular-nums ${periodPct >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                {fmtPct(periodPct)} <span className="text-muted-foreground font-normal">bu dönem</span>
+            {periodResult && (
+              <span className={`text-xs font-semibold tabular-nums ${periodResult.pnl >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                {(periodResult.pnl >= 0 ? '+' : '−') + formatCurrency(Math.abs(periodResult.pnl))}
+                {periodResult.pct !== null && ` · ${fmtPct(periodResult.pct)}`}
+                {' '}<span className="text-muted-foreground font-normal">bu dönem K/Z</span>
               </span>
             )}
           </div>
@@ -210,6 +224,7 @@ export function PortfolioValueChart({
                 if (!row) return null
                 const pnl = row.value - row.cost
                 const pct = row.cost > 0 ? (pnl / row.cost) * 100 : 0
+                const rowPnl = row.date !== first?.date ? pnlUntil(row) : null
                 return (
                   <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-md min-w-[168px]">
                     <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-1.5">
@@ -231,6 +246,15 @@ export function PortfolioValueChart({
                         {(pnl >= 0 ? '+' : '−') + formatCurrency(Math.abs(pnl))} · {fmtPct(pct)}
                       </span>
                     </div>
+                    {rowPnl && (
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-[9px] text-muted-foreground">Dönem K/Z</span>
+                        <span className={`ml-auto text-xs font-semibold tabular-nums ${rowPnl.pnl >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                          {(rowPnl.pnl >= 0 ? '+' : '−') + formatCurrency(Math.abs(rowPnl.pnl))}
+                          {rowPnl.pct !== null && ` · ${fmtPct(rowPnl.pct)}`}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )
               }}

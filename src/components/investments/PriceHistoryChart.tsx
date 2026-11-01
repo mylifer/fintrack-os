@@ -6,6 +6,7 @@ import { formatCompact, formatCurrency } from '@/lib/utils/currency'
 import { today } from '@/lib/utils/date'
 import { AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import type { AssetGroup, PricePoint } from '@/app/api/prices/history/route'
+import { periodPnl, type CashFlow } from '@/lib/utils/period-pnl'
 
 // ── Constants ──────────────────────────────────────────────────────
 
@@ -108,12 +109,15 @@ interface Props {
   currentPrevPrice?: number  // canlı feed'deki bir önceki kapanış (fp.prevPrice) — bugünkü barın günlük değişimini kartla hizalar
   buyPoints?:       BuyPoint[]
   qtyTimeline?:     QtyPoint[]
+  /** Alım (+) / satış (−) tutarları — dönem K/Z'sinden düşülür (bkz. period-pnl). */
+  cashFlows?:       CashFlow[]
 }
 
 // ── Chart data row ─────────────────────────────────────────────────
 
 // Sabit boş dizi: `?? []` her render'da yeni kimlik üretip chartData useMemo'sunu boşa koştururdu
 const NO_POINTS: PricePoint[] = []
+const NO_FLOWS: CashFlow[] = []
 
 /** Recharts'ın dot/activeDot render fonksiyonuna verdiği alanlardan kullanılanlar. */
 interface ChartDotProps {
@@ -139,7 +143,7 @@ interface ChartRow {
 // ── Component ─────────────────────────────────────────────────────
 
 export function PriceHistoryChart({
-  asset, fundCode, label, currentValue, currentPrice, currentPrevPrice, buyPoints = [], qtyTimeline = [],
+  asset, fundCode, label, currentValue, currentPrice, currentPrevPrice, buyPoints = [], qtyTimeline = [], cashFlows = NO_FLOWS,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [chartW, setChartW] = useState(400)
@@ -328,11 +332,17 @@ export function PriceHistoryChart({
   const color  = COLORS[asset]
   const gradId = `grad-${asset}${fundCode ? `-${fundCode}` : ''}`
 
-  const firstRealValue = chartData[0]?.realValue
-  const pct = firstRealValue && currentValue
-    ? ((currentValue - firstRealValue) / firstRealValue) * 100
+  // Dönem K/Z'si: değer farkından dönemdeki alımlar çıkarılır, satışlar geri
+  // eklenir — satış portföyü küçültür ama kâr/zarar değildir.
+  const pnlUntil = (row: ChartRow) => chartData.length
+    ? periodPnl({
+        startDate: chartData[0].date, startValue: chartData[0].realValue,
+        endDate: row.date, endValue: row.realValue, flows: cashFlows,
+      })
     : null
-  const up = pct !== null && pct >= 0
+  const lastRow = chartData[chartData.length - 1]
+  const periodResult = lastRow && currentValue !== undefined ? pnlUntil(lastRow) : null
+  const up = (periodResult?.pnl ?? 0) >= 0
 
   const lastRaw  = currentPrice
   const firstRaw = chartData[0]?.realRawPrice
@@ -362,9 +372,11 @@ export function PriceHistoryChart({
             <div className="h-7 w-28 bg-muted rounded animate-pulse" />
           ) : null}
 
-          {pct !== null && (
+          {periodResult && (
             <div className={`text-[11px] font-bold tabular mt-1 ${up ? 'text-green-600' : 'text-destructive'}`}>
-              {up ? '↑' : '↓'} {Math.abs(pct).toFixed(2)}% bu dönemde
+              {up ? '↑ +' : '↓ −'}{formatCurrency(Math.abs(periodResult.pnl))}
+              {periodResult.pct !== null && ` (%${Math.abs(periodResult.pct).toFixed(2)})`}
+              <span className="font-medium text-muted-foreground"> bu dönemde K/Z</span>
             </div>
           )}
         </div>
@@ -496,6 +508,8 @@ export function PriceHistoryChart({
                 // Override'lı bugünkü noktada resmi son iki kapanışla (qty × prevPrice),
                 // geçmiş noktalarda ardışık seri farkıyla hizalanır.
                 const prevClose = dayVal !== null ? row!.realValue - dayVal : null
+                // Dönem başından bu güne K/Z (alım/satış akışları hariç)
+                const rowPnl = row && rowIdx > 0 ? pnlUntil(row) : null
 
                 return (
                   <div style={{
@@ -524,6 +538,15 @@ export function PriceHistoryChart({
                             {prevClose !== null && (
                               <div style={{ fontSize: 9, color: '#71717a', fontVariantNumeric: 'tabular-nums', marginTop: 1 }}>
                                 Önceki gün kapanış: <span style={{ fontWeight: 600, color: '#52525b' }}>{formatCompact(prevClose)}</span>
+                              </div>
+                            )}
+                            {rowPnl && (
+                              <div style={{ fontSize: 9, color: '#71717a', fontVariantNumeric: 'tabular-nums', marginTop: 1 }}>
+                                Dönem K/Z:{' '}
+                                <span style={{ fontWeight: 700, color: rowPnl.pnl >= 0 ? '#16a34a' : '#dc2626' }}>
+                                  {rowPnl.pnl >= 0 ? '+' : '−'}{formatCurrency(Math.abs(rowPnl.pnl))}
+                                  {rowPnl.pct !== null && ` (%${Math.abs(rowPnl.pct).toFixed(2)})`}
+                                </span>
                               </div>
                             )}
                           </div>
