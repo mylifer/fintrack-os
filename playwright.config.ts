@@ -8,6 +8,12 @@ import { defineConfig } from '@playwright/test'
    Yerelde açık bir `AUTH_BYPASS=1 npm run dev -- --port 3457` varsa o kullanılır.
    Tarayıcı indirmeden sistemdeki Edge ile: PW_CHANNEL=msedge npm run test:e2e */
 
+// Testler tarihleri Node tarafında hesaplıyor (helpers: iso, addDays); tarayıcı
+// ise Europe/Istanbul'da. CI runner'ı UTC olduğundan 21:00 UTC sonrası iki taraf
+// farklı güne düşüp tarih karşılaştıran testler kırılıyordu. Worker'lar bu
+// ortamı devralır.
+process.env.TZ = 'Europe/Istanbul'
+
 const PORT = Number(process.env.E2E_PORT ?? 3457)
 const baseURL = `http://localhost:${PORT}`
 
