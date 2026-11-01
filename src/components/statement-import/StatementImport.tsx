@@ -66,6 +66,9 @@ export function StatementImport() {
   const [offlineOk, setOfflineOk]   = useState(false)
   const [draftId, setDraftId]       = useState<string | null>(null)
   const [applyCalendar, setApplyCalendar] = useState(true)
+  const [closedSections, setClosedSections] = useState<Record<string, boolean>>({ exists: true, info: true })
+  const [highlightKey, setHighlightKey] = useState<string | null>(null)
+  const [showTodo, setShowTodo]     = useState(false)
   const payPlans       = usePaymentsStore(s => s.plans)
   const payOccurrences = usePaymentsStore(s => s.occurrences)
 
@@ -362,6 +365,32 @@ export function StatementImport() {
   const calChanges = calendar?.changes ?? []
   const calValue = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(v, 'd MMM yyyy') : v ?? '—')
 
+  // Yapılacaklar: karar bekleyen ya da eksik alanı olan satırlar (listedeki sırayla)
+  const problemByKey = new Map(problems.map(p => [p.rowKey, p.message]))
+  const todo = rows
+    .filter(r => r.status === 'review' || problemByKey.has(r.key))
+    .map(r => {
+      const undecided = r.status === 'review' && selectedOption(r, choices) === null
+      const problem = problemByKey.get(r.key) ?? null
+      return { row: r, undecided, done: !undecided && !problem, why: undecided ? (r.issue ?? 'Karar bekliyor') : problem }
+    })
+  const todoDone = todo.filter(t => t.done).length
+  const remaining = todo.filter(t => !t.done)
+
+  function jumpTo(row: PlanRow, openDrawer: boolean) {
+    setClosedSections(c => ({ ...c, [row.status]: false }))
+    setQuery('')
+    setHighlightKey(row.key)
+    setShowTodo(false)
+    if (openDrawer) setOpenKey(row.key)
+    window.setTimeout(() => setHighlightKey(k => (k === row.key ? null : k)), 2200)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(`stmt-row-${row.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }))
+  }
+  // Karar bekleyen satırda seçim listede yapılır; eksik alan için çekmece açılır
+  const jumpNext = () => { const t = remaining[0]; if (t) jumpTo(t.row, !t.undecided) }
+
   function acceptRecommended() {
     const next = { ...choices }
     for (const r of rows) if (r.status === 'review' && next[r.key] === undefined && r.recommended !== null) next[r.key] = r.recommended
@@ -460,6 +489,9 @@ export function StatementImport() {
           onOpen={setOpenKey}
           openKey={openKey}
           onAcceptRecommended={acceptRecommended}
+          closed={closedSections}
+          onToggleSection={(sec, open) => setClosedSections(c => ({ ...c, [sec]: open === undefined ? !c[sec] : !open }))}
+          highlightKey={highlightKey}
         />
       )}
 
@@ -485,11 +517,48 @@ export function StatementImport() {
           >
             {pending > 0 ? 'Önce kararları verin' : `Onayla ve gir · ${preview?.createdTxIds.length ?? 0} kayıt`}
           </Button>
-          {pending > 0 && (
-            <span className="text-xs font-semibold text-amber-600">{pending} karar bekliyor</span>
-          )}
-          {pending === 0 && problems.length > 0 && (
-            <span className="text-xs font-semibold text-destructive">{problems.length} satırda eksik var</span>
+          {todo.length > 0 && (
+            <div className="relative flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowTodo(v => !v)}
+                aria-expanded={showTodo}
+                className="flex items-center gap-2 text-xs tabular-nums rounded-lg px-2 py-1 -mx-2 hover:bg-muted"
+                title="Kalanları göster"
+              >
+                <span className={cn('font-semibold', remaining.length ? 'text-amber-600' : 'text-green-600')}>
+                  {remaining.length ? `${todoDone}/${todo.length} tamamlandı · ${remaining.length} kalan` : `${todo.length}/${todo.length} tamamlandı`}
+                </span>
+                <span className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
+                  <span className={cn('block h-full rounded-full transition-all', remaining.length ? 'bg-primary' : 'bg-green-600')} style={{ width: `${(todoDone / todo.length) * 100}%` }} />
+                </span>
+              </button>
+              {remaining.length > 0 && (
+                <Button size="sm" variant="outline" className="rounded-lg" onClick={jumpNext}>Sıradaki →</Button>
+              )}
+              {showTodo && remaining.length > 0 && (
+                <div className="absolute bottom-full left-0 mb-2 w-[min(22rem,calc(100vw-2rem))] max-h-72 overflow-y-auto rounded-xl border border-border bg-popover shadow-lg p-1.5">
+                  <div className="px-2 py-1 text-[11px] font-semibold text-muted-foreground">Kalanlar</div>
+                  {remaining.map(t => (
+                    <button
+                      key={t.row.key}
+                      type="button"
+                      onClick={() => jumpTo(t.row, !t.undecided)}
+                      className="w-full text-left rounded-lg px-2 py-1.5 hover:bg-muted flex items-start gap-2"
+                    >
+                      <span className={cn('size-2 rounded-full mt-1.5 flex-shrink-0', t.undecided ? 'bg-orange-600' : 'bg-destructive')} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex justify-between gap-2 text-sm">
+                          <span className="truncate font-medium">{t.row.title}</span>
+                          {t.row.amount !== null && <span className="tabular-nums text-muted-foreground whitespace-nowrap">{formatCurrency(t.row.amount)}</span>}
+                        </span>
+                        <span className="block text-xs text-muted-foreground truncate">{t.why}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           {pending === 0 && !problems.length && needsOfflineAck && (
             <span className="text-xs font-semibold text-amber-600">Çevrimdışı uyarısını onaylayın</span>
