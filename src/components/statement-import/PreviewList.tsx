@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { IconChevronRight, IconSearch } from '@tabler/icons-react'
+import { useMemo } from 'react'
+import { IconAlertTriangle, IconChevronRight, IconSearch } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
@@ -90,11 +90,16 @@ interface ListProps {
   onOpen: (key: string) => void
   openKey: string | null
   onAcceptRecommended: () => void
+  /** Kapalı bölümler (ilerleme listesinden atlarken açılabilsin diye yukarıda tutulur) */
+  closed: Record<string, boolean>
+  onToggleSection: (s: RowStatus, open?: boolean) => void
+  /** Kısa süre vurgulanan satır (ilerleme listesinden gelindi) */
+  highlightKey: string | null
 }
 
 export function PreviewList(props: ListProps) {
   const { rows, blockers, choices, edits, categories, problems, query, onQuery } = props
-  const [closed, setClosed] = useState<Record<string, boolean>>({ exists: true, info: true })
+  const closed = props.closed
   const people = usePeopleStore(st => st.people)
   const personById = useMemo(() => new Map(people.map(p => [p.id, p])), [people])
   const catById = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
@@ -115,7 +120,7 @@ export function PreviewList(props: ListProps) {
   const recommendable = rows.filter(r => r.status === 'review' && choices[r.key] === undefined && r.recommended !== null).length
 
   function jump(s: RowStatus) {
-    setClosed(c => ({ ...c, [s]: false }))
+    props.onToggleSection(s, true)
     requestAnimationFrame(() => document.getElementById(`stmt-sec-${s}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
@@ -154,8 +159,6 @@ export function PreviewList(props: ListProps) {
     if (tag) bits.push(<span key="t" className="whitespace-nowrap">{tag}</span>)
     if (r.note) bits.push(<span key="n" className="whitespace-nowrap">{r.note}</span>)
     if (r.sideEffects.some(a => a.type === 'patch' && a.patch.approvalStatus === 'approved')) bits.push(<span key="a" className="text-green-600 whitespace-nowrap">onaylanacak</span>)
-    const problem = problemByKey.get(r.key)
-    if (problem) bits.push(<span key="x" className="text-destructive font-medium whitespace-nowrap">{problem}</span>)
     if (!bits.length) return <span className="truncate text-muted-foreground/70">{r.raw}</span>
     return bits.flatMap((b, i) => (i ? [<Dot key={`d${i}`} />, b] : [b]))
   }
@@ -190,12 +193,15 @@ export function PreviewList(props: ListProps) {
     return (
       <div
         key={r.key}
+        id={`stmt-row-${r.key}`}
         role="button" tabIndex={0}
         onClick={() => props.onOpen(r.key)}
         onKeyDown={e => { if (e.key === 'Enter') props.onOpen(r.key) }}
         className={cn(
           'grid grid-cols-[48px_minmax(0,1fr)_auto] sm:grid-cols-[56px_minmax(0,1fr)_auto] gap-x-3 sm:gap-x-4 px-4 py-2.5 border-t border-border/60 first:border-t-0 cursor-pointer hover:bg-muted/40',
           props.openKey === r.key && 'bg-primary/5',
+          props.highlightKey === r.key && 'bg-primary/10 ring-2 ring-inset ring-primary/60',
+          'scroll-mt-24 transition-colors',
         )}
       >
         <div className="text-xs text-muted-foreground tabular-nums whitespace-nowrap pt-0.5">{formatDate(r.date, 'd MMM')}</div>
@@ -207,6 +213,11 @@ export function PreviewList(props: ListProps) {
         </div>
         <Amount row={r} quiet={quiet} />
         {r.status === 'review' && <div className="col-start-2 col-span-2 mt-2">{decision(r)}</div>}
+        {problemByKey.has(r.key) && (
+          <div className="col-start-2 col-span-2 mt-1.5 flex items-center gap-1.5 text-xs font-medium text-destructive">
+            <IconAlertTriangle className="size-3.5 flex-shrink-0" />{problemByKey.get(r.key)} — düzeltmek için tıklayın
+          </div>
+        )}
       </div>
     )
   }
@@ -279,8 +290,8 @@ export function PreviewList(props: ListProps) {
           <section key={s} id={`stmt-sec-${s}`} className="rounded-xl border border-border bg-card overflow-hidden scroll-mt-20">
             <div
               role="button" tabIndex={0}
-              onClick={() => setClosed(c => ({ ...c, [s]: !c[s] }))}
-              onKeyDown={e => { if (e.key === 'Enter') setClosed(c => ({ ...c, [s]: !c[s] })) }}
+              onClick={() => props.onToggleSection(s)}
+              onKeyDown={e => { if (e.key === 'Enter') props.onToggleSection(s) }}
               className="flex items-center gap-2.5 px-4 py-3 cursor-pointer select-none"
             >
               <span className={cn('size-2 rounded-full flex-shrink-0', STATUS_META[s].dot)} />
@@ -289,6 +300,9 @@ export function PreviewList(props: ListProps) {
                 <span className="font-normal text-muted-foreground tabular-nums">{s === 'review' && pendingReview ? `${pendingReview}/${list.length}` : list.length}</span>
               </h2>
               <span className="text-xs text-muted-foreground/80 hidden md:inline truncate">{STATUS_META[s].hint}</span>
+              {(() => { const n = list.filter(r => problemByKey.has(r.key)).length; return n > 0 && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive whitespace-nowrap">{n} eksik</span>
+              ) })()}
               <span className="flex-1" />
               {s === 'review' && recommendable > 0
                 ? (
