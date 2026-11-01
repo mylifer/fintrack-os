@@ -11,6 +11,7 @@ import { tefasAsset, tefasCodesIn } from '@/lib/tefas'
 import { marketAssetsIn, marketSymbol } from '@/lib/market'
 import { assetMeta, fmtQty, pnlColor, sortRows, type AssetRow, type SortId } from '../shared'
 import type { QtyPoint } from '../timeline'
+import { cashFlowsOf, type CashFlow } from '@/lib/utils/period-pnl'
 import type { AssetGroup } from '@/app/api/prices/history/route'
 import type {
   InvestmentAsset, InvestmentHolding, InvestmentTransaction, PriceData, TefasFundPrice,
@@ -33,7 +34,7 @@ const GOLD_ASSETS: InvestmentAsset[] = [
 interface ChartGroup {
   key: string; asset: AssetGroup; fundCode?: string; label: string
   currentValue?: number; currentPrice?: number; currentPrevPrice?: number
-  buyPoints: BuyPoint[]; qtyTimeline: QtyPoint[]
+  buyPoints: BuyPoint[]; qtyTimeline: QtyPoint[]; cashFlows: CashFlow[]
 }
 
 export function ClassicView({
@@ -106,6 +107,7 @@ export function ClassicView({
           totalCost: t.quantity * t.pricePerUnit,
         })),
         qtyTimeline: timelineOf(goldTxs, a => GOLD_GRAMS[a] ?? 1),
+        cashFlows: cashFlowsOf(goldTxs),
       })
     }
 
@@ -127,6 +129,7 @@ export function ClassicView({
           totalCost: t.quantity * t.pricePerUnit,
         })),
         qtyTimeline: timelineOf(assetTxs),
+        cashFlows: cashFlowsOf(assetTxs),
       })
     }
 
@@ -151,6 +154,7 @@ export function ClassicView({
           totalCost: t.quantity * t.pricePerUnit,
         })),
         qtyTimeline: timelineOf(fundTxs),
+        cashFlows: cashFlowsOf(fundTxs),
       })
     }
 
@@ -175,6 +179,7 @@ export function ClassicView({
           totalCost: t.quantity * t.pricePerUnit,
         })),
         qtyTimeline: timelineOf(assetTxs),
+        cashFlows: cashFlowsOf(assetTxs),
       })
     }
 
@@ -231,6 +236,7 @@ export function ClassicView({
               currentPrevPrice={g.currentPrevPrice}
               buyPoints={g.buyPoints}
               qtyTimeline={g.qtyTimeline}
+              cashFlows={g.cashFlows}
             />
           ))}
         </div>

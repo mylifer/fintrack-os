@@ -7,6 +7,7 @@ import { PriceHistoryChart } from '@/components/investments/LazyCharts'
 import { ClassDot, DayCell, Sparkline, WeightBar } from '../bits'
 import { fmtQty, pnlColor, fmtPct, sortRows, type AssetRow, type SortId } from '../shared'
 import { qtyTimelineFor } from '../timeline'
+import { cashFlowsOf } from '@/lib/utils/period-pnl'
 import { useHistories, daysAgo, histKey } from '../useAssetHistory'
 import { chartGroupOf } from '../shared'
 import type { InvestmentTransaction } from '@/types'
@@ -114,6 +115,7 @@ function FragmentRow({
     })), [transactions, r.asset, r.meta.label])
 
   const qtyTimeline = useMemo(() => qtyTimelineFor(r.asset, transactions), [r.asset, transactions])
+  const cashFlows   = useMemo(() => cashFlowsOf(transactions.filter(t => t.asset === r.asset)), [r.asset, transactions])
 
   return (
     <>
@@ -169,6 +171,7 @@ function FragmentRow({
               currentPrice={r.unitPrice || undefined}
               buyPoints={buyPoints}
               qtyTimeline={qtyTimeline}
+              cashFlows={cashFlows}
             />
           </td>
         </tr>
