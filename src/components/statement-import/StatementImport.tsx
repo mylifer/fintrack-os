@@ -391,6 +391,22 @@ export function StatementImport() {
   // Karar bekleyen satırda seçim listede yapılır; eksik alan için çekmece açılır
   const jumpNext = () => { const t = remaining[0]; if (t) jumpTo(t.row, !t.undecided) }
 
+  // Karar değişince alıcıyı o seçenek belirler ("Yeni alıcıyla gir" / "Alıcısız gir"):
+  // çekmecede daha önce yapılan alıcı değişikliği silinir, açıklama ve kategori kalır.
+  function choose(key: string, i: number) {
+    setChoices(c => ({ ...c, [key]: i }))
+    const row = rows.find(r => r.key === key)
+    if (!row || selectedOption(row, choices) === i) return
+    setEdits(e => {
+      const cur = e[key]
+      if (!cur || (cur.recipientId === undefined && cur.newRecipient === undefined)) return e
+      const rest = { ...cur }
+      delete rest.recipientId
+      delete rest.newRecipient
+      return { ...e, [key]: rest }
+    })
+  }
+
   function acceptRecommended() {
     const next = { ...choices }
     for (const r of rows) if (r.status === 'review' && next[r.key] === undefined && r.recommended !== null) next[r.key] = r.recommended
@@ -485,7 +501,7 @@ export function StatementImport() {
           problems={preview?.problems ?? []}
           query={query}
           onQuery={setQuery}
-          onChoose={(key, i) => setChoices(c => ({ ...c, [key]: i }))}
+          onChoose={choose}
           onOpen={setOpenKey}
           openKey={openKey}
           onAcceptRecommended={acceptRecommended}
@@ -500,7 +516,7 @@ export function StatementImport() {
         statement={statement}
         choice={openRow ? selectedOption(openRow, choices) : null}
         edit={openRow ? edits[openRow.key] : undefined}
-        onChoose={i => openRow && setChoices(c => ({ ...c, [openRow.key]: i }))}
+        onChoose={i => openRow && choose(openRow.key, i)}
         onEdit={patch => openRow && setEdits(e => ({ ...e, [openRow.key]: { ...e[openRow.key], ...patch } }))}
         onClose={() => setOpenKey(null)}
       />
