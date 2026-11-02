@@ -152,10 +152,24 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
                   ? (
                     <div className="flex gap-2">
                       <Input value={newRecipientName} onChange={e => onEdit({ newRecipient: e.target.value })} aria-label="Yeni alıcı adı" />
-                      <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => onEdit({ newRecipient: undefined, recipientId: null })}>Var olanı seç</Button>
+                      <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => onEdit({ recipientId: null })}>Var olanı seç</Button>
                     </div>
                   )
-                  : <PersonSelect people={recipients} value={recipientId ?? undefined} onChange={id => onEdit({ recipientId: id ?? null, newRecipient: undefined })} placeholder="Alıcı seçin" />}
+                  : (
+                    // Yazılan yeni ad saklanır: "Yeni alıcı" ile geri dönülür
+                    <div className="flex gap-2">
+                      <div className="flex-1 min-w-0">
+                        <PersonSelect
+                          people={recipients}
+                          value={recipientId ?? undefined}
+                          onChange={id => onEdit({ recipientId: id ?? null })}
+                          onCreate={async name => { onEdit({ recipientId: undefined, newRecipient: name }); return null }}
+                          placeholder="Alıcı seçin"
+                        />
+                      </div>
+                      <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => onEdit({ recipientId: undefined, newRecipient: edit?.newRecipient || draft.newRecipient || row.title.split(' · ')[0] })}>Yeni alıcı</Button>
+                    </div>
+                  )}
                 {newRecipientName !== undefined && <span className="text-[11px] text-muted-foreground">Onayda yeni alıcı olarak oluşturulur.</span>}
               </div>
               <div className="flex flex-col gap-1.5">

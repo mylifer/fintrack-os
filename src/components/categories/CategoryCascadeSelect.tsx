@@ -53,6 +53,8 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   const [query,     setQuery]     = useState('')
   const [creating,  setCreating]  = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  // Alt kolonlar sağa sığmıyorsa (ör. ekranın sağındaki çekmecede) sola açılır
+  const [flip, setFlip] = useState(false)
 
   const active = categories.filter(c => !c.isArchived)
 
@@ -75,7 +77,15 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   function select(id: string) {
     onChange(id); setOpen(false); setHoveredL0(null); setHoveredL1(null); setQuery('')
   }
-  function hoverL0(id: string) { setHoveredL0(id); setHoveredL1(null) }
+  function hoverL0(id: string) {
+    const r = document.getElementById(listId)?.getBoundingClientRect()
+    if (r) {
+      const need = 2 * (COL_W + GAP)
+      setFlip(r.right + need > window.innerWidth && r.left - need >= 0)
+    }
+    setHoveredL0(id); setHoveredL1(null)
+  }
+  const colLeft = (n: number) => (flip ? -1 : 1) * n * (COL_W + GAP)
 
   async function createFromQuery() {
     const name = query.trim()
@@ -241,7 +251,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
               {hoveredL0 && l1List.length > 0 && (
                 <div
                   className={`absolute ${CARD_CLS}`}
-                  style={{ top: 0, left: COL_W + GAP, width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
+                  style={{ top: 0, left: colLeft(1), width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
                   onWheel={handleWheel}
                 >
                   <div style={{ padding: 4 }}>
@@ -253,7 +263,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
               {hoveredL1 && l2List.length > 0 && (
                 <div
                   className={`absolute ${CARD_CLS}`}
-                  style={{ top: 0, left: (COL_W + GAP) * 2, width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
+                  style={{ top: 0, left: colLeft(2), width: COL_W, maxHeight: MAX_H, overflowY: 'auto', zIndex: 10 }}
                   onWheel={handleWheel}
                 >
                   <div style={{ padding: 4 }}>
