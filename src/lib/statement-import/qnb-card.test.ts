@@ -20,7 +20,7 @@ describe('QNB ekstre', () => {
       left(59, '14/09/2026', 474), left(124, 'deme - Tesekk', 474), left(176, '\u0000', 474), left(179, 'r Ederiz -', 474), right(449, '-24.21', 474),
       left(59, '19/09/2026', 465), left(124, 'TAM', 465), left(141, '-', 465), left(143, '\u0004', 465), left(148, 'DEME /STARBUCKS', 465), right(449, '1,350.00', 465),
       left(59, '24/09/2026', 456), left(124, 'YEMEKPAY', 456), left(170, '/YEMEKSEPE 337.05 al', 456), left(246, '\u0001', 456), left(250, 'v ind', 456), right(449, '-37.45', 456),
-      left(124, 'Bu alışverişinizin sipariş kodu: 11655488169', 447),
+      left(124, 'Bu alışverişinizin sipariş kodu: 10000000001', 447),
       left(59, '28/09/2026', 272), left(124, 'ParaPuan Kullanımı -LCW.COM', 272), right(555, '-249,460', 272),
       left(59, 'Genel Toplam - TL Hesap Ekstresi', 212), right(449, '1,312.55', 212),
       left(80, '24.21', 169), left(161, '1,350.00', 169), left(238, '0.00', 169), left(303, '0.00', 169), left(378, '0.00', 169), left(448, '-61.66', 169), left(516, '1,312.55 TL', 169),

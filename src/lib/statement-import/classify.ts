@@ -832,7 +832,7 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     let asIncome = l.kind === 'refund' ? incomeByKey.get(creditKey(l.description)) : undefined
     let learnedIncome = !!asIncome?.length
     // Öğrenilmemiş indirim satırı: bu kartta en sık girilen gelir biçimi önerilir (karar sorulur)
-    if (!asIncome?.length && l.kind === 'refund' && /\b(indirim|alsv ind|cashback)\b/.test(foldText(l.description))) {
+    if (!asIncome?.length && l.kind === 'refund' && /\b(indirim|alsv ind|cashback)\b|kampanya/.test(foldText(l.description))) {
       const incomes = accTx.filter(t => t.type === 'income' && t.accountId === acc && !t.workspaceTransferId)
       const tally = new Map<string, Transaction[]>()
       for (const t of incomes) { const k = `${t.description}|${t.recipientId ?? ''}|${t.categoryId ?? ''}`; tally.set(k, [...(tally.get(k) ?? []), t]) }
