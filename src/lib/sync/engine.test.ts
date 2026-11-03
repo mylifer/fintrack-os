@@ -705,3 +705,19 @@ describe('paylaşılan alanlar (0021)', () => {
     expect(pending).toEqual(['t-benim'])
   })
 })
+
+describe('reconcilingPull — çekiş sürerken biten push', () => {
+  it('çekiş sırasında ACK alan satır "bulutta yoktu" sayılmaz, uyarı çıkmaz', async () => {
+    // Ekstre onayından hemen sonra: kayıt kuyrukta, çekiş başlar; bulut sorgusu
+    // dönmeden push biter ve girdi kuyruktan çıkar. Dönen küme kaydı içermez.
+    await localUpsert('transactions', tx('new1'))
+    selectImpl = async () => {
+      await flushOutbox()                       // push çekiş sırasında tamamlanır
+      return { data: [], error: null }
+    }
+    const rows = await reconcilingPull<{ id: string }>('transactions')
+    expect(rows.map(r => r.id)).toEqual(['new1'])
+    expect(await outbox.get('transactions:new1')).toBeUndefined()   // yeniden kuyruğa alınmadı
+    expect(notifications).toHaveLength(0)
+  })
+})
