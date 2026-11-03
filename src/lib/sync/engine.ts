@@ -334,6 +334,11 @@ function isMissingUpdatedAtColumn(error: { code?: string; message: string }): bo
   return error.code === 'PGRST204' && error.message.includes('updatedAt')
 }
 
+/** Son ACK zamanı (`table:id` → ms). Çekiş sürerken push'u biten satır, o
+ *  çekişin bulut kümesinde yoktur ama kuyruktan da çıkmıştır; reconcilingPull
+ *  bunu "bulutta yok" sanıp yanlış uyarı vermesin diye tutulur. */
+const ackedAt = new Map<string, number>()
+
 /** Debounced, fire-and-forget trigger to drain the outbox. */
 export function kickSync(): void {
   if (typeof window === 'undefined') return
@@ -417,6 +422,7 @@ export async function flushOutbox(): Promise<void> {
           }
         } else if (!stale) {
           await db._outbox.delete(e.id)  // ACK
+          ackedAt.set(`${e.table}:${e.entityId}`, Date.now())
         } else {
           // Taze düzenleme kuyrukta kalır; kickSync/rerun onu bu turda ya da
           // hemen ardından gönderir (upsert idempotent, tekrar zararsız).
@@ -666,6 +672,7 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
     return scoped((await t.toArray()).filter(isLive)) as unknown as T[]
   }
 
+  const fetchStartedAt = Date.now()
   const { rows: cloudRows, complete } = await fetchAllRows(table, userId)
 
   if (!complete) {
@@ -705,7 +712,8 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
       await t.put(row as unknown as { id: string })
     }
     for (const lr of localRows) {
-      if (!cloudIds.has(lr.id) && !pending.has(lr.id)) {
+      // Çekiş sürerken push'u biten satır bulutta artık var; bu kümede yok diye kuyruğa alınmaz
+      if (!cloudIds.has(lr.id) && !pending.has(lr.id) && (ackedAt.get(`${table}:${lr.id}`) ?? 0) < fetchStartedAt) {
         await putOutbox(table, lr, ownerId)              // push failed/never ran — retry it
         requeued++
       }
