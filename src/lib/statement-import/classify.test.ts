@@ -290,3 +290,14 @@ describe('öğrenilmemiş indirim satırı', () => {
     expect(r).toMatchObject({ status: 'review', kind: 'income', title: 'Yemek Cashback', recommended: 0, issue: 'İndirim satırı' })
   })
 })
+
+describe('işyeri adı ve ödeme', () => {
+  it('"Tur" gibi kelimeler ülke kodu sayılıp atılmaz', () => {
+    expect(prettyMerchant('JOLLY TUR')).toBe('Jolly Tur')
+  })
+  it('kaynak hesapsız "gelir" olarak girilmiş kart ödemesi ödeme satırıyla eşleşir', () => {
+    const pay = tx({ id: 'pay-inc', type: 'income', amount: 4146.64, date: '2026-10-12', description: 'Kredi Kartı Ödemesi' })
+    const p = plan([line({ date: '2026-10-12', description: 'ÖDEME-İNTERNET BANKACILIĞI', amount: -4146.64, kind: 'payment' })], [pay])
+    expect(p.rows[0]).toMatchObject({ status: 'exists', match: { txIds: ['pay-inc'] } })
+  })
+})

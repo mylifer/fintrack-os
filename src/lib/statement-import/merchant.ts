@@ -50,7 +50,7 @@ export function prettyMerchant(description: string): string {
   s = s.replace(/[*/]+/g, ' ').replace(/\s+/g, ' ').trim()
   // Sondaki il plakası, şehir ve ülke kodu: "BITAKSI 34 TR" → "Bitaksi", "UBER EATS İSTANBUL TRTR" → "Uber Eats"
   const words = s.split(' ')
-  while (words.length > 1 && /^(\d{1,3}|tr|tu|trtr|tur|istanbul|stanbul|ankara|izmir)$/.test(foldText(words[words.length - 1]))) words.pop()
+  while (words.length > 1 && /^(\d{1,3}|tr|tu|trtr|istanbul|stanbul|ankara|izmir)$/.test(foldText(words[words.length - 1]))) words.pop()
   s = words.join(' ')
   return titleCase(s) || description.trim()
 }

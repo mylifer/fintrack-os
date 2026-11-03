@@ -323,7 +323,7 @@ export function StatementImport() {
               </>}
         </div>
         <div className="rounded-xl bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-          <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA, QNB ve Burgan (ON) kredi kartı ekstresi, QNB dönem içi işlemler, Odeabank vadesiz hesap dökümü. PDF yalnız bu
+          <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA, QNB, Burgan (ON) ve Yapı Kredi kredi kartı ekstresi, QNB dönem içi işlemler, Odeabank vadesiz hesap dökümü. PDF yalnız bu
           tarayıcıda okunur, hiçbir sunucuya gönderilmez. Diğer bankalar örnekleri geldikçe eklenecek.
         </div>
         {draftCount > 0 && step === 'upload' && (
