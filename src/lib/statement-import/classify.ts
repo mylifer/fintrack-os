@@ -299,8 +299,9 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
   }
 
   // 1b) Birden çok ödeme satırı tek transfere (75.130,15 + 100.000 = 175.130,15)
+  // Ödeme bazen kaynak hesapsız "gelir" olarak girilmiş olur ("Kredi Kartı Ödemesi" geliri); o da ödeme sayılır
   const isCardPayment = (t: Transaction) =>
-    (t.type === 'transfer' && t.toAccountId === acc) || (t.type === 'income' && t.accountId === acc && !!t.workspaceTransferId)
+    (t.type === 'transfer' && t.toAccountId === acc) || (t.type === 'income' && t.accountId === acc)
   const payLines = lines.filter(l => l.kind === 'payment' && !matchOf.has(l.index) && l.date)
   for (const t of accTx.filter(isCardPayment)) {
     if (used.has(t.id)) continue
