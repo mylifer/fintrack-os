@@ -1,5 +1,6 @@
 import type { PdfPage } from './pdf-text'
 import { parseGarantiCard } from './garanti-card'
+import { parseOdeabankAccount } from './odeabank-account'
 
 /* ── Banka ekstresinin bankadan bağımsız biçimi ──────────────────────────────
    Her banka ayrıştırıcısı ekstreyi bu yapıya çevirir; eşleştirme motoru
@@ -12,6 +13,8 @@ export type LineKind =
   | 'fee'        // faiz, gecikme faizi, KKDF/BSMV, ücret
   | 'carry'      // önceki dönemden devir (kayıt değil, toplam kontrolü için)
   | 'bonus'      // yalnız bonus sütunu — kart borcunu etkilemez
+  | 'debit'      // vadesiz hesap: hesaptan çıkan para
+  | 'credit'     // vadesiz hesap: hesaba giren para
 
 export interface StatementInstallment {
   /** Kaçıncı taksit (1 tabanlı) */
@@ -29,13 +32,17 @@ export interface StatementLine {
   /** Bankanın yazdığı haliyle (boşluklar tekilleştirilmiş) */
   description: string
   /** Kart borcuna etkisi: + borç (harcama, faiz), − alacak (ödeme, iade).
-   *  null = yalnız bonus satırı. */
+   *  null = yalnız bonus satırı. Vadesiz hesapta aynı yön: + hesaptan çıkan,
+   *  − hesaba giren (önizleme girişleri yeşil "+" gösterir). */
   amount: number | null
   bonus: number | null
   installment: StatementInstallment | null
   /** Yurt dışı harcamanın asıl tutarı (TL dışı) */
   foreign: { amount: number; currency: string } | null
   kind: LineKind
+  /** Vadesiz hesap: işlem saati ("02:43") ve işlemden sonraki bakiye */
+  time?: string
+  balance?: number
 }
 
 export interface StatementSummary {
@@ -57,13 +64,26 @@ export interface StatementCheck {
   issues: string[]
 }
 
+/** Vadesiz hesap dökümünün başlığı ve bakiyeleri */
+export interface AccountInfo {
+  iban: string
+  owner: string
+  periodStart: string
+  periodEnd: string
+  /** Dönem başı (ilk işlemden önceki) ve dönem sonu bakiyesi */
+  openingBalance: number
+  closingBalance: number
+}
+
 export interface ParsedStatement {
-  bank: 'garanti'
+  bank: 'garanti' | 'odeabank'
   bankLabel: string
-  type: 'credit_card'
+  /** credit_card: kart ekstresi · checking: vadesiz hesap dökümü */
+  type: 'credit_card' | 'checking'
   currency: 'TRY'
   /** Maskeli kart numaraları (son 4 hane), ekstrede geçtiği sırayla */
   cards: string[]
+  /** Kart: hesap kesim tarihi · vadesiz: dönem sonu */
   statementDate: string
   dueDate: string | null
   prevStatementDate: string | null
@@ -71,12 +91,15 @@ export interface ParsedStatement {
   nextDueDate: string | null
   summary: StatementSummary | null
   lines: StatementLine[]
+  /** Kart: devir + satırlar = dönem borcu · vadesiz: bakiye zinciri */
   check: StatementCheck
+  /** Yalnız vadesiz hesap dökümünde */
+  account?: AccountInfo
 }
 
 /** Desteklenen bankalardan birini tanıyıp ayrıştırır; tanınmazsa açıklayıcı hata. */
 export function parseStatement(pages: PdfPage[]): ParsedStatement {
-  const parsed = parseGarantiCard(pages)
+  const parsed = parseGarantiCard(pages) ?? parseOdeabankAccount(pages)
   if (parsed) return parsed
-  throw new Error('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA kredi kartı ekstresi (PDF) destekleniyor.')
+  throw new Error('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA kredi kartı ekstresi ve Odeabank vadesiz hesap dökümü (PDF) destekleniyor.')
 }

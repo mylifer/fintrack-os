@@ -26,7 +26,7 @@ export const STATUS_META: Record<'error' | RowStatus, { label: string; dot: stri
   review: { label: 'Kontrol et',     dot: 'bg-orange-600',        hint: 'Her biri için bir seçim yapın' },
   new:    { label: 'Girilecek',      dot: 'bg-green-600',         hint: 'Geçmiş kayıtlarınızdan öğrenilen alıcı ve kategoriyle' },
   exists: { label: 'Zaten sistemde', dot: 'bg-muted-foreground/60', hint: 'Tekrar girilmeyecek' },
-  info:   { label: 'Kayda girmez',   dot: 'bg-sky-500',           hint: 'Bonus hareketleri, kart borcunu etkilemez' },
+  info:   { label: 'Kayda girmez',   dot: 'bg-sky-500',           hint: 'Bonus, hesap içi aktarım ve takip dışı hareketler' },
 }
 
 const ORDER: RowStatus[] = ['review', 'new', 'exists', 'info']
@@ -36,6 +36,10 @@ const SUBGROUPS: Partial<Record<RowStatus, [string, (r: PlanRow) => boolean][]>>
     ['Harcamalar', r => r.kind === 'purchase'],
     ['Yeni taksitli alımlar', r => r.kind === 'installment-new'],
     ['Faiz ve ücretler', r => r.kind === 'fee'],
+    ['Gelirler', r => r.kind === 'income'],
+    ['Faiz ve stopaj', r => r.kind === 'interest' || r.kind === 'tax'],
+    ['Transferler ve kart ödemeleri', r => r.kind === 'transfer-out' || r.kind === 'transfer-in'],
+    ['Diğer', () => true],
   ],
   exists: [
     ['Tek çekim ve iadeler', r => r.kind === 'purchase' || r.kind === 'refund' || r.kind === 'fee'],
@@ -55,6 +59,8 @@ const KIND_TAG: Partial<Record<RowKind, (r: PlanRow) => string>> = {
   'amount-diff': r => `Taksit ${r.installment!.index}/${r.installment!.count}`,
   fee: () => 'Faiz/ücret',
   payment: () => 'Kart ödemesi',
+  internal: () => 'Hesap içi',
+  investment: () => 'Yatırım',
 }
 
 const sumMinor = (list: PlanRow[]) => list.reduce((t, r) => t + Math.round((r.amount ?? 0) * 100), 0) / 100
@@ -128,7 +134,7 @@ export function PreviewList(props: ListProps) {
   const metaLine = (r: PlanRow) => {
     const edit = edits[r.key]
     const bits: React.ReactNode[] = []
-    if (r.kind !== 'bonus' && r.kind !== 'payment') {
+    if (r.kind !== 'bonus' && r.kind !== 'payment' && r.kind !== 'transfer-in' && r.kind !== 'transfer-out') {
       const pickedExisting = edit?.recipientId !== undefined
       const person: Person | undefined = pickedExisting
         ? (edit.recipientId ? personById.get(edit.recipientId) : undefined)

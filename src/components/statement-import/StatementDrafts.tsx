@@ -58,13 +58,13 @@ export function StatementDrafts() {
             <div className="flex items-start gap-3">
               <IconFileTypePdf className="size-5 text-muted-foreground flex-shrink-0 mt-0.5" stroke={1.5} />
               <div className="min-w-0 flex-1">
-                <div className="text-[15px] font-semibold truncate">{st.bankLabel} kredi kartı ekstresi</div>
+                <div className="text-[15px] font-semibold truncate">{st.bankLabel} {st.type === 'checking' ? 'vadesiz hesap dökümü' : 'kredi kartı ekstresi'}</div>
                 <div className="text-xs text-muted-foreground tabular-nums mt-0.5 truncate">
-                  {st.prevStatementDate ? `${formatDate(nextDay(st.prevStatementDate), 'd MMM')} – ` : 'Kesim '}{formatDate(st.statementDate, 'd MMM yyyy')}
+                  {st.account ? `${formatDate(st.account.periodStart, 'd MMM')} – ` : st.prevStatementDate ? `${formatDate(nextDay(st.prevStatementDate), 'd MMM')} – ` : 'Kesim '}{formatDate(st.statementDate, 'd MMM yyyy')}
                   {' · '}{account?.name ?? 'Hesap seçilmedi'}{' · '}{d.fileName}
                 </div>
               </div>
-              {st.summary && <div className="text-sm font-semibold tabular-nums whitespace-nowrap">{formatCurrency(st.summary.debt)}</div>}
+              {(st.summary || st.account) && <div className="text-sm font-semibold tabular-nums whitespace-nowrap">{formatCurrency(st.summary?.debt ?? st.account!.closingBalance)}</div>}
             </div>
 
             <div className="flex flex-col gap-1.5">
