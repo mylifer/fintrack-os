@@ -253,7 +253,7 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
   const firstTx = accTx.reduce<string | null>((m, t) => (!m || t.date < m ? t.date : m), null)
   const created = account.createdAt?.slice(0, 10) || null
   const openingDate = [created, firstTx].filter((x): x is string => !!x).sort()[0] ?? null
-  const periodStart = st.prevStatementDate ? isoFromDays(dayNum(st.prevStatementDate) + 1) : addMonthsIso(st.statementDate, -1)
+  const periodStart = isoFromDays(dayNum(st.prevStatementDate ?? addMonthsIso(st.statementDate, -1)) + 1)
 
   const lines = st.lines.filter(l => l.kind !== 'carry')
   const lineByIdx = new Map(lines.map(l => [l.index, l]))
@@ -419,6 +419,21 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
   }
   const rules = buildRuleBook({ transactions: live, extra, people: input.people, categories: input.categories, refundTag })
 
+  // Alacak satırı → gelir (QNB "alşv ind", "Indirim": kullanıcı "Yemek Cashback" geliri olarak giriyor).
+  // Anahtar tutarsızdır ("… 414.00 alşv ind" → "… alşv ind"); bu kartta aynı anahtarla girilmiş gelirlerden öğrenilir.
+  const creditKey = (d: string) => merchantKey(d.replace(/\d[\d.,]*/g, ' '))
+  const incomeByKey = new Map<string, Transaction[]>()
+  const pushIncome = (k: string, t: Transaction) => {
+    const list = incomeByKey.get(k)
+    if (!list) incomeByKey.set(k, [t]); else if (!list.some(x => x.id === t.id)) list.push(t)
+  }
+  for (const t of accTx) if (t.type === 'income' && t.accountId === acc && t.merchant && !t.workspaceTransferId) pushIncome(creditKey(t.merchant), t)
+  for (const [idx, m] of matchOf) {
+    const l = lineByIdx.get(idx)!
+    const t = byId.get(m.txIds[0])
+    if (t && l.kind === 'refund' && t.type === 'income' && !t.workspaceTransferId) pushIncome(creditKey(l.description), t)
+  }
+
   // ── 3) Satır satır karar ──
   const rows: Omit<PlanRow, 'stableKey'>[] = []
   const handled = new Set<number>()
@@ -480,6 +495,8 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       if (t.approvalStatus === 'pending' && t.date <= input.todayStr) Object.assign(patch, { approvalStatus: 'approved' })
       // Faiz/ücret satırları işyeri değildir; öğrenilecek bir eşleşme yok
       if (l && !t.merchant && (l.kind === 'purchase' || l.kind === 'refund') && t.type === 'expense') patch.merchant = merchantLabel(l.description)
+      // İndirim / cashback satırını gelir olarak giriyorsan o da öğrenilir
+      if (l && !t.merchant && l.kind === 'refund' && t.type === 'income') patch.merchant = merchantLabel(l.description)
       if (Object.keys(patch).length) out.push({ type: 'patch', txId: id, patch })
     }
     return out
@@ -812,6 +829,35 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       continue
     }
 
+    let asIncome = l.kind === 'refund' ? incomeByKey.get(creditKey(l.description)) : undefined
+    let learnedIncome = !!asIncome?.length
+    // Öğrenilmemiş indirim satırı: bu kartta en sık girilen gelir biçimi önerilir (karar sorulur)
+    if (!asIncome?.length && l.kind === 'refund' && /\b(indirim|alsv ind|cashback)\b/.test(foldText(l.description))) {
+      const incomes = accTx.filter(t => t.type === 'income' && t.accountId === acc && !t.workspaceTransferId)
+      const tally = new Map<string, Transaction[]>()
+      for (const t of incomes) { const k = `${t.description}|${t.recipientId ?? ''}|${t.categoryId ?? ''}`; tally.set(k, [...(tally.get(k) ?? []), t]) }
+      asIncome = [...tally.values()].sort((a, b) => b.length - a.length)[0]
+      learnedIncome = false
+    }
+    if (asIncome?.length) {
+      const last = asIncome.slice().sort((a, b) => b.date.localeCompare(a.date))[0]
+      const draft: DraftTx = {
+        type: 'income', amount: -l.amount!, date: dateOf(l), description: last.description, merchant: merchantLabel(l.description),
+        recipientId: last.recipientId ?? null, categoryId: last.categoryId ?? undefined, idSeed: seedOf.get(l.index)!, editable: true,
+      }
+      rows.push({
+        ...base, status: learnedIncome ? 'new' : 'review', kind: 'income', title: last.description,
+        recipientId: last.recipientId ?? undefined, recipientName: last.recipientId ? peopleById.get(last.recipientId)?.name : undefined, categoryId: last.categoryId ?? undefined,
+        issue: learnedIncome ? undefined : 'İndirim satırı',
+        reason: learnedIncome
+          ? `Bu karttaki ${asIncome.length} benzer alacak satırı “${last.description}” geliri olarak girilmiş; bu da öyle girilir.`
+          : `İndirim satırı. Bu kartta alacakları genelde “${last.description}” geliri olarak giriyorsun (${asIncome.length} kayıt); öyle önerildi. Seçimin öğrenilir.`,
+        options: [{ key: 'income', label: 'Gelir olarak gir', actions: [{ type: 'create', draft }] }, { key: 'standalone', label: 'İade olarak gir', actions: [{ type: 'create', draft: draftFor(l, rule, { description: `[İade] ${title}`, tags: [...(rule?.tags ?? []), refundTag] }) }] }, skip],
+        recommended: 0, defaultOption: learnedIncome ? 0 : null, sideEffects: [],
+      })
+      continue
+    }
+
     if (l.kind === 'refund') {
       const key = merchantKey(l.description)
       const origins = accTx.filter(t => t.accountId === acc && t.type === 'expense' && t.amount > 0 &&
@@ -887,7 +933,8 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
   const bonusLines = lines.filter(l => l.kind === 'bonus' && (l.bonus ?? 0) < 0)
   for (const t of accTx) {
     if (covered.has(t.id) || t.accountId !== acc || t.type !== 'expense') continue
-    if (t.date < periodStart || t.date > st.statementDate) continue
+    // Kesim günündeki işlem sonraki ekstreye de kalabilir (banka kesimi gün içinde yapar)
+    if (t.date < periodStart || t.date >= st.statementDate) continue
     if (t.isInstallment && (t.installIndex ?? 1) > 1) continue   // sonraki ekstrelerde faturalanır
     if (t.systemKind || t.icon || t.workspaceTransferId) continue
     const bonusPaid = bonusLines.find(b => b.date && dayDiff(b.date, t.date) <= 1 && minor(-(b.bonus ?? 0)) === minor(t.amount))

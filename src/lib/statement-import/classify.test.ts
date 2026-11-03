@@ -257,3 +257,36 @@ describe('iade, net sıfır, ters kontrol', () => {
     expect([r.status, r.title, r.date, r.recipientId, r.categoryId]).toEqual(['new', 'Dönem Faizi', '2026-10-30', 'p-bank', 'c-bank'])
   })
 })
+
+describe('alacak satırı gelir olarak (cashback)', () => {
+  it('karttaki "indirim" gelirinden öğrenir; yeni indirim satırı aynı gelir olarak girilir', () => {
+    const cashback = tx({ id: 'cb', type: 'income', amount: 37.45, date: '2026-10-05', description: 'Yemek Cashback', recipientId: 'p-bank', categoryId: 'c-bank' })
+    const p = plan([
+      line({ date: '2026-10-05', description: 'YEMEKPAY /YEMEKSEPE 337.05 alşv ind', amount: -37.45 }),
+      line({ date: '2026-10-12', description: 'YEMEKPAY /YEMEKSEPE 414.00 alşv ind', amount: -46 }),
+    ], [cashback])
+    expect(p.rows[0]).toMatchObject({ status: 'exists' })
+    expect(p.rows[0].sideEffects).toEqual([{ type: 'patch', txId: 'cb', patch: { merchant: 'YEMEKPAY /YEMEKSEPE 337.05 alşv ind' } }])
+    const r = p.rows[1]
+    expect(r).toMatchObject({ status: 'new', kind: 'income', title: 'Yemek Cashback' })
+    const made = created(commit(p, [cashback]).ops)
+    expect(made.map(t => [t.type, t.amount, t.accountId, t.description, t.recipientId, t.categoryId])).toEqual([['income', 46, ACC, 'Yemek Cashback', 'p-bank', 'c-bank']])
+  })
+
+  it('alıcı adı kelime olarak aranır: "Aksi" alıcısı "BITAKSI" değildir', () => {
+    expect(prettyMerchant('BITAKSI 34 TR')).toBe('Bitaksi')
+    expect(prettyMerchant('Uber Eats Yemek İSTANBUL TRTR')).toBe('Uber Eats Yemek')
+    const p = plan([line({ description: 'BITAKSI 34 TR', amount: 467 })], [], {
+      people: [...people, { id: 'p-aksi', name: 'Aksi', role: 'recipient', createdAt: '' }],
+    })
+    expect(p.rows[0]).toMatchObject({ kind: 'unknown', recipientName: 'Bitaksi' })
+  })
+})
+
+describe('öğrenilmemiş indirim satırı', () => {
+  it('kartta en sık girilen gelir biçimi önerilir, karar sorulur', () => {
+    const old = [1, 2, 3].map(i => tx({ id: `cb${i}`, type: 'income', amount: 10 * i, date: `2026-08-0${i}`, description: 'Yemek Cashback', recipientId: 'p-bank', categoryId: 'c-bank' }))
+    const r = plan([line({ date: '2026-10-12', description: 'Uber Eats Yemek İSTANBU Indirim', amount: -54.7 })], old).rows[0]
+    expect(r).toMatchObject({ status: 'review', kind: 'income', title: 'Yemek Cashback', recommended: 0, issue: 'İndirim satırı' })
+  })
+})

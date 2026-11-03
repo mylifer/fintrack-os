@@ -48,7 +48,31 @@ export function prettyMerchant(description: string): string {
   if (gw) s = s.slice(gw[0].length)
   s = s.replace(/^www\./i, '').replace(/\.(com|net|org)(\.tr)?\b.*$/i, '').replace(/\s*\d{5,}.*$/, '')
   s = s.replace(/[*/]+/g, ' ').replace(/\s+/g, ' ').trim()
+  // Sondaki il plakası, şehir ve ülke kodu: "BITAKSI 34 TR" → "Bitaksi", "UBER EATS İSTANBUL TRTR" → "Uber Eats"
+  const words = s.split(' ')
+  while (words.length > 1 && /^(\d{1,3}|tr|trtr|tur|istanbul|stanbul|ankara|izmir)$/.test(foldText(words[words.length - 1]))) words.pop()
+  s = words.join(' ')
   return titleCase(s) || description.trim()
+}
+
+/** Ad, metinde kelime olarak geçiyor mu: "Yemeksepeti" ⊂ "YEMEKPAY /YEMEKSEPETI",
+ *  "Selman Malkoç" ⊂ "Mehmet Selman Malkoç"; ama "Aksi" ⊄ "BITAKSI". Bitişik
+ *  yazılmış iki kelime de tutar ("YEMEK SEPETI" = "Yemeksepeti"). */
+export function nameInText(name: string, text: string): boolean {
+  const words = (s: string) => foldText(s).split(/[^a-z0-9]+/).filter(Boolean)
+  const n = words(name), t = words(text)
+  const joined = n.join('')
+  if (joined.length < 4 || !t.length) return false
+  for (let i = 0; i < t.length; i++) {
+    if (n.length > 1 && n.every((w, k) => t[i + k] === w)) return true
+    let acc = ''
+    for (let k = i; k < Math.min(t.length, i + 3); k++) {
+      acc += t[k]
+      if (acc === joined) return true
+      if (acc.length >= joined.length) break
+    }
+  }
+  return false
 }
 
 export interface MerchantRule {
@@ -150,8 +174,7 @@ export function buildRuleBook(opts: {
       const fromHist = hist ? ruleFromHistory(hist, peopleById, opts.refundTag, opts.transactions) : undefined
       if (fromHist) return fromHist
 
-      const text = alnum(description)
-      const hit = recipients.find(r => text.includes(r.key))
+      const hit = recipients.find(r => nameInText(r.p.name, description))
       if (hit) {
         const own = opts.transactions.filter(t => t.recipientId === hit.p.id && t.type === 'expense' && t.amount > 0 && !t.deleted_at)
         const categoryId = recipientCategory(hit.p.id, 'expense', own as Transaction[], opts.categories as Category[])

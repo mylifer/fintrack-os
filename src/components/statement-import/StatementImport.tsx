@@ -119,7 +119,8 @@ export function StatementImport() {
   // Ekstrenin kesim / son ödeme tarihleri → Kart Takvimi (hesap seçiliyse)
   const calendarFor = useCallback((st: ParsedStatement, accId: string): CalendarUpdate | null => {
     const acc = useAccountStore.getState().accounts.find(a => a.id === accId)
-    if (!acc || acc.type !== 'credit_card') return null
+    // Dönem içi liste kesim/son ödeme tarihi taşımaz
+    if (!acc || acc.type !== 'credit_card' || st.provisional) return null
     const { plans, occurrences } = usePaymentsStore.getState()
     return cardCalendarUpdate({
       statement: st, account: acc, plan: plans.find(p => p.id === planIdFor('card', acc.id)),
@@ -322,7 +323,7 @@ export function StatementImport() {
               </>}
         </div>
         <div className="rounded-xl bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-          <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA kredi kartı ekstresi, Odeabank vadesiz hesap dökümü. PDF yalnız bu
+          <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA ve QNB kredi kartı ekstresi, QNB dönem içi işlemler, Odeabank vadesiz hesap dökümü. PDF yalnız bu
           tarayıcıda okunur, hiçbir sunucuya gönderilmez. Diğer bankalar örnekleri geldikçe eklenecek.
         </div>
         {draftCount > 0 && step === 'upload' && (
@@ -430,7 +431,7 @@ export function StatementImport() {
       {/* Başlık + hesap */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight">{statement.bankLabel} {statement.type === 'checking' ? 'vadesiz hesap dökümü' : 'kredi kartı ekstresi'}</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{statement.bankLabel} {statement.type === 'checking' ? 'vadesiz hesap dökümü' : statement.provisional ? 'kredi kartı · dönem içi işlemler' : 'kredi kartı ekstresi'}</h2>
           <div className="text-sm text-muted-foreground mt-0.5 tabular-nums">
             {plan ? formatDate(plan.periodStart, 'd MMM') : statement.account ? formatDate(statement.account.periodStart, 'd MMM') : '…'} – {formatDate(statement.statementDate, 'd MMM yyyy')}
             {statement.dueDate && <> · son ödeme {formatDate(statement.dueDate, 'd MMM')}</>} · <span className="break-all">{fileName}</span>
@@ -457,7 +458,9 @@ export function StatementImport() {
       <section className="rounded-xl border border-border bg-card px-4 py-3.5 flex flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-4">
           {statement.check.ok
-            ? <span className="flex items-center gap-1.5 text-sm font-semibold text-green-600"><IconCircleCheck className="size-4 self-center" />{statement.type === 'checking' ? 'Döküm eksiksiz okundu, bakiyeler birebir tuttu' : 'Ekstre bankayla birebir tuttu'}</span>
+            ? statement.provisional
+              ? <span className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground"><IconCircleCheck className="size-4 self-center" />{statement.lines.length} işlem okundu · ekstre henüz kesilmedi, toplam kontrolü yapılamaz</span>
+              : <span className="flex items-center gap-1.5 text-sm font-semibold text-green-600"><IconCircleCheck className="size-4 self-center" />{statement.type === 'checking' ? 'Döküm eksiksiz okundu, bakiyeler birebir tuttu' : 'Ekstre bankayla birebir tuttu'}</span>
             : <span className="flex items-center gap-1.5 text-sm font-semibold text-destructive"><IconAlertTriangle className="size-4 self-center" />Ekstre okunamadı</span>}
           {s && <span className="text-lg font-semibold tabular-nums">{formatCurrency(s.debt)}</span>}
           {statement.account && <span className="text-lg font-semibold tabular-nums">{formatCurrency(statement.account.closingBalance)}</span>}

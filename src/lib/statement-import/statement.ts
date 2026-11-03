@@ -1,6 +1,7 @@
 import type { PdfPage } from './pdf-text'
 import { parseGarantiCard } from './garanti-card'
 import { parseOdeabankAccount } from './odeabank-account'
+import { parseQnbPeriod, parseQnbStatement } from './qnb-card'
 
 /* ── Banka ekstresinin bankadan bağımsız biçimi ──────────────────────────────
    Her banka ayrıştırıcısı ekstreyi bu yapıya çevirir; eşleştirme motoru
@@ -76,7 +77,7 @@ export interface AccountInfo {
 }
 
 export interface ParsedStatement {
-  bank: 'garanti' | 'odeabank'
+  bank: 'garanti' | 'odeabank' | 'qnb'
   bankLabel: string
   /** credit_card: kart ekstresi · checking: vadesiz hesap dökümü */
   type: 'credit_card' | 'checking'
@@ -95,11 +96,14 @@ export interface ParsedStatement {
   check: StatementCheck
   /** Yalnız vadesiz hesap dökümünde */
   account?: AccountInfo
+  /** Henüz ekstresi kesilmemiş dönem içi işlem listesi: toplam kontrolü yok,
+   *  tarihleri Kart Takvimi'ne yazılmaz */
+  provisional?: boolean
 }
 
 /** Desteklenen bankalardan birini tanıyıp ayrıştırır; tanınmazsa açıklayıcı hata. */
 export function parseStatement(pages: PdfPage[]): ParsedStatement {
-  const parsed = parseGarantiCard(pages) ?? parseOdeabankAccount(pages)
+  const parsed = parseGarantiCard(pages) ?? parseQnbStatement(pages) ?? parseQnbPeriod(pages) ?? parseOdeabankAccount(pages)
   if (parsed) return parsed
-  throw new Error('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA kredi kartı ekstresi ve Odeabank vadesiz hesap dökümü (PDF) destekleniyor.')
+  throw new Error('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA ve QNB kredi kartı ekstresi, QNB dönem içi işlemler ve Odeabank vadesiz hesap dökümü (PDF) destekleniyor.')
 }
