@@ -17,7 +17,9 @@ export interface RowEdit {
   newRecipient?: string
   categoryId?: string
   familyMemberId?: string | null
+  /** Transferin karşı hesabı (gelen transferde kaynak, giden transferde hedef) */
   fromAccountId?: string
+  toAccountId?: string
 }
 
 export interface CommitInput {
@@ -53,7 +55,11 @@ export function selectedOption(row: PlanRow, choices: Readonly<Record<string, nu
 }
 
 function applyEdit(d: DraftTx, e: RowEdit | undefined): DraftTx {
-  if (!e || !d.editable) return d.fromAccountId && e?.fromAccountId ? { ...d, fromAccountId: e.fromAccountId } : d
+  if (!e || !d.editable) {
+    if (d.fromAccountId && e?.fromAccountId) return { ...d, fromAccountId: e.fromAccountId }
+    if (d.toAccountId && e?.toAccountId) return { ...d, toAccountId: e.toAccountId }
+    return d
+  }
   const out = { ...d }
   if (e.description !== undefined) out.description = e.description
   // Var olan alıcı seçildiyse (null = alıcısız) yeni alıcı adı yok sayılır
@@ -104,7 +110,7 @@ export function buildCommit(input: CommitInput): CommitResult {
   })
 
   const create = (rowKey: string, d: DraftTx) => {
-    if (d.type === 'expense' && !d.categoryId) {
+    if (d.type !== 'transfer' && !d.categoryId) {
       problems.push({ rowKey, message: 'Kategori seçilmedi' })
       return
     }
@@ -118,10 +124,23 @@ export function buildCommit(input: CommitInput): CommitResult {
       createdTxIds.push(tx.id)
     }
     if (d.type === 'transfer') {
+      const out = !!d.toAccountId
+      if (!(out ? d.toAccountId : d.fromAccountId)) {
+        problems.push({ rowKey, message: 'Transfer hesabı seçilmedi' })
+        return
+      }
       push({
         id: txIdFromSeed(d.idSeed), type: 'transfer', amount: Math.abs(d.amount), amountTry: Math.abs(d.amount),
-        currency: 'TRY', date: d.date, accountId: d.fromAccountId!, toAccountId: accountId, description: d.description,
-        isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
+        currency: 'TRY', date: d.date, accountId: out ? accountId : d.fromAccountId!, toAccountId: out ? d.toAccountId! : accountId,
+        description: d.description, merchant: d.merchant, isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
+      })
+      return
+    }
+    if (d.type === 'income') {
+      push({
+        ...txBase(d), id: txIdFromSeed(d.idSeed), type: 'income', amount: Math.abs(d.amount), amountTry: Math.abs(d.amount), date: d.date,
+        isInstallment: false,
+        ...(d.date > todayStr ? { approvalStatus: 'approved' as const, approvedAt: nowIso } : {}),
       })
       return
     }
@@ -198,17 +217,21 @@ export function buildCommit(input: CommitInput): CommitResult {
   return { ops, undo, createdTxIds, createdPeople, deletedTxIds: [...deleted], patchedTxIds: [...patched.keys()].filter(id => !deleted.has(id)), skippedKeys, problems }
 }
 
-/** Kart borcuna net etki (önizleme özeti için): + borç artar. */
+/** Kayıt hesaptan para çıkarır mı (+) yoksa sokar mı (−); kart için + borç artar. */
+function outflow(t: Transaction, accountId: string): number {
+  const a = toMinor(t.amount)
+  if (t.type === 'transfer') return t.accountId === accountId ? a : t.toAccountId === accountId ? -a : 0
+  if (t.accountId !== accountId) return 0
+  return t.type === 'income' ? -a : a
+}
+
+/** Hesaba net etki (önizleme özeti için): + çıkış (kartta borç artışı), − giriş. */
 export function commitEffect(ops: readonly BatchOp[], accountId: string, existing: ReadonlyMap<string, Transaction>): number {
   let m = 0
   for (const op of ops) {
-    if (op.kind === 'upsert' && op.table === 'transactions') {
-      const t = op.entity as Transaction
-      if (t.type === 'expense' && t.accountId === accountId) m += toMinor(t.amount)
-      if (t.type === 'transfer' && t.toAccountId === accountId) m -= toMinor(t.amount)
-    }
+    if (op.kind === 'upsert' && op.table === 'transactions') m += outflow(op.entity as Transaction, accountId)
     if (op.kind === 'patchMany' && op.table === 'transactions' && op.patch.deleted_at) {
-      for (const id of op.ids) { const t = existing.get(id); if (t?.type === 'expense' && t.accountId === accountId) m -= toMinor(t.amount) }
+      for (const id of op.ids) { const t = existing.get(id); if (t) m -= outflow(t, accountId) }
     }
   }
   return toMajor(m)

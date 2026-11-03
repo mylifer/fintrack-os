@@ -18,6 +18,7 @@ import { formatDate, today } from '@/lib/utils/date'
 import { readPdfPages } from '@/lib/statement-import/pdf-text'
 import { parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
 import { buildImportPlan, type ImportPlan, type PlanRow } from '@/lib/statement-import/classify'
+import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
 import { buildCommit, commitEffect, selectedOption, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
 import type { BatchOp } from '@/lib/sync/engine'
@@ -41,6 +42,10 @@ interface DoneState {
 /** Bütün kayıtlar ve uzak değişiklikler yüklendikten sonra planın imzası:
  *  onay anında yeniden hesaplanan plan farklıysa yazma yapılmaz. */
 const planSignature = (p: ImportPlan) => p.rows.map(r => `${r.stableKey}:${r.status}:${r.match?.txIds.join(',') ?? ''}`).join('|')
+
+// Kart ekstresi kartlara, vadesiz döküm kart dışı hesaplara yüklenir
+const accountFits = (a: { type: string; isArchived?: boolean }, st: ParsedStatement | null) =>
+  !a.isArchived && (!st || st.type === 'credit_card' ? a.type === 'credit_card' : a.type !== 'credit_card')
 
 export function StatementImport() {
   const accounts     = useAccountStore(s => s.accounts)
@@ -81,13 +86,13 @@ export function StatementImport() {
   useEffect(() => { useStatementDraftsStore.getState().load() }, [])
   const draftCount = drafts.filter(d => d.workspaceId === workspaceId).length
 
-  const cards = useMemo(() => accounts.filter(a => !a.isArchived && a.type === 'credit_card'), [accounts])
+  const candidates = useMemo(() => accounts.filter(a => accountFits(a, statement)), [accounts, statement])
   const account = accounts.find(a => a.id === accountId)
 
   const makePlan = useCallback((st: ParsedStatement, accId: string, txs = useTransactionStore.getState().transactions): ImportPlan | null => {
     const acc = useAccountStore.getState().accounts.find(a => a.id === accId)
     if (!acc) return null
-    return buildImportPlan({
+    return (st.type === 'checking' ? buildAccountPlan : buildImportPlan)({
       statement: st, account: acc, accounts: useAccountStore.getState().accounts,
       transactions: txs, people: usePeopleStore.getState().people, categories: useCategoryStore.getState().categories,
       todayStr: today(), skipped: loadSkipped(accId),
@@ -141,9 +146,10 @@ export function StatementImport() {
       await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load()])
       const pages = await readPdfPages(await file.arrayBuffer())
       const st = parseStatement(pages)
-      // Hesap önerisi: kayıtlarıyla en çok eşleşen kredi kartı; eşitlikte adı bankayı içeren
+      // Hesap önerisi: kayıtlarıyla en çok eşleşen hesap (kart ekstresinde kart,
+      // vadesiz dökümde kart dışı hesap); eşitlikte adı bankayı içeren
       let best: { id: string; matched: number; byName: boolean } | null = null
-      for (const a of useAccountStore.getState().accounts.filter(x => !x.isArchived && x.type === 'credit_card')) {
+      for (const a of useAccountStore.getState().accounts.filter(x => accountFits(x, st))) {
         const p = makePlan(st, a.id)
         const byName = foldText(a.name).includes(st.bank)
         const matched = p?.matchedLines ?? 0
@@ -292,7 +298,7 @@ export function StatementImport() {
         <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden"
           onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void readFile(f) }} />
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Kredi kartı ekstresini (PDF) yükleyin. Her satır sistemdeki kayıtlarınızla karşılaştırılır; neyin yeni, neyin zaten
+          Kredi kartı ekstresini ya da vadesiz hesap dökümünü (PDF) yükleyin. Her satır sistemdeki kayıtlarınızla karşılaştırılır; neyin yeni, neyin zaten
           girilmiş olduğunu ve karar gereken satırları tek ekranda görürsünüz. Onaylamadan hiçbir şey kaydedilmez.
         </p>
         <div
@@ -316,7 +322,7 @@ export function StatementImport() {
               </>}
         </div>
         <div className="rounded-xl bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-          <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA kredi kartı ekstresi. PDF yalnız bu
+          <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA kredi kartı ekstresi, Odeabank vadesiz hesap dökümü. PDF yalnız bu
           tarayıcıda okunur, hiçbir sunucuya gönderilmez. Diğer bankalar örnekleri geldikçe eklenecek.
         </div>
         {draftCount > 0 && step === 'upload' && (
@@ -339,7 +345,7 @@ export function StatementImport() {
           <div className="text-sm text-muted-foreground mt-1 tabular-nums">
             {done.undone
               ? 'Bütün değişiklikler geri alındı.'
-              : <>{done.created} kayıt eklendi{done.people ? `, ${done.people} yeni alıcı` : ''}{done.deleted ? `, ${done.deleted} kayıt silindi` : ''}{done.patched ? `, ${done.patched} kayıt güncellendi (onay / işyeri adı)` : ''}{done.calendar ? '; Kart Takvimi güncellendi' : ''}.</>}
+              : <>{done.created} kayıt eklendi{done.people ? `, ${done.people} yeni alıcı` : ''}{done.deleted ? `, ${done.deleted} kayıt silindi` : ''}{done.patched ? `, ${done.patched} kayıt güncellendi (onay / karşı taraf adı)` : ''}{done.calendar ? '; Kart Takvimi güncellendi' : ''}.</>}
           </div>
         </div>
         <div className="flex gap-2 flex-wrap justify-center">
@@ -362,6 +368,12 @@ export function StatementImport() {
   const problems = (preview?.problems ?? []).filter(p => p.message !== 'Karar verilmedi')
   const effect = preview ? commitEffect(preview.ops, accountId, existing) : 0
   const s = statement.summary
+  // Vadesiz hesap: sistemdeki bakiye (dönem sonu) ve onaydan sonraki hali, bankayla fark
+  const balance = statement.account && account && account.type !== 'credit_card' ? (() => {
+    const before = systemBalance(account, transactions, statement.account!.periodEnd)
+    const after = Math.round((before - effect) * 100) / 100
+    return { before, after, diff: Math.round((statement.account!.closingBalance - after) * 100) / 100 }
+  })() : null
   const calChanges = calendar?.changes ?? []
   const calValue = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(v, 'd MMM yyyy') : v ?? '—')
 
@@ -418,9 +430,9 @@ export function StatementImport() {
       {/* Başlık + hesap */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight">{statement.bankLabel} kredi kartı ekstresi</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{statement.bankLabel} {statement.type === 'checking' ? 'vadesiz hesap dökümü' : 'kredi kartı ekstresi'}</h2>
           <div className="text-sm text-muted-foreground mt-0.5 tabular-nums">
-            {plan ? formatDate(plan.periodStart, 'd MMM') : '…'} – {formatDate(statement.statementDate, 'd MMM yyyy')}
+            {plan ? formatDate(plan.periodStart, 'd MMM') : statement.account ? formatDate(statement.account.periodStart, 'd MMM') : '…'} – {formatDate(statement.statementDate, 'd MMM yyyy')}
             {statement.dueDate && <> · son ödeme {formatDate(statement.dueDate, 'd MMM')}</>} · <span className="break-all">{fileName}</span>
           </div>
         </div>
@@ -432,8 +444,8 @@ export function StatementImport() {
         <SelectField
           value={accountId}
           onChange={e => { setAccountId(e.target.value); setChoices({}); setEdits({}) }}
-          options={cards.map(a => ({ value: a.id, label: a.name }))}
-          placeholder="Kart seçin"
+          options={candidates.map(a => ({ value: a.id, label: a.name }))}
+          placeholder={statement.type === 'checking' ? 'Hesap seçin' : 'Kart seçin'}
           className="w-56 bg-background"
         />
         {suggested && suggested.id === accountId && (
@@ -445,16 +457,28 @@ export function StatementImport() {
       <section className="rounded-xl border border-border bg-card px-4 py-3.5 flex flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-4">
           {statement.check.ok
-            ? <span className="flex items-center gap-1.5 text-sm font-semibold text-green-600"><IconCircleCheck className="size-4 self-center" />Ekstre bankayla birebir tuttu</span>
+            ? <span className="flex items-center gap-1.5 text-sm font-semibold text-green-600"><IconCircleCheck className="size-4 self-center" />{statement.type === 'checking' ? 'Döküm eksiksiz okundu, bakiyeler birebir tuttu' : 'Ekstre bankayla birebir tuttu'}</span>
             : <span className="flex items-center gap-1.5 text-sm font-semibold text-destructive"><IconAlertTriangle className="size-4 self-center" />Ekstre okunamadı</span>}
           {s && <span className="text-lg font-semibold tabular-nums">{formatCurrency(s.debt)}</span>}
+          {statement.account && <span className="text-lg font-semibold tabular-nums">{formatCurrency(statement.account.closingBalance)}</span>}
         </div>
+        {statement.account && (
+          <div className="text-xs text-muted-foreground tabular-nums">
+            Dönem başı bakiye {formatCurrency(statement.account.openingBalance)} · {statement.lines.length} hareket · dönem sonu bakiye {formatCurrency(statement.account.closingBalance)}
+          </div>
+        )}
         {s && (
           <div className="text-xs text-muted-foreground tabular-nums">
             Önceki dönem {formatCurrency(s.previous)} + harcamalar {formatCurrency(s.spending)} + faiz ve ücret {formatCurrency(s.fees)} − ödemeler {formatCurrency(s.payments)}
           </div>
         )}
         <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs">
+          {balance && (
+            <span className="text-muted-foreground tabular-nums" title="Sistemdeki bakiye dönem sonu itibarıyla; takip dışı hareketler (fon alımı, takip edilmeyen hesaplar) farkı açıklayabilir.">
+              Sistemde dönem sonu bakiyesi {formatCurrency(balance.before)}{balance.after !== balance.before && <> → onaydan sonra {formatCurrency(balance.after)}</>} · bankayla fark{' '}
+              <b className={cn('font-semibold', balance.diff === 0 ? 'text-green-600' : 'text-foreground')}>{formatCurrency(balance.diff)}</b>
+            </span>
+          )}
           {plan && (
             <span className="text-muted-foreground tabular-nums" title={plan.openingDate ? `Hesabın açılışı ${formatDate(plan.openingDate)}; bundan önceki alımların taksitleri açılış bakiyesinde sayılır.` : undefined}>
               {plan.matchedLines}/{plan.totalLines} satır sistemdeki kayıtlarla eşleşti
@@ -584,7 +608,9 @@ export function StatementImport() {
             {!!preview?.createdPeople.length && <span><b className="text-foreground">{preview.createdPeople.length}</b> yeni alıcı</span>}
             {!!preview?.deletedTxIds.length && <span><b className="text-foreground">{preview.deletedTxIds.length}</b> kayıt silinecek</span>}
             <span className="hidden sm:inline"><b className="text-foreground">{preview?.patchedTxIds.length ?? 0}</b> kayıt güncellenecek</span>
-            <span className="hidden sm:inline">karta etkisi <b className="text-foreground">{effect >= 0 ? '+' : '−'}{formatCurrency(Math.abs(effect))}</b> borç</span>
+            {statement.type === 'checking'
+              ? <span className="hidden sm:inline">hesaba etkisi <b className="text-foreground">{effect > 0 ? '−' : '+'}{formatCurrency(Math.abs(effect))}</b></span>
+              : <span className="hidden sm:inline">karta etkisi <b className="text-foreground">{effect >= 0 ? '+' : '−'}{formatCurrency(Math.abs(effect))}</b> borç</span>}
           </div>
         </div>
       </footer>

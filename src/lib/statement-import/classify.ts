@@ -31,11 +31,13 @@ export type RowKind =
   | 'purchase' | 'installment-new' | 'installment' | 'installment-missing'
   | 'opening' | 'lump' | 'payment' | 'fee' | 'refund' | 'bonus'
   | 'net-zero' | 'cancel' | 'amount-diff' | 'possible-dup' | 'unknown' | 'orphan'
+  // vadesiz hesap dökümü
+  | 'income' | 'transfer-in' | 'transfer-out' | 'interest' | 'tax' | 'internal' | 'investment' | 'untracked'
 
 /** Yazılacak bir işlemin taslağı. Kimlik `idSeed`ten türetilir. */
 export interface DraftTx {
-  type: 'expense' | 'transfer'
-  /** expense: + harcama, − iade · transfer: + */
+  type: 'expense' | 'income' | 'transfer'
+  /** expense: + harcama, − iade · income: + · transfer: + */
   amount: number
   date: string
   description: string
@@ -47,8 +49,10 @@ export interface DraftTx {
   familyMemberId?: string | null
   tags?: string[]
   refundOfId?: string
-  /** Karta ödeme transferinin kaynak hesabı */
+  /** Hesaba GELEN transferin kaynak hesabı (karta ödeme, vadesize giriş) */
   fromAccountId?: string
+  /** Hesaptan GİDEN transferin hedef hesabı (vadesizden kart ödemesi vb.) */
+  toAccountId?: string
   /** Taksitli grup: her taksitin tutarı ve tarihi */
   installments?: { amounts: number[]; dates: string[] }
   /** Var olan bir taksit grubunun eksik tek taksiti */

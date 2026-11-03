@@ -44,6 +44,7 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
   }, [row, onClose])
 
   const expenseCats = useMemo(() => categories.filter(c => c.scope === 'expense' && !c.isArchived), [categories])
+  const incomeCats = useMemo(() => categories.filter(c => c.scope === 'income' && !c.isArchived), [categories])
   const recipients = useMemo(() => people.filter(p => p.role === 'recipient' && !p.isArchived), [people])
 
   if (!row) return null
@@ -60,9 +61,10 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
   const categoryId = edit?.categoryId ?? draft?.categoryId ?? ''
 
   async function createCategory(name: string): Promise<string> {
-    const suggestion = suggestCategoryIcon(name, 'expense')
+    const scope = draft?.type === 'income' ? 'income' : 'expense'
+    const suggestion = suggestCategoryIcon(name, scope)
     const cat: Category = {
-      id: crypto.randomUUID(), name, icon: suggestion.icon, color: suggestion.color, scope: 'expense', isSystem: false,
+      id: crypto.randomUUID(), name, icon: suggestion.icon, color: suggestion.color, scope, isSystem: false,
       sortOrder: categories.reduce((m, c) => Math.max(m, c.sortOrder), 0) + 1,
     }
     await addCategory(cat)
@@ -142,7 +144,7 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
             </div>
           )}
 
-          {draft && draft.editable && draft.type === 'expense' && (
+          {draft && draft.editable && draft.type !== 'transfer' && (
             <div className="flex flex-col gap-3">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Girilecek kayıt</div>
               <Input label="Açıklama" value={edit?.description ?? draft.description} onChange={e => onEdit({ description: e.target.value })} />
@@ -174,7 +176,7 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
               </div>
               <div className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">Kategori</span>
-                <CategoryCascadeSelect categories={expenseCats} value={categoryId} onChange={id => onEdit({ categoryId: id })} error={!categoryId} onCreate={createCategory} />
+                <CategoryCascadeSelect categories={draft.type === 'income' ? incomeCats : expenseCats} value={categoryId} onChange={id => onEdit({ categoryId: id })} error={!categoryId} onCreate={createCategory} />
                 {!categoryId && <span className="text-[11px] text-destructive">Kategori seçilmeden kayıt yapılmaz.</span>}
               </div>
               {draft.installments && (
@@ -193,12 +195,20 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
             </div>
           )}
 
-          {draft?.type === 'transfer' && (
+          {draft?.type === 'transfer' && !draft.toAccountId && (
             <SelectField
-              label="Ödemenin yapıldığı hesap"
+              label={statement.type === 'checking' ? 'Paranın geldiği hesap' : 'Ödemenin yapıldığı hesap'}
               value={edit?.fromAccountId ?? draft.fromAccountId ?? ''}
               onChange={e => onEdit({ fromAccountId: e.target.value })}
               options={accounts.filter(a => !a.isArchived && a.type !== 'credit_card').map(a => ({ value: a.id, label: a.name }))}
+            />
+          )}
+          {draft?.type === 'transfer' && draft.toAccountId && (
+            <SelectField
+              label="Paranın gittiği hesap"
+              value={edit?.toAccountId ?? draft.toAccountId}
+              onChange={e => onEdit({ toAccountId: e.target.value })}
+              options={accounts.filter(a => !a.isArchived).map(a => ({ value: a.id, label: a.name }))}
             />
           )}
         </div>

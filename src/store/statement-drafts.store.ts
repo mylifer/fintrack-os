@@ -45,7 +45,7 @@ export interface StatementDraft {
 }
 
 export function draftIdFor(st: ParsedStatement): string {
-  return deterministicUuid(`stmt-draft:${st.bank}:${st.statementDate}:${st.cards.join(',')}:${st.summary?.debt ?? st.check.expected}`)
+  return deterministicUuid(`stmt-draft:${st.bank}:${st.statementDate}:${st.account?.iban ?? st.cards.join(',')}:${st.summary?.debt ?? st.check.expected}`)
 }
 
 function read(): StatementDraft[] {
