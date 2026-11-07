@@ -19,6 +19,8 @@ import { SelectField } from '@/components/ui/Select'
 import { transactionsToCsvString, downloadCsv, csvFilenameSlug } from '@/lib/utils/csv'
 import { txTouchesAccount } from '@/lib/utils/calculations'
 import { useTransactionStore, useCategoryStore, useAccountStore } from '@/store'
+import { findInstallmentRoundingFixes, type InstallmentRoundingFix } from '@/lib/utils/installments'
+import { formatCurrency } from '@/lib/utils/currency'
 
 const ALL_ACCOUNTS = ''
 
@@ -98,6 +100,31 @@ export default function SettingsPage() {
       console.error('[settings:load-demo]', err)
       setDemoLoading(false)
       setConfirmDemo(false)
+    }
+  }
+
+  // Taksit kuruş düzeltmesi: eski yuvarlamayla (kalan ilk taksitlere dağıtılmış)
+  // bölünmüş grupları bankanın kuralına (kalan tamamen 1. taksite) çevirir.
+  const fixInstallmentRounding = useTransactionStore(s => s.fixInstallmentRounding)
+  const [roundingFixes, setRoundingFixes] = useState<InstallmentRoundingFix[] | null>(null)
+  const [roundingFixing, setRoundingFixing] = useState(false)
+  const [roundingDone, setRoundingDone]   = useState<number | null>(null)
+
+  function handleRoundingScan() {
+    setRoundingDone(null)
+    setRoundingFixes(findInstallmentRoundingFixes(transactions))
+  }
+
+  async function handleRoundingFix() {
+    setRoundingFixing(true)
+    try {
+      const n = await fixInstallmentRounding()
+      setRoundingDone(n)
+      setRoundingFixes(null)
+    } catch (err) {
+      console.error('[settings:installment-rounding]', err)
+    } finally {
+      setRoundingFixing(false)
     }
   }
 
@@ -368,6 +395,71 @@ export default function SettingsPage() {
                       ? `${exportCount} işlem indirilecek.`
                       : `${exportCount} işlem indirilecek — hesaplar arası transferlerin her iki bacağı da dahildir.`}
                 </div>
+              </div>
+
+              {/* Taksit kuruşlarını bankayla eşitle */}
+              <div className="pt-4 border-t border-border">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold">Taksit Kuruşlarını Bankayla Eşitle</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Bankalar artan kuruşun tamamını 1. taksite ekler (ör. 15.413 TL / 9 → 1.712,60 + 8 × 1.712,55).
+                      Eski kayıtlarda kuruşlar ilk taksitlere dağıtılmıştı; bu, ekstreyle birkaç kuruş fark yaratır.
+                      Toplam tutarlar değişmez, elle girdiğin özel tutarlara dokunulmaz.
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleRoundingScan}
+                    className="flex-shrink-0 rounded-xl px-4 h-9"
+                  >
+                    Tara
+                  </Button>
+                </div>
+                {roundingDone !== null && (
+                  <div className="mt-3 text-xs text-muted-foreground bg-background rounded-lg px-3 py-2">
+                    {roundingDone} taksitli işlem düzeltildi. Hemen ardından çıkan bildirimdeki “Geri al” ile birkaç saniye içinde geri alabilirsin.
+                  </div>
+                )}
+                {roundingFixes && (
+                  roundingFixes.length === 0 ? (
+                    <div className="mt-3 text-xs text-muted-foreground bg-background rounded-lg px-3 py-2">
+                      Düzeltilecek taksitli işlem yok — hepsi banka kuralıyla bölünmüş.
+                    </div>
+                  ) : (
+                    <div className="mt-3 flex flex-col gap-2 bg-background rounded-lg px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground">{roundingFixes.length} taksitli işlem</span>
+                          {' '}({roundingFixes.reduce((s, f) => s + f.changes.length, 0)} taksit satırı) düzeltilecek.
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={handleRoundingFix}
+                          loading={roundingFixing}
+                          className="flex-shrink-0 rounded-xl"
+                        >
+                          Düzelt
+                        </Button>
+                      </div>
+                      <ul className="max-h-40 overflow-y-auto flex flex-col gap-1 text-xs">
+                        {roundingFixes.map(f => {
+                          const first = f.changes.find(c => c.tx.installIndex === 1)
+                          return (
+                            <li key={f.groupId} className="flex items-center justify-between gap-3">
+                              <span className="truncate">{f.description || 'Taksitli işlem'}</span>
+                              <span className="flex-shrink-0 tabular-nums text-muted-foreground">
+                                {formatCurrency(f.total, f.changes[0].tx.currency)} / {f.changes[0].tx.installTotal}
+                                {first && <> · 1. taksit {formatCurrency(first.tx.amount, first.tx.currency)} → {formatCurrency(first.amount, first.tx.currency)}</>}
+                              </span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )
+                )}
               </div>
 
               {/* Import */}

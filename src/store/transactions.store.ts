@@ -17,7 +17,8 @@ import { rowInActiveWorkspace, rowInWorkspace } from '@/lib/workspace-context'
 import { useWorkspaceStore } from './workspace.store'
 import { toBaseTry, fromBaseTry, baseAmount, baseSnapshot } from '@/lib/utils/fx'
 import { txTouchesAccount } from '@/lib/utils/calculations'
-import { splitMoney } from '@/lib/utils/money'
+import { splitInstallments, mulMoney } from '@/lib/utils/money'
+import { findInstallmentRoundingFixes } from '@/lib/utils/installments'
 import { splitsAreValid, splitsMatchAmount, primarySplitCategoryId, rescaleSplits, txHasCategory } from '@/lib/utils/categorySplits'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 import { withLinkedInterestTax } from '@/lib/utils/interest-tax'
@@ -164,6 +165,9 @@ interface TransactionState {
     shared: Partial<Transaction> & { date: string },
     amounts: number[],
   ) => Promise<void>
+  /** Eski yuvarlamayla bölünmüş taksit gruplarını banka kuralına çevirir
+   *  (kuruş kalanı 1. taksite). Tek undo ile geri alınır. Düzeltilen grup sayısını döner. */
+  fixInstallmentRounding: () => Promise<number>
   update: (id: string, patch: Partial<Transaction>) => Promise<void>
   updateMany: (
     ids: string[],
@@ -327,8 +331,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const txs: Transaction[] = []
     // base.amount toplam satın alma tutarı; her işlem AYLIK taksit tutarını
     // taşır. Kullanıcı elle tutar girdiyse (amounts) onlar kullanılır; yoksa
-    // splitMoney kuruş kalanını ilk taksitlere dağıtır, toplam korunur.
-    const perInstallment = amounts?.length === count ? amounts : splitMoney(base.amount, count)
+    // banka kuralı: taksitler aşağı yuvarlanır, kuruş kalanı 1. taksite.
+    const perInstallment = amounts?.length === count ? amounts : splitInstallments(base.amount, count)
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
       // Taksitler onay kapısında BEKLEMEZ: gelecek aylara düşenler dahil hepsi
@@ -538,6 +542,54 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       set({ transactions: reverted })
       useAccountStore.getState().recomputeBalances(reverted)
     })
+  },
+
+  // Tutar alanını doğrudan yamalar: toplam korunur, yalnızca kuruşlar taksitler
+  // arasında yer değiştirir. Kategori payları yeni tutara ölçeklenir; TRY
+  // karşılığı (amountTry) aynı oranla güncellenir (kur yeniden okunmaz).
+  fixInstallmentRounding: async () => {
+    const fixes = findInstallmentRoundingFixes(get().transactions)
+    if (fixes.length === 0) return 0
+    const now = new Date().toISOString()
+    type PatchOp = Extract<BatchOp, { kind: 'patch' }>
+    const forward: PatchOp[] = []
+    const undoOps: PatchOp[] = []
+    const nextById = new Map<string, Transaction>()
+    const prevById = new Map<string, Transaction>()
+
+    for (const fix of fixes) {
+      for (const { tx, amount } of fix.changes) {
+        const amountTry = tx.amountTry == null ? undefined : mulMoney(tx.amountTry, amount / tx.amount)
+        const splits = tx.categorySplits?.length ? rescaleSplits(tx.categorySplits, amount) : undefined
+        const merged = withSplits({ ...tx, amount, amountTry, categorySplits: splits, updatedAt: now })
+        const patch: Record<string, unknown> = {
+          amount,
+          amountTry:      merged.amountTry ?? null,
+          categorySplits: merged.categorySplits ?? null,
+          categoryId:     merged.categoryId ?? null,
+          updatedAt:      now,
+        }
+        const rev: Record<string, unknown> = {}
+        for (const k of Object.keys(patch)) rev[k] = (tx as unknown as Record<string, unknown>)[k] ?? null
+        forward.push({ kind: 'patch', table: 'transactions', id: tx.id, patch })
+        undoOps.push({ kind: 'patch', table: 'transactions', id: tx.id, patch: rev })
+        nextById.set(tx.id, merged)
+        prevById.set(tx.id, tx)
+      }
+    }
+
+    await localBatch(forward)
+    const next = get().transactions.map(t => nextById.get(t.id) ?? t)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
+
+    useUndoStore.getState().pushUndo(`${fixes.length} taksitli işlemin kuruşları düzeltildi`, async () => {
+      await localBatch(undoOps)
+      const reverted = get().transactions.map(t => prevById.get(t.id) ?? t)
+      set({ transactions: reverted })
+      useAccountStore.getState().recomputeBalances(reverted)
+    })
+    return fixes.length
   },
 
   update: async (id, patch) => {

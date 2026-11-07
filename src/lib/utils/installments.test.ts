@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { collapseInstallments, rebalanceInstallmentsBelow } from './installments'
+import { collapseInstallments, rebalanceInstallmentsBelow, findInstallmentRoundingFixes } from './installments'
 import { calcPeriodFlow, excludeFuture } from './calculations'
 import type { Transaction } from '@/types'
 
@@ -143,5 +143,39 @@ describe('rebalanceInstallmentsBelow', () => {
 
   it('üsttekiler toplamı aşarsa alttakiler 0 olur (negatif taksit yok)', () => {
     expect(rebalanceInstallmentsBelow(1000, [800, 400, 100], 1)).toEqual([800, 400, 0])
+  })
+})
+
+describe('findInstallmentRoundingFixes', () => {
+  const mk = (groupId: string, amounts: number[], over: Partial<Transaction> = {}) =>
+    amounts.map((amount, i) => tx({
+      amount, amountTry: amount, isInstallment: true, installGroupId: groupId,
+      installIndex: i + 1, installTotal: amounts.length, description: 'Kedi Tuvaleti', ...over,
+    }))
+
+  it('eski yuvarlamayla bölünmüş grubu banka kuralına çevirir', () => {
+    // 15.413 / 9 eski: 5×1.712,56 + 4×1.712,55 → banka: 1.712,60 + 8×1.712,55
+    const rows = mk('kedi', [...Array(5).fill(1712.56), ...Array(4).fill(1712.55)])
+    const [fix] = findInstallmentRoundingFixes(rows)
+    expect(fix.total).toBe(15413)
+    expect(fix.changes.map(c => [c.tx.installIndex, c.amount])).toEqual([
+      [1, 1712.60], [2, 1712.55], [3, 1712.55], [4, 1712.55], [5, 1712.55],
+    ])
+  })
+
+  it('zaten banka kuralıyla bölünmüş, elle girilmiş ya da tam bölünen gruplara dokunmaz', () => {
+    const bank   = mk('bank', [1712.60, ...Array(8).fill(1712.55)])
+    const manual = mk('manual', [1000, 500, 500.01])
+    const even   = mk('even', [4000, 4000, 4000])
+    expect(findInstallmentRoundingFixes([...bank, ...manual, ...even])).toEqual([])
+  })
+
+  it('eksik satırlı veya silinmiş satırlı grupları atlar', () => {
+    const legacy = [333.34, 333.34, 333.33]   // 1000,01 / 3 eski bölüşüm — tam grupsa düzeltilirdi
+    expect(findInstallmentRoundingFixes(mk('full', legacy))).toHaveLength(1)
+    const partial = mk('p', legacy).slice(0, 2)
+    const withDeleted = mk('d', legacy)
+    withDeleted[2] = { ...withDeleted[2], deleted_at: '2026-01-01T00:00:00Z' }
+    expect(findInstallmentRoundingFixes([...partial, ...withDeleted])).toEqual([])
   })
 })
