@@ -60,6 +60,8 @@ export interface DraftTx {
   idSeed: string
   /** Onay ekranında açıklama/alıcı/kategori değiştirilebilir mi */
   editable: boolean
+  /** "Var olan alıcıyla gir": alıcı seçilmeden kayıt yapılmaz */
+  needsRecipient?: boolean
 }
 
 export type Action =
@@ -71,6 +73,12 @@ export interface RowOption {
   key: string
   label: string
   actions: Action[]
+}
+
+/** Seçeneklerin ekrandaki sırası (indeksler): "Girme" hep en sonda */
+export function optionDisplayOrder(options: readonly RowOption[]): number[] {
+  const idx = options.map((_, i) => i)
+  return [...idx.filter(i => options[i].key !== 'skip'), ...idx.filter(i => options[i].key === 'skip')]
 }
 
 export interface PlanRow {
@@ -789,7 +797,9 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
             (isNew ? `Bu işyeri daha önce hiç geçmemiş; önerilen yeni alıcı “${prettyMerchant(l.description)}”.` : ruleReason(l, rule)),
           options: isNew
             ? [{ key: 'create-new', label: 'Yeni alıcıyla gir', actions: [{ type: 'create', draft: { ...draft, newRecipient: prettyMerchant(l.description), description: draft.description } }] },
-               { key: 'create', label: 'Alıcısız gir', actions: [{ type: 'create', draft }] }, skip]
+               { key: 'create', label: 'Alıcısız gir', actions: [{ type: 'create', draft }] }, skip,
+               // Sonda: kayıtlı kararlar seçenek sırasıyla tutulur, eski indeksler kaymasın
+               { key: 'create-existing', label: 'Var olan alıcıyla gir', actions: [{ type: 'create', draft: { ...draft, needsRecipient: true } }] }]
             : [{ key: 'create', label: 'Gir', actions: [{ type: 'create', draft }] }, skip],
           recommended: 0, defaultOption: isNew ? null : 0, sideEffects: [],
         })
@@ -915,6 +925,8 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
           { key: 'create-new', label: 'Yeni alıcıyla gir', actions: [{ type: 'create', draft: { ...draft, newRecipient: suggested, description: suggested } }] },
           { key: 'create', label: 'Alıcısız gir', actions: [{ type: 'create', draft: { ...draft, description: suggested } }] },
           skip,
+          // Sonda: kayıtlı kararlar seçenek sırasıyla tutulur, eski indeksler kaymasın
+          { key: 'create-existing', label: 'Var olan alıcıyla gir', actions: [{ type: 'create', draft: { ...draft, description: suggested, needsRecipient: true } }] },
         ],
         recommended: 0, defaultOption: null, sideEffects: [],
       })

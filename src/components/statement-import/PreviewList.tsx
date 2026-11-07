@@ -11,7 +11,7 @@ import { formatDate } from '@/lib/utils/date'
 import { foldText } from '@/lib/auto-category'
 import { usePeopleStore } from '@/store'
 import type { Category, Person } from '@/types'
-import type { PlanRow, RowKind, RowStatus } from '@/lib/statement-import/classify'
+import { optionDisplayOrder, type PlanRow, type RowKind, type RowStatus } from '@/lib/statement-import/classify'
 import type { RowEdit } from '@/lib/statement-import/commit'
 
 /* ── Önizleme listesi ────────────────────────────────────────────────────────
@@ -177,7 +177,7 @@ export function PreviewList(props: ListProps) {
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5" onClick={e => e.stopPropagation()}>
         <span className={cn('text-xs font-semibold', decided ? 'text-muted-foreground' : 'text-orange-600')}>{decided ? '✓ ' : ''}{r.issue}</span>
         <div className="inline-flex flex-wrap rounded-lg border border-border bg-muted/40 overflow-hidden">
-          {r.options.map((o, i) => (
+          {optionDisplayOrder(r.options).map(i => { const o = r.options[i]; return (
             <button
               key={o.key} type="button" onClick={() => props.onChoose(r.key, i)}
               className={cn('px-2.5 py-1 text-xs border-l border-border first:border-l-0 transition-colors',
@@ -187,7 +187,7 @@ export function PreviewList(props: ListProps) {
               {o.label}
               {!decided && r.recommended === i && <span className="ml-1.5 inline-block size-1.5 rounded-full bg-primary align-middle" aria-label="önerilen" />}
             </button>
-          ))}
+          ) })}
         </div>
       </div>
     )

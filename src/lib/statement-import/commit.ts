@@ -67,6 +67,19 @@ export function recipientEdit(edit: RowEdit | undefined, recipientId: string | n
   return patch
 }
 
+/** Çekmecedeki alıcı düzenlemesine uyan karar: yeni alıcı → "Yeni alıcıyla gir",
+ *  var olan alıcı → "Var olan alıcıyla gir", alıcı kaldırıldı → "Alıcısız gir".
+ *  Satırda o seçenek yoksa (ya da alıcıya dokunulmadıysa) null. */
+export function optionForEdit(row: Pick<PlanRow, 'options'>, edit: RowEdit | undefined): number | null {
+  if (!edit) return null
+  const key = edit.recipientId === undefined
+    ? (edit.newRecipient !== undefined ? 'create-new' : null)
+    : edit.recipientId === null ? 'create' : 'create-existing'
+  if (!key) return null
+  const i = row.options.findIndex(o => o.key === key)
+  return i < 0 ? null : i
+}
+
 function applyEdit(d: DraftTx, e: RowEdit | undefined): DraftTx {
   if (!e || !d.editable) {
     if (d.fromAccountId && e?.fromAccountId) return { ...d, fromAccountId: e.fromAccountId }
@@ -125,6 +138,10 @@ export function buildCommit(input: CommitInput): CommitResult {
   const create = (rowKey: string, d: DraftTx) => {
     if (d.type !== 'transfer' && !d.categoryId) {
       problems.push({ rowKey, message: 'Kategori seçilmedi' })
+      return
+    }
+    if (d.needsRecipient && !d.recipientId && !d.newRecipient) {
+      problems.push({ rowKey, message: 'Alıcı seçilmedi' })
       return
     }
     if (!d.description.trim()) {
