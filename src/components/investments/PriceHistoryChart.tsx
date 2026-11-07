@@ -67,7 +67,7 @@ const CHART_H = 170
 
 // ── Period ─────────────────────────────────────────────────────────
 
-type Period = '1H' | '1A' | '3A' | '1Y' | 'MAX'
+export type Period = '1H' | '1A' | '3A' | '1Y' | 'MAX'
 
 const PERIODS: { key: Period; days: number }[] = [
   { key: '1H',  days: 7    },
@@ -111,6 +111,10 @@ interface Props {
   qtyTimeline?:     QtyPoint[]
   /** Alım (+) / satış (−) tutarları — dönem K/Z'sinden düşülür (bkz. period-pnl). */
   cashFlows?:       CashFlow[]
+  /** Açılıştaki dönem (varsayılan 3A). Kapanan pozisyonlar MAX ile açılır. */
+  defaultPeriod?:   Period
+  /** Pozisyon tamamen satıldı: başlıkta ₺0 yerine "Pozisyon kapandı" yazılır. */
+  closed?:          boolean
 }
 
 // ── Chart data row ─────────────────────────────────────────────────
@@ -144,6 +148,7 @@ interface ChartRow {
 
 export function PriceHistoryChart({
   asset, fundCode, label, currentValue, currentPrice, currentPrevPrice, buyPoints = [], qtyTimeline = [], cashFlows = NO_FLOWS,
+  defaultPeriod = '3A', closed = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [chartW, setChartW] = useState(400)
@@ -160,7 +165,7 @@ export function PriceHistoryChart({
   }, [])
 
   // ── Period ──────────────────────────────────────────────────────
-  const [period, setPeriod] = useState<Period>('3A')
+  const [period, setPeriod] = useState<Period>(defaultPeriod)
 
   // İlk hareket (ilk alım) tarihi — qtyTimeline artan sıralı, ilk elemanı ilk
   // işlemdir; boşsa buyPoints tarihlerinin en küçüğüne düşülür.
@@ -216,7 +221,9 @@ export function PriceHistoryChart({
   // qtyTimeline drives portfolio value: qty × historicalPrice at every point,
   // so multiple purchases/sells are reflected correctly.
   const chartData = useMemo((): ChartRow[] => {
-    if (!priceHistory.length || !currentPrice || currentValue === undefined) return []
+    // Kapanan pozisyonda canlı fiyat şart değil: son kapanış ankraj olur
+    const anchorPrice = currentPrice || (closed ? priceHistory[priceHistory.length - 1]?.price : undefined)
+    if (!priceHistory.length || !anchorPrice || currentValue === undefined) return []
 
     // Yerel gün — işlem tarihleri (today() util) ile aynı sözleşme; UTC gün
     // TR saatiyle 00:00-03:00 arasında bir gün geride kalıp bugünkü alımı
@@ -243,7 +250,7 @@ export function PriceHistoryChart({
     // noktada her gün suni sıçrama ve tooltip'te sahte günlük % üretiyordu.
     const rows = priceHistory.map(p => ({ date: p.date, price: p.price, value: portfolioAt(p.date, p.price) }))
     if (!rows.some(r => r.date === todayStr)) {
-      rows.push({ date: todayStr, price: currentPrice, value: currentValue })
+      rows.push({ date: todayStr, price: anchorPrice, value: currentValue })
     }
 
     const allPrices     = rows.map(r => r.price)
@@ -288,7 +295,7 @@ export function PriceHistoryChart({
       }
       return base
     })
-  }, [priceHistory, currentValue, currentPrice, currentPrevPrice, qtyTimeline])
+  }, [priceHistory, currentValue, currentPrice, currentPrevPrice, qtyTimeline, closed])
 
   // Her alımı grafikteki ilk >= tarihli satıra tuttur; satır yoksa son satıra.
   // Böylece tarihi seride birebir olmayan alımlar da işaretçi alır.
@@ -344,7 +351,7 @@ export function PriceHistoryChart({
   const periodResult = lastRow && currentValue !== undefined ? pnlUntil(lastRow) : null
   const up = (periodResult?.pnl ?? 0) >= 0
 
-  const lastRaw  = currentPrice
+  const lastRaw  = currentPrice || chartData[chartData.length - 1]?.realRawPrice
   const firstRaw = chartData[0]?.realRawPrice
   const rawPct   = firstRaw && lastRaw ? ((lastRaw - firstRaw) / firstRaw) * 100 : null
   const rawUp    = rawPct !== null && rawPct >= 0
@@ -361,7 +368,9 @@ export function PriceHistoryChart({
             {label}
           </span>
 
-          {currentValue !== undefined ? (
+          {closed ? (
+            <div className="text-sm font-semibold text-muted-foreground leading-none">Pozisyon kapandı</div>
+          ) : currentValue !== undefined ? (
             /* Sabit 22px dar kolonda tutarı kırpıyordu — bkz. globals.css .kpi-value */
             /* Bakiye kısaltılmaz: kuruşuna kadar tam yazılır (formatCurrency).
                Uzun tutarlar 13cqi clamp'i ile kart genişliğine göre küçülür. */

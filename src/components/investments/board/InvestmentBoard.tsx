@@ -17,6 +17,7 @@ import { INVESTMENTS_VIEWS } from '@/lib/investments-view'
 import { TransactionTable } from './TransactionTable'
 import { PriceTicker } from './PriceTicker'
 import { ReturnsPanel } from './ReturnsPanel'
+import { ClosedPositions } from './ClosedPositions'
 import {
   SORT_LABELS, assetMeta, buildRows, fmtPct, pnlColor,
   type SortId,
@@ -260,7 +261,9 @@ export function InvestmentBoard() {
         {/* ── Görünüm ───────────────────────────────────────────────── */}
         {rows.length === 0 ? (
           <div className="rounded-xl border border-border/60 bg-card px-5 py-12 text-center text-sm text-muted-foreground">
-            {query ? 'Aramaya uyan varlık yok.' : 'Portföyde varlık yok. Yatırım işlemi ekleyin.'}
+            {query ? 'Aramaya uyan varlık yok.'
+              : transactions.length ? 'Elde varlık yok — satılan varlıklar aşağıda, Kapanan Pozisyonlar bölümünde.'
+              : 'Portföyde varlık yok. Yatırım işlemi ekleyin.'}
           </div>
         ) : view === 'classic' ? (
           <ClassicView
@@ -289,6 +292,17 @@ export function InvestmentBoard() {
             onDeleteTx={removeTransaction}
           />
         )}
+
+        {/* ── Kapanan pozisyonlar: tamamı satılan varlıkların geçmiş grafiği */}
+        <ClosedPositions
+          transactions={transactions}
+          prices={prices}
+          fundPrices={fundPrices}
+          accounts={accounts}
+          query={query}
+          onEditTx={openEdit}
+          onDeleteTx={removeTransaction}
+        />
 
         {/* ── Getiri: gerçekleşen K/Z + XIRR — aramadan bağımsız, tüm portföy */}
         <ReturnsPanel rows={allRows} transactions={transactions} fundPrices={fundPrices} />
