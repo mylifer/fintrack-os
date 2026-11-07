@@ -16,6 +16,8 @@ export interface RowEdit {
   /** Yeni alıcı adı (recipientId yerine) */
   newRecipient?: string
   categoryId?: string
+  /** categoryId alıcıdan otomatik geldi (elle seçilmedi): başka alıcı seçilince yenilenebilir */
+  categoryAuto?: boolean
   familyMemberId?: string | null
   /** Transferin karşı hesabı (gelen transferde kaynak, giden transferde hedef) */
   fromAccountId?: string
@@ -52,6 +54,30 @@ export interface CommitResult {
 /** Seçili seçenek: kullanıcı seçimi, yoksa satırın varsayılanı. */
 export function selectedOption(row: PlanRow, choices: Readonly<Record<string, number>>): number | null {
   return choices[row.key] ?? row.defaultOption
+}
+
+/** Çekmecede var olan bir alıcı seçildi: kategori elle seçilmediyse alıcının
+ *  geçmişteki kategorisiyle (varsa) doldurulur. Elle seçilen kategori kalır. */
+export function recipientEdit(edit: RowEdit | undefined, recipientId: string | null, categoryOf: (id: string) => string | undefined): RowEdit {
+  const patch: RowEdit = { recipientId }
+  if (!recipientId) return patch
+  if (edit?.categoryId !== undefined && !edit.categoryAuto) return patch
+  const cat = categoryOf(recipientId)
+  if (cat) { patch.categoryId = cat; patch.categoryAuto = true }
+  return patch
+}
+
+/** Çekmecedeki alıcı düzenlemesine uyan karar: yeni alıcı → "Yeni alıcıyla gir",
+ *  var olan alıcı → "Var olan alıcıyla gir", alıcı kaldırıldı → "Alıcısız gir".
+ *  Satırda o seçenek yoksa (ya da alıcıya dokunulmadıysa) null. */
+export function optionForEdit(row: Pick<PlanRow, 'options'>, edit: RowEdit | undefined): number | null {
+  if (!edit) return null
+  const key = edit.recipientId === undefined
+    ? (edit.newRecipient !== undefined ? 'create-new' : null)
+    : edit.recipientId === null ? 'create' : 'create-existing'
+  if (!key) return null
+  const i = row.options.findIndex(o => o.key === key)
+  return i < 0 ? null : i
 }
 
 function applyEdit(d: DraftTx, e: RowEdit | undefined): DraftTx {
@@ -112,6 +138,10 @@ export function buildCommit(input: CommitInput): CommitResult {
   const create = (rowKey: string, d: DraftTx) => {
     if (d.type !== 'transfer' && !d.categoryId) {
       problems.push({ rowKey, message: 'Kategori seçilmedi' })
+      return
+    }
+    if (d.needsRecipient && !d.recipientId && !d.newRecipient) {
+      problems.push({ rowKey, message: 'Alıcı seçilmedi' })
       return
     }
     if (!d.description.trim()) {

@@ -19,7 +19,7 @@ import { readPdfPages } from '@/lib/statement-import/pdf-text'
 import { parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
 import { buildImportPlan, type ImportPlan, type PlanRow } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
-import { buildCommit, commitEffect, selectedOption, type RowEdit } from '@/lib/statement-import/commit'
+import { buildCommit, commitEffect, optionForEdit, selectedOption, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
 import type { BatchOp } from '@/lib/sync/engine'
 import { PreviewList, STATUS_META } from './PreviewList'
@@ -420,6 +420,16 @@ export function StatementImport() {
     })
   }
 
+  // Çekmecede alıcı değişince karar da ona uyar: yeni alıcı yazıldıysa "Yeni alıcıyla
+  // gir", var olan seçildiyse "Var olan alıcıyla gir", kaldırıldıysa "Alıcısız gir"
+  function editRow(row: PlanRow, patch: RowEdit) {
+    const next = { ...edits[row.key], ...patch }
+    setEdits(e => ({ ...e, [row.key]: { ...e[row.key], ...patch } }))
+    if (!('recipientId' in patch) && !('newRecipient' in patch)) return
+    const i = optionForEdit(row, next)
+    if (i !== null) setChoices(c => ({ ...c, [row.key]: i }))
+  }
+
   function acceptRecommended() {
     const next = { ...choices }
     for (const r of rows) if (r.status === 'review' && next[r.key] === undefined && r.recommended !== null) next[r.key] = r.recommended
@@ -544,7 +554,7 @@ export function StatementImport() {
         choice={openRow ? selectedOption(openRow, choices) : null}
         edit={openRow ? edits[openRow.key] : undefined}
         onChoose={i => openRow && choose(openRow.key, i)}
-        onEdit={patch => openRow && setEdits(e => ({ ...e, [openRow.key]: { ...e[openRow.key], ...patch } }))}
+        onEdit={patch => openRow && editRow(openRow, patch)}
         onClose={() => setOpenKey(null)}
       />
 

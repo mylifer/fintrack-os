@@ -7,14 +7,15 @@ import { Input } from '@/components/ui/Input'
 import { SelectField } from '@/components/ui/Select'
 import { CategoryCascadeSelect } from '@/components/categories/CategoryCascadeSelect'
 import { PersonSelect } from '@/components/people/PersonSelect'
-import { useAccountStore, useCategoryStore, usePeopleStore } from '@/store'
+import { useAccountStore, useCategoryStore, usePeopleStore, useTransactionStore } from '@/store'
+import { recipientCategory } from '@/lib/auto-category'
 import { suggestCategoryIcon } from '@/lib/category-icon-suggest'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
-import type { Category } from '@/types'
-import type { DraftTx, PlanRow } from '@/lib/statement-import/classify'
-import type { RowEdit } from '@/lib/statement-import/commit'
+import type { Category, Person } from '@/types'
+import { optionDisplayOrder, type DraftTx, type PlanRow } from '@/lib/statement-import/classify'
+import { recipientEdit, type RowEdit } from '@/lib/statement-import/commit'
 import type { ParsedStatement } from '@/lib/statement-import/statement'
 import { STATUS_META } from './PreviewList'
 
@@ -28,6 +29,10 @@ interface Props {
   onClose: () => void
 }
 
+/** Onayda oluşturulacak yeni alıcı, seçicide geçici bir kişi olarak gösterilir */
+const PENDING_ID = '__new-recipient__'
+const pendingPerson = (name: string): Person => ({ id: PENDING_ID, name, role: 'recipient', createdAt: '' })
+
 const fmt = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onClose }: Props) {
@@ -35,6 +40,7 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
   const categories = useCategoryStore(s => s.categories)
   const addCategory = useCategoryStore(s => s.add)
   const accounts   = useAccountStore(s => s.accounts)
+  const transactions = useTransactionStore(s => s.transactions)
 
   useEffect(() => {
     if (!row) return
@@ -132,7 +138,7 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Karar</div>
               <div className="flex flex-col gap-1.5">
-                {row.options.map((o, i) => (
+                {optionDisplayOrder(row.options).map(i => ({ o: row.options[i], i })).map(({ o, i }) => (
                   <label key={o.key} className={cn('flex items-center gap-2.5 rounded-xl border px-3 py-2 text-sm cursor-pointer',
                     choice === i ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40')}>
                     <input type="radio" name={`opt-${row.key}`} checked={choice === i} onChange={() => onChoose(i)} className="accent-primary" />
@@ -150,33 +156,24 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
               <Input label="Açıklama" value={edit?.description ?? draft.description} onChange={e => onEdit({ description: e.target.value })} />
               <div className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">Alıcı</span>
-                {newRecipientName !== undefined
-                  ? (
-                    <div className="flex gap-2">
-                      <Input value={newRecipientName} onChange={e => onEdit({ newRecipient: e.target.value })} aria-label="Yeni alıcı adı" />
-                      <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => onEdit({ recipientId: null })}>Var olanı seç</Button>
-                    </div>
-                  )
-                  : (
-                    // Yazılan yeni ad saklanır: "Yeni alıcı" ile geri dönülür
-                    <div className="flex gap-2">
-                      <div className="flex-1 min-w-0">
-                        <PersonSelect
-                          people={recipients}
-                          value={recipientId ?? undefined}
-                          onChange={id => onEdit({ recipientId: id ?? null })}
-                          onCreate={async name => { onEdit({ recipientId: undefined, newRecipient: name }); return null }}
-                          placeholder="Alıcı seçin"
-                        />
-                      </div>
-                      <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => onEdit({ recipientId: undefined, newRecipient: edit?.newRecipient || draft.newRecipient || row.title.split(' · ')[0] })}>Yeni alıcı</Button>
-                    </div>
-                  )}
-                {newRecipientName !== undefined && <span className="text-[11px] text-muted-foreground">Onayda yeni alıcı olarak oluşturulur.</span>}
+                {/* İşlem ekle formundaki seçiciyle aynı: aramada yoksa "… ekle". Yeni alıcı onayda oluşturulur. */}
+                <PersonSelect
+                  people={newRecipientName !== undefined ? [...recipients, pendingPerson(newRecipientName)] : recipients}
+                  value={newRecipientName !== undefined ? PENDING_ID : (recipientId ?? undefined)}
+                  onChange={id => {
+                    if (id === PENDING_ID) return
+                    onEdit(id ? recipientEdit(edit, id, rid => draft.type === 'transfer' ? undefined : recipientCategory(rid, draft.type, transactions, categories))
+                      : { recipientId: null, newRecipient: undefined })
+                  }}
+                  onCreate={async name => { onEdit({ recipientId: undefined, newRecipient: name }); return PENDING_ID }}
+                  placeholder="Alıcı seçin"
+                />
+                {newRecipientName !== undefined && <span className="text-[11px] text-muted-foreground">Yeni alıcı · onayda oluşturulur.</span>}
+                {draft.needsRecipient && newRecipientName === undefined && !recipientId && <span className="text-[11px] text-destructive">Alıcı seçilmeden kayıt yapılmaz.</span>}
               </div>
               <div className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">Kategori</span>
-                <CategoryCascadeSelect categories={draft.type === 'income' ? incomeCats : expenseCats} value={categoryId} onChange={id => onEdit({ categoryId: id })} error={!categoryId} onCreate={createCategory} />
+                <CategoryCascadeSelect categories={draft.type === 'income' ? incomeCats : expenseCats} value={categoryId} onChange={id => onEdit({ categoryId: id, categoryAuto: false })} error={!categoryId} onCreate={createCategory} />
                 {!categoryId && <span className="text-[11px] text-destructive">Kategori seçilmeden kayıt yapılmaz.</span>}
               </div>
               {draft.installments && (

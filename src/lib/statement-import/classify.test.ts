@@ -228,6 +228,19 @@ describe('iade, net sıfır, ters kontrol', () => {
     expect(p2.rows[0].status).toBe('exists')
   })
 
+  it('"Var olan alıcıyla gir": alıcı seçilmeden kayıt yok, seçilince o alıcıyla', () => {
+    const lines = [line({ description: 'BİLİNMEYEN YER', amount: 99 })]
+    const p1 = plan(lines, [])
+    const row = p1.rows[0]
+    expect(row.options.map(o => o.key)).toEqual(['create-new', 'create', 'skip', 'create-existing'])
+    const i = row.options.findIndex(o => o.key === 'create-existing')
+    const bare = commit(p1, [], { [row.key]: i }, { [row.key]: { categoryId: 'c-hgs' } })
+    expect(bare.problems).toEqual([{ rowKey: row.key, message: 'Alıcı seçilmedi' }])
+    const ok = commit(p1, [], { [row.key]: i }, { [row.key]: { categoryId: 'c-hgs', recipientId: 'p-itc' } })
+    expect(ok.problems).toEqual([])
+    expect(created(ok.ops)[0]).toMatchObject({ recipientId: 'p-itc', categoryId: 'c-hgs' })
+  })
+
   it('aynı onay iki kez yazılsa da çift kayıt oluşmaz (kimlik satırdan türetilir)', () => {
     const hist = [tx({ id: 'h', amount: 5, date: '2026-08-01', merchant: 'HGS-1', recipientId: 'p-itc', categoryId: 'c-hgs', description: 'HGS' })]
     const lines = [line({ description: 'HGS-1', amount: 500, date: '2026-10-20' }), line({ description: 'HGS-1', amount: 500, date: '2026-10-20' })]
