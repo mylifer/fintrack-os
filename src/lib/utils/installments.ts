@@ -1,5 +1,5 @@
 import type { Transaction } from '@/types'
-import { toMinor, toMajor, splitInstallments } from './money'
+import { toMinor, toMajor, splitMoney, splitInstallments } from './money'
 import { baseAmount } from './fx'
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -24,6 +24,57 @@ export function rebalanceInstallmentsBelow(total: number, amounts: number[], ind
     ? splitInstallments(toMajor(remainderMinor), below)
     : Array.from({ length: below }, () => 0)
   return [...amounts.slice(0, index + 1), ...tail]
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Eski yuvarlamayla bölünmüş taksit gruplarını bulma (tek seferlik düzeltme)
+
+   Eskiden taksitler splitMoney ile bölünüyordu (kuruş kalanı ilk birkaç
+   taksite birer birer: 5×1.712,56 + 4×1.712,55). Bankalar ise kalanın
+   tamamını 1. taksite koyar (1.712,60 + 8×1.712,55) → ekstreyle kuruş farkı.
+
+   Yalnızca tutarları TAM OLARAK eski otomatik bölüşüme eşit olan gruplar
+   döner; elle girilmiş özel tutarlara ve ekstreden gelen (zaten banka
+   kuralıyla bölünmüş) gruplara dokunulmaz. Toplam her zaman korunur.
+──────────────────────────────────────────────────────────────────────── */
+export interface InstallmentRoundingFix {
+  groupId: string
+  description: string
+  total: number
+  /** Taksit sırasıyla satırlar ve yeni tutarları (yalnızca değişenler). */
+  changes: { tx: Transaction; amount: number }[]
+}
+
+export function findInstallmentRoundingFixes(transactions: readonly Transaction[]): InstallmentRoundingFix[] {
+  const groups = new Map<string, Transaction[]>()
+  for (const t of transactions) {
+    if (!t.isInstallment || !t.installGroupId || t.deleted_at) continue
+    const g = groups.get(t.installGroupId)
+    if (g) g.push(t)
+    else groups.set(t.installGroupId, [t])
+  }
+
+  const fixes: InstallmentRoundingFix[] = []
+  for (const [groupId, rows] of groups) {
+    const n = rows.length
+    if (n < 2) continue
+    rows.sort((a, b) => (a.installIndex ?? 0) - (b.installIndex ?? 0))
+    // Eksik/çift satırlı ya da karışık para birimli gruplar atlanır.
+    if (rows.some((t, i) => t.installIndex !== i + 1 || (t.installTotal ?? n) !== n)) continue
+    if (rows.some(t => t.currency !== rows[0].currency || !(t.amount > 0))) continue
+
+    const amounts = rows.map(t => t.amount)
+    const total = toMajor(amounts.reduce((s, a) => s + toMinor(a), 0))
+    const legacy = splitMoney(total, n)
+    if (!legacy.every((a, i) => toMinor(a) === toMinor(amounts[i]))) continue
+    const bank = splitInstallments(total, n)
+    const changes = rows
+      .map((tx, i) => ({ tx, amount: bank[i] }))
+      .filter(c => toMinor(c.amount) !== toMinor(c.tx.amount))
+    if (changes.length === 0) continue
+    fixes.push({ groupId, description: rows[0].description, total, changes })
+  }
+  return fixes
 }
 
 /* ────────────────────────────────────────────────────────────────────────
