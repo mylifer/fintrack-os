@@ -1,5 +1,5 @@
 import type { Transaction } from '@/types'
-import { toMinor, toMajor, splitMoney } from './money'
+import { toMinor, toMajor, splitInstallments } from './money'
 import { baseAmount } from './fx'
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -7,7 +7,7 @@ import { baseAmount } from './fx'
 
    Kullanıcı `index`. taksiti değiştirdiğinde o taksit ve ÜSTÜNDEKİLER olduğu
    gibi kalır; toplamdan geriye kalan tutar alttaki taksitlere eşit bölünür
-   (splitMoney: kuruş kalanı ilk alt taksitlere). Böylece toplam korunur.
+   (splitInstallments: banka kuralı, kuruş kalanı ilk alt taksite). Böylece toplam korunur.
 
    • Son taksit düzenlenirse altta satır yoktur → dizi aynen döner; toplam
      farkı editördeki uyarıyla görünür.
@@ -21,7 +21,7 @@ export function rebalanceInstallmentsBelow(total: number, amounts: number[], ind
   for (let i = 0; i <= index; i++) aboveMinor += toMinor(amounts[i])
   const remainderMinor = toMinor(total) - aboveMinor
   const tail = remainderMinor > 0
-    ? splitMoney(toMajor(remainderMinor), below)
+    ? splitInstallments(toMajor(remainderMinor), below)
     : Array.from({ length: below }, () => 0)
   return [...amounts.slice(0, index + 1), ...tail]
 }

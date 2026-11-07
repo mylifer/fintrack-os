@@ -17,7 +17,7 @@ import { rowInActiveWorkspace, rowInWorkspace } from '@/lib/workspace-context'
 import { useWorkspaceStore } from './workspace.store'
 import { toBaseTry, fromBaseTry, baseAmount, baseSnapshot } from '@/lib/utils/fx'
 import { txTouchesAccount } from '@/lib/utils/calculations'
-import { splitMoney } from '@/lib/utils/money'
+import { splitInstallments } from '@/lib/utils/money'
 import { splitsAreValid, splitsMatchAmount, primarySplitCategoryId, rescaleSplits, txHasCategory } from '@/lib/utils/categorySplits'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 import { withLinkedInterestTax } from '@/lib/utils/interest-tax'
@@ -327,8 +327,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const txs: Transaction[] = []
     // base.amount toplam satın alma tutarı; her işlem AYLIK taksit tutarını
     // taşır. Kullanıcı elle tutar girdiyse (amounts) onlar kullanılır; yoksa
-    // splitMoney kuruş kalanını ilk taksitlere dağıtır, toplam korunur.
-    const perInstallment = amounts?.length === count ? amounts : splitMoney(base.amount, count)
+    // banka kuralı: taksitler aşağı yuvarlanır, kuruş kalanı 1. taksite.
+    const perInstallment = amounts?.length === count ? amounts : splitInstallments(base.amount, count)
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
       // Taksitler onay kapısında BEKLEMEZ: gelecek aylara düşenler dahil hepsi

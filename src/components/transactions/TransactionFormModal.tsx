@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import { parseCurrencyInput, getCurrencySymbol, formatCurrency } from '@/lib/utils/currency'
-import { splitMoney, sumMoney } from '@/lib/utils/money'
+import { splitInstallments, sumMoney } from '@/lib/utils/money'
 import { rebalanceInstallmentsBelow } from '@/lib/utils/installments'
 import { toBaseTry, baseAmount } from '@/lib/utils/fx'
 import { DEBT_COLLECTION_ICON, isDebtCollectionTx } from '@/lib/utils/calculations'
@@ -516,7 +516,7 @@ export function TransactionFormModal() {
   const [installments, setInstallments] = useState(() =>
     installGroup.length || (isEdit && editingTx ? (editingTx.installTotal ?? 1) : 1))
   // Elle düzenlenen taksit tutarları (amountStr formatında raw string'ler).
-  // null → otomatik bölüşüm (splitMoney). Toplam tutar veya taksit sayısı
+  // null → otomatik bölüşüm (splitInstallments: banka kuralı). Toplam tutar veya taksit sayısı
   // değişince elle girilenler geçersizleşir, otomatiğe dönülür (onChange'lerde
   // sıfırlanır — effect içinde setState lint'e takılıyor). Taksitli grup
   // düzenleniyorsa mevcut taksit tutarlarıyla tohumlanır (gerçek tutarlar görünür).
@@ -996,7 +996,7 @@ export function TransactionFormModal() {
       // Taksitli grup düzenleme: 'ilk giriş' gibi toplam/sayı/taksitler tüm gruba
       // uygulanır. Taksit tutarları pozitif harcamadır → büyüklük kullanılır.
       const total   = parseCurrencyInput(amountStr)
-      const rows    = manualAmounts ?? splitMoney(total, installments).map(toAmountStr)
+      const rows    = manualAmounts ?? splitInstallments(total, installments).map(toAmountStr)
       const amounts = rows.map(s => parseCurrencyInput(s))
       await updateGroup(editingTx.installGroupId, {
         type:           tab as TransactionType,
@@ -1016,7 +1016,7 @@ export function TransactionFormModal() {
       // Sonradan taksitlendirme: girilen tutar TOPLAM satın almadır, satırın
       // kendisi 1. taksit olur, kalan taksitler yeni satır olarak doğar.
       const total   = parseCurrencyInput(amountStr)
-      const rows    = manualAmounts ?? splitMoney(total, installments).map(toAmountStr)
+      const rows    = manualAmounts ?? splitInstallments(total, installments).map(toAmountStr)
       const amounts = rows.map(s => parseCurrencyInput(s))
       await convertGroup(editingTx.id, {
         type:           tab as TransactionType,
@@ -2102,7 +2102,7 @@ export function TransactionFormModal() {
                   {parseCurrencyInput(amountStr) > 0 && (() => {
                     const total    = parseCurrencyInput(amountStr)
                     const cur      = (accounts.find(a => a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode
-                    const rows     = manualAmounts ?? splitMoney(total, installments).map(toAmountStr)
+                    const rows     = manualAmounts ?? splitInstallments(total, installments).map(toAmountStr)
                     const sum      = sumMoney(rows.map(s => parseCurrencyInput(s) || 0))
                     const sumDiff  = Math.round(sum * 100) !== Math.round(total * 100)
                     return (

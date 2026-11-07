@@ -61,3 +61,17 @@ export function splitMoney(total: number, count: number): number[] {
   const remainder = totalMinor - per * count
   return Array.from({ length: count }, (_, i) => toMajor(per + (i < remainder ? 1 : 0)))
 }
+
+/**
+ * Taksit bölüşümü — Türk bankalarının (Garanti, Yapı Kredi, İş…) kuralı:
+ * her taksit kuruşa AŞAĞI yuvarlanır, artan kuruşların TAMAMI 1. taksite
+ * eklenir. 15.413,00 / 9 → [1.712,60, 1.712,55 × 8]. Ekstreyle kuruşu
+ * kuruşuna tutması için taksitlerde splitMoney yerine bu kullanılır.
+ */
+export function splitInstallments(total: number, count: number): number[] {
+  if (count <= 1) return [total]
+  const totalMinor = toMinor(total)
+  const per = Math.trunc(totalMinor / count)
+  const first = totalMinor - per * (count - 1)
+  return [toMajor(first), ...Array.from({ length: count - 1 }, () => toMajor(per))]
+}
