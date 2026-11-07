@@ -16,6 +16,8 @@ export interface RowEdit {
   /** Yeni alıcı adı (recipientId yerine) */
   newRecipient?: string
   categoryId?: string
+  /** categoryId alıcıdan otomatik geldi (elle seçilmedi): başka alıcı seçilince yenilenebilir */
+  categoryAuto?: boolean
   familyMemberId?: string | null
   /** Transferin karşı hesabı (gelen transferde kaynak, giden transferde hedef) */
   fromAccountId?: string
@@ -52,6 +54,17 @@ export interface CommitResult {
 /** Seçili seçenek: kullanıcı seçimi, yoksa satırın varsayılanı. */
 export function selectedOption(row: PlanRow, choices: Readonly<Record<string, number>>): number | null {
   return choices[row.key] ?? row.defaultOption
+}
+
+/** Çekmecede var olan bir alıcı seçildi: kategori elle seçilmediyse alıcının
+ *  geçmişteki kategorisiyle (varsa) doldurulur. Elle seçilen kategori kalır. */
+export function recipientEdit(edit: RowEdit | undefined, recipientId: string | null, categoryOf: (id: string) => string | undefined): RowEdit {
+  const patch: RowEdit = { recipientId }
+  if (!recipientId) return patch
+  if (edit?.categoryId !== undefined && !edit.categoryAuto) return patch
+  const cat = categoryOf(recipientId)
+  if (cat) { patch.categoryId = cat; patch.categoryAuto = true }
+  return patch
 }
 
 function applyEdit(d: DraftTx, e: RowEdit | undefined): DraftTx {
