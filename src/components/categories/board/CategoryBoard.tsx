@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useCategoryStore, useTransactionStore } from '@/store'
 import { useUndoStore } from '@/store/undo.store'
@@ -42,6 +42,36 @@ const VIEWS = [
 type ViewId = typeof VIEWS[number]['id']
 const STORAGE_KEY = 'categories.viewMode'
 
+// Görünüm tercihi kalıcı (localStorage; eski kabuğun anahtarı korunuyor).
+// useSyncExternalStore: sunucu ve hidrasyon anlık görüntüsü 'table' → SSR
+// HTML'iyle çakışma yok; istemci hidrasyondan hemen sonra kayıtlı tercihe geçer.
+// Depolama yazılamazsa (özel pencere) seçim bellekte tutulur.
+const viewListeners = new Set<() => void>()
+let memoryView: ViewId | null = null
+
+function subscribeView(cb: () => void) {
+  viewListeners.add(cb)
+  window.addEventListener('storage', cb)
+  return () => {
+    viewListeners.delete(cb)
+    window.removeEventListener('storage', cb)
+  }
+}
+
+function getSavedView(): ViewId {
+  let saved: string | null = memoryView
+  try { saved = window.localStorage.getItem(STORAGE_KEY) ?? saved } catch { /* özel pencere: yoksay */ }
+  return VIEWS.some(v => v.id === saved) ? (saved as ViewId) : 'table'
+}
+
+const getServerView = (): ViewId => 'table'
+
+function saveView(id: ViewId) {
+  memoryView = id
+  try { window.localStorage.setItem(STORAGE_KEY, id) } catch { /* özel pencere: yoksay */ }
+  viewListeners.forEach(cb => cb())
+}
+
 export function CategoryBoard() {
   const categories   = useCategoryStore(s => s.categories)
   const remove       = useCategoryStore(s => s.remove)
@@ -49,12 +79,7 @@ export function CategoryBoard() {
   const transactions = useTransactionStore(s => s.transactions)
 
   const [scope, setScope] = useState<CategoryScope>('expense')
-  // Görünüm tercihi kalıcı (SSR'da 'table'a düşer) — eski kabuğun anahtarı korunuyor.
-  const [view, setView] = useState<ViewId>(() => {
-    if (typeof window === 'undefined') return 'table'
-    const saved = window.localStorage.getItem(STORAGE_KEY)
-    return VIEWS.some(v => v.id === saved) ? (saved as ViewId) : 'table'
-  })
+  const view = useSyncExternalStore(subscribeView, getSavedView, getServerView)
   const [query,  setQuery]  = useState('')
   const [sort,   setSort]   = useState<SortId>('total')
   const [adding, setAdding] = useState(false)
@@ -63,8 +88,7 @@ export function CategoryBoard() {
   const [showArchived, setShowArchived] = useState(false)
 
   function pickView(id: ViewId) {
-    setView(id)
-    try { window.localStorage.setItem(STORAGE_KEY, id) } catch { /* özel pencere: yoksay */ }
+    saveView(id)
   }
 
   // collapseInstallments: taksitli alışverişler Raporlar/detay sayfası ile aynı
