@@ -365,6 +365,11 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       // Tek çekim harcama
       if (t.type === 'expense' && !t.isInstallment && minor(t.amount) === amt && dayDiff(t.date, d) <= 4) {
         cands.push({ idx: l.index, txId: t.id, score: dayDiff(t.date, d) })
+      } else if (st.provisional && l.kind === 'purchase' && t.type === 'expense' && t.isInstallment &&
+        Math.abs(minor(t.amount) - amt) <= 5 && dayDiff(t.date, d) <= 4) {
+        // Dönem içi listelerde taksit bilgisi olmayabilir (Odeabank, QNB): satır
+        // sistemdeki taksidin kendisidir; tek çekimden sonra gelir
+        cands.push({ idx: l.index, txId: t.id, score: dayDiff(t.date, d) + 0.5 + Math.abs(minor(t.amount) - amt) / 100 })
       }
     }
   }
