@@ -302,6 +302,18 @@ describe('öğrenilmemiş indirim satırı', () => {
     const r = plan([line({ date: '2026-10-12', description: 'Uber Eats Yemek İSTANBU Indirim', amount: -54.7 })], old).rows[0]
     expect(r).toMatchObject({ status: 'review', kind: 'income', title: 'Yemek Cashback', recommended: 0, issue: 'İndirim satırı' })
   })
+  it('gelir olarak girilmiş kart ödemeleri öneri olmaz (daha sık olsalar da)', () => {
+    const pays = [1, 2, 3, 4].map(i => tx({ id: `pay${i}`, type: 'income', amount: 1000 * i, date: `2026-0${i + 4}-12`, description: 'Kredi Kartı Ödemesi' }))
+    // Kategorili olsa da bu ekstrede ödeme satırıyla eşleşen gelir de sayılmaz
+    const paid = tx({ id: 'pay-cat', type: 'income', amount: 500, date: '2026-10-05', description: 'Kart ödemesi', categoryId: 'c-bank' })
+    // Tek cashback kaydı: eşitlikte önce gelen ödeme kaydı kazanırdı
+    const cb = tx({ id: 'cb1', type: 'income', amount: 10, date: '2026-08-01', description: 'Yemek Cashback', recipientId: 'p-bank', categoryId: 'c-bank' })
+    const p = plan([
+      line({ date: '2026-10-05', description: 'ÖDEME-İNTERNET BANKACILIĞI', amount: -500, kind: 'payment' }),
+      line({ date: '2026-10-12', description: 'Uber Eats Yemek İSTANBU Indirim', amount: -54.7 }),
+    ], [...pays, paid, cb])
+    expect(p.rows.find(r => r.kind === 'income')).toMatchObject({ status: 'review', title: 'Yemek Cashback' })
+  })
 })
 
 describe('işyeri adı ve ödeme', () => {

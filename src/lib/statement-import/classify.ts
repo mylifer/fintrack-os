@@ -844,7 +844,11 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     let learnedIncome = !!asIncome?.length
     // Öğrenilmemiş indirim satırı: bu kartta en sık girilen gelir biçimi önerilir (karar sorulur)
     if (!asIncome?.length && l.kind === 'refund' && /\b(indirim|alsv ind|cashback)\b|kampanya/.test(foldText(l.description))) {
-      const incomes = accTx.filter(t => t.type === 'income' && t.accountId === acc && !t.workspaceTransferId)
+      // Gelir olarak girilmiş kart ödemeleri öneri olamaz: bu ekstrede ödeme satırıyla
+      // eşleşenler ve kategorisiz olanlar ("Kredi Kartı Ödemesi" geliri) sayılmaz
+      const paymentTx = new Set<string>()
+      for (const [idx, m] of matchOf) if (lineByIdx.get(idx)?.kind === 'payment') m.txIds.forEach(id => paymentTx.add(id))
+      const incomes = accTx.filter(t => t.type === 'income' && t.accountId === acc && !t.workspaceTransferId && !!t.categoryId && !paymentTx.has(t.id))
       const tally = new Map<string, Transaction[]>()
       for (const t of incomes) { const k = `${t.description}|${t.recipientId ?? ''}|${t.categoryId ?? ''}`; tally.set(k, [...(tally.get(k) ?? []), t]) }
       asIncome = [...tally.values()].sort((a, b) => b.length - a.length)[0]
