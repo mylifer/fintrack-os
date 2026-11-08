@@ -45,8 +45,10 @@ export function AllocationView({
     [rows, scope],
   )
 
-  const scopeValue = scopeRows.reduce((s, r) => s + r.currentValue, 0)
-  const scopeCost  = scopeRows.reduce((s, r) => s + r.totalCost, 0)
+  // Fiyatsız satırlar (değer 0, K/Z −maliyet) grafiğin bugünkü ucuna katılmaz.
+  const pricedScope = scopeRows.filter(r => r.hasPrices)
+  const scopeValue = pricedScope.reduce((s, r) => s + r.currentValue, 0)
+  const scopeCost  = pricedScope.reduce((s, r) => s + r.totalCost, 0)
 
   const assetSegs = useMemo(
     () => assetSegments([...scopeRows].sort((a, b) => b.currentValue - a.currentValue)).filter(s => s.value > 0),

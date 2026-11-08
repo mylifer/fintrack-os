@@ -100,8 +100,10 @@ export function buildPortfolioSeries(opts: {
   // Varlık başına: miktar çizelgesi + hangi fiyat serisini okuyacağı
   const plans = assets.map(asset => {
     const { group, fundCode } = chartGroupOf(asset)
-    const key = Object.keys(series).find(k => k.startsWith(`${group}|${fundCode ?? ''}|`))
-    return { asset, qty: qtyTimelineFor(asset, transactions), points: key ? series[key] : undefined }
+    // TAM anahtar: useHistories önceki dönemlerin (daha kısa) serilerini de
+    // tutar; önek eşleşmesi ilk ekleneni — eski dönemi — döndürürdü.
+    const points = series[histKey({ group, fundCode, from })]
+    return { asset, qty: qtyTimelineFor(asset, transactions), points }
   }).filter(p => p.points && p.points.length)
 
   if (!plans.length) return []
