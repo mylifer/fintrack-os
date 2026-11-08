@@ -1438,7 +1438,21 @@ export function TransactionFormModal() {
                   // Kategoriler tipe göre filtrelendiğinden paylar da geçersizleşir.
                   setSplits(null)
                   setAutoCategory(null)
-                  patch({ type: key, categoryId: '', toAccountId: undefined, isDebtPayment: false, debtId: undefined })
+                  // Ödeme tipi (taksit/abonelik) ve iade işareti yalnızca giderde
+                  // anlamlı; gizli kalıp gelir/transferi taksitli ya da negatif
+                  // kaydetmesin. Taksitli grup düzenlemesi kilitli, dokunulmaz.
+                  const leavingExpense = key !== 'expense'
+                  const resetInstallment = leavingExpense && !installGroup.length
+                  if (resetInstallment) {
+                    setInstallments(1)
+                    setManualAmounts(null)
+                  }
+                  setAmountSign(!leavingExpense && isEdit && editingTx && editingTx.amount < 0 ? -1 : 1)
+                  patch({
+                    type: key, categoryId: '', toAccountId: undefined, isDebtPayment: false, debtId: undefined,
+                    ...(resetInstallment ? { isInstallment: false } : {}),
+                    ...(leavingExpense ? { tags: form.tags.filter(t => !isSubscriptionTag(t)) } : {}),
+                  })
                 }}
                 className={cn(
                   "rounded-md py-1.5 text-sm font-medium transition-all",

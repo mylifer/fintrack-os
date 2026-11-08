@@ -157,7 +157,7 @@ describe('xlsx okuyucu', () => {
     expect(readXlsxRows(buf)).toEqual([
       ['Hesap Hareketleri'],
       ['Tarih', 'Açıklama', 'Tutar'],
-      ['46290', 'MIGROS KADIKOY', '', '-1234.56'],
+      ['46290', 'MIGROS KADIKOY', '', '-1234,56'],
       ['24.09.2026', 'Maaş & Prim', '45000'],
     ])
   })
@@ -168,6 +168,25 @@ describe('xlsx okuyucu', () => {
     const { valid } = validateImportRows(rows, autoDetectMapping(headers), [], rowLines, { signMode: 'negative-expense' })
     // 1. veri satırında tutar D sütununda ("Sütun 4") — Tutar sütunu boş → hata; 2. satır geçerli
     expect(valid.map(v => [v.date, v.description, v.type, v.amount])).toEqual([['2026-09-24', 'Maaş & Prim', 'income', 45000]])
+  })
+
+  it('sayı hücresindeki noktalı ondalık binlik ayracı sanılmaz ("12.345" → 12,35)', () => {
+    const xml = `<worksheet><sheetData>
+      <row r="1"><c r="A1" t="inlineStr"><is><t>Tarih</t></is></c><c r="B1" t="inlineStr"><is><t>Açıklama</t></is></c><c r="C1" t="inlineStr"><is><t>Tutar</t></is></c></row>
+      <row r="2"><c r="A2"><v>46290.5</v></c><c r="B2" t="inlineStr"><is><t>Kahve</t></is></c><c r="C2"><v>12.345</v></c></row>
+      <row r="3"><c r="A3"><v>46290</v></c><c r="B3" t="inlineStr"><is><t>Metin</t></is></c><c r="C3" t="inlineStr"><is><t>1.234</t></is></c></row>
+    </sheetData></worksheet>`
+    const z = zipSync({
+      'xl/workbook.xml': strToU8('<workbook><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+      'xl/_rels/workbook.xml.rels': strToU8('<Relationships><Relationship Id="rId1" Type="x" Target="worksheets/sheet1.xml"/></Relationships>'),
+      'xl/worksheets/sheet1.xml': strToU8(xml),
+    })
+    const grid = readXlsxRows(z.buffer.slice(z.byteOffset, z.byteOffset + z.byteLength) as ArrayBuffer)
+    expect(grid[1]).toEqual(['46290,5', 'Kahve', '12,345'])
+    expect(grid[2][2]).toBe('1.234')                      // metin hücresi dokunulmaz
+    expect(parseAmount(grid[1][2])).toBe(12.35)
+    expect(parseAmount(grid[2][2])).toBe(1234)            // TR binlik metni hâlâ binlik
+    expect(parseDate(grid[1][0])).toBe('2026-09-25')
   })
 
   it('eski .xls imzası tanınır', () => {

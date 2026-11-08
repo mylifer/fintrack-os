@@ -93,6 +93,18 @@ export function dueDateFor(month: MonthKey, day: number): string {
   return `${month}-${pad(Math.min(clampDay(day), daysInMonth(month)))}`
 }
 
+/** Ayın VARSAYILAN son ödeme tarihi — o aya özel tarih girilmemişken takvimde
+ *  görünecek olan. Kartta kart döngüsünden (kesim + fark, tatil kuralı;
+ *  buildSchedule ile aynı), borçta plandaki günden. `fallbackDay` yalnız
+ *  hedefin günü yoksa kullanılır. */
+export function defaultDueDate(target: PaymentTarget, month: MonthKey, fallbackDay: number): string {
+  const day = target.dayOfMonth ?? fallbackDay
+  if (target.kind === 'card' && target.account) {
+    return cardCycle(resolveCardDays(target.account, target.plan).days, month).dueDate ?? dueDateFor(month, day)
+  }
+  return dueDateFor(month, day)
+}
+
 function addDaysIso(iso: string, days: number): string {
   return format(addDays(parseISO(iso), days), 'yyyy-MM-dd')
 }
@@ -301,7 +313,9 @@ export function statementWindow(
 
 /** Dönemde UYGULAMAYA GİRİLMİŞ net kart harcaması: gider + karttan çıkan
  *  transfer − karta işlenen gelir/iade. Karta YAPILAN ödemeler (toAccountId =
- *  kart) ve mutabakat satırları sayılmaz. Bankanın ekstre tutarı değildir —
+ *  kart ya da karta gelir olarak işlenmiş "Kredi Kartı Ödemesi" —
+ *  assignCardPayments, buildCardStatements ile aynı kural) ve mutabakat
+ *  satırları sayılmaz. Bankanın ekstre tutarı değildir —
  *  yalnız düzenleme penceresinde etiketli kısayol olarak gösterilir. */
 export function estimateStatement(
   account: Account,
@@ -310,8 +324,10 @@ export function estimateStatement(
   custom?: { closing?: string | null; prevClosing?: string | null },
 ): number {
   const { from, to } = statementWindow(account, dueDate, custom)
+  // Yalnız bu kartın satırlarına bakıldığı için tek hesapla eşlemek yeterli.
+  const paymentIds = new Set((assignCardPayments([account], transactions).get(account.id) ?? []).map(t => t.id))
   const charges = transactions.filter(t => {
-    if (t.accountId !== account.id || t.systemKind) return false
+    if (t.accountId !== account.id || t.systemKind || paymentIds.has(t.id)) return false
     const d = t.date.slice(0, 10)
     return d >= from && d <= to
   })

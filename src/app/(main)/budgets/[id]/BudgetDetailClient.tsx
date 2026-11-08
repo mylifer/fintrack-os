@@ -24,6 +24,7 @@ import { RolloverField } from '@/components/budgets/RolloverField'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { baseAmount } from '@/lib/utils/fx'
 import { sumBy } from '@/lib/utils/money'
+import { expandByCategory, txCategoryIds } from '@/lib/utils/categorySplits'
 import { useShallow } from 'zustand/react/shallow'
 import type { MonthYear } from '@/types'
 
@@ -52,6 +53,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   const transactions = useTransactionStore(s => s.transactions)
   const categories   = useCategoryStore(s => s.categories)
   const expenseCategories = useCategoryStore(useShallow(s => s.getByScope('expense')))
+  const allBudgets   = useBudgetStore(s => s.budgets)
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [search,        setSearch]        = useState('')
@@ -89,8 +91,15 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     setEditLoading(true)
     try {
       const categoryId = editCatIds.length === 1 ? editCatIds[0] : JSON.stringify(editCatIds)
+      // İsim snapshot'ı (liste sayfasıyla aynı): kategoriler silinse de bütçe
+      // anlamlı bir etiket göstermeye devam etsin.
+      const categoryName = editCatIds
+        .map(cid => categories.find(c => c.id === cid)?.name)
+        .filter(Boolean)
+        .join(', ')
       await update(budget.id, {
         categoryId,
+        categoryName,
         amount: parseCurrencyInput(editAmtStr),
         alertThreshold: Number(editThreshold) || 80,
         rollover: editRollover,
@@ -104,6 +113,12 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   }
 
   // ── Derived (all before conditional returns — Rules of Hooks) ─────────────
+  // Başka bütçelerde kullanılan kategoriler seçilemez (liste sayfasıyla aynı kural)
+  const usedCatIds = useMemo(
+    () => new Set(allBudgets.filter(b => b.id !== id).flatMap(b => getBudgetCategoryIds(b))),
+    [allBudgets, id],
+  )
+
   const budgetCatIds = useMemo(
     () => budget ? getBudgetCategoryIds(budget) : [],
     [budget],
@@ -153,7 +168,9 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     if (!budget) return []
     return transactions.filter(tx => {
       if (tx.type !== 'expense') return false
-      if (!tx.categoryId || !activeCatIds.has(tx.categoryId)) return false
+      // Bölünmüş işlem: paylarından biri bütçenin kategorisindeyse listelenir
+      // (yalnız birincil categoryId'ye bakmak ikincil payın bütçesinde satırı gizliyordu).
+      if (!txCategoryIds(tx).some(cid => activeCatIds.has(cid))) return false
       // isFlowTx: başlık (enriched.spent = calcBudgetSpent) onay bekleyen ve
       // tarihi gelmemiş satırları saymıyor — liste/stats-bar toplamı da saymasın,
       // yoksa başlıkla liste yeniden ayrışır.
@@ -173,7 +190,9 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   // = enriched.spent ile birebir aynı kural).
   const collapsedFiltered = useMemo(() => {
     if (!budget) return []
-    return reportTxs.filter(tx => {
+    // expandByCategory: bölünmüş işlem kategori başına paylara açılır → toplam,
+    // başlıktaki calcBudgetSpent gibi yalnızca bu bütçenin payını sayar.
+    return expandByCategory(reportTxs).filter(tx => {
       if (tx.type !== 'expense') return false
       if (!tx.categoryId || !activeCatIds.has(tx.categoryId)) return false
       if (!isFlowTx(tx)) return false
@@ -427,7 +446,8 @@ export default function BudgetDetailClient({ id }: { id: string }) {
             <div className="max-h-48 overflow-y-auto rounded-xl border border-border divide-y divide-border/50">
               {(() => {
                 const q = editCatSearch.trim().toLocaleLowerCase('tr')
-                const list = expenseCategories.filter(cat => !q || cat.name.toLocaleLowerCase('tr').includes(q))
+                const list = expenseCategories.filter(cat =>
+                  !usedCatIds.has(cat.id) && (!q || cat.name.toLocaleLowerCase('tr').includes(q)))
                 if (list.length === 0) {
                   return (
                     <div className="px-4 py-3 text-sm text-muted-foreground">

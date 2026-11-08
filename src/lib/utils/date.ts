@@ -190,3 +190,13 @@ export function lastNMonths(n: number): MonthYear[] {
   }
   return result
 }
+
+/**
+ * Dönemin GEÇEN gün sayısı (en az 1): bitiş bugünü aşamaz. "Bu Ay"/"Bu Yıl"
+ * gibi süren dönemlerde ortalamalar henüz yaşanmamış günlere bölünüp
+ * düşük çıkmasın diye bitiş min(dönem sonu, bugün)'e kırpılır.
+ */
+export function elapsedPeriodDays(from: string, to: string, todayStr: string = today()): number {
+  const end = to.slice(0, 10) < todayStr ? to.slice(0, 10) : todayStr
+  return Math.max(1, differenceInCalendarDays(parseISO(end), parseISO(from.slice(0, 10))) + 1)
+}

@@ -102,6 +102,12 @@ export function readXlsxRows(bytes: ArrayBuffer): string[][] {
       if (type === 's') value = raw !== undefined ? shared[Number(raw)] ?? '' : ''
       else if (type === 'inlineStr') value = textRuns(inner)
       else if (type === 'b') value = raw === '1' ? 'TRUE' : 'FALSE'
+      else if ((type === undefined || type === 'n') && raw !== undefined && Number.isFinite(Number(raw))) {
+        // Sayı hücresi XML'de daima noktalı ondalıkla durur ("12.345" = 12,345).
+        // parseAmount bunu TR binlik grubu sanıp 12345 okurdu — virgüllü ondalığa
+        // çevrilir. Metin hücreleri (t="s"/"str"/"inlineStr") olduğu gibi kalır.
+        value = String(Number(raw)).replace('.', ',')
+      }
       else value = raw !== undefined ? decodeXml(raw) : ''
       while (row.length < idx) row.push('')
       row[idx] = value.trim()

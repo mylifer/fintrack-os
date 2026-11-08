@@ -94,7 +94,7 @@ export default function TransactionsPage() {
   // toplu düzenlememek için (seçim yalnızca ekranda görünen işlemleri kapsar).
   // Render sırasında: effect'te sıfırlamak bir kare boyunca gizlenmiş satırları
   // seçili bırakıyordu.
-  const selectionKey = [search, typeFilter, categoryFilter, accountFilter, familyFilter?.id, recipientFilter?.id, from, to].join('|')
+  const selectionKey = [search, typeFilter, categoryFilter, accountFilter, familyFilter?.id, recipientFilter?.id, from, to, showFuture].join('|')
   const [selectionFor, setSelectionFor] = useState(selectionKey)
   if (selectionFor !== selectionKey) {
     setSelectionFor(selectionKey)

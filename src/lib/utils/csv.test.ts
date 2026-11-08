@@ -228,3 +228,22 @@ describe('içe aktarma — Türkçe Excel CSV (ayraç + kodlama)', () => {
     expect(decodeCsvBytes(utf8.buffer as ArrayBuffer)).toBe('Şişli Çay')
   })
 })
+
+/* ── Para birimi sütunu yoksa ──────────────────────────────────────────────
+   Satırlar TRY sayılıyordu; USD/EUR hesaba aktarılınca tutar TL gibi
+   kaydediliyor, amountTry kur uygulanmadan hesaplanıyordu. */
+describe('içe aktarma — varsayılan para birimi', () => {
+  const mapping = { date: 'Tarih', description: 'Açıklama', amount: 'Tutar', type: 'Tür', currency: 'Birim' }
+  const row = (Birim = '') => ({ Tarih: '2026-03-01', 'Açıklama': 'Test', Tutar: '100', 'Tür': 'gider', Birim })
+
+  it('sütun yoksa ya da hücre boşsa hedef hesabın birimi kullanılır', () => {
+    const noCol = { date: 'Tarih', description: 'Açıklama', amount: 'Tutar', type: 'Tür' }
+    expect(validateImportRows([row()], noCol, cats, undefined, { defaultCurrency: 'USD' }).valid[0].currency).toBe('USD')
+    expect(validateImportRows([row('')], mapping, cats, undefined, { defaultCurrency: 'EUR' }).valid[0].currency).toBe('EUR')
+  })
+
+  it('dosyadaki geçerli birim önceliklidir; varsayılan verilmezse TRY', () => {
+    expect(validateImportRows([row('usd')], mapping, cats, undefined, { defaultCurrency: 'EUR' }).valid[0].currency).toBe('USD')
+    expect(validateImportRows([row()], mapping, cats).valid[0].currency).toBe('TRY')
+  })
+})

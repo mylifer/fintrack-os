@@ -265,7 +265,14 @@ export default function DebtsPage() {
   const [editingDebt, setEditingDebt]   = useState<Debt | undefined>()
   const [loading, setLoading]           = useState(false)
   const [form, setForm]                 = useState(emptyForm())
-  const [selectedDebt, setSelectedDebt] = useState<DebtWithRemaining | undefined>()
+  // Detay modalı id tutar, borcu güncel store'dan türetir: ödeme/işlem silme
+  // sonrası kalan/ödenen/ilerleme ve plan durumları bayat bir kopyadan okunmasın.
+  const [selectedDebtId, setSelectedDebtId] = useState<string | undefined>()
+  const selectedDebt = useMemo(() => {
+    if (!selectedDebtId) return undefined
+    const d = rawDebts.find(x => x.id === selectedDebtId)
+    return d ? enrichDebt(d) : undefined
+  }, [rawDebts, selectedDebtId])
   const [payingDebt, setPayingDebt]     = useState<DebtWithRemaining | undefined>()
   const [payForm, setPayForm]           = useState(emptyPayForm())
   const [payLoading, setPayLoading]     = useState(false)
@@ -580,7 +587,7 @@ export default function DebtsPage() {
 
         {/* Actions */}
         <div className="flex items-center gap-2 pt-1">
-          <Button size="sm" variant="secondary" className="flex-1 shrink" onClick={() => setSelectedDebt(debt)}>
+          <Button size="sm" variant="secondary" className="flex-1 shrink" onClick={() => setSelectedDebtId(debt.id)}>
             Detay
           </Button>
           {!settled && (
@@ -691,7 +698,7 @@ export default function DebtsPage() {
       {/* Detail modal */}
       <Modal
         open={!!selectedDebt}
-        onClose={() => setSelectedDebt(undefined)}
+        onClose={() => setSelectedDebtId(undefined)}
         title={selectedDebt?.name ?? ''}
         size="lg"
       >

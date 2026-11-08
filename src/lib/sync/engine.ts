@@ -633,6 +633,18 @@ function deletionIsNewer(cloudRow: Record<string, unknown>, pending: OutboxEntry
   return Number.isFinite(d) && Number.isFinite(l) && d > l
 }
 
+/** Yerel satır bu çekişin bulut kopyasından daha güncel mi? Ya çekiş
+ *  başladıktan SONRA push'u ACK'lendi (bulut kopyası o push'tan önce okunmuş
+ *  olabilir) ya da `updatedAt` damgası bulut satırınınkinden yeni. */
+function isLocalNewer(
+  table: SyncTable, cloudRow: Record<string, unknown>, localRow: Record<string, unknown>, fetchStartedAt: number,
+): boolean {
+  if ((ackedAt.get(`${table}:${localRow.id as string}`) ?? 0) >= fetchStartedAt) return true
+  const l = Date.parse(localRow.updatedAt as string)
+  const c = Date.parse(cloudRow.updatedAt as string)
+  return Number.isFinite(l) && Number.isFinite(c) && l > c
+}
+
 export function lastPullWasAuthoritative(table: SyncTable): boolean {
   return pullAuthoritative.get(table) ?? false
 }
@@ -693,6 +705,7 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
     const pendingEntries = await db._outbox.where('table').equals(table).toArray()
     const pending = new Map(pendingEntries.map(e => [e.entityId, e]))
     const localRows = await t.toArray()
+    const localById = new Map(localRows.map(r => [r.id as string, r as unknown as Record<string, unknown>]))
     for (const row of cloudRows) {
       const p = pending.get(row.id as string)
       if (p) {
@@ -709,6 +722,12 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
         }
         continue                                          // don't clobber unsynced local write
       }
+      // Çekiş sürerken push'u ACK'lenen (outbox girdisi artık yok) ya da bulut
+      // sürümünden daha yeni yerel satır, çekişin bayat kopyasıyla EZİLMEZ —
+      // yoksa sonraki localPatch bayat satırı okuyup eski tutarı buluta geri
+      // gönderirdi (düzenleme kaybı). Yerel satır olduğu gibi kalır/döner.
+      const lr = localById.get(row.id as string)
+      if (lr && isLocalNewer(table, row as unknown as Record<string, unknown>, lr, fetchStartedAt)) continue
       await t.put(row as unknown as { id: string })
     }
     for (const lr of localRows) {

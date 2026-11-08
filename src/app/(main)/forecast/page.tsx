@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useShallow } from 'zustand/react/shallow'
 import { Header } from '@/components/layout/Header'
@@ -36,6 +36,36 @@ const MODES: { mode: ForecastMode; label: string }[] = [
 
 const VIEW_STORAGE_KEY = 'forecast.viewMode'
 
+// Düzen tercihi kalıcı (localStorage). useSyncExternalStore: sunucu ve hidrasyon
+// anlık görüntüsü 'projection' → SSR HTML'iyle çakışma yok; istemci hidrasyondan
+// hemen sonra kayıtlı tercihe geçer. Depolama yazılamazsa (özel pencere) seçim
+// bellekte tutulur.
+const viewListeners = new Set<() => void>()
+let memoryView: ForecastViewId | null = null
+
+function subscribeView(cb: () => void) {
+  viewListeners.add(cb)
+  window.addEventListener('storage', cb)
+  return () => {
+    viewListeners.delete(cb)
+    window.removeEventListener('storage', cb)
+  }
+}
+
+function getSavedView(): ForecastViewId {
+  let saved: string | null = memoryView
+  try { saved = window.localStorage.getItem(VIEW_STORAGE_KEY) ?? saved } catch { /* özel pencere: yoksay */ }
+  return FORECAST_VIEWS.some(v => v.id === saved) ? (saved as ForecastViewId) : 'projection'
+}
+
+const getServerView = (): ForecastViewId => 'projection'
+
+function saveView(id: ForecastViewId) {
+  memoryView = id
+  try { window.localStorage.setItem(VIEW_STORAGE_KEY, id) } catch { /* özel pencere: yoksay */ }
+  viewListeners.forEach(cb => cb())
+}
+
 export default function ForecastPage() {
   const accounts       = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const accountsReady  = useAccountStore(s => s.ready)
@@ -60,17 +90,11 @@ export default function ForecastPage() {
 
   const [horizon, setHorizon] = useState<Horizon>(6)
   const [mode, setMode] = useState<ForecastMode>('total')
-  // Düzen tercihi kalıcı (SSR'da 'projection'a düşer).
-  const [view, setView] = useState<ForecastViewId>(() => {
-    if (typeof window === 'undefined') return 'projection'
-    const saved = window.localStorage.getItem(VIEW_STORAGE_KEY)
-    return FORECAST_VIEWS.some(v => v.id === saved) ? (saved as ForecastViewId) : 'projection'
-  })
+  const view = useSyncExternalStore(subscribeView, getSavedView, getServerView)
   const todayStr = today()
 
   function pickView(id: ForecastViewId) {
-    setView(id)
-    try { window.localStorage.setItem(VIEW_STORAGE_KEY, id) } catch { /* özel pencere: yoksay */ }
+    saveView(id)
   }
 
   const allTime = horizon === 'all'

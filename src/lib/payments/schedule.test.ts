@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Account, Debt, PaymentOccurrence, PaymentPlan, Transaction } from '@/types'
 import {
-  buildSchedule, buildTargets, dueDateFor, estimateStatement, monthKeys, occurrenceIdFor, planIdFor,
+  buildSchedule, buildTargets, defaultDueDate, dueDateFor, estimateStatement, monthKeys, occurrenceIdFor, planIdFor,
   shiftMonth, statementWindow, summarizeRows,
 } from './schedule'
 
@@ -156,6 +156,45 @@ describe('uygulamadaki kart harcamaları (kısayol)', () => {
       tx({ id: 'e', date: '2026-09-15', amount: 300, accountId: 'card1', systemKind: 'reconciliation' }),
     ]
     expect(estimateStatement(card(), '2026-10-10', txs)).toBe(800)
+  })
+
+  it('karta gelir olarak işlenmiş "Kredi Kartı Ödemesi"ni harcamadan düşmez (buildCardStatements ile aynı)', () => {
+    const txs = [
+      tx({ id: 'a', date: '2026-09-02', amount: 1_000, accountId: 'card1' }),
+      tx({ id: 'b', date: '2026-09-12', amount: 500, accountId: 'card1' }),
+      // Önceki ekstrenin ödemesi kartın kendisine gelir olarak girilmiş
+      tx({ id: 'p', date: '2026-09-08', amount: 1_200, accountId: 'card1', type: 'income', description: 'Kredi Kartı Ödemesi' }),
+    ]
+    expect(estimateStatement(card(), '2026-10-10', txs)).toBe(1_500)
+  })
+})
+
+describe('defaultDueDate', () => {
+  it('kartta varsayılan tarih kart döngüsünden — tatil kaydırması dahil, satırla aynı', () => {
+    // Kesim 15 + son ödeme 25 (fark 10); 25 Ekim 2026 Pazar → 26 Ekim
+    const accounts = [card({ statementDay: 15 })]
+    const plans = [cardPlan({ dayOfMonth: 25 })]
+    const [target] = buildTargets({ accounts, debts: [], plans })
+    const [row] = schedule({ accounts, plans, from: '2026-10' })
+    expect(row.dueDate).toBe('2026-10-26')
+    expect(defaultDueDate(target, '2026-10', 25)).toBe('2026-10-26')
+  })
+
+  it('aya özel son ödeme girilmiş olsa da varsayılanı verir', () => {
+    const accounts = [card({ statementDay: 15 })]
+    const plans = [cardPlan({ dayOfMonth: 25 })]
+    const [target] = buildTargets({ accounts, debts: [], plans })
+    const [row] = schedule({
+      accounts, plans, from: '2026-10',
+      occurrences: [occ({ targetKind: 'card', targetId: 'card1', month: '2026-10', dueDate: '2026-10-20' })],
+    })
+    expect(row.dueDate).toBe('2026-10-20')
+    expect(defaultDueDate(target, '2026-10', 20)).toBe('2026-10-26')
+  })
+
+  it('borçta plandaki gün', () => {
+    const [target] = buildTargets({ accounts: [], debts: [debt()], plans: [plan({ targetKind: 'debt', targetId: 'debt1', dayOfMonth: 31 })] })
+    expect(defaultDueDate(target, '2026-09', 1)).toBe('2026-09-30')
   })
 })
 

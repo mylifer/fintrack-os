@@ -16,7 +16,7 @@ import { formatCurrency, formatNumberForInput, parseCurrencyInput } from '@/lib/
 import { formatDate } from '@/lib/utils/date'
 import { roundMoney } from '@/lib/utils/money'
 import {
-  dueDateFor, estimateStatement, isActionable, statementWindow,
+  defaultDueDate, estimateStatement, isActionable, statementWindow,
   type PaymentRow, type PaymentTarget,
 } from '@/lib/payments/schedule'
 import { resetRowOverrides, saveRowEdit, setRowStatus, unpayRow } from '@/lib/payments/actions'
@@ -107,7 +107,7 @@ function EditForm({ row, accounts, transactions, onClose, onPay, onSettings }: O
   const window_ = target.account && validDue ? statementWindow(target.account, dueDate, customClosing) : null
   const spent = target.account && validDue ? estimateStatement(target.account, dueDate, transactions, customClosing) : null
   const spentWindow = window_ ? `(${dayMonth(window_.from)} – ${dayMonth(window_.to)})` : null
-  const defaultDue = dueDateFor(row.month, target.dayOfMonth ?? Number(row.dueDate.slice(8, 10)))
+  const defaultDue = defaultDueDate(target, row.month, Number(row.dueDate.slice(8, 10)))
   const payable = accounts.filter(a => !a.isArchived && a.id !== target.id)
   const chips = shortcuts(target, spent, spentWindow)
   const tone = rowTone(row)

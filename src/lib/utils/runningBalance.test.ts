@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { computeRunningBalances } from './runningBalance'
+import { computeRunningBalances, computeRunningBalanceEntries } from './runningBalance'
 import { computeTransactionEffect } from './calculations'
 import { setBaseRates } from './fx'
 import type { Account, Transaction } from '@/types'
@@ -182,5 +182,16 @@ describe('çapraz kur transferi — düzeltilen hata #13', () => {
 
     const listBalance = computeRunningBalances([transfer], ['a', 'b'], byId(a, b)).get('x')
     expect(listBalance).toBe(b.initialBalance + computeTransactionEffect(b, [transfer]))
+  })
+})
+
+describe('computeRunningBalanceEntries — bakiyenin sahibi hesap', () => {
+  it('transferde hedef kazanırsa hesap id\'si hedef hesaptır (para birimi ondan alınır)', () => {
+    const a = acc('a', 1000, 'TRY')
+    const b = acc('b', 0, 'USD')
+    const ledger = [tx({ id: 't1', type: 'transfer', amount: 100, currency: 'USD', date: '2026-03-01', accountId: 'a', toAccountId: 'b', amountTry: 3450 })]
+    const entry = computeRunningBalanceEntries(ledger, ['a', 'b'], byId(a, b)).get('t1')
+    expect(entry).toEqual({ balance: 100, accountId: 'b' })
+    expect(computeRunningBalanceEntries(ledger, ['b', 'a'], byId(a, b)).get('t1')?.accountId).toBe('a')
   })
 })

@@ -414,6 +414,40 @@ describe('reconcilingPull — yerel veriyi yok etmeden birleştirme', () => {
     expect(snap.deleted_at).toBe(null)                             // push kaydı diriltecek
   })
 
+  it('çekiş sürerken ACK\'lenen düzenleme bayat bulut kopyasıyla EZİLMEZ', async () => {
+    // Yarış: çekiş T'nin v1'ini okur → kullanıcı tutarı 999 yapar → flush
+    // ACK'leyip outbox girdisini siler → birleştirme bayat v1'i yazardı ve
+    // sonraki localPatch 250'yi buluta geri gönderirdi.
+    await txTable.put(tx('t1', { amount: 250 }) as Row)
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    selectImpl = async () => { await gate; return { data: [tx('t1', { amount: 250 }) as Row], error: null } }
+
+    const pulling = reconcilingPull<{ id: string; amount: number }>('transactions')
+    await Promise.resolve()
+    await localPatch('transactions', 't1', { amount: 999 })
+    await flushOutbox()
+    expect(await pendingCount()).toBe(0)                  // ACK'lendi, girdi yok
+    release()
+    const rows = await pulling
+
+    expect((await txTable.get('t1'))!.amount).toBe(999)
+    expect(rows.find(r => r.id === 't1')!.amount).toBe(999)
+
+    await localPatch('transactions', 't1', { description: 'Market' })
+    await flushOutbox()
+    expect(upsertCalls[upsertCalls.length - 1].payload.amount).toBe(999)
+  })
+
+  it('updatedAt damgası bulut satırından YENİ yerel satır ezilmez', async () => {
+    await txTable.put(tx('t1', { amount: 999, updatedAt: '2026-03-05T00:00:00.000Z' }) as Row)
+    selectImpl = async () => ({
+      data: [tx('t1', { amount: 250, updatedAt: '2026-03-01T00:00:00+00:00' }) as Row], error: null,
+    })
+    await reconcilingPull('transactions')
+    expect((await txTable.get('t1'))!.amount).toBe(999)
+  })
+
   it('bekleyen girdisi OLAN satır yeniden kuyruğa alınmaz (sayaç korunur)', async () => {
     // Denetim bulgusu #12'nin ikinci mekanizması bu testle ÇÜRÜTÜLDÜ:
     // dead-letter'daki satır hâlâ `pending` kümesindedir, dolayısıyla

@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { getUserId } from '@/lib/auth'
 import { localBulkUpsert } from '@/lib/sync/engine'
 import { rowInActiveWorkspace } from '@/lib/workspace-context'
+import { isLive } from '@/lib/sync/tombstone'
 import { createCloudBackup } from '@/lib/auto-backup'
 import type {
   Account, Transaction, Budget, Debt,
@@ -63,7 +64,9 @@ export async function loadDemoData(): Promise<void> {
   INST_PHONE  = crypto.randomUUID()
   INST_LAPTOP = crypto.randomUUID()
 
-  const cats = await db.categories.toArray()
+  // Yalnız aktif çalışma alanının canlı kategorileri: başka alanın ya da
+  // silinmiş (tombstone) aynı adlı kategorisi demo işlemlerine bağlanmasın.
+  const cats = (await db.categories.toArray()).filter(cat => isLive(cat) && rowInActiveWorkspace(cat))
   const c = Object.fromEntries(cats.map(cat => [cat.name, cat.id])) as Record<string, string>
 
   const now = new Date().toISOString()
@@ -498,6 +501,32 @@ export async function clearAllData(): Promise<void> {
   // olmadığından bu durumda devam etmek güvenlidir.
   if (userId) {
     await createCloudBackup('pre-restore')
+
+    // Tombstone, hard delete DEĞİL: reconcilingPull silmeyi artık yalnızca
+    // buluttan gelen `deleted_at` satırından öğrenir (yokluğa göre silme
+    // kaldırıldı). Sert silinen satırlar başka bir cihazın yerel kopyasında
+    // "buluta hiç ulaşmamış" gibi görünüp yeniden push edilirdi.
+    const ts = new Date().toISOString()
+    const results = await Promise.all([
+      supabase.from('transactions').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('accounts').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('budgets').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('debts').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('investment_transactions').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('people').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('recurring_transactions').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('payment_plans').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('payment_occurrences').update({ deleted_at: ts }).eq('user_id', userId),
+      supabase.from('savings_goals').update({ deleted_at: ts }).eq('user_id', userId),
+    ])
+    // Bulut tombstone'u başarısızsa kullanıcıya "silindi" denmemeli; yerel
+    // veri de bu yüzden ANCAK bulut silmesi başarıyla bittikten sonra
+    // temizlenir (aksi halde yerel boş, bulut dolu kalır ve sonraki çekiş
+    // hepsini geri getirirdi).
+    const failed = results.find(r => r.error)
+    if (failed?.error) {
+      throw new Error(`Buluttaki veriler silinemedi: ${failed.error.message}`)
+    }
   }
 
   await db.transactions.clear()
@@ -513,24 +542,4 @@ export async function clearAllData(): Promise<void> {
   // Birikim hedefleri hesaplara bağlanabilir — hesaplar silinince yetim kalmasın.
   await db.savingsGoals.clear()
   await db._outbox.clear() // discard pending mutations — this is an explicit wipe
-
-  if (userId) {
-    // Tombstone, hard delete DEĞİL: reconcilingPull silmeyi artık yalnızca
-    // buluttan gelen `deleted_at` satırından öğrenir (yokluğa göre silme
-    // kaldırıldı). Sert silinen satırlar başka bir cihazın yerel kopyasında
-    // "buluta hiç ulaşmamış" gibi görünüp yeniden push edilirdi.
-    const ts = new Date().toISOString()
-    await Promise.all([
-      supabase.from('transactions').update({ deleted_at: ts }).eq('user_id', userId),
-      supabase.from('accounts').update({ deleted_at: ts }).eq('user_id', userId),
-      supabase.from('budgets').update({ deleted_at: ts }).eq('user_id', userId),
-      supabase.from('debts').update({ deleted_at: ts }).eq('user_id', userId),
-      supabase.from('investment_transactions').update({ deleted_at: ts }).eq('user_id', userId),
-      supabase.from('people').update({ deleted_at: ts }).eq('user_id', userId),
-      supabase.from('recurring_transactions').update({ deleted_at: ts }).eq('user_id', userId),
-      supabase.from('payment_plans').update({ deleted_at: ts }).eq('user_id', userId),
-      supabase.from('payment_occurrences').update({ deleted_at: ts }).eq('user_id', userId),
-      supabase.from('savings_goals').update({ deleted_at: ts }).eq('user_id', userId),
-    ])
-  }
 }

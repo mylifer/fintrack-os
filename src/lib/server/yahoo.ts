@@ -18,6 +18,8 @@ export interface YahooChart {
   price: number
   /** Son işlem gününden bir önceki günün kapanışı */
   prevPrice?: number
+  /** prevPrice'ın ait olduğu mumun günü (borsa saat diliminde) */
+  prevDate?: string
   /** Son fiyatın günü (borsa saat diliminde) */
   date: string
   points: YahooPoint[]
@@ -78,6 +80,7 @@ export async function fetchYahooChart(
       name: String(meta.shortName || meta.longName || symbol).trim(),
       price,
       prevPrice: prevPoint?.price,
+      prevDate: prevPoint?.date,
       date,
       points,
     }
@@ -117,7 +120,10 @@ export async function fetchMarketQuote(
 
   const fx = await usdTry()
   if (!fx) return null
-  const prevFx = fx.prevPrice ?? fx.price
+  // Önceki kripto kapanışı KENDİ mumunun günündeki kurla çevrilir: kripto hafta
+  // sonu da işlem görür, kur görmez — Cumartesi günü kriptonun önceki mumu
+  // Cuma, kurun prevPrice'ı ise Perşembe olurdu.
+  const prevFx = (chart.prevDate ? valueOn(fx.points, chart.prevDate) : undefined) ?? fx.prevPrice ?? fx.price
   return {
     code: symbol,
     // "Bitcoin USD" → "Bitcoin": fiyat TL'ye çevrildiği için çift adı yanıltır

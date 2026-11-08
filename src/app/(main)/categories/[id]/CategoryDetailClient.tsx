@@ -10,7 +10,7 @@ import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
-import { compareCategoriesByName } from '@/lib/utils/categories'
+import { compareCategoriesByName, categorySubtreeHeight } from '@/lib/utils/categories'
 import { suggestCategoryIcon, isPlaceholderIcon } from '@/lib/category-icon-suggest'
 import { DEFAULT_COLOR } from '@/lib/category-palette'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
@@ -110,24 +110,32 @@ export default function CategoryDetailClient({ id }: Props) {
   const flowCatTxCount = useMemo(() => new Set(flowCatTxs.map(t => t.id)).size, [flowCatTxs])
 
   /* ── Parent options for the two-dropdown edit form ── */
+  // Derinlik koruması (CategoryEditModal ile aynı kural): en fazla 3 seviye
+  // (0,1,2). Alt kategorisi olan bir kategoriyi daha derine taşımak torunları
+  // 4. seviyeye iterdi → yeni seviye + alt ağaç yüksekliği 2'yi aşamaz.
+  const subtreeHeight = useMemo(
+    () => cat ? categorySubtreeHeight(cat.id, categories) : 0,
+    [cat, categories],
+  )
+
   const l0Options = useMemo(() => {
-    if (!cat) return []
+    if (!cat || 1 + subtreeHeight > 2) return []
     return categories
-      .filter(c => c.scope === cat.scope && getLevel(c.id) === 0 && !descendantIds.has(c.id))
+      .filter(c => c.scope === cat.scope && !c.isArchived && getLevel(c.id) === 0 && !descendantIds.has(c.id))
       .sort(compareCategoriesByName)
       .map(c => ({ id: c.id, label: c.name }))
-  }, [cat, categories, descendantIds, getLevel])
+  }, [cat, categories, descendantIds, getLevel, subtreeHeight])
 
   const l1Options = useMemo(() => {
-    if (!cat) return []
+    if (!cat || 2 + subtreeHeight > 2) return []
     return categories
-      .filter(c => c.scope === cat.scope && getLevel(c.id) === 1 && !descendantIds.has(c.id))
+      .filter(c => c.scope === cat.scope && !c.isArchived && getLevel(c.id) === 1 && !descendantIds.has(c.id))
       .sort(compareCategoriesByName)
       .map(c => {
         const parent = categories.find(p => p.id === c.parentId)
         return { id: c.id, label: `${c.name} (${parent?.name ?? ''})` }
       })
-  }, [cat, categories, descendantIds, getLevel])
+  }, [cat, categories, descendantIds, getLevel, subtreeHeight])
 
   /* ── Edit state ── */
   const [editing,      setEditing]      = useState(false)
@@ -168,6 +176,9 @@ export default function CategoryDetailClient({ id }: Props) {
   async function saveEdit() {
     if (!cat || !editName.trim()) return
     const parentId = editParentL1 || editParentL0 || undefined
+    // Seçenekler zaten süzülü; yine de geçersiz bir hedefe (4. seviye) yazma.
+    const newLevel = parentId ? getLevel(parentId) + 1 : 0
+    if (newLevel + subtreeHeight > 2) return
     await update(cat.id, {
       name:     editName.trim(),
       icon:     editIcon || 'package',

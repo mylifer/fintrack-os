@@ -131,7 +131,7 @@ export default function AccountDetailClient({
   )
 
   // Toplu düzenleme seçimi — filtre/dönem değişince temizlenir
-  const sel = useTxSelection(`${from}|${to}|${search}|${typeFilter}|${categoryFilter}|${familyFilter?.id ?? ''}|${recipientFilter?.id ?? ''}`)
+  const sel = useTxSelection(`${from}|${to}|${search}|${typeFilter}|${categoryFilter}|${familyFilter?.id ?? ''}|${recipientFilter?.id ?? ''}|${showFuture}`)
 
   // Filtre alanı seçenekleri
   const categoryOptions = useMemo(() => [

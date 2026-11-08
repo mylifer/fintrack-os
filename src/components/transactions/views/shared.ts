@@ -1,5 +1,6 @@
 import { computeTransactionEffect } from '@/lib/utils/calculations'
 import { today } from '@/lib/utils/date'
+import { baseAmount } from '@/lib/utils/fx'
 import type { Account, PersonRole, Transaction } from '@/types'
 import type { TxSortOption } from '../TransactionList'
 
@@ -77,13 +78,21 @@ export function sortDates(dates: string[], sort: TxSortOption): string[] {
   return [...dates].sort((a, b) => (asc ? a.localeCompare(b) : b.localeCompare(a)))
 }
 
+/** Tutar sıralaması için karşılaştırıcı. Farklı para birimleri ancak ₺ karşılığı
+ *  (baseAmount) üzerinden kıyaslanabilir — ham tutar $100'ü ₺500'ün altına koyar. */
+export function compareByAmount(
+  a: Pick<Transaction, 'amount' | 'currency' | 'amountTry'>,
+  b: Pick<Transaction, 'amount' | 'currency' | 'amountTry'>,
+  sort: TxSortOption,
+): number {
+  const d = Math.abs(baseAmount(a)) - Math.abs(baseAmount(b))
+  return sort === 'amount-asc' ? d : -d
+}
+
 /** Gün içi sıralama: tutar seçenekleri tutara, diğerleri kayıt zamanına göre. */
 export function sortWithinDay(txs: Transaction[], sort: TxSortOption): Transaction[] {
   if (sort === 'amount-asc' || sort === 'amount-desc') {
-    return [...txs].sort((a, b) => {
-      const d = Math.abs(a.amount) - Math.abs(b.amount)
-      return sort === 'amount-asc' ? d : -d
-    })
+    return [...txs].sort((a, b) => compareByAmount(a, b, sort))
   }
   return [...txs].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
 }

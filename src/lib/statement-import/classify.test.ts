@@ -48,10 +48,12 @@ function plan(lines: StatementLine[], txs: Transaction[], extra: Partial<PlanInp
   })
 }
 
+/** Kararlar testte seçenek indeksiyle verilir; buildCommit seçenek anahtarı bekler */
 function commit(p: ReturnType<typeof plan>, txs: Transaction[], choices: Record<string, number> = {}, edits = {}) {
   let id = 0
+  const keys = Object.fromEntries(Object.entries(choices).map(([k, i]) => [k, p.rows.find(r => r.key === k)!.options[i].key]))
   return buildCommit({
-    rows: p.rows, choices, edits, accountId: ACC, existing: new Map(txs.map(t => [t.id, t])), people,
+    rows: p.rows, choices: keys, edits, accountId: ACC, existing: new Map(txs.map(t => [t.id, t])), people,
     nowIso: '2026-11-01T10:00:00.000Z', todayStr: '2026-11-01', newId: () => `new-${++id}`,
   })
 }
