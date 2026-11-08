@@ -12,14 +12,32 @@ import type { Account, Transaction } from '@/types'
    Bir işleme birden çok izlenen hesap dokunuyorsa `accountIds` sırasında EN SON
    gelen hesabın bakiyesi yazılır (çağıran, öncelikli hesabı sona koyar). */
 export function computeRunningBalances(
+  ledger: Transaction[],
+  accountIds: string[],
+  accById: Map<string, Account>,
+): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const [id, { balance }] of computeRunningBalanceEntries(ledger, accountIds, accById)) map.set(id, balance)
+  return map
+}
+
+/** Bakiyenin hangi hesaba ait olduğu da gerekiyorsa (ör. transfer satırında
+ *  HEDEF hesabın bakiyesi kazandığında tutar o hesabın para birimiyle
+ *  biçimlenmeli) — computeRunningBalances ile aynı kural, hesap id'siyle. */
+export interface RunningBalanceEntry {
+  balance:   number
+  accountId: string
+}
+
+export function computeRunningBalanceEntries(
   /** Yürünecek defter. Planlanan (henüz kaydedilmemiş) işlemler de verilirse
    *  ileriye dönük projeksiyon bakiyesi üretilir. */
   ledger: Transaction[],
   /** Bakiyesi izlenecek hesap id'leri, artan öncelik sırasında. */
   accountIds: string[],
   accById: Map<string, Account>,
-): Map<string, number> {
-  const map = new Map<string, number>()
+): Map<string, RunningBalanceEntry> {
+  const map = new Map<string, RunningBalanceEntry>()
 
   const order    = new Map<string, number>()   // hesap → accountIds sırası
   const balances = new Map<string, number>()   // hesap → minor birim (kuruş)
@@ -73,7 +91,7 @@ export function computeRunningBalances(
       }
     }
 
-    if (winner !== undefined) map.set(tx.id, toMajor(balances.get(winner)!))
+    if (winner !== undefined) map.set(tx.id, { balance: toMajor(balances.get(winner)!), accountId: winner })
   }
   return map
 }
