@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import { deterministicUuid } from '@/lib/utils/id'
 import type { ParsedStatement } from '@/lib/statement-import/statement'
-import type { RowEdit } from '@/lib/statement-import/commit'
+import type { RowChoices, RowEdit } from '@/lib/statement-import/commit'
 
 /* ── Yarım kalan ekstreler ───────────────────────────────────────────────────
    Yüklenip onaylanmayan ekstre kaybolmasın: ayrıştırılmış ekstre, seçilen
@@ -19,7 +19,10 @@ import type { RowEdit } from '@/lib/statement-import/commit'
    ekstre yeniden yüklenirse yeni taslak açılmaz, eskisinin kararları geri gelir. */
 
 const KEY = 'fintrack:stmt-drafts'
-const VERSION = 1
+// v2: kararlar seçenek indeksi yerine seçenek anahtarıyla saklanır. v1 taslakları
+// korunur ama kararları atılır (eski indeks yeniden kurulan planda başka bir
+// seçeneğe denk gelebilir); satırlar yeniden sorulur.
+const VERSION = 2
 const LIMIT = 20
 
 export interface DraftProgress {
@@ -37,7 +40,7 @@ export interface StatementDraft {
   fileName: string
   statement: ParsedStatement
   accountId: string
-  choices: Record<string, number>
+  choices: RowChoices
   edits: Record<string, RowEdit>
   progress: DraftProgress
   createdAt: string
@@ -53,8 +56,9 @@ function read(): StatementDraft[] {
   try {
     const raw = localStorage.getItem(KEY)
     const parsed = raw ? JSON.parse(raw) as { v?: number; drafts?: unknown } : null
-    if (!parsed || parsed.v !== VERSION || !Array.isArray(parsed.drafts)) return []
-    return (parsed.drafts as StatementDraft[]).filter(d => d && typeof d.id === 'string' && d.statement && Array.isArray(d.statement.lines))
+    if (!parsed || (parsed.v !== VERSION && parsed.v !== 1) || !Array.isArray(parsed.drafts)) return []
+    const drafts = (parsed.drafts as StatementDraft[]).filter(d => d && typeof d.id === 'string' && d.statement && Array.isArray(d.statement.lines))
+    return parsed.v === 1 ? drafts.map(d => ({ ...d, choices: {} })) : drafts
   } catch {
     return []
   }

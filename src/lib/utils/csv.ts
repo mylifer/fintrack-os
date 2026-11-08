@@ -409,6 +409,9 @@ export interface ImportOptions {
   /** Kategori sütunu ve kurallar eşleşmezse, aynı açıklamalı en yeni eski
    *  işlemin kategorisi kullanılır (aynı ekstreyi tekrar yüklerken işe yarar). */
   history?: Pick<Transaction, 'type' | 'description' | 'categoryId' | 'date'>[]
+  /** Para birimi sütunu yoksa ya da hücre boş/geçersizse kullanılan birim
+   *  (içe aktarılan hesabın birimi; verilmezse TRY). */
+  defaultCurrency?: CurrencyCode
 }
 
 export interface ImportedTransaction {
@@ -512,7 +515,7 @@ export function validateImportRows(
       ?? (type && type !== 'transfer' ? keywordCategory(rawDesc, type, categories) : undefined)
       ?? (type ? byHistory.get(`${type}|${foldText(rawDesc)}`)?.categoryId : undefined)
     const curRaw   = cell(row, 'currency').trim().toUpperCase()
-    const currency = (VALID_CURRENCIES.has(curRaw) ? curRaw : 'TRY') as CurrencyCode
+    const currency = (VALID_CURRENCIES.has(curRaw) ? curRaw : opts.defaultCurrency ?? 'TRY') as CurrencyCode
     const tags     = parseTagsCell(cell(row, 'tags'))
 
     if (errs.length > 0) {

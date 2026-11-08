@@ -151,7 +151,11 @@ export function TransactionImportModal({ open, onClose }: Props) {
     if (!accountId) { setError('Lütfen bir hesap seçin.'); return }
 
     const history = useTransactionStore.getState().transactions
-    const result = validateImportRows(parsed.rows, mapping, categories, parsed.rowLines, { signMode, history })
+    const result = validateImportRows(parsed.rows, mapping, categories, parsed.rowLines, {
+      signMode, history,
+      // Para birimi sütunu yoksa satırlar hedef hesabın biriminde sayılır
+      defaultCurrency: accounts.find(a => a.id === accountId)?.currency,
+    })
     const dup = findDuplicateRows(result.valid, history.filter(t => t.accountId === accountId))
     setValid(result.valid)
     setDupes(dup)

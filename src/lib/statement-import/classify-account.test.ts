@@ -135,7 +135,7 @@ describe('buildAccountPlan', () => {
     expect(draftOf(card)).toMatchObject({ type: 'transfer', amount: 6218.86, toAccountId: 'card-odea' })
 
     // Yazım: gelir, gider ve hesaptan çıkan transfer
-    const res = buildCommit({ rows: p.rows, choices: { [card.key]: 0 }, edits: {}, accountId: A, existing: new Map(), people, nowIso: '2026-11-03T00:00:00Z', todayStr: '2026-11-03' })
+    const res = buildCommit({ rows: p.rows, choices: { [card.key]: card.options[0].key }, edits: {}, accountId: A, existing: new Map(), people, nowIso: '2026-11-03T00:00:00Z', todayStr: '2026-11-03' })
     expect(res.problems).toEqual([])
     const made = res.ops.filter(o => o.kind === 'upsert').map(o => (o as unknown as { entity: Transaction }).entity)
     expect(made.map(t => [t.type, t.amount, t.accountId, t.toAccountId ?? null])).toEqual([
@@ -151,6 +151,30 @@ describe('buildAccountPlan', () => {
     const r = row(p, 0)
     expect(r).toMatchObject({ status: 'review', kind: 'possible-dup', recommended: 0 })
     expect(r.options[0].actions).toEqual([{ type: 'patch', txId: fee.id, patch: { date: '2026-10-18', merchant: 'Can Demir' } }])
+  })
+
+  it('aynı dakikada iki eş satır ayrı kimlik alır; tekrar yüklemede ikisi de ayrı eşleşir', () => {
+    const atm: L[] = [
+      ['2026-10-21', '10:00', 100, 'ATM PARA ÇEKME-9900'],
+      ['2026-10-21', '10:00', 100, 'ATM PARA ÇEKME-9900'],
+    ]
+    const p = plan(atm, [])
+    const [a, b] = [row(p, 0), row(p, 1)]
+    expect(a.stableKey).not.toBe(b.stableKey)
+    // İlk satır eski tohumu korur (önceki yüklemeler eşleşmeye devam eder)
+    expect(draftOf(a).idSeed).toMatch(new RegExp(`^acct:${A}:2026-10-21:10:00:10000:[^:]+$`))
+    expect(draftOf(b).idSeed).toBe(`${draftOf(a).idSeed}:1`)
+
+    const res = buildCommit({ rows: p.rows, choices: { [a.key]: a.options[0].key, [b.key]: b.options[0].key }, edits: { [a.key]: { categoryId: 'c-kira' }, [b.key]: { categoryId: 'c-kira' } }, accountId: A, existing: new Map(), people, nowIso: '2026-11-03T00:00:00Z', todayStr: '2026-11-03' })
+    expect(res.problems).toEqual([])
+    const made = res.ops.filter(o => o.kind === 'upsert').map(o => (o as unknown as { entity: Transaction }).entity)
+    expect(made).toHaveLength(2)
+    expect(new Set(made.map(t => t.id)).size).toBe(2)
+
+    const again = plan(atm, made)
+    expect(row(again, 0)).toMatchObject({ status: 'exists', match: { txIds: [made[0].id] } })
+    expect(row(again, 1)).toMatchObject({ status: 'exists', match: { txIds: [made[1].id] } })
+    expect(again.rows.filter(r => r.kind === 'orphan')).toEqual([])
   })
 
   it('sistemde olup dökümde olmayan kayıt sorulur; "kalsın" kararı hatırlanır', () => {

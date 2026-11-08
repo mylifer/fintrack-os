@@ -26,8 +26,9 @@ export interface RowEdit {
 
 export interface CommitInput {
   rows: readonly PlanRow[]
-  /** Satır anahtarı → seçilen seçenek indeksi */
-  choices: Readonly<Record<string, number>>
+  /** Satır anahtarı → seçilen seçeneğin ANAHTARI (indeks değil: plan yeniden
+   *  kurulunca seçeneklerin sırası/sayısı değişebilir) */
+  choices: Readonly<RowChoices>
   edits: Readonly<Record<string, RowEdit>>
   accountId: string
   existing: ReadonlyMap<string, Transaction>
@@ -51,9 +52,21 @@ export interface CommitResult {
   problems: { rowKey: string; message: string }[]
 }
 
+/** Satır anahtarı → seçilen seçeneğin anahtarı (RowOption.key) */
+export type RowChoices = Record<string, string>
+
+/** Kullanıcının seçtiği seçeneğin satırdaki GÜNCEL indeksi. Seçim yoksa ya da
+ *  seçilen seçenek yeniden kurulan planda artık yoksa null (karar yeniden sorulur). */
+export function chosenIndex(row: Pick<PlanRow, 'key' | 'options'>, choices: Readonly<RowChoices>): number | null {
+  const key = choices[row.key]
+  if (key === undefined) return null
+  const i = row.options.findIndex(o => o.key === key)
+  return i < 0 ? null : i
+}
+
 /** Seçili seçenek: kullanıcı seçimi, yoksa satırın varsayılanı. */
-export function selectedOption(row: PlanRow, choices: Readonly<Record<string, number>>): number | null {
-  return choices[row.key] ?? row.defaultOption
+export function selectedOption(row: PlanRow, choices: Readonly<RowChoices>): number | null {
+  return chosenIndex(row, choices) ?? row.defaultOption
 }
 
 /** Çekmecede var olan bir alıcı seçildi: kategori elle seçilmediyse alıcının
@@ -212,11 +225,11 @@ export function buildCommit(input: CommitInput): CommitResult {
 
   for (const row of input.rows) {
     const sel = selectedOption(row, input.choices)
-    if (row.status === 'review' && sel === null) {
+    const chosen = sel !== null ? row.options[sel] : undefined
+    if (row.status === 'review' && !chosen) {
       problems.push({ rowKey: row.key, message: 'Karar verilmedi' })
       continue
     }
-    const chosen = sel !== null ? row.options[sel] : undefined
     if ((row.status === 'review' || row.status === 'new') && chosen && chosen.actions.length === 0) skippedKeys.push(row.stableKey)
     for (const a of chosen?.actions ?? []) run(row.key, a, input.edits[row.key])
     for (const a of row.sideEffects) run(row.key, a, undefined)
