@@ -9,8 +9,8 @@ import { assetLabel } from '@/store/investment.store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import { awaitsApproval, groupByDate } from '@/lib/utils/calculations'
-import { computeRunningBalances } from '@/lib/utils/runningBalance'
-import { splitFuture } from '@/components/transactions/views/shared'
+import { computeRunningBalanceEntries, type RunningBalanceEntry } from '@/lib/utils/runningBalance'
+import { compareByAmount, splitFuture } from '@/components/transactions/views/shared'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Transaction, PersonRole, Category, Account, Person, ModalType, ModalPayload, InvestmentTransaction } from '@/types'
 import { PersonAvatar, recipientIconDomain } from '@/components/people/PersonAvatar'
@@ -326,7 +326,7 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
-  tx, cat, account, toAccount, recipient, family, balanceAfter, projected, future, openModal, removeTx,
+  tx, cat, account, toAccount, recipient, family, balanceAfter, balanceCurrency, projected, future, openModal, removeTx,
   selectable, selected, onToggleSelect, grouped, isFirst, isLast, compact,
 }: {
   tx: Transaction
@@ -336,6 +336,8 @@ const TableTxRow = memo(function TableTxRow({
   recipient?: Person
   family?: Person
   balanceAfter?: number
+  /** Bakiyesi gösterilen hesabın para birimi (transferde hedef hesap olabilir). */
+  balanceCurrency?: Account['currency']
   projected?: boolean
   future?: boolean
   openModal: OpenModal
@@ -522,7 +524,7 @@ const TableTxRow = memo(function TableTxRow({
             'text-xs tabular-nums',
             balanceAfter < 0 ? 'text-destructive' : 'text-muted-foreground/60',
           ].join(' ')}>
-            {formatCurrency(balanceAfter, account?.currency)}
+            {formatCurrency(balanceAfter, balanceCurrency ?? account?.currency)}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground/25">—</span>
@@ -786,10 +788,7 @@ export function TransactionList({
     }
 
     const pushAmountSorted = (txs: Transaction[], future: boolean) => {
-      const sorted = [...txs].sort((a, b) => {
-        const d = Math.abs(a.amount) - Math.abs(b.amount)
-        return sort === 'amount-asc' ? d : -d
-      })
+      const sorted = [...txs].sort((a, b) => compareByAmount(a, b, sort))
       sorted.forEach((tx, i) => {
         out.push({ kind: 'tx', tx, isFirst: i === 0, isLast: i === sorted.length - 1, future })
       })
@@ -807,10 +806,7 @@ export function TransactionList({
     const pushFutureCompact = (txs: Transaction[]) => {
       let flat: Transaction[]
       if (sort === 'amount-desc' || sort === 'amount-asc') {
-        flat = [...txs].sort((a, b) => {
-          const d = Math.abs(a.amount) - Math.abs(b.amount)
-          return sort === 'amount-asc' ? d : -d
-        })
+        flat = [...txs].sort((a, b) => compareByAmount(a, b, sort))
       } else {
         const grouped = groupByDate(txs)
         const dates = [...grouped.keys()].sort((a, b) =>
@@ -842,11 +838,11 @@ export function TransactionList({
     return out
   }, [transactions, sort, layout])
 
-  // Güncel bakiye (yalnızca table layout) — hesaplama computeRunningBalances'ta,
+  // Güncel bakiye (yalnızca table layout) — hesaplama computeRunningBalanceEntries'te,
   // gün kartı görünümüyle ORTAK (aynı satır aynı bakiyeyi göstersin diye tek
   // doğruluk kaynağı).
   const runningBalances = useMemo(() => {
-    if (layout !== 'table') return new Map<string, number>()
+    if (layout !== 'table') return new Map<string, RunningBalanceEntry>()
 
     const neededIds = primaryAccountId
       ? [primaryAccountId]
@@ -855,7 +851,7 @@ export function TransactionList({
     // Planlanan satırlar defterde yok; verilirse defterin sonuna eklenip ileriye
     // dönük (projeksiyon) bakiye üretirler.
     const ledger = plannedTxs?.length ? [...allTxs, ...plannedTxs] : allTxs
-    return computeRunningBalances(ledger, neededIds, accById)
+    return computeRunningBalanceEntries(ledger, neededIds, accById)
   }, [layout, primaryAccountId, transactions, allTxs, plannedTxs, accById])
 
   // Toplu seçim için uygun satırlar: planlanan (projected) işlemler düzenlenemez,
@@ -978,7 +974,8 @@ export function TransactionList({
                         toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
                         recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                         family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
-                        balanceAfter={runningBalances.get(row.tx.id)}
+                        balanceAfter={runningBalances.get(row.tx.id)?.balance}
+                        balanceCurrency={accById.get(runningBalances.get(row.tx.id)?.accountId ?? '')?.currency}
                         projected={projectedIds?.has(row.tx.id)}
                         openModal={openModal}
                         removeTx={removeTx}
