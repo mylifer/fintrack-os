@@ -9,8 +9,9 @@ import { fromBaseTry, toBaseTry } from '@/lib/utils/fx'
 import { roundMoney } from '@/lib/utils/money'
 import { today } from '@/lib/utils/date'
 import { paymentTxIdFor } from './ids'
+import { nominalDueDay } from './bank-rules'
 import {
-  assignCardPayments, buildSchedule, dueDateFor, monthOf, paymentDescription, shiftMonth,
+  assignCardPayments, buildSchedule, defaultDueDate, monthOf, paymentDescription, shiftMonth,
   type PaymentRow, type PaymentTarget,
 } from './schedule'
 
@@ -185,6 +186,19 @@ async function freezeBefore(target: PaymentTarget, beforeMonth: string, changes:
   await saveOccurrences(writes)
 }
 
+/** Kartın son ödeme günü elle değişince: hesapta kesim + fark (dueGapDays)
+ *  kayıtlıysa döngü planın gününü yok sayar — girilen gün etkisiz kalırdı.
+ *  Kart Takvimi'ndeki setDueDay gibi fark silinir (sabit gün modu); girilen gün
+ *  zaten kesim + farkın nominal günüyse fark korunur. */
+async function syncCardDueDay(target: PaymentTarget, dayOfMonth: number | null): Promise<void> {
+  if (target.kind !== 'card' || dayOfMonth === null || dayOfMonth === target.dayOfMonth) return
+  const account = useAccountStore.getState().accounts.find(a => a.id === target.id) ?? target.account
+  const gap = account?.dueGapDays ?? null
+  if (!account || gap === null) return
+  if (account.statementDay && dayOfMonth === nominalDueDay(account.statementDay, gap)) return
+  await useAccountStore.getState().update(account.id, { dueGapDays: null })
+}
+
 export interface RowEditValues {
   /** null = varsayılan (plan tutarı; yoksa tutar girilmemiş). */
   amount: number | null
@@ -199,7 +213,8 @@ export async function saveRowEdit(row: PaymentRow, values: RowEditValues, scope:
   const { target } = row
   const store = usePaymentsStore.getState()
   // Satırı olan hedefin günü hep vardır (günsüz kart satır üretmez); tip için yedek.
-  const defaultDue = dueDateFor(row.month, target.dayOfMonth ?? Number(row.dueDate.slice(8, 10)))
+  // Kartta varsayılan tarih kart döngüsünden gelir (kesim + fark, tatil kuralı).
+  const defaultDue = defaultDueDate(target, row.month, Number(row.dueDate.slice(8, 10)))
 
   if (scope === 'month') {
     const patch: OccurrencePatch = {
@@ -228,6 +243,7 @@ export async function saveRowEdit(row: PaymentRow, values: RowEditValues, scope:
     from: values.fromAccountId !== target.defaultFromAccountId,
   }
   await freezeBefore(target, row.month, changes)
+  await syncCardDueDay(target, dayOfMonth)
   await store.savePlan(target.kind, target.id, {
     amount: values.amount,
     fromAccountId: values.fromAccountId,
@@ -263,6 +279,7 @@ export async function savePlanSettings(target: PaymentTarget, values: PlanSettin
     day: values.dayOfMonth !== target.dayOfMonth,
     from: values.fromAccountId !== target.defaultFromAccountId,
   })
+  await syncCardDueDay(target, values.dayOfMonth)
   await usePaymentsStore.getState().savePlan(target.kind, target.id, values)
 }
 
