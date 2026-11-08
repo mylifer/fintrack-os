@@ -241,6 +241,15 @@ describe('iade, net sıfır, ters kontrol', () => {
     expect(created(ok.ops)[0]).toMatchObject({ recipientId: 'p-itc', categoryId: 'c-hgs' })
   })
 
+  it('dönem içi listede taksit bilgisi olmayan satır sistemdeki taksitle eşleşir', () => {
+    const inst = tx({ id: 'i4', amount: 3902.14, date: '2026-10-03', isInstallment: true, installIndex: 4, installTotal: 8, installGroupId: 'G8' })
+    const lines = [line({ description: 'PARATIKA/FIBASIGORTA', amount: 3902.14, date: '2026-10-03' })]
+    const prov = plan(lines, [inst], { statement: { ...statement(lines), provisional: true } })
+    expect(prov.rows[0].match?.txIds).toEqual(['i4'])
+    // Kesilmiş ekstrede taksit bilgisi her zaman var: bilgisiz satır taksite bağlanmaz
+    expect(plan(lines, [inst]).rows[0].match?.txIds).not.toEqual(['i4'])
+  })
+
   it('aynı onay iki kez yazılsa da çift kayıt oluşmaz (kimlik satırdan türetilir)', () => {
     const hist = [tx({ id: 'h', amount: 5, date: '2026-08-01', merchant: 'HGS-1', recipientId: 'p-itc', categoryId: 'c-hgs', description: 'HGS' })]
     const lines = [line({ description: 'HGS-1', amount: 500, date: '2026-10-20' }), line({ description: 'HGS-1', amount: 500, date: '2026-10-20' })]

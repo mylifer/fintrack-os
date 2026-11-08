@@ -3,6 +3,7 @@ import { parseGarantiCard } from './garanti-card'
 import { parseGarantiPeriod } from './garanti-period'
 import { parseOdeabankAccount } from './odeabank-account'
 import { parseOdeabankCard } from './odeabank-card'
+import { parseOdeabankPeriod } from './odeabank-period'
 import { parseQnbPeriod, parseQnbStatement } from './qnb-card'
 import { parseBurganCard } from './burgan-card'
 import { parseYapiKrediCard } from './yapikredi-card'
@@ -107,7 +108,7 @@ export interface ParsedStatement {
 
 /** Desteklenen bankalardan birini tanıyıp ayrıştırır; tanınmazsa açıklayıcı hata. */
 export function parseStatement(pages: PdfPage[]): ParsedStatement {
-  const parsed = parseGarantiCard(pages) ?? parseQnbStatement(pages) ?? parseBurganCard(pages) ?? parseYapiKrediCard(pages) ?? parseQnbPeriod(pages) ?? parseGarantiPeriod(pages) ?? parseOdeabankCard(pages) ?? parseOdeabankAccount(pages)
+  const parsed = parseGarantiCard(pages) ?? parseQnbStatement(pages) ?? parseBurganCard(pages) ?? parseYapiKrediCard(pages) ?? parseQnbPeriod(pages) ?? parseGarantiPeriod(pages) ?? parseOdeabankCard(pages) ?? parseOdeabankPeriod(pages) ?? parseOdeabankAccount(pages)
   if (parsed) return parsed
-  throw new Error('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA, QNB, Burgan (ON), Yapı Kredi ve Odeabank kredi kartı ekstresi, Garanti BBVA ve QNB dönem içi işlemler ve Odeabank vadesiz hesap dökümü (PDF) destekleniyor.')
+  throw new Error('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA, QNB, Burgan (ON), Yapı Kredi ve Odeabank kredi kartı ekstresi, Garanti BBVA, QNB ve Odeabank dönem içi işlemler ve Odeabank vadesiz hesap dökümü (PDF) destekleniyor.')
 }
