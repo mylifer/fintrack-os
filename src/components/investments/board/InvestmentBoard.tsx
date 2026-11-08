@@ -109,8 +109,11 @@ export function InvestmentBoard() {
     [allRows, query],
   )
 
-  const totalValue = allRows.reduce((s, r) => s + r.currentValue, 0)
-  const totalCost  = allRows.reduce((s, r) => s + r.totalCost, 0)
+  // Fiyatı gelmeyen varlık toplamlara KATILMAZ: computeHoldings onu değer 0,
+  // K/Z −maliyet sayar; eklenirse %100 zarar gibi görünürdü (ReturnsPanel ile aynı).
+  const pricedRows = allRows.filter(r => r.hasPrices)
+  const totalValue = pricedRows.reduce((s, r) => s + r.currentValue, 0)
+  const totalCost  = pricedRows.reduce((s, r) => s + r.totalCost, 0)
   const totalPnl   = totalValue - totalCost
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0
 
@@ -277,7 +280,7 @@ export function InvestmentBoard() {
         ) : view === 'grouped' ? (
           <GroupedView
             rows={rows} transactions={transactions} query={query} sort={sort} onSort={setSort}
-            totalValue={totalValue} totalCost={totalCost}
+            totalValue={totalValue}
           />
         ) : view === 'alloc' ? (
           <AllocationView

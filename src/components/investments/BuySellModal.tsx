@@ -391,7 +391,10 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
     ?? { asset, label: 'TEFAS Fonu', emoji: '📊', unit: 'pay' }
   const currentHolding  = resolvedAsset ? holdings.find(h => h.asset === resolvedAsset) : undefined
   const heldQty         = currentHolding?.quantity ?? 0
-  const editOffset      = isEdit && editingTx?.type === 'sell' ? editingTx.quantity : 0
+  // Düzenlenen satış yalnızca AYNI varlıkta geri eklenir; varlık değiştirildiyse
+  // eski satışın miktarı yeni varlığın satılabilir miktarını şişirmemeli.
+  const editOffset      = isEdit && editingTx?.type === 'sell' && resolvedAsset === editingTx.asset
+    ? editingTx.quantity : 0
   const maxSell         = txType === 'sell'
     ? heldQty + (isEdit && txType === editingTx?.type ? editOffset : 0)
     : Infinity
@@ -576,7 +579,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
               </label>
               {txType === 'sell' && maxSell > 0 && maxSell < Infinity && (
                 <button
-                  onClick={() => setQty(maxSell % 1 === 0 ? String(maxSell) : maxSell.toFixed(8).replace(/\.?0+$/, ''))}
+                  onClick={() => applyQty(maxSell % 1 === 0 ? String(maxSell) : maxSell.toFixed(8).replace(/\.?0+$/, ''))}
                   className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors"
                 >
                   Tümünü sat ({maxSell.toLocaleString('tr-TR', { maximumFractionDigits: 8 })} {assetMeta.unit})

@@ -30,7 +30,7 @@ interface Group {
 }
 
 export function GroupedView({
-  rows, transactions, query, sort, onSort, totalValue, totalCost,
+  rows, transactions, query, sort, onSort, totalValue,
 }: {
   rows:         AssetRow[]
   transactions: InvestmentTransaction[]
@@ -38,33 +38,40 @@ export function GroupedView({
   sort:         SortId
   onSort:       (s: SortId) => void
   totalValue:   number
-  totalCost:    number
 }) {
   const groups = useMemo<Group[]>(() => {
     const all = totalValue
     return CLASS_ORDER
       .map(cls => {
         const inCls = sortRows(rows.filter(r => r.cls === cls), sort)
-        const cost  = inCls.reduce((s, r) => s + r.totalCost, 0)
-        const value = inCls.reduce((s, r) => s + r.currentValue, 0)
+        // Ara toplam yalnızca fiyatı bilinen satırlardan: fiyatsız satır değer 0 /
+        // K/Z −maliyet taşır, eklenirse sınıf zararda görünürdü.
+        const priced = inCls.filter(r => r.hasPrices)
+        const cost  = priced.reduce((s, r) => s + r.totalCost, 0)
+        const value = priced.reduce((s, r) => s + r.currentValue, 0)
         const pnl   = value - cost
         return {
           cls, rows: inCls, cost, value, pnl,
           pnlPercent: cost > 0 ? (pnl / cost) * 100 : 0,
           weight: all > 0 ? value / all : 0,
-          hasPrices: inCls.some(r => r.hasPrices),
+          hasPrices: priced.length > 0,
         }
       })
       .filter(g => g.rows.length > 0)
   }, [rows, sort, totalValue])
+
+  // Grafik SÜZÜLEN satırları çizer; bugünkü ucu da aynı satırların (fiyatı
+  // bilinen) toplamı olmalı — tüm portföy toplamı aramada sıçrama yaratırdı.
+  const scopeValue = groups.reduce((s, g) => s + g.value, 0)
+  const scopeCost  = groups.reduce((s, g) => s + g.cost, 0)
 
   return (
     <div className="flex flex-col gap-5">
       <PortfolioValueChart
         rows={rows}
         transactions={transactions}
-        totalValue={totalValue}
-        totalCost={totalCost}
+        totalValue={scopeValue}
+        totalCost={scopeCost}
       />
 
       <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
