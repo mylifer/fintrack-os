@@ -9,7 +9,7 @@ import {
   useDebtStore, useRecurringStore, usePeopleStore, useSettingsStore,
 } from '@/store'
 import { format, parseISO, startOfMonth, subDays, differenceInDays } from 'date-fns'
-import { calcNetWorth, calcTotalAssets, calcPeriodFlow, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { calcNetWorth, calcTotalAssets, calcPeriodFlow, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted, isRealizedInvestmentPnlTx, resolveBudgetCategories } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { computeHoldings } from '@/store/investment.store'
 import { tefasCodesIn } from '@/lib/tefas'
@@ -324,7 +324,9 @@ export default function DashboardPage() {
                     ? `−${formatCompact(Math.abs(fundPeriodNet))} ${fundGainLabel} fon değişimi (gelire eklenmedi)`
                     : income === 0 ? 'işlem yok' : `${formatCompact(expense)} gider`,
               ok: incomeTotal >= 0,
-              trendDiff: prevFlow ? incomeTotal - prevFlow.income : null,
+              // Trend aynı tabanda: önceki dönemin fon getirisi hesaplanmadığından
+              // fundGain iki taraftan da hariç tutulur (yoksa fark fon getirisi kadar şişer).
+              trendDiff: prevFlow ? income - prevFlow.income : null,
               betterWhenHigher: true,
             },
             {
@@ -351,7 +353,7 @@ export default function DashboardPage() {
               value: (netTotal >= 0 ? '+' : '−') + formatCompact(animNet),
               sub: netTotal > 0 ? 'fazla tasarruf' : netTotal < 0 ? 'bütçe açığı' : 'başabaş',
               ok: netTotal >= 0,
-              trendDiff: prevFlow ? netTotal - prevFlow.net : null,
+              trendDiff: prevFlow ? net - prevFlow.net : null, // fundGain hariç (Gelir ile aynı)
               betterWhenHigher: true,
             },
           ])().map(({ label, value, sub, ok, trendDiff, betterWhenHigher }) => {
@@ -560,13 +562,16 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-4">
                   {budgets.map(b => {
-                    const cat = categories.find(c => c.id === b.categoryId)
+                    // Çoklu kategorili bütçe categoryId'de JSON dizi saklar → düz
+                    // find boş etiket veriyordu; bütçeler sayfasıyla aynı çözümleyici.
+                    const { cats, label } = resolveBudgetCategories(b, categories)
+                    const cat = cats[0]
                     return (
                       <div key={b.id} className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-1.5 text-sm font-medium">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-1.5 text-sm font-medium min-w-0">
                             {cat && <CategoryIcon icon={cat.icon} color={cat.color} size={14} />}
-                            {cat?.name}
+                            <span className="truncate">{label}</span>
                           </span>
                           <span className="text-sm tabular-nums text-muted-foreground">
                             {formatCurrency(b.spent, 'TRY')} / {formatCurrency(b.limit, 'TRY')}

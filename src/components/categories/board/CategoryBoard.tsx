@@ -17,6 +17,10 @@ import {
 } from './shared'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { CategoryEditModal } from './CategoryEditModal'
+import {
+  archivableSubtreeIds, restorableSubtreeIds,
+  saveArchiveGroup, loadArchiveGroup, clearArchiveGroup,
+} from '@/lib/category-archive'
 import { TableView } from './views/TableView'
 import { IndexView } from './views/IndexView'
 import type { Category, CategoryScope } from '@/types'
@@ -91,28 +95,32 @@ export function CategoryBoard() {
   const rootCount = (s: CategoryScope) =>
     categories.filter(c => c.scope === s && !c.parentId && !c.isArchived).length
 
-  const childrenOfAll = (id: string) => categories.filter(c => c.parentId === id)
-  const subtreeIds = (id: string): string[] =>
-    [id, ...childrenOfAll(id).flatMap(c => subtreeIds(c.id))]
-
-  /** Arşivleme alt ağacın tamamına iner: yoksa alt kategoriler öksüz kalırdı.
-   *  Tek geri-alma kaydı bırakılır, o da tüm alt ağacı geri getirir. */
+  /** Arşivleme alt ağaca iner: yoksa alt kategoriler öksüz kalırdı. Yalnız şu
+   *  an AKTİF torunlar kaydedilir — önceden ayrıca arşivlenmiş bir alt kategori
+   *  geri alma/geri yüklemede diriltilmez. Tek geri-alma kaydı bırakılır. */
   async function confirmArchive() {
     if (!archiving) return
-    const ids = subtreeIds(archiving.id).reverse()   // yapraklardan köke
+    const rootId = archiving.id
+    const ids = archivableSubtreeIds(rootId, categories)   // yapraklardan köke
     for (const id of ids) await remove(id, { undoable: false })
+    saveArchiveGroup(rootId, ids)
     useUndoStore.getState().pushUndo(
       ids.length > 1 ? `Kategori ve ${ids.length - 1} alt kategorisi arşivlendi` : 'Kategori arşivlendi',
-      async () => { for (const id of ids) await restore(id) },
+      async () => {
+        for (const id of ids) await restore(id)
+        clearArchiveGroup(rootId)
+      },
     )
     setArchiving(null)
   }
 
   async function restoreSubtree(cat: Category) {
-    for (const id of subtreeIds(cat.id)) await restore(id)
+    const ids = restorableSubtreeIds(cat.id, categories, loadArchiveGroup(cat.id))
+    for (const id of ids) await restore(id)
+    clearArchiveGroup(cat.id)
   }
 
-  const archivingChildren = archiving ? subtreeIds(archiving.id).length - 1 : 0
+  const archivingChildren = archiving ? archivableSubtreeIds(archiving.id, categories).length - 1 : 0
   const Active = (VIEWS.find(v => v.id === view) ?? VIEWS[0]).Comp
 
   return (

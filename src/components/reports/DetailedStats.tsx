@@ -14,7 +14,6 @@
 ──────────────────────────────────────────────────────────────────────── */
 
 import { useMemo, useState } from 'react'
-import { parseISO, differenceInDays } from 'date-fns'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
@@ -22,7 +21,7 @@ import { isReconciliation } from '@/lib/utils/reconciliation'
 import { isPrincipalMoveTx, isRealizedInvestmentPnlTx, calcNetWorth, excludeFuture, calcDebtBurden, buildDebtBurdenSeries } from '@/lib/utils/calculations'
 import { computeHoldings, getAssetPrice } from '@/store/investment.store'
 import { usePeopleStore } from '@/store'
-import { today } from '@/lib/utils/date'
+import { today, elapsedPeriodDays } from '@/lib/utils/date'
 import { baseAmount } from '@/lib/utils/fx'
 import { expandByCategory } from '@/lib/utils/categorySplits'
 import { toMinor, toMajor, sumBy } from '@/lib/utils/money'
@@ -154,10 +153,9 @@ export function DetailedStats({
 
   /* Period info + averages. */
   const period = useMemo(() => {
-    const days = Math.max(
-      1,
-      differenceInDays(parseISO(dateRange.to), parseISO(dateRange.from)) + 1,
-    )
+    // Bitiş bugüne kırpılır (net-değer bloğundaki walkEnd gibi): "Bu Ay"/"Bu Yıl"
+    // ortalamaları henüz yaşanmamış günlere bölünüp düşük çıkmasın.
+    const days = elapsedPeriodDays(dateRange.from, dateRange.to)
     // Yatırım anapara satırları (… Alımı/… Satışı) gelir/gider ortalamalarına
     // girmez — dashboard/rapor KPI kartlarıyla aynı kapsam (yalnızca gerçek K/Z).
     // "Fon getirileri dahil" anahtarı KAPALIYKEN gerçekleşen K/Z satırları da

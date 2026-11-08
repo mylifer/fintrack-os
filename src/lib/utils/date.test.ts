@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { Account } from '@/types'
-import { isInRange, getStatementPeriod, daysUntil, isDueSoon, isOverdue, formatDate, formatDateShort } from './date'
+import { isInRange, getStatementPeriod, daysUntil, isDueSoon, isOverdue, formatDate, formatDateShort, elapsedPeriodDays } from './date'
 
 describe('formatDate — geçersiz tarih sayfayı çökertmez', () => {
   it('takvimde olmayan günü ham metin olarak döndürür', () => {
@@ -79,5 +79,18 @@ describe('isDueSoon / isOverdue — no gap on the due date', () => {
     expect(isDueSoon('2026-08-18')).toBe(false) // sınır dışı
     expect(isDueSoon('2026-08-13', 3)).toBe(true)
     expect(isDueSoon('2026-08-14', 3)).toBe(false)
+  })
+})
+
+describe('elapsedPeriodDays — ortalamalar geçen günlere bölünür', () => {
+  it('süren dönemde bitiş bugüne kırpılır', () => {
+    expect(elapsedPeriodDays('2026-11-01', '2026-11-30', '2026-11-08')).toBe(8)
+    expect(elapsedPeriodDays('2026-01-01', '2026-12-31', '2026-01-10')).toBe(10)
+  })
+  it('geçmiş dönemde tam uzunluk', () => {
+    expect(elapsedPeriodDays('2026-10-01', '2026-10-31', '2026-11-08')).toBe(31)
+  })
+  it('gelecek dönemde en az 1', () => {
+    expect(elapsedPeriodDays('2026-12-01', '2026-12-31', '2026-11-08')).toBe(1)
   })
 })
