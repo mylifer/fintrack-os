@@ -335,8 +335,9 @@ function calendarIso(year: number, month: number, day: number): string | null {
 export function parseDate(raw: string): string | null {
   const s = raw.trim()
   // Excel seri günü: 25569 = 1970-01-01 … 73050 = 2099-12-31. Kesir = saat.
-  if (/^\d{5}(\.\d+)?$/.test(s)) {
-    const serial = Math.floor(Number(s))
+  // (xlsx okuyucu sayı hücrelerini virgüllü ondalığa çevirir: "46290,5")
+  if (/^\d{5}([.,]\d+)?$/.test(s)) {
+    const serial = Math.floor(Number(s.replace(',', '.')))
     if (serial < 25569 || serial > 73050) return null
     const d = new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000)
     return calendarIso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate())

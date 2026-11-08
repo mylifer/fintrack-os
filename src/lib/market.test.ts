@@ -82,6 +82,19 @@ describe('Yahoo grafiği ayrıştırma', () => {
     expect(await fetchMarketQuote('BIST:XXXXX', fx)).toBeNull()
   })
 
+  it('kripto hafta sonu: önceki kapanış KENDİ gününün kuruyla çevrilir', async () => {
+    // Cumartesi 2026-09-26: kriptonun önceki mumu Cuma (25), kurun son mumu
+    // Cuma, kurun prevPrice'ı Perşembe (24). Cuma kapanışı Cuma kuruyla çarpılmalı.
+    const d = (n: number) => Date.UTC(2026, 8, n) / 1000
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('BTC-USD')) return chart({ regularMarketPrice: 100, gmtoffset: 0, regularMarketTime: d(26) + 3600 }, [d(24), d(25), d(26)], [80, 90, 100])
+      if (url.includes('TRY%3DX')) return chart({ regularMarketPrice: 40, gmtoffset: 0, regularMarketTime: d(25) + 3600 }, [d(24), d(25)], [39, 40])
+      return { ok: false, json: async () => ({}) }
+    }))
+    const q = await fetchMarketQuote('CRYPTO:BTC', () => fetchYahooChart('TRY=X', { range: '5d' }))
+    expect(q).toMatchObject({ price: 4000, prevPrice: 90 * 40 })
+  })
+
   it('valueOn: hafta sonu son bilinen değere düşer', () => {
     const pts = [{ date: '2026-09-18', price: 1 }, { date: '2026-09-21', price: 2 }]
     expect(valueOn(pts, '2026-09-20')).toBe(1)
