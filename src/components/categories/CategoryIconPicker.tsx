@@ -61,7 +61,7 @@ export function CategoryIconPicker({ icon, color, onChange }: Props) {
     return (TABLER_ICON_NAMES as unknown as string[]).filter(n => n.includes(q))
   }, [search])
 
-  const TriggerIcon = TABLER_MAP[currentIcon] || getIcon(currentIcon)
+  const TriggerIcon = (Object.hasOwn(TABLER_MAP, currentIcon) ? TABLER_MAP[currentIcon] : null) || getIcon(currentIcon)
 
   function selectIcon(name: string) {
     onChange(name, currentColor)

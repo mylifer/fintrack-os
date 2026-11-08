@@ -1,8 +1,50 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 
-vi.mock('@/lib/supabase', () => ({ supabase: {} }))
+const calls: string[] = []
+let deleteError: { message: string } | null = null
+vi.mock('@/lib/supabase', () => {
+  const chain = {
+    delete: () => { calls.push('delete'); return chain },
+    eq: (col: string, val: string) => { calls.push(`eq:${col}=${val}`); return chain },
+    is: (col: string, val: null) => {
+      calls.push(`is:${col}=${val}`)
+      return Promise.resolve({ error: deleteError })
+    },
+  }
+  return {
+    supabase: {
+      from: (t: string) => { calls.push(`from:${t}`); return chain },
+      rpc: (fn: string) => { calls.push(`rpc:${fn}`); return Promise.resolve({ data: 'tok', error: null }) },
+    },
+  }
+})
 
-import { friendly, memberWorkspaceIdsOf, safeInviteNext, type Membership } from './sharing'
+import { createInviteLink, friendly, memberWorkspaceIdsOf, revokePendingInvites, safeInviteNext, type Membership } from './sharing'
+
+describe('davet iptali', () => {
+  beforeEach(() => { calls.length = 0; deleteError = null })
+
+  it('revokePendingInvites alanın kullanılmamış davetlerini siler', async () => {
+    await revokePendingInvites('ws1')
+    expect(calls).toEqual(['from:workspace_invites', 'delete', 'eq:workspace_id=ws1', 'is:accepted_at=null'])
+  })
+
+  it('silme hatası yutulmaz', async () => {
+    deleteError = { message: 'failed to fetch' }
+    await expect(revokePendingInvites('ws1')).rejects.toThrow(/Bağlantı yok/)
+  })
+
+  it('yeni bağlantı önce eski bekleyen davetleri iptal eder', async () => {
+    expect(await createInviteLink('ws1', 'https://x')).toBe('https://x/davet/tok')
+    expect(calls.indexOf('delete')).toBeLessThan(calls.indexOf('rpc:create_workspace_invite'))
+  })
+
+  it('iptal başarısızsa yeni davet oluşturulmaz', async () => {
+    deleteError = { message: 'boom' }
+    await expect(createInviteLink('ws1', 'https://x')).rejects.toThrow()
+    expect(calls).not.toContain('rpc:create_workspace_invite')
+  })
+})
 
 const TOKEN = 'a'.repeat(64)
 

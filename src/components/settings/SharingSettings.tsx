@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/Input'
 import { useWorkspaceStore } from '@/store'
-import { createInviteLink, listMembers, removeMember, type Membership } from '@/lib/sharing'
+import { createInviteLink, listMembers, removeMember, revokePendingInvites, type Membership } from '@/lib/sharing'
 import type { Workspace } from '@/types'
 
 /* Aile paylaşımı (0021): varsayılan olmayan bir alanı eşinizle paylaşın —
@@ -122,10 +122,23 @@ function OwnedWorkspace({ ws, shared, onChanged }: { ws: Workspace; shared: bool
     try { await navigator.clipboard.writeText(link); setCopied(true) } catch { /* kullanıcı elle kopyalar */ }
   }
 
+  async function revoke() {
+    setBusy('revoke'); setError('')
+    try { await revokePendingInvites(ws.id); setLink(''); setCopied(false) }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { setBusy(null) }
+  }
+
   async function remove(m: Membership) {
     if (!window.confirm(`${m.email ?? 'Bu üye'} alandan çıkarılsın mı? Alanın verisine erişimi kalkar.`)) return
     setBusy(m.user_id); setError('')
-    try { await removeMember(ws.id, m.user_id); await refresh() }
+    try {
+      // Bekleyen davetler de gider: çıkarılan kişi eski bağlantıyla geri dönemesin
+      await revokePendingInvites(ws.id)
+      setLink(''); setCopied(false)
+      await removeMember(ws.id, m.user_id)
+      await refresh()
+    }
     catch (err) { setError(err instanceof Error ? err.message : String(err)) }
     finally { setBusy(null) }
   }
@@ -148,9 +161,12 @@ function OwnedWorkspace({ ws, shared, onChanged }: { ws: Workspace; shared: bool
             <input readOnly value={link} aria-label="Davet bağlantısı" onFocus={e => e.currentTarget.select()}
               className="flex-1 min-w-0 h-8 rounded-lg border border-border bg-background px-2 text-xs font-mono" />
             <Button size="sm" className="rounded-lg h-8 px-3" onClick={copy}>{copied ? 'Kopyalandı' : 'Kopyala'}</Button>
+            <Button size="sm" variant="secondary" className="rounded-lg h-8 px-3" loading={busy === 'revoke'} disabled={!!busy && busy !== 'revoke'} onClick={revoke}>
+              Bağlantıyı iptal et
+            </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Tek kullanımlık, 7 gün geçerli. Bağlantıyı yalnız eşinize gönderin — açan kişi bu alanın tüm verisini görür.
+            Tek kullanımlık, 7 gün geçerli; yeni bağlantı oluşturunca öncekiler geçersiz olur. Bağlantıyı yalnız eşinize gönderin — açan kişi bu alanın tüm verisini görür.
             Eşiniz önce kendi FinTrack hesabını açmalı.
           </p>
         </div>

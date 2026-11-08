@@ -31,23 +31,39 @@ export async function verifyCurrentPassword(email: string, password: string): Pr
 
 /** Hesabı ve buluttaki TÜM verisini kalıcı olarak siler (0013 →
  *  delete_my_account), ardından cihazdaki kalıntıyı temizleyip giriş
- *  sayfasına HARD navigasyon yapar. Başarısızlıkta hiçbir şey silinmemiştir. */
+ *  sayfasına HARD navigasyon yapar.
+ *
+ *  Fiş dosyaları RPC'den ÖNCE silinmek zorunda (aşağıya bakın), bu yüzden
+ *  işlem tam atomik değildir. Riski daraltmak için önce yan etkisiz bir ön
+ *  kontrol yapılır (oturum + 2FA şartı + 0013'ün uygulanmış olması); hata
+ *  mesajı da dosyaların silinip silinmediğini DOĞRU söyler. */
 export async function deleteMyAccount(): Promise<void> {
+  // Ön kontrol: delete_my_account'ın reddedeceği durumları (oturum yok, aal2
+  // eksik, migration uygulanmamış) hiçbir şeye dokunmadan yakala.
+  const pre = await supabase.rpc('mfa_satisfied')
+  if (pre.error) {
+    throw new Error(pre.error.code === 'PGRST202'
+      ? 'Sunucu tarafı hazır değil (0013 migration uygulanmamış). Hiçbir veri silinmedi.'
+      : 'Hesap silinemedi. Hiçbir veri silinmedi.')
+  }
+  if (pre.data !== true) {
+    throw new Error('Hesap silinemedi: iki adımlı doğrulama gerekli. Tekrar giriş yapıp deneyin. Hiçbir veri silinmedi.')
+  }
+
   // Fiş dosyaları ÖNCE: delete_my_account SQL'den Storage'ı silemez; hesap
   // gittikten sonra bu dosyalara kimse erişip silemezdi (0019).
   try {
     await removeAllReceipts()
   } catch (err) {
     console.error('[account:delete:receipts]', err)
-    throw new Error('Fiş dosyaları silinemedi — hesabınız silinmedi, tekrar deneyin.')
+    // Toplu silme sayfa sayfa ilerler: hata ortada da çıkmış olabilir.
+    throw new Error('Fiş dosyaları silinemedi; bazı fiş fotoğrafları silinmiş olabilir. Hesabınız ve kayıtlarınız duruyor, tekrar deneyin.')
   }
 
   const { error } = await supabase.rpc('delete_my_account')
   if (error) {
-    // PGRST202: fonksiyon yok → migration henüz uygulanmamış
-    throw new Error(error.code === 'PGRST202'
-      ? 'Sunucu tarafı hazır değil (0013 migration uygulanmamış). Hiçbir veri silinmedi.'
-      : 'Hesap silinemedi. Hiçbir veri silinmedi.')
+    console.error('[account:delete:rpc]', error)
+    throw new Error('Hesap silinemedi. Fiş fotoğrafları silinmiş olabilir; hesabınız ve kayıtlarınız duruyor. Tekrar deneyin.')
   }
 
   try {

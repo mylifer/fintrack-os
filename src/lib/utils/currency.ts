@@ -48,16 +48,55 @@ export function formatSigned(v: number, currency: CurrencyCode = 'TRY'): string 
 // (binlik = nokta, ondalık = virgül). Kural: virgül ondalık ayracıdır
 // (ilk virgül geçerli, en fazla 2 hane); kullanıcının yazdığı noktalar
 // binlik ayracı sayılır ve gruplar yeniden hesaplanır.
-export function formatCurrencyInputLive(raw: string): string {
+//
+// İstisna — nokta ondalık: virgül yoksa ve TEK nokta sonda 0–2 haneyle
+// bitiyorsa ("1234.56", "12.5", "12.") ve bu geçerli bir TR binlik gruplaması
+// değilse ("1.234" değil), nokta ondalık sayılır. Tam kısım 3 haneden uzunsa
+// ("1234.56") TR gruplamasının başlangıcı olamaz → "1.234,56"e çevrilir; kısaysa
+// ("12.5") kullanıcı TR usulü "1.234" yazıyor da olabilir, nokta olduğu gibi
+// bırakılır (parseCurrencyInput "12.5"i 12,5 okur; bir hane daha gelince
+// "1.234" gruplamaya döner). `prev` verilirse silme ayırt edilir: maskenin
+// koyduğu binlik noktası silmeyle ondalığa dönüşmez ("1.234" → "1.23" → "123").
+const DOT_DECIMAL  = /^(\d*)\.(\d{0,2})$/
+const TR_GROUPED   = /^\d{1,3}(\.\d{3})+$/
+
+function dotDecimalParts(raw: string): [string, string] | null {
+  const body = raw.replace(/[^0-9.,]/g, '')
+  if (body.includes(',') || TR_GROUPED.test(body)) return null
+  const m = DOT_DECIMAL.exec(body)
+  return m && m[1] ? [m[1], m[2]] : null
+}
+
+/** raw, prev'den yalnız karakter SİLİNEREK mi elde edildi */
+function isDeletion(prev: string, raw: string): boolean {
+  if (raw.length >= prev.length) return false
+  let i = 0
+  for (const ch of prev) if (i < raw.length && raw[i] === ch) i++
+  return i === raw.length
+}
+
+export function formatCurrencyInputLive(raw: string, prev?: string): string {
   const negative = raw.trimStart().startsWith('-')
+  const sign     = negative ? '-' : ''
+
+  const dot = dotDecimalParts(raw)
+  // Silmede nokta yalnız önceki değer de nokta-ondalıksa ondalık kalır
+  if (dot && !(prev !== undefined && isDeletion(prev, raw) && !dotDecimalParts(prev))) {
+    const intRaw = dot[0].replace(/^0+(?=\d)/, '')
+    if (intRaw.length > 3) {
+      return sign + intRaw.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + dot[1]
+    }
+    return sign + intRaw + '.' + dot[1]
+  }
+
   const cleaned  = raw.replace(/[^0-9,]/g, '')
-  if (!cleaned) return negative ? '-' : ''
+  if (!cleaned) return sign
   const commaIdx = cleaned.indexOf(',')
   const hasComma = commaIdx !== -1
   const intRaw   = (hasComma ? cleaned.slice(0, commaIdx) : cleaned).replace(/^0+(?=\d)/, '')
   const decRaw   = hasComma ? cleaned.slice(commaIdx + 1).replace(/,/g, '').slice(0, 2) : ''
   const grouped  = intRaw.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return (negative ? '-' : '') + grouped + (hasComma ? ',' + decRaw : '')
+  return sign + grouped + (hasComma ? ',' + decRaw : '')
 }
 
 // Kayıtlı bir sayıyı düzenleme inputuna TR biçiminde seed etmek için
