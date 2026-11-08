@@ -24,7 +24,7 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
       // Binlik noktaları maske yeniden hesapladığı için imleç konumunu
       // rakam/virgül/eksi sayısı üzerinden koruyoruz
       const sigBefore = el.value.slice(0, caret).replace(/[^0-9,-]/g, '').length
-      const masked    = formatCurrencyInputLive(el.value)
+      const masked    = formatCurrencyInputLive(el.value, value)
       onChange(masked)
       requestAnimationFrame(() => {
         let pos = 0, seen = 0

@@ -5,6 +5,7 @@ import { Popover } from 'radix-ui'
 import { ChevronDownIcon, PlusIcon, XIcon } from 'lucide-react'
 import { PersonAvatar } from './PersonAvatar'
 import { cn } from '@/lib/utils'
+import { matchesTokens, tokenize } from '@/lib/utils/boardText'
 import type { Person } from '@/types'
 
 const MAX_H    = 300
@@ -41,9 +42,10 @@ export function PersonSelect({ people, value, onChange, placeholder, onCreate }:
   const selected = people.find(p => p.id === value)
 
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return people
-    return people.filter(p => p.name.toLowerCase().includes(q))
+    // Türkçe İ/ı duyarlı ("ismail" → "İsmail"); kaçırılan eşleşme kopya kişi açtırırdı
+    const tokens = tokenize(query)
+    if (!tokens.length) return people
+    return people.filter(p => matchesTokens(p.name, tokens))
   }, [query, people])
 
   function select(id: string | undefined) {

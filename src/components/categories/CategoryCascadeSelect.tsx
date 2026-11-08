@@ -6,6 +6,7 @@ import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { CategoryIcon } from './CategoryIcon'
 import { cn } from '@/lib/utils'
 import { compareCategoriesByName } from '@/lib/utils/categories'
+import { matchesTokens, tokenize } from '@/lib/utils/boardText'
 import type { Category } from '@/types'
 
 const COL_W    = 220
@@ -69,9 +70,11 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   const l2List   = hoveredL1 ? getChildren(hoveredL1) : []
 
   const searchResults = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return []
-    return active.filter(c => c.name.toLowerCase().includes(q)).slice(0, 25)
+    // Türkçe İ/ı duyarlı ("internet" → "İnternet Faturası"); bulunamazsa
+    // "oluştur" önerildiği için eşleşmeyi kaçırmak kopya kategori açtırır.
+    const tokens = tokenize(query)
+    if (!tokens.length) return []
+    return active.filter(c => matchesTokens(c.name, tokens)).slice(0, 25)
   }, [query, active])
 
   function select(id: string) {

@@ -167,7 +167,7 @@ export function tablerComponentName(kebab: string): string {
 }
 
 export function resolveTablerIcon(name: string): TablerIcon | null {
-  if (name in TABLER_MAP) return TABLER_MAP[name]
+  if (Object.hasOwn(TABLER_MAP, name)) return TABLER_MAP[name]
   if (allTablerIcons) {
     const ic = allTablerIcons[tablerComponentName(name)]
     return ic != null ? ic : null
@@ -206,7 +206,7 @@ export function CategoryIcon({ icon, color = DEFAULT_COLOR, size = 16, className
   const [loaded, setLoaded] = useState<{ name: string; icon: TablerIcon } | null>(null)
 
   useEffect(() => {
-    if (syncIcon || resolvedIcon in ICON_MAP) return
+    if (syncIcon || Object.hasOwn(ICON_MAP, resolvedIcon)) return
     let alive = true
     ensureAllTablerIcons().then(() => {
       const ic = resolveTablerIcon(resolvedIcon)
@@ -232,7 +232,7 @@ export function CategoryIcon({ icon, color = DEFAULT_COLOR, size = 16, className
   }
 
   // Legacy Lucide icon name
-  const LIcon = ICON_MAP[resolvedIcon]
+  const LIcon = Object.hasOwn(ICON_MAP, resolvedIcon) ? ICON_MAP[resolvedIcon] : undefined
   if (LIcon) {
     return (
       <span
@@ -257,6 +257,6 @@ export function CategoryIcon({ icon, color = DEFAULT_COLOR, size = 16, className
 
 /* ── Label helper ─────────────────────────────────────────────────── */
 export function formatCategoryLabel(cat: { icon: string; name: string }): string {
-  const hasIcon = cat.icon in ICON_MAP || cat.icon.includes(':') || cat.icon in TABLER_MAP
+  const hasIcon = Object.hasOwn(ICON_MAP, cat.icon) || cat.icon.includes(':') || Object.hasOwn(TABLER_MAP, cat.icon)
   return hasIcon ? cat.name : `${cat.icon} ${cat.name}`
 }

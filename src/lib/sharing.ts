@@ -63,8 +63,22 @@ export async function listMembers(workspaceId: string): Promise<Membership[]> {
   return (data ?? []) as Membership[]
 }
 
-/** Davet bağlantısı (tek kullanımlık, 7 gün). Token yalnız bir kez döner. */
+/** Bu alan için oluşturduğum, henüz KULLANILMAMIŞ davetleri siler (RLS:
+ *  yalnız created_by = ben). Böylece eski bağlantılar geçersiz olur. */
+export async function revokePendingInvites(workspaceId: string): Promise<void> {
+  const { error } = await supabase
+    .from('workspace_invites')
+    .delete()
+    .eq('workspace_id', workspaceId)
+    .is('accepted_at', null)
+  if (error) throw friendly(error)
+}
+
+/** Davet bağlantısı (tek kullanımlık, 7 gün). Token yalnız bir kez döner.
+ *  Önceki kullanılmamış bağlantılar iptal edilir — aynı anda tek geçerli
+ *  davet bağlantısı olur. */
 export async function createInviteLink(workspaceId: string, origin: string): Promise<string> {
+  await revokePendingInvites(workspaceId)
   const { data, error } = await supabase.rpc('create_workspace_invite', { p_workspace: workspaceId })
   if (error || typeof data !== 'string') throw friendly(error)
   return `${origin}/davet/${data}`

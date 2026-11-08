@@ -79,7 +79,11 @@ export function useSidebarData() {
     }))
     const prevAccountNetWorth = calcNetWorth(prevAccounts, prices)
     const prevInvestTxs = investTxs.filter(t => t.date <= cutoff)
-    const prevInvestValue = computeHoldings(prevInvestTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0)
+    // investValue ile AYNI kapı: fiyatlar yokken bugünkü değer 0 sayılıyor;
+    // geçen ay fundPrices'la fiyatlanırsa trend sahte bir düşüş gösterirdi.
+    const prevInvestValue = prices
+      ? computeHoldings(prevInvestTxs, prices, fundPrices).reduce((s, h) => s + h.currentValue, 0)
+      : 0
     // Geçen ayın yükümlülüğü de o tarihe göre (bkz. calcDebtBurdenAsOf).
     const prevBurden = calcDebtBurdenAsOf(debts, prevTxs, cutoff)
     return totalWealth - (prevAccountNetWorth + prevInvestValue - prevBurden)

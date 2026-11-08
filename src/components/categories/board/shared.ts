@@ -125,11 +125,28 @@ export function enrichCategories(
     })
   }
 
+  // Arşivli bir kategoriye işlenmiş tutarlar EN YAKIN AKTİF üst kategoriye
+  // devreder — bütçe (expandCategoryIds) ve kategori detayı arşivli alt
+  // kategorileri de kapsar; tahtadaki toplam da aynı olmalı. Satır yalnız
+  // aktifler için üretilir; devreden tutar o üstün "doğrudan" payında görünür.
+  const fullParentOf = new Map<string, string | undefined>()
+  for (const c of categories) if (c.scope === scope) fullParentOf.set(c.id, c.parentId ?? undefined)
+  const resolveActive = (id: string): string | undefined => {
+    let cur: string | undefined = id
+    const seen = new Set<string>()
+    while (cur && !seen.has(cur)) {
+      if (acc.has(cur)) return cur
+      seen.add(cur)
+      cur = fullParentOf.get(cur)
+    }
+    return undefined
+  }
+
   // Tek geçişte hem kendisine hem üstlerine yazılır: zincir en fazla 3 halka
   // olduğu için bu, kategori başına tüm işlemleri süzmekten çok daha ucuz.
   for (const t of expandByCategory(transactions)) {
-    const cid = t.categoryId
-    if (!cid || !acc.has(cid)) continue
+    const cid = t.categoryId ? resolveActive(t.categoryId) : undefined
+    if (!cid) continue
     const flow = isFlowTx(t, asOf)
     const date = t.date.slice(0, 10)   // legacy tam-ISO datetime gün sınırında doğru kıyaslansın
 
