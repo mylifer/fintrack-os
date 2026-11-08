@@ -682,8 +682,10 @@ export default function ReportsPage() {
     // Bölünmüş satırlar TAM haliyle listelenir (dilim olarak değil): satır
     // gerçek işlemdir, tıklanınca düzenleme açar. Dilimin payı listede değil
     // grafikte okunur — satırdaki çoklu-kategori rozeti farkı belli eder.
+    // tx.icon (yatırım-ikonlu satırlar) donut dilimlerine girmez → listeye de
+    // girmez (gelir drill-down'uyla aynı kural).
     return filteredTxs.filter(tx => {
-      if (tx.type !== 'expense') return false
+      if (tx.type !== 'expense' || tx.icon) return false
       return selectedCat.categoryId === null
         ? !tx.categoryId
         : txHasCategory(tx, selectedCat.categoryId)
