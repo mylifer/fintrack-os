@@ -19,7 +19,7 @@ import { readPdfPages } from '@/lib/statement-import/pdf-text'
 import { parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
 import { buildImportPlan, type ImportPlan, type PlanRow } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
-import { buildCommit, commitEffect, optionForEdit, selectedOption, type RowEdit } from '@/lib/statement-import/commit'
+import { buildCommit, commitEffect, optionForEdit, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
 import type { BatchOp } from '@/lib/sync/engine'
 import { PreviewList, STATUS_META } from './PreviewList'
@@ -61,7 +61,7 @@ export function StatementImport() {
   const [statement, setStatement]   = useState<ParsedStatement | null>(null)
   const [accountId, setAccountId]   = useState('')
   const [suggested, setSuggested]   = useState<{ id: string; matched: number } | null>(null)
-  const [choices, setChoices]       = useState<Record<string, number>>({})
+  const [choices, setChoices]       = useState<RowChoices>({})
   const [edits, setEdits]           = useState<Record<string, RowEdit>>({})
   const [query, setQuery]           = useState('')
   const [openKey, setOpenKey]       = useState<string | null>(null)
@@ -407,9 +407,11 @@ export function StatementImport() {
   // Karar değişince alıcıyı o seçenek belirler ("Yeni alıcıyla gir" / "Alıcısız gir"):
   // çekmecede daha önce yapılan alıcı değişikliği silinir, açıklama ve kategori kalır.
   function choose(key: string, i: number) {
-    setChoices(c => ({ ...c, [key]: i }))
     const row = rows.find(r => r.key === key)
-    if (!row || selectedOption(row, choices) === i) return
+    const opt = row?.options[i]
+    if (!row || !opt) return
+    setChoices(c => ({ ...c, [key]: opt.key }))
+    if (selectedOption(row, choices) === i) return
     setEdits(e => {
       const cur = e[key]
       if (!cur || (cur.recipientId === undefined && cur.newRecipient === undefined)) return e
@@ -427,12 +429,15 @@ export function StatementImport() {
     setEdits(e => ({ ...e, [row.key]: { ...e[row.key], ...patch } }))
     if (!('recipientId' in patch) && !('newRecipient' in patch)) return
     const i = optionForEdit(row, next)
-    if (i !== null) setChoices(c => ({ ...c, [row.key]: i }))
+    if (i !== null) setChoices(c => ({ ...c, [row.key]: row.options[i].key }))
   }
 
   function acceptRecommended() {
     const next = { ...choices }
-    for (const r of rows) if (r.status === 'review' && next[r.key] === undefined && r.recommended !== null) next[r.key] = r.recommended
+    for (const r of rows) {
+      const rec = r.recommended !== null ? r.options[r.recommended] : undefined
+      if (r.status === 'review' && rec && selectedOption(r, next) === null) next[r.key] = rec.key
+    }
     setChoices(next)
   }
 

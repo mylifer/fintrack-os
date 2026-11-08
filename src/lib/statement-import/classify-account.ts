@@ -215,7 +215,19 @@ export function buildAccountPlan(input: PlanInput): ImportPlan {
 
   const infoOf = new Map<number, LineInfo>(lines.map(l => [l.index, analyzeLine(l.description, info.owner)]))
   const signed = (l: StatementLine) => -minor(l.amount!)   // + giriş
-  const seedOf = (l: StatementLine) => `acct:${A}:${l.date}:${l.time ?? ''}:${minor(l.amount!)}:${merchantKey(l.description)}`
+  // Satır kimliği; aynı imza tekrarlanırsa (aynı dakikada iki eş çekim) sıra numarası
+  // eklenir. İlk tekrar eski tohumu korur, önceki yüklemeler eşleşmeye devam eder.
+  const seedByIdx = new Map<number, string>()
+  {
+    const seen = new Map<string, number>()
+    for (const l of lines) {
+      const base = `acct:${A}:${l.date}:${l.time ?? ''}:${minor(l.amount!)}:${merchantKey(l.description)}`
+      const n = seen.get(base) ?? 0
+      seen.set(base, n + 1)
+      seedByIdx.set(l.index, n === 0 ? base : `${base}:${n}`)
+    }
+  }
+  const seedOf = (l: StatementLine) => seedByIdx.get(l.index)!
   const tolFor = (l: StatementLine) => (infoOf.get(l.index)!.type === 'broker' ? Math.max(5, Math.round(Math.abs(signed(l)) * 0.001)) : 2)
 
   const matchOf = new Map<number, { txIds: string[]; how: string }>()
@@ -230,7 +242,7 @@ export function buildAccountPlan(input: PlanInput): ImportPlan {
   // 1) Kimlik
   for (const l of matchable) {
     const id = txIdFromSeed(seedOf(l))
-    if (byId.has(id)) take([l.index], [id], 'imported')
+    if (byId.has(id) && !usedTx.has(id)) take([l.index], [id], 'imported')
   }
 
   // 2) Birebir: önce en yakın tarihliler
@@ -581,7 +593,7 @@ export function buildAccountPlan(input: PlanInput): ImportPlan {
 
   // Sabit anahtar ve önceki "girme / kalsın" kararları
   const finalRows: PlanRow[] = rows.map(r => {
-    const stableKey = r.lines.length ? r.lines.map(i => seedOf(lines[i])).join('+') : `sys:${r.match?.txIds[0] ?? r.key}`
+    const stableKey = r.lines.length ? r.lines.map(i => seedByIdx.get(i)!).join('+') : `sys:${r.match?.txIds[0] ?? r.key}`
     const row: PlanRow = { ...r, stableKey }
     if (input.skipped?.has(stableKey) && (r.status === 'review' || r.status === 'new')) {
       return {

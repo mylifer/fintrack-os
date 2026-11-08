@@ -12,7 +12,7 @@ import { foldText } from '@/lib/auto-category'
 import { usePeopleStore } from '@/store'
 import type { Category, Person } from '@/types'
 import { optionDisplayOrder, type PlanRow, type RowKind, type RowStatus } from '@/lib/statement-import/classify'
-import type { RowEdit } from '@/lib/statement-import/commit'
+import { chosenIndex, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 
 /* ── Önizleme listesi ────────────────────────────────────────────────────────
    Hiyerarşi: (Sorun) → Kontrol et → Girilecek → Zaten sistemde → Kayda girmez.
@@ -86,7 +86,7 @@ const Dot = () => <span className="text-muted-foreground/50">·</span>
 interface ListProps {
   rows: PlanRow[]
   blockers: string[]
-  choices: Record<string, number>
+  choices: RowChoices
   edits: Record<string, RowEdit>
   categories: Category[]
   problems: { rowKey: string; message: string }[]
@@ -122,8 +122,8 @@ export function PreviewList(props: ListProps) {
   const visible = (r: PlanRow) => !q || foldText([r.title, r.raw, r.recipientName ?? '', catPath(r.categoryId) ?? '', r.amount !== null ? Math.abs(r.amount).toFixed(2).replace('.', ',') : ''].join(' ')).includes(q)
 
   const byStatus = (s: RowStatus) => rows.filter(r => r.status === s)
-  const pendingReview = rows.filter(r => r.status === 'review' && choices[r.key] === undefined).length
-  const recommendable = rows.filter(r => r.status === 'review' && choices[r.key] === undefined && r.recommended !== null).length
+  const pendingReview = rows.filter(r => r.status === 'review' && chosenIndex(r, choices) === null).length
+  const recommendable = rows.filter(r => r.status === 'review' && chosenIndex(r, choices) === null && r.recommended !== null).length
 
   function jump(s: RowStatus) {
     props.onToggleSection(s, true)
@@ -171,8 +171,8 @@ export function PreviewList(props: ListProps) {
 
   // ── Karar: konu + bitişik seçenek grubu ──
   const decision = (r: PlanRow) => {
-    const sel = choices[r.key]
-    const decided = sel !== undefined
+    const sel = chosenIndex(r, choices)
+    const decided = sel !== null
     return (
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5" onClick={e => e.stopPropagation()}>
         <span className={cn('text-xs font-semibold', decided ? 'text-muted-foreground' : 'text-orange-600')}>{decided ? '✓ ' : ''}{r.issue}</span>
