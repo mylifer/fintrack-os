@@ -49,8 +49,9 @@ export function TableView({ rows, config, query, sort, onSort, onEdit, onArchive
         </thead>
         <tbody>
           {rows.map(row => {
-            const { person, flowCount, pendingCount, income, expense, net, share, lastDate } = row
-            const avg = flowCount > 0 ? expense / flowCount : 0
+            const { person, flowCount, pendingCount, expenseCount, income, expense, net, share, lastDate } = row
+            // Ortalama yalnız gider satırları üzerinden — gelir/transfer paydaya girmez
+            const avg = expenseCount > 0 ? expense / expenseCount : 0
             return (
               <tr
                 key={person.id}

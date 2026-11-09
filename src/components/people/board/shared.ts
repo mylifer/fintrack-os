@@ -24,6 +24,9 @@ export interface PersonRow {
    *  ghost'u, yatırım/borç anaparası. Tutarlara katılmaz ama sayıca kaybolmasın
    *  diye ayrı taşınır ("+N bekleyen" rozeti). */
   pendingCount: number
+  /** Akıştaki GİDER satırı sayısı — "Ortalama" (gider ÷ bu) paydası; gelir ve
+   *  transfer satırları ortalamayı düşürmesin. */
+  expenseCount: number
   /** TRY-normalize (baseAmount, S2/S3), kuruş-exact (S8) gelir toplamı. */
   income: number
   /** Aynı kuralla gider toplamı. */
@@ -53,13 +56,14 @@ export function enrichPeople(
   interface Acc {
     flowCount: number
     pendingCount: number
+    expenseCount: number
     incomeMinor: number
     expenseMinor: number
     lastDate: string | null
   }
   const acc = new Map<string, Acc>()
   for (const p of people) {
-    acc.set(p.id, { flowCount: 0, pendingCount: 0, incomeMinor: 0, expenseMinor: 0, lastDate: null })
+    acc.set(p.id, { flowCount: 0, pendingCount: 0, expenseCount: 0, incomeMinor: 0, expenseMinor: 0, lastDate: null })
   }
 
   for (const t of transactions) {
@@ -76,7 +80,7 @@ export function enrichPeople(
 
     // Transfer satırları hiçbir toplama girmez (yalnız flowCount'a) — akış
     // metriklerinin her yerdeki kuralı.
-    if (t.type === 'expense')     a.expenseMinor += toMinor(baseAmount(t))
+    if (t.type === 'expense')     { a.expenseMinor += toMinor(baseAmount(t)); a.expenseCount++ }
     else if (t.type === 'income') a.incomeMinor  += toMinor(baseAmount(t))
   }
 
@@ -89,6 +93,7 @@ export function enrichPeople(
       person,
       flowCount:    a.flowCount,
       pendingCount: a.pendingCount,
+      expenseCount: a.expenseCount,
       income:       toMajor(a.incomeMinor),
       expense:      toMajor(a.expenseMinor),
       net:          toMajor(a.incomeMinor - a.expenseMinor),
