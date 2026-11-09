@@ -2,8 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { format } from 'date-fns'
-import { tr } from 'date-fns/locale'
 import { useShallow } from 'zustand/react/shallow'
 import { useAccountStore, useCategoryStore, useTransactionStore } from '@/store'
 import type { AppNotification } from '@/store/notifications.store'
@@ -11,6 +9,7 @@ import { approveRecurring, skipRecurring } from '@/lib/utils/recurring-actions'
 import { approvePaymentRow, quickApproveBlocker, setRowStatus } from '@/lib/payments/actions'
 import { paymentDescription, type PaymentRow } from '@/lib/payments/schedule'
 import { formatCurrency } from '@/lib/utils/currency'
+import { formatDate } from '@/lib/utils/date'
 import { resolveBudgetCategories } from '@/lib/utils/calculations'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -42,8 +41,10 @@ const TYPE_LABEL: Record<TransactionType, string> = {
   expense: 'Gider', income: 'Gelir', transfer: 'Transfer',
 }
 
+/** Geçersiz tarih (ör. içe aktarılmış "2026-04-31") paneli çökertmesin ve
+ *  sessizce sonraki aya kaymasın: formatDate geçersizse ham metni gösterir. */
 function fmtDay(iso: string): string {
-  return format(new Date(iso.slice(0, 10) + 'T00:00:00'), 'd MMMM yyyy', { locale: tr })
+  return formatDate(iso.slice(0, 10), 'd MMMM yyyy')
 }
 
 function AmountText({ type, amount, currency }: { type: TransactionType; amount: number; currency: CurrencyCode }) {
@@ -87,6 +88,8 @@ export function NotificationPanel({
 
   // Aynı öğede çift tık / eşzamanlı aksiyon koruması
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  // Başarısız aksiyon sessizce yutulmasın (öğe listede kalır, neden görünmez)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const due = notifications.filter(n => n.kind === 'recurring-due' || n.kind === 'future-tx-due' || n.kind === 'payment-due' || n.kind === 'deposit-matured')
   const upcoming = notifications.filter(n => n.kind === 'recurring-upcoming' || n.kind === 'future-tx-upcoming' || n.kind === 'payment-upcoming' || n.kind === 'deposit-upcoming')
@@ -100,10 +103,12 @@ export function NotificationPanel({
   async function run(key: string, fn: () => Promise<void>) {
     if (busyKey) return
     setBusyKey(key)
+    setActionError(null)
     try {
       await fn()
     } catch (err) {
       console.error('[notifications:action]', err)
+      setActionError(err instanceof Error && err.message ? `İşlem tamamlanamadı: ${err.message}` : 'İşlem tamamlanamadı. Tekrar deneyin.')
     } finally {
       setBusyKey(null)
     }
@@ -412,6 +417,9 @@ export function NotificationPanel({
       </div>
 
       <div className="overflow-y-auto max-h-[70vh]">
+        {actionError && (
+          <div role="alert" className="px-4 py-2 text-xs text-destructive border-b border-border">{actionError}</div>
+        )}
         {due.length === 0 && upcoming.length === 0 && budgetAlerts.length === 0 && (
           <EmptyState icon="🔔" title="Bekleyen bildirim yok" description="Onay bekleyen veya yaklaşan işleminiz bulunmuyor." />
         )}
