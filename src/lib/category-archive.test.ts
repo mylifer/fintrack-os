@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import type { Category } from '@/types'
 import {
-  archivableSubtreeIds, restorableSubtreeIds,
+  archivableSubtreeIds, restorableSubtreeIds, archivedAncestorIds,
   saveArchiveGroup, loadArchiveGroup, clearArchiveGroup,
 } from './category-archive'
 
@@ -60,5 +60,23 @@ describe('arşiv grubu kaydı (localStorage)', () => {
     expect(loadArchiveGroup('p')).toEqual(['a', 'p'])
     clearArchiveGroup('p')
     expect(loadArchiveGroup('p')).toBeNull()
+  })
+})
+
+describe('archivedAncestorIds — arşivli üstler de geri yüklenir', () => {
+  it('arşivli üstleri kökten aşağı döndürür; aktif üstü atlar', () => {
+    const cats = [cat('r', undefined, true), cat('m', 'r'), cat('p', 'm', true), cat('c', 'p', true)]
+    expect(archivedAncestorIds('c', cats)).toEqual(['r', 'p'])
+  })
+
+  it('üst aktifse ya da kök kategoride boş', () => {
+    const cats = [cat('p'), cat('c', 'p', true), cat('x', undefined, true)]
+    expect(archivedAncestorIds('c', cats)).toEqual([])
+    expect(archivedAncestorIds('x', cats)).toEqual([])
+  })
+
+  it('bozuk döngüde takılmaz', () => {
+    const cats = [cat('a', 'b', true), cat('b', 'a', true)]
+    expect(archivedAncestorIds('a', cats)).toEqual(['b'])
   })
 })

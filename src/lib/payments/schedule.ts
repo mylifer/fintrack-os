@@ -315,19 +315,22 @@ export function statementWindow(
  *  transfer − karta işlenen gelir/iade. Karta YAPILAN ödemeler (toAccountId =
  *  kart ya da karta gelir olarak işlenmiş "Kredi Kartı Ödemesi" —
  *  assignCardPayments, buildCardStatements ile aynı kural) ve mutabakat
- *  satırları sayılmaz. Bankanın ekstre tutarı değildir —
+ *  satırları sayılmaz. Onay bekleyen ya da tarihi gelmemiş satırlar da sayılmaz
+ *  (isPosted — buildCardStatements ve bakiyeyle aynı kural). Bankanın ekstre tutarı değildir —
  *  yalnız düzenleme penceresinde etiketli kısayol olarak gösterilir. */
 export function estimateStatement(
   account: Account,
   dueDate: string,
   transactions: readonly Transaction[],
   custom?: { closing?: string | null; prevClosing?: string | null },
+  asOf?: string,
 ): number {
   const { from, to } = statementWindow(account, dueDate, custom)
   // Yalnız bu kartın satırlarına bakıldığı için tek hesapla eşlemek yeterli.
   const paymentIds = new Set((assignCardPayments([account], transactions).get(account.id) ?? []).map(t => t.id))
   const charges = transactions.filter(t => {
     if (t.accountId !== account.id || t.systemKind || paymentIds.has(t.id)) return false
+    if (!isPosted(t, asOf)) return false
     const d = t.date.slice(0, 10)
     return d >= from && d <= to
   })

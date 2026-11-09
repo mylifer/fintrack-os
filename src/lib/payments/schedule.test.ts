@@ -167,6 +167,17 @@ describe('uygulamadaki kart harcamaları (kısayol)', () => {
     ]
     expect(estimateStatement(card(), '2026-10-10', txs)).toBe(1_500)
   })
+
+  it('onay bekleyen ve tarihi gelmemiş satırları saymaz (isPosted — buildCardStatements ile aynı)', () => {
+    const txs = [
+      tx({ id: 'a', date: '2026-09-02', amount: 1_000, accountId: 'card1' }),
+      tx({ id: 'b', date: '2026-09-12', amount: 400, accountId: 'card1', approvalStatus: 'pending' }),
+      tx({ id: 'c', date: '2026-09-20', amount: 700, accountId: 'card1' }),
+    ]
+    expect(estimateStatement(card(), '2026-10-10', txs, undefined, TODAY)).toBe(1_700)
+    // Bugün dönem içindeyse sonraki tarihli satır henüz işlenmemiştir
+    expect(estimateStatement(card(), '2026-10-10', txs, undefined, '2026-09-15')).toBe(1_000)
+  })
 })
 
 describe('defaultDueDate', () => {

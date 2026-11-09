@@ -18,7 +18,7 @@ import {
 import { collapseInstallments } from '@/lib/utils/installments'
 import { CategoryEditModal } from './CategoryEditModal'
 import {
-  archivableSubtreeIds, restorableSubtreeIds,
+  archivableSubtreeIds, archivedAncestorIds, restorableSubtreeIds,
   saveArchiveGroup, loadArchiveGroup, clearArchiveGroup,
 } from '@/lib/category-archive'
 import { TableView } from './views/TableView'
@@ -138,10 +138,25 @@ export function CategoryBoard() {
     setArchiving(null)
   }
 
+  /** Arşivli bir üstün altındaki kategori geri yüklenirse üstleri de geri
+   *  gelir — yoksa aktif alt kategori arşivli üstün altında görünmez kalırdı.
+   *  Kullanıcıya bildirilir; "Geri Al" bu işlemde geri getirilenlerin hepsini
+   *  (yapraklardan köke) yeniden arşivler. */
   async function restoreSubtree(cat: Category) {
+    const ancestors = archivedAncestorIds(cat.id, categories)   // kökten aşağı
     const ids = restorableSubtreeIds(cat.id, categories, loadArchiveGroup(cat.id))
+    for (const id of ancestors) await restore(id)
     for (const id of ids) await restore(id)
     clearArchiveGroup(cat.id)
+    if (ancestors.length > 0) {
+      const names = ancestors.map(id => categories.find(c => c.id === id)?.name ?? '').filter(Boolean).join(' › ')
+      useUndoStore.getState().pushUndo(
+        `Üst kategori de geri yüklendi: ${names}`,
+        async () => {
+          for (const id of [...ancestors, ...ids].reverse()) await remove(id, { undoable: false })
+        },
+      )
+    }
   }
 
   const archivingChildren = archiving ? archivableSubtreeIds(archiving.id, categories).length - 1 : 0
