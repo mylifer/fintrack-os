@@ -1,8 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { format } from 'date-fns'
-import { tr } from 'date-fns/locale'
 import { Header }             from '@/components/layout/Header'
 import { Button }             from '@/components/ui/button'
 import { CategoryIcon }       from '@/components/categories/CategoryIcon'
@@ -16,7 +14,7 @@ import { useRecurringSuggestionsStore } from '@/store/recurring-suggestions.stor
 import { detectRecurring, suggestionToRecurring, type RecurringSuggestion } from '@/lib/utils/recurring-detect'
 import { approveRecurring }   from '@/lib/utils/recurring-actions'
 import { formatCurrency }     from '@/lib/utils/currency'
-import { today }              from '@/lib/utils/date'
+import { today, formatDate }  from '@/lib/utils/date'
 import { useShallow }         from 'zustand/react/shallow'
 import type { RecurringTransaction, RecurringFrequency } from '@/types'
 
@@ -247,7 +245,7 @@ function DueRow({
           )}
           <span>·</span>
           <span>
-            {format(new Date(r.nextDueDate + 'T00:00:00'), 'd MMMM yyyy', { locale: tr })}
+            {formatDate(r.nextDueDate, 'd MMMM yyyy')}
           </span>
         </div>
       </div>
@@ -303,7 +301,7 @@ function SuggestionRow({
           <span>·</span>
           <span>her ayın ~{s.dayOfMonth}. günü</span>
           <span>·</span>
-          <span>sıradaki {format(new Date(s.nextDate + 'T00:00:00'), 'd MMMM', { locale: tr })}</span>
+          <span>sıradaki {formatDate(s.nextDate, 'd MMMM')}</span>
         </div>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
@@ -364,7 +362,7 @@ function RecurringRow({
           )}
           <span>·</span>
           <span>
-            Sonraki: {format(new Date(r.nextDueDate + 'T00:00:00'), 'd MMMM yyyy', { locale: tr })}
+            Sonraki: {formatDate(r.nextDueDate, 'd MMMM yyyy')}
           </span>
         </div>
       </div>
