@@ -16,7 +16,8 @@ import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import { readPdfPages } from '@/lib/statement-import/pdf-text'
-import { parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
+import { readImageText } from '@/lib/statement-import/ocr'
+import { parseScreenshot, parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
 import { buildImportPlan, type ImportPlan, type PlanRow } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
 import { buildCommit, commitEffect, optionForEdit, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
@@ -137,16 +138,19 @@ export function StatementImport() {
   async function readFile(file: File) {
     setError('')
     setNotice('')
-    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
-      setError('Şimdilik yalnız PDF ekstre destekleniyor. Garanti\'nin Excel dökümünde faiz ve ücret satırları olmadığı için PDF kullanılıyor.')
+    const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf'
+    const isImage = /^image\/(png|jpeg|webp)$/.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name)
+    if (!isPdf && !isImage) {
+      setError('PDF ekstre ya da ekran görüntüsü (PNG/JPG) yükleyin. Garanti\'nin Excel dökümünde faiz ve ücret satırları olmadığı için PDF kullanılıyor.')
       return
     }
     setStep('reading')
     try {
       // Mükerrer kontrolü en güncel kayıtlarla yapılsın: önce buluttan çek
       await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load()])
-      const pages = await readPdfPages(await file.arrayBuffer())
-      const st = parseStatement(pages)
+      const st = isPdf
+        ? parseStatement(await readPdfPages(await file.arrayBuffer()))
+        : parseScreenshot(await readImageText(file))
       // Hesap önerisi: kayıtlarıyla en çok eşleşen hesap (kart ekstresinde kart,
       // vadesiz dökümde kart dışı hesap); eşitlikte adı bankayı içeren
       let best: { id: string; matched: number; byName: boolean } | null = null
@@ -296,7 +300,7 @@ export function StatementImport() {
   if (step === 'upload' || step === 'reading') {
     return (
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-4">
-        <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden"
+        <input ref={fileRef} type="file" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp" className="hidden"
           onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void readFile(f) }} />
         <p className="text-sm text-muted-foreground leading-relaxed">
           Kredi kartı ekstresini ya da vadesiz hesap dökümünü (PDF) yükleyin. Her satır sistemdeki kayıtlarınızla karşılaştırılır; neyin yeni, neyin zaten
@@ -317,14 +321,15 @@ export function StatementImport() {
             : <>
                 <IconFileTypePdf className="size-9 text-muted-foreground" stroke={1.5} />
                 <div className="text-center">
-                  <div className="text-sm font-semibold">Ekstre PDF&apos;ini seçin</div>
+                  <div className="text-sm font-semibold">Ekstre PDF&apos;ini ya da ekran görüntüsünü seçin</div>
                   <div className="text-xs text-muted-foreground mt-1">veya buraya sürükleyin</div>
                 </div>
               </>}
         </div>
         <div className="rounded-xl bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-          <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA, QNB, Burgan (ON) ve Yapı Kredi kredi kartı ekstresi, QNB dönem içi işlemler, Odeabank vadesiz hesap dökümü. PDF yalnız bu
-          tarayıcıda okunur, hiçbir sunucuya gönderilmez. Diğer bankalar örnekleri geldikçe eklenecek.
+          <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA, QNB, Burgan (ON), Yapı Kredi, Odeabank ve Kuveyt Türk kredi kartı ekstresi;
+          Garanti BBVA, QNB ve Odeabank dönem içi işlemler (PDF); Kuveyt Türk &quot;Dönem İçi Harcamalar&quot; ekran görüntüsü; Odeabank vadesiz hesap dökümü.
+          Dosya yalnız bu tarayıcıda okunur, hiçbir sunucuya gönderilmez. Diğer bankalar örnekleri geldikçe eklenecek.
         </div>
         {draftCount > 0 && step === 'upload' && (
           <Link href="/ekstre-yukle/taslaklar" className="rounded-xl border border-border bg-card px-4 py-3 text-sm flex items-center justify-between gap-3 hover:bg-muted/40 transition-colors">

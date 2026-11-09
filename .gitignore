@@ -51,3 +51,6 @@ next-env.d.ts
 repomix-output.txt
 # tsc artımlı derleme önbelleği
 tsconfig*.tsbuildinfo
+
+# görüntüden okuma dosyaları (scripts/copy-ocr-assets.mjs üretir)
+/public/ocr/

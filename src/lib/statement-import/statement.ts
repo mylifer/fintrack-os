@@ -5,6 +5,8 @@ import { parseOdeabankAccount } from './odeabank-account'
 import { parseOdeabankCard } from './odeabank-card'
 import { parseOdeabankPeriod } from './odeabank-period'
 import { parseKuveytCard } from './kuveyt-card'
+import { parseKuveytScreenshot } from './kuveyt-period'
+import type { OcrPage } from './ocr'
 import { parseQnbPeriod, parseQnbStatement } from './qnb-card'
 import { parseBurganCard } from './burgan-card'
 import { parseYapiKrediCard } from './yapikredi-card'
@@ -112,4 +114,11 @@ export function parseStatement(pages: PdfPage[]): ParsedStatement {
   const parsed = parseGarantiCard(pages) ?? parseQnbStatement(pages) ?? parseBurganCard(pages) ?? parseYapiKrediCard(pages) ?? parseQnbPeriod(pages) ?? parseGarantiPeriod(pages) ?? parseOdeabankCard(pages) ?? parseKuveytCard(pages) ?? parseOdeabankPeriod(pages) ?? parseOdeabankAccount(pages)
   if (parsed) return parsed
   throw new Error('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA, QNB, Burgan (ON), Yapı Kredi, Odeabank ve Kuveyt Türk kredi kartı ekstresi, Garanti BBVA, QNB ve Odeabank dönem içi işlemler ve Odeabank vadesiz hesap dökümü (PDF) destekleniyor.')
+}
+
+/** Ekran görüntüsü (OCR) — yalnız ekstresi PDF olarak alınamayan dönem içi listeler. */
+export function parseScreenshot(page: OcrPage): ParsedStatement {
+  const parsed = parseKuveytScreenshot(page)
+  if (parsed) return parsed
+  throw new Error('Bu ekran görüntüsünün biçimi henüz tanınmıyor. Şimdilik Kuveyt Türk "Dönem İçi Harcamalar" ekranı destekleniyor; diğer bankalar için PDF ekstre yükleyin.')
 }
