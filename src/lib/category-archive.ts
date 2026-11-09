@@ -49,6 +49,26 @@ export function restorableSubtreeIds(
   )
 }
 
+/**
+ * Arşivli ÜST kategoriler, kökten aşağı. Arşivli bir üstün altındaki kategori
+ * tek başına geri yüklenirse aktif alt kategori arşivli üstün altında kalırdı
+ * (ağaçta görünmez); geri yüklemede bunlar da geri getirilir — önce kök.
+ */
+export function archivedAncestorIds(id: string, categories: readonly Category[]): string[] {
+  const byId = new Map(categories.map(c => [c.id, c]))
+  const out: string[] = []
+  const seen = new Set<string>([id])
+  let parentId = byId.get(id)?.parentId
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId)
+    const parent = byId.get(parentId)
+    if (!parent) break
+    if (parent.isArchived) out.push(parent.id)
+    parentId = parent.parentId
+  }
+  return out.reverse()
+}
+
 const GROUPS_KEY = 'categories.archiveGroups'
 
 function readGroups(): Record<string, string[]> {

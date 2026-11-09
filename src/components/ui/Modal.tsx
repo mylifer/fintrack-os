@@ -42,8 +42,9 @@ export function Modal({ open, onClose, title, children, size = 'md', dismissible
             <DialogTitle className="text-base font-semibold text-foreground">
               {title}
             </DialogTitle>
+            {/* onClick verilmez: DialogClose zaten onOpenChange(false) → onClose
+                çağırır; ikisi birden onClose'u iki kez tetikliyordu. */}
             <DialogClose
-              onClick={onClose}
               className="w-8 h-8 flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               aria-label="Kapat"
             >

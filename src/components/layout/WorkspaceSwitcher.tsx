@@ -20,6 +20,7 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
   const [creating, setCreating]   = useState(false)
   const [name, setName]           = useState('')
   const [switching, setSwitching] = useState(false)
+  const [error, setError]         = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -30,6 +31,7 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
         setOpen(false)
         setCreating(false)
         setName('')
+        setError(null)
       }
     }
     if (open) document.addEventListener('pointerdown', onClickOutside)
@@ -43,11 +45,16 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
   async function handleSelect(id: string) {
     if (id === activeId) { setOpen(false); return }
     setSwitching(true)
+    setError(null)
     try {
       await setActive(id)
+      setOpen(false)
+    } catch (err) {
+      // Hata yutulmasın: menü açık kalır, nedeni gösterilir
+      console.error('[workspace:switch]', err)
+      setError('Çalışma alanına geçilemedi. Tekrar deneyin.')
     } finally {
       setSwitching(false)
-      setOpen(false)
     }
   }
 
@@ -56,14 +63,19 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
     const trimmed = name.trim()
     if (!trimmed) return
     setSwitching(true)
+    setError(null)
     try {
       const ws = await add(trimmed)
       await setActive(ws.id)
-    } finally {
-      setSwitching(false)
       setCreating(false)
       setName('')
       setOpen(false)
+    } catch (err) {
+      // Yazılan ad kaybolmasın; form açık kalır, yeniden denenebilir
+      console.error('[workspace:create]', err)
+      setError('Çalışma alanı oluşturulamadı. Tekrar deneyin.')
+    } finally {
+      setSwitching(false)
     }
   }
 
@@ -125,6 +137,10 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
             </button>
           ))}
 
+          {error && (
+            <p role="alert" className="px-3 py-1.5 text-xs text-destructive">{error}</p>
+          )}
+
           <div className="border-t border-border mt-1 pt-1">
             {creating ? (
               <form onSubmit={handleCreate} className="px-3 py-1.5 flex items-center gap-1.5">
@@ -138,7 +154,7 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
                 <button
                   type="submit"
                   className="h-8 px-2.5 rounded-lg bg-primary text-white text-xs font-semibold disabled:opacity-50"
-                  disabled={!name.trim()}
+                  disabled={!name.trim() || switching}
                 >
                   Ekle
                 </button>

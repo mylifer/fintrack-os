@@ -26,24 +26,33 @@ export function MfaCodeForm({ onVerified, onCancel, submitLabel = 'Doğrula' }: 
     setError('')
     setLoading(true)
 
-    const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
-    const totp = factors?.totp ?? []
-    if (listError || totp.length === 0) {
-      setError('Hesabınızda doğrulama uygulaması bulunamadı.')
-      setLoading(false)
-      return
-    }
-
-    for (const factor of totp) {
-      const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code: code.trim() })
-      if (!error) {
-        await onVerified()
+    // Ağ hatası ya da onVerified (ör. uygulamaya giriş) fırlatırsa düğme
+    // "yükleniyor"da takılı kalmasın — hata gösterilir, yeniden denenebilir.
+    // Başarıda loading açık kalır: sayfa yönlendiriliyor.
+    try {
+      const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
+      const totp = factors?.totp ?? []
+      if (listError || totp.length === 0) {
+        setError('Hesabınızda doğrulama uygulaması bulunamadı.')
+        setLoading(false)
         return
       }
-    }
 
-    setError('Kod hatalı ya da süresi geçmiş. Uygulamadaki güncel kodu girin.')
-    setLoading(false)
+      for (const factor of totp) {
+        const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code: code.trim() })
+        if (!error) {
+          await onVerified()
+          return
+        }
+      }
+
+      setError('Kod hatalı ya da süresi geçmiş. Uygulamadaki güncel kodu girin.')
+      setLoading(false)
+    } catch (err) {
+      console.error('[mfa:verify]', err)
+      setError('Doğrulama tamamlanamadı. Bağlantınızı kontrol edip tekrar deneyin.')
+      setLoading(false)
+    }
   }
 
   return (

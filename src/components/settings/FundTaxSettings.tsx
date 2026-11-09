@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { useInvestmentStore, useSettingsStore } from '@/store'
 import { isTefasAsset, tefasAsset, tefasCodesIn } from '@/lib/tefas'
@@ -17,26 +17,41 @@ import { holdingTax } from '@/lib/utils/fund-tax'
    tarihe göre değişir, bazı fonlarda istisna vardır. Kapalıyken hiçbir tutar
    etkilenmez. Tercih bu tarayıcıda saklanır (includeFundGain ile aynı yer). */
 
-/** Oran alanı — boş bırakılınca fon varsayılan orana döner. */
+/** "0,5" / "0.5" → 0.5; boş → null. Geçersizse 0. Aralık (0–100) store'da
+ *  kırpılır (clampRate). */
+function parseRateInput(v: string): number | null {
+  const t = v.trim().replace(',', '.')
+  if (t === '') return null
+  return parseFloat(t) || 0
+}
+
+/** Oran alanı — boş bırakılınca fon varsayılan orana döner. Yazılırken alan
+ *  kullanıcının metnini korur (taslak): "0" yazınca alan boşalıp "0,5" → 5
+ *  olmasın; değer her tuşta kaydedilir, odak gidince store'daki değer görünür.
+ *  type="text" + inputMode="decimal": Türkçe klavyedeki virgül de kabul edilir. */
 function RateInput({ value, placeholder, onChange, label }: {
   value: string
   placeholder: string
   onChange: (v: string) => void
   label: string
 }) {
+  const [draft, setDraft] = useState<string | null>(null)
   return (
     <div className="relative w-[92px] flex-shrink-0">
       <input
-        type="number"
+        type="text"
         inputMode="decimal"
-        min={0}
-        max={100}
-        step="0.1"
-        value={value}
+        value={draft ?? value}
         placeholder={placeholder}
         aria-label={label}
-        onChange={e => onChange(e.target.value)}
-        className="h-8 w-full rounded-lg border border-input bg-background dark:bg-muted pl-2.5 pr-6 text-sm tabular-nums transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        onChange={e => {
+          const v = e.target.value
+          if (!/^\d*[.,]?\d*$/.test(v.trim())) return
+          setDraft(v)
+          onChange(v)
+        }}
+        onBlur={() => setDraft(null)}
+        className="h-8 w-full rounded-lg border border-input bg-background dark:bg-muted pl-2.5 pr-6 text-sm tabular-nums transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       />
       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
     </div>
@@ -113,7 +128,7 @@ export function FundTaxSettings() {
               label="Varsayılan stopaj oranı"
               value={defaultRate ? String(defaultRate) : ''}
               placeholder="0"
-              onChange={v => setDefault(parseFloat(v) || 0)}
+              onChange={v => setDefault(parseRateInput(v) ?? 0)}
             />
           </div>
 
@@ -150,7 +165,7 @@ export function FundTaxSettings() {
                         label={`${code} stopaj oranı`}
                         value={own === undefined ? '' : String(own)}
                         placeholder={String(defaultRate)}
-                        onChange={v => setRate(code, v.trim() === '' ? null : (parseFloat(v) || 0))}
+                        onChange={v => setRate(code, parseRateInput(v))}
                       />
                     </div>
                   )

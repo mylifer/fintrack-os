@@ -16,12 +16,23 @@ function emit() {
   for (const listener of listeners) listener()
 }
 
+function applyTheme(theme: string) {
+  document.documentElement.classList.toggle('dark', theme === 'dark')
+}
+
 function subscribe(onStoreChange: () => void) {
   listeners.add(onStoreChange)
-  window.addEventListener('storage', onStoreChange)
+  // Başka sekmede değişen tema: yalnız ikon değil, <html class="dark"> da
+  // güncellenmeli — yoksa ikon "koyu" derken sayfa açık kalıyordu.
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== null && e.key !== THEME_KEY) return
+    applyTheme(getSnapshot())
+    onStoreChange()
+  }
+  window.addEventListener('storage', onStorage)
   return () => {
     listeners.delete(onStoreChange)
-    window.removeEventListener('storage', onStoreChange)
+    window.removeEventListener('storage', onStorage)
   }
 }
 
@@ -41,11 +52,7 @@ export function ThemeToggle() {
   function toggle() {
     const next = isDark ? 'light' : 'dark'
     localStorage.setItem(THEME_KEY, next)
-    if (next === 'dark') {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
+    applyTheme(next)
     emit()
   }
 

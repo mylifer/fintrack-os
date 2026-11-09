@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef, useId } from 'react'
 import { Popover } from 'radix-ui'
-import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { CategoryIcon } from './CategoryIcon'
 import { cn } from '@/lib/utils'
 import { compareCategoriesByName } from '@/lib/utils/categories'
@@ -56,6 +56,11 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   const searchRef = useRef<HTMLInputElement>(null)
   // Alt kolonlar sağa sığmıyorsa (ör. ekranın sağındaki çekmecede) sola açılır
   const [flip, setFlip] = useState(false)
+  // Dokunmatik: üzerine gelme yok — alt kategorisi olan satıra dokunmak onu
+  // SEÇMEZ, aynı kolonda alt kategorilerine iner (yığın: inilen üstler). Üstün
+  // kendisi listenin başındaki "… (tümü)" satırıyla seçilir. Fare davranışı aynı.
+  const [drillPath, setDrillPath] = useState<string[]>([])
+  const pointerType = useRef<string>('mouse')
 
   const active = categories.filter(c => !c.isArchived)
 
@@ -78,8 +83,10 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   }, [query, active])
 
   function select(id: string) {
-    onChange(id); setOpen(false); setHoveredL0(null); setHoveredL1(null); setQuery('')
+    onChange(id); setOpen(false); setHoveredL0(null); setHoveredL1(null); setQuery(''); setDrillPath([])
   }
+  const drillId = drillPath[drillPath.length - 1] ?? null
+  const drillCat = drillId ? active.find(c => c.id === drillId) : undefined
   function hoverL0(id: string) {
     const r = document.getElementById(listId)?.getBoundingClientRect()
     if (r) {
@@ -130,7 +137,15 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
                 taken && 'cursor-not-allowed',
               )}
               onMouseEnter={() => onHover?.(cat.id)}
-              onClick={() => { if (!taken) onSelect(cat.id) }}
+              onPointerDown={e => { pointerType.current = e.pointerType }}
+              onClick={() => {
+                if (hasChildren && pointerType.current !== 'mouse') {
+                  setDrillPath(p => [...p, cat.id])
+                  setHoveredL0(null); setHoveredL1(null)   // dokunuşun öykünmüş hover'ı yan kolon açmasın
+                  return
+                }
+                if (!taken) onSelect(cat.id)
+              }}
             >
               <CategoryIcon icon={cat.icon} color={cat.color} size={iconSize} className="shrink-0" />
               <span className="flex-1 truncate">{cat.name}</span>
@@ -143,7 +158,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
   }
 
   return (
-    <Popover.Root open={open} onOpenChange={v => { setOpen(v); if (!v) { setHoveredL0(null); setHoveredL1(null); setQuery('') } }}>
+    <Popover.Root open={open} onOpenChange={v => { setOpen(v); if (!v) { setHoveredL0(null); setHoveredL1(null); setQuery(''); setDrillPath([]) } }}>
 
       {/* ── Trigger ── */}
       <Popover.Trigger asChild>
@@ -198,7 +213,7 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
               ref={searchRef}
               type="text"
               value={query}
-              onChange={e => { setQuery(e.target.value); setHoveredL0(null); setHoveredL1(null) }}
+              onChange={e => { setQuery(e.target.value); setHoveredL0(null); setHoveredL1(null); setDrillPath([]) }}
               placeholder="Kategori ara..."
               className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
             />
@@ -243,6 +258,31 @@ export function CategoryCascadeSelect({ categories, value, onChange, error, plac
                   </div>
                 )
               })}
+            </div>
+          ) : drillCat ? (
+            /* ── Dokunmatik: tek kolonda alt kategoriler ── */
+            <div style={{ padding: 4, maxHeight: MAX_H, overflowY: 'auto' }} onWheel={handleWheel}>
+              <div className={cn(ITEM_DEF, 'text-muted-foreground')} onClick={() => setDrillPath(p => p.slice(0, -1))}>
+                <ChevronLeftIcon className="size-3.5 shrink-0" />
+                <span className="flex-1 truncate">Geri</span>
+              </div>
+              {(() => {
+                const taken = !!disabledIds?.has(drillCat.id) && drillCat.id !== value
+                return (
+                  <div
+                    aria-disabled={taken || undefined}
+                    className={cn(
+                      drillCat.id === value ? ITEM_ACT : taken ? `${ITEM} opacity-40` : ITEM_DEF,
+                      taken && 'cursor-not-allowed',
+                    )}
+                    onClick={() => { if (!taken) select(drillCat.id) }}
+                  >
+                    <CategoryIcon icon={drillCat.icon} color={drillCat.color} size={13} className="shrink-0" />
+                    <span className="flex-1 truncate font-medium">{drillCat.name} (tümü)</span>
+                  </div>
+                )
+              })()}
+              {renderItemList({ items: getChildren(drillCat.id), onSelect: select, iconSize: 13 })}
             </div>
           ) : (
             /* ── Cascade (default) ── */
