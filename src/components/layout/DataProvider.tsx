@@ -7,7 +7,7 @@ import { startAutoSync, guardUserSwitch, lastPullWasAuthoritative, type SyncTabl
 import { reloadAllStores, reloadTable } from '@/lib/reload-stores'
 import { startRealtime } from '@/lib/sync/realtime'
 import { useNotificationsStore } from '@/store/notifications.store'
-import { currentMonthYear, today } from '@/lib/utils/date'
+import { today } from '@/lib/utils/date'
 import { maybeAutoBackup } from '@/lib/auto-backup'
 import { installErrorReporter } from '@/lib/error-reporter'
 import { fixForeignInvestmentLedger } from '@/lib/fix-investment-ledger'
@@ -125,18 +125,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const check = () => {
       const day = today()
       if (day === lastDay) return
-      const prevDay = lastDay
       lastDay = day
       const { transactions } = useTransactionStore.getState()
       useAccountStore.getState().recomputeBalances(transactions)
-      // Ay döndüyse ve kullanıcı ay gezintisi yapmamışsa (seçili ay hâlâ biten
-      // ay) dashboard/bütçe kartları yeni aya geçsin — günlerce açık kalan PWA'da
+      // Seçili dönem bugüne GÖRELİ tutulur (bkz. ui.store): gün dönünce "bu ay /
+      // bu hafta" aralıkları yeniden hesaplansın — günlerce açık kalan PWA'da
       // "Bu ay harcama limitleri" önceki ayda takılı kalıyordu.
-      if (prevDay.slice(0, 7) !== day.slice(0, 7)) {
-        const { selectedPeriod, setPeriod } = useUIStore.getState()
-        const [py, pm] = prevDay.split('-').map(Number)
-        if (selectedPeriod.year === py && selectedPeriod.month === pm) setPeriod(currentMonthYear())
-      }
+      useUIStore.getState().setPeriodDay(day)
       // Bildirim sayacı today()'e bağlı türetilir — gün atlayınca tazele
       useNotificationsStore.getState().refresh()
     }

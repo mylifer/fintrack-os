@@ -2,7 +2,7 @@
 
 export type CurrencyCode = 'TRY' | 'USD' | 'EUR' | 'GBP'
 
-export type PeriodType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'all'
+export type PeriodType = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'all'
 
 // ─── Workspace (Çalışma Alanı) ──────────────────────────────────────────────
 // Aynı kullanıcıya bağlı, birbirini etkilemeyen birden fazla bütçe/hesap alanı.

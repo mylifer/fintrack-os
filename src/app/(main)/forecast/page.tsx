@@ -22,10 +22,10 @@ const HORIZONS: { key: Horizon; label: string }[] = [
   { key: 3,     label: '3 Ay'  },
   { key: 6,     label: '6 Ay'  },
   { key: 12,    label: '12 Ay' },
-  { key: 'all', label: 'Tüm Zamanlar' },
+  { key: 'all', label: 'Tüm Geçmiş' },
 ]
 
-// 'Tüm Zamanlar' geçmişin tamamını gösterir; ileri projeksiyon en geniş
+// 'Tüm Geçmiş' geçmişin tamamını gösterir; ileri projeksiyon en geniş
 // standart ufukla (12 ay) devam eder.
 const ALL_TIME_FORWARD_MONTHS = 12
 
@@ -126,7 +126,7 @@ export default function ForecastPage() {
     }))
   }, [investTxs, prices, fundPrices])
 
-  // 'Tüm Zamanlar': ilk işlem tarihinden bugüne gerçek bakiye geçmişi.
+  // 'Tüm Geçmiş': ilk işlem tarihinden bugüne gerçek bakiye geçmişi.
   // Bugünün noktası projeksiyonun ilk noktasıyla aynı değerdir; grafikte
   // teklemesin diye geçmişin son (bugün) noktası atılır.
   const history = useMemo(

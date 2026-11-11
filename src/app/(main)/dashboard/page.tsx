@@ -8,17 +8,18 @@ import {
   useInvestmentStore, useBudgetStore, useCategoryStore,
   useDebtStore, useRecurringStore, usePeopleStore, useSettingsStore,
 } from '@/store'
-import { format, parseISO, startOfMonth, subDays, differenceInDays } from 'date-fns'
+import { format, parseISO, subDays, differenceInDays } from 'date-fns'
 import { calcNetWorth, calcTotalAssets, calcPeriodFlow, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted, isRealizedInvestmentPnlTx, resolveBudgetCategories } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { computeHoldings } from '@/store/investment.store'
 import { tefasCodesIn } from '@/lib/tefas'
 import { calcFundPeriodGain, type FundPricePoint } from '@/lib/utils/fund-period-gain'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
-import { getPeriodRangeAt, formatPeriodLabel, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
+import { getPeriodRangeAt, formatDateShort, formatDate, daysUntil, isOverdue, today } from '@/lib/utils/date'
 import { approveRecurring } from '@/lib/utils/recurring-actions'
 import dynamic from 'next/dynamic'
 import { useCountUp } from '@/lib/hooks/useCountUp'
+import { usePeriod, useSelectedMonth } from '@/lib/hooks/usePeriod'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/button'
@@ -43,14 +44,14 @@ const NetWorthChart = dynamic(
 )
 
 const PERIOD_LABEL: Record<PeriodType, string> = {
-  daily: 'Bugün', weekly: 'Bu Hafta', monthly: 'Bu Ay',
+  daily: 'Bugün', weekly: 'Bu Hafta', monthly: 'Bu Ay', quarterly: 'Son 3 Ay',
   yearly: 'Bu Yıl', all: 'Tüm Zamanlar',
 }
 
 // Gelir kartındaki fon getirisi satırının dönem sıfatı ('Tüm Zamanlar'da
 // yalnız gerçekleşmemiş K/Z — satış kârları zaten gelir işlemi olarak sayılır)
 const FUND_GAIN_LABEL: Record<PeriodType, string> = {
-  daily: 'günlük', weekly: 'bu haftaki', monthly: 'bu ayki',
+  daily: 'günlük', weekly: 'bu haftaki', monthly: 'bu ayki', quarterly: 'son 3 aylık',
   yearly: 'bu yılki', all: 'toplam',
 }
 
@@ -61,8 +62,10 @@ const ACCOUNT_TYPE: Record<string, string> = {
 
 export default function DashboardPage() {
   const openModal      = useUIStore(s => s.openModal)
-  const periodType     = useUIStore(s => s.periodType)
-  const selectedPeriod = useUIStore(s => s.selectedPeriod)
+  // Sayfalar arası paylaşılan dönem (bkz. ui.store) — İşlemler/Raporlar/Bütçeler ile aynı
+  const { type: periodType, offset: periodOffset, custom, from, to, label: periodLabel, isCurrent: isCurrentPeriod } = usePeriod()
+  const customActive   = !!custom
+  const [selectedMonth] = useSelectedMonth()
 
   const transactions = useTransactionStore(s => s.transactions)
   const allAccounts  = useAccountStore(s => s.accounts)
@@ -92,35 +95,6 @@ export default function DashboardPage() {
   const allDebts     = useDebtStore(s => s.debts)
   const getDue       = useRecurringStore(s => s.getDue)
   const people       = usePeopleStore(s => s.people)
-
-  // Özel (custom) tarih aralığı — sayfa-yerel; global periodType'a dokunmaz.
-  // Raporlar sayfasındaki 'custom' preset ile aynı mantık: girilmemiş uçlar için
-  // varsayılan ay başı → bugün. Aktifken PeriodTabs sekmeleri highlight'ı kaybeder.
-  const [customActive, setCustomActive] = useState(false)
-  const [customFrom,   setCustomFrom]   = useState('')
-  const [customTo,     setCustomTo]     = useState('')
-
-  // Dönem gezintisi (hesap detayındaki ile aynı): 0 = içinde bulunulan dönem,
-  // −1 = önceki ay/hafta/yıl. Offset ait olduğu dönem türüyle birlikte tutulur;
-  // tür değişince türev olarak 0'a döner (efektle sıfırlamaya gerek kalmadan) —
-  // Aylık'ta Mart'a gidip Yıllık'a geçmek 2021'de bırakmasın.
-  const [navState, setNavState] = useState<{ type: PeriodType; offset: number }>({ type: periodType, offset: 0 })
-  const periodOffset = navState.type === periodType ? navState.offset : 0
-  const setPeriodOffset = (offset: number) => setNavState({ type: periodType, offset })
-
-  const { from, to } = useMemo(() => {
-    if (customActive) {
-      return {
-        from: customFrom || format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-        to:   customTo   || today(),
-      }
-    }
-    return getPeriodRangeAt(periodType, periodOffset)
-  }, [customActive, customFrom, customTo, periodType, periodOffset])
-
-  // Gezinti/özel aralık yokken (offset 0) canlı dönem — fon getirisinde 'Bugün'
-  // kısayolu yalnız burada geçerli, geçmiş günler tarihsel seriden hesaplanır.
-  const isCurrentPeriod = !customActive && periodOffset === 0
 
   // Seçili dönemin TEFAS fon getirisi. Dönem başı kapanışı için fon başına
   // günlük seri bir kez çekilir (kod+dönem anahtarıyla; tarihi veri değişmez).
@@ -188,7 +162,6 @@ export default function DashboardPage() {
   const netWorth    = calcNetWorth(accounts, prices) + investValue - debtBurden
   const totalAssets = calcTotalAssets(accounts, prices) + investValue
   // Gezinilen dönemde "Bu Ay" yanıltıcı olur → gerçek dönem adı ("Temmuz 2026")
-  const periodLabel = formatPeriodLabel(periodType, periodOffset)
   const prefix      = customActive ? 'Seçili Dönem' : isCurrentPeriod ? PERIOD_LABEL[periodType] : periodLabel
   const fundGainLabel = customActive ? 'seçili dönem' : isCurrentPeriod ? FUND_GAIN_LABEL[periodType] : periodLabel
 
@@ -248,7 +221,7 @@ export default function DashboardPage() {
     () => [...transactions].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 8),
     [transactions],
   )
-  const budgets = useMemo(() => getBudgets(selectedPeriod, reportTxs).slice(0, 5), [selectedPeriod, reportTxs, getBudgets])
+  const budgets = useMemo(() => getBudgets(selectedMonth, reportTxs).slice(0, 5), [selectedMonth, reportTxs, getBudgets])
   // Vadesi yakın olan üstte; vadesiz borçlar listenin sonunda
   const activeDebts = getActive()
     .sort((a, b) => (a.dueDate ?? '9999-12-31').localeCompare(b.dueDate ?? '9999-12-31'))
@@ -274,29 +247,7 @@ export default function DashboardPage() {
   return (
     <>
       <Header title="Dashboard" action={{ label: 'İşlem Ekle', onClick: () => openModal('add-transaction') }} />
-      <PeriodTabs
-        rightSlot={<FundGainToggle />}
-        // Özel aralık açıkken gezinti bir şeyi değiştirmez → gizlenir
-        nav={customActive ? undefined : {
-          offset:   periodOffset,
-          label:    periodLabel,
-          onChange: setPeriodOffset,
-        }}
-        custom={{
-          active: customActive,
-          from: customFrom,
-          to: customTo,
-          onActivate: () => { setCustomActive(true); setPeriodOffset(0) },
-          // Her dönem sekmesi tıklamasında çalışır; "bugüne dön" demektir (aynı
-          // sekmeye basmak da gezintiyi sıfırlasın — tür değişmediğinde türev
-          // sıfırlama devreye girmez)
-          onExit: () => { setCustomActive(false); setPeriodOffset(0) },
-          onChange: ({ from: f, to: t }) => {
-            if (f !== undefined) setCustomFrom(f)
-            if (t !== undefined) setCustomTo(t)
-          },
-        }}
-      />
+      <PeriodTabs rightSlot={<FundGainToggle />} />
 
       <div className="p-6 space-y-6">
 

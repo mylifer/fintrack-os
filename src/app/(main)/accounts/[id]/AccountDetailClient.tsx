@@ -14,7 +14,8 @@ import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { txHasCategory } from '@/lib/utils/categorySplits'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
-import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
+import { today } from '@/lib/utils/date'
+import { usePeriod } from '@/lib/hooks/usePeriod'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { isFutureDate } from '@/components/transactions/views/shared'
 import { Badge }              from '@/components/ui/Badge'
@@ -50,7 +51,8 @@ export default function AccountDetailClient({
   const txsReady      = useTransactionStore(s => s.ready)
   const account       = accounts.find(a => a.id === id)
   const openModal     = useUIStore(s => s.openModal)
-  const periodType    = useUIStore(s => s.periodType)
+  // Sayfalar arası paylaşılan dönem (bkz. ui.store)
+  const { type: periodType, from, to } = usePeriod()
   const people        = usePeopleStore(s => s.people)
   const categories    = useCategoryStore(s => s.categories)
   // Kalıcı tercih (settings.store) — İşlemler sayfasıyla ortak, yenilemede korunur
@@ -70,23 +72,9 @@ export default function AccountDetailClient({
   const [typeFilter, setTypeFilter]         = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [sortOption, setSortOption]         = useState<TxSortOption>('date-desc')
-  const [periodOffset, setPeriodOffset]     = useState(0)
 
   const recurring = useRecurringStore(s => s.recurring)
 
-  // Dönem türü değişince gezinti sıfırlanır (Aylık'ta Ağustos'a gidip Yıllık'a
-  // geçmek 2027'de bırakmasın). Render sırasında ayarlanır — effect'te
-  // sıfırlamak bir kare boyunca eski ofsetle yanlış dönemi çiziyordu.
-  const [offsetFor, setOffsetFor] = useState(periodType)
-  if (offsetFor !== periodType) {
-    setOffsetFor(periodType)
-    setPeriodOffset(0)
-  }
-
-  const { from, to } = useMemo(
-    () => getPeriodRangeAt(periodType, periodOffset),
-    [periodType, periodOffset],
-  )
 
   // Planlanan gelecek işlemler — bu hesaba dokunan şablonlardan (bkz. planned.ts)
   const projectedTxs = useMemo(() => {
@@ -199,11 +187,6 @@ export default function AccountDetailClient({
       />
 
       <PeriodTabs
-        nav={{
-          offset:   periodOffset,
-          label:    formatPeriodLabel(periodType, periodOffset),
-          onChange: setPeriodOffset,
-        }}
         rightSlot={
           <label className="flex items-center gap-2 cursor-pointer select-none whitespace-nowrap">
             <input

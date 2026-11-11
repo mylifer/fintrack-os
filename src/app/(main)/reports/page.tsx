@@ -6,9 +6,8 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { useShallow } from 'zustand/react/shallow'
 import {
   format, parseISO, startOfMonth, endOfMonth,
-  subMonths, subDays, startOfYear, endOfYear,
-  differenceInDays, addMonths, addDays, addWeeks, addYears,
-  startOfWeek, endOfWeek,
+  subMonths, subDays,
+  differenceInDays, addMonths, addDays,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { comparisonRange, type CompareMode } from '@/lib/utils/period-compare'
@@ -17,7 +16,11 @@ import { Header }           from '@/components/layout/Header'
 import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useSettingsStore, useDebtStore } from '@/store'
 import { getAssetPrice, computeHoldings } from '@/store/investment.store'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
-import { SelectField } from '@/components/ui/Select'
+import { PeriodTabs } from '@/components/ui/PeriodTabs'
+import { AccountFilter } from '@/components/ui/AccountFilter'
+import { FundGainToggle } from '@/components/dashboard/FundGainToggle'
+import { usePeriod } from '@/lib/hooks/usePeriod'
+import { allTimeRange } from '@/lib/period'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { normalizeTag, tagKey, tagColor } from '@/lib/utils/tags'
 import { isReconciliation } from '@/lib/utils/reconciliation'
@@ -42,97 +45,6 @@ import type { CategoryTrendPoint }  from '@/components/reports/_CategoryTrendCha
 import type { Account, Transaction, PriceData, InvestmentTransaction, TefasFundPrice, Debt } from '@/types'
 
 /* ── Types ────────────────────────────────────────────────────────── */
-
-type Preset = 'today' | 'this-week' | 'this-month' | 'last-month' | '3-months' | 'this-year' | 'all-time' | 'custom'
-
-const PRESETS: { key: Preset; label: string }[] = [
-  { key: 'today',      label: 'Bugün' },
-  { key: 'this-week',  label: 'Bu Hafta' },
-  { key: 'this-month', label: 'Bu Ay' },
-  { key: 'last-month', label: 'Geçen Ay' },
-  { key: '3-months',   label: 'Son 3 Ay' },
-  { key: 'this-year',  label: 'Bu Yıl' },
-  { key: 'all-time',   label: 'Tüm Zamanlar' },
-  { key: 'custom',     label: 'Özel' },
-]
-
-// Gezinti birimi — ‹ › ile kaydırılabilen presetler ve kaydırma adımı. Burada
-// olmayanlar ('all-time', 'custom') sabit aralıktır, gezinti şeridi gizlenir.
-const PRESET_UNIT: Partial<Record<Preset, 'day' | 'week' | 'month' | 'year'>> = {
-  'today':      'day',
-  'this-week':  'week',
-  'this-month': 'month',
-  'last-month': 'month',
-  '3-months':   'month',  // 3 aylık pencere ay ay kayar
-  'this-year':  'year',
-}
-
-/* ── Data helpers ─────────────────────────────────────────────────── */
-
-/** Preset'in "şimdi" referansını `offset` birim kaydırır; aralık hesabı bunun
- *  üzerinden yürüdüğü için tek noktadan tüm presetler gezinilebilir olur. */
-function presetAnchor(preset: Preset, offset: number): Date {
-  const now = new Date()
-  if (!offset) return now
-  switch (PRESET_UNIT[preset]) {
-    case 'day':   return addDays(now, offset)
-    case 'week':  return addWeeks(now, offset)
-    case 'month': return addMonths(now, offset)
-    case 'year':  return addYears(now, offset)
-    default:      return now
-  }
-}
-
-/** Gezinilen dönemin insan-okur adı — ör. "Temmuz 2026", "Haz – Ağu 2026". */
-function formatPresetLabel(preset: Preset, offset: number): string {
-  const { from, to } = getPresetRange(preset, '', '', offset)
-  switch (preset) {
-    case 'today':      return format(parseISO(from), 'd MMMM yyyy', { locale: tr })
-    case 'this-week':  return `${format(parseISO(from), 'd MMM', { locale: tr })} – ${format(parseISO(to), 'd MMM', { locale: tr })}`
-    case 'this-month':
-    case 'last-month': return format(parseISO(from), 'MMMM yyyy', { locale: tr })
-    case '3-months':   return `${format(parseISO(from), 'MMM', { locale: tr })} – ${format(parseISO(to), 'MMM yyyy', { locale: tr })}`
-    case 'this-year':  return format(parseISO(from), 'yyyy')
-    default:           return ''
-  }
-}
-
-function getPresetRange(preset: Preset, customFrom: string, customTo: string, offset = 0) {
-  const now = presetAnchor(preset, offset)
-  switch (preset) {
-    case 'today': {
-      const t = format(now, 'yyyy-MM-dd')
-      return { from: t, to: t }
-    }
-    case 'this-week':
-      return {
-        from: format(startOfWeek(now, { locale: tr }), 'yyyy-MM-dd'),
-        to:   format(endOfWeek(now,   { locale: tr }), 'yyyy-MM-dd'),
-      }
-    case 'this-month':
-      return { from: format(startOfMonth(now), 'yyyy-MM-dd'), to: format(endOfMonth(now), 'yyyy-MM-dd') }
-    case 'last-month': {
-      const lm = subMonths(now, 1)
-      return { from: format(startOfMonth(lm), 'yyyy-MM-dd'), to: format(endOfMonth(lm), 'yyyy-MM-dd') }
-    }
-    case '3-months':
-      return {
-        from: format(startOfMonth(subMonths(now, 2)), 'yyyy-MM-dd'),
-        to:   format(endOfMonth(now), 'yyyy-MM-dd'),
-      }
-    case 'this-year':
-      return { from: format(startOfYear(now), 'yyyy-MM-dd'), to: format(endOfYear(now), 'yyyy-MM-dd') }
-    case 'all-time':
-      // Gerçek aralık işlemlerden hesaplanır (bkz. dateRange useMemo); burada
-      // yalnızca işlem yokken kullanılan güvenli varsayılan.
-      return { from: format(startOfYear(now), 'yyyy-MM-dd'), to: format(endOfYear(now), 'yyyy-MM-dd') }
-    case 'custom':
-      return {
-        from: customFrom || format(startOfMonth(now), 'yyyy-MM-dd'),
-        to:   customTo   || format(endOfMonth(now),   'yyyy-MM-dd'),
-      }
-  }
-}
 
 function buildCategoryData(
   transactions: Transaction[],
@@ -456,28 +368,16 @@ export default function ReportsPage() {
   const investTxs     = useInvestmentStore(s => s.transactions)
   const fetchPrices   = useInvestmentStore(s => s.fetchPrices)
 
-  const [preset,       setPreset]       = useState<Preset>('this-month')
-  const [customFrom,   setCustomFrom]   = useState('')
-  const [customTo,     setCustomTo]     = useState('')
-
-  // Dönem gezintisi (dashboard/hesap detayı ile aynı ‹ › şeridi): 0 = preset'in
-  // kendi dönemi, −1 = bir önceki. Offset ait olduğu preset'le birlikte tutulur;
-  // preset değişince türev olarak 0'a döner — "Bu Ay"da Mart'a gidip "Bu Yıl"a
-  // geçmek 2021'de bırakmasın.
-  const [navState, setNavState] = useState<{ preset: Preset; offset: number }>({ preset: 'this-month', offset: 0 })
-  const presetOffset = navState.preset === preset ? navState.offset : 0
-  const setPresetOffset = (offset: number) => setNavState({ preset, offset })
-  const canNavigate  = PRESET_UNIT[preset] !== undefined
-  const periodLabel  = formatPresetLabel(preset, presetOffset)
-  // Gezinti dışındayken 'Bugün' preset'i fon getirisinde son-iki-kapanış kısayolunu
+  // Sayfalar arası paylaşılan dönem (bkz. ui.store) — Dashboard/İşlemler ile aynı
+  const { type: periodType, offset: periodOffset, custom, from: selFrom, to: selTo, label: periodLabel, isCurrent } = usePeriod()
+  // Gezinti dışındayken 'Günlük' fon getirisinde son-iki-kapanış kısayolunu
   // kullanır; geçmiş bir güne gidildiğinde tarihsel seri gerekir.
-  const isTodayPreset = preset === 'today' && presetOffset === 0
+  const isTodayPreset = periodType === 'daily' && isCurrent
   const [accountId,    setAccountId]    = useState('all')
   // Fon getirisi anahtarı, Dashboard'daki "Fon getirileri dahil" ile AYNI kalıcı
   // ayardır (settings.includeFundGain) → iki sayfa aynı dönem için aynı Net'i
   // gösterir; oturumlar arası korunur. Ayrı bir yerel state kullanılmıyor.
   const includeInvestmentIncome = useSettingsStore(s => s.includeFundGain)
-  const setIncludeInvestmentIncome = useSettingsStore(s => s.setIncludeFundGain)
   const [selectedCat,   setSelectedCat]   = useState<CategorySlice | null>(null)
   const [activeSliceIdx, setActiveSliceIdx] = useState<number | null>(null)
   // Gelir donut'u kendi drill-down seçimini tutar — gider seçimiyle çakışmasın,
@@ -511,27 +411,21 @@ export default function ReportsPage() {
     setDetailOpen(false)
   }, [])
 
+  // Dönem (başka bir sayfada da değişebilir) değişince drill-down seçimleri
+  // sıfırlanır — render sırasında, bayat seçim + yeni dönem hiç çizilmesin.
+  const selectionKey = custom ? `custom|${custom.from}|${custom.to}` : `${periodType}|${periodOffset}`
+  const [drillKey, setDrillKey] = useState(selectionKey)
+  if (drillKey !== selectionKey) {
+    setDrillKey(selectionKey)
+    resetDrilldown()
+  }
+
   const dateRange = useMemo(
     () => {
-      // "Tüm Zamanlar" → başlangıç en erken işlem tarihi, bitiş BUGÜN. Bitişi son
-      // işlem tarihine (max) sabitlemek yanlıştı: aralık kullanıcının son kaydından
-      // öteye geçmiyor, dolayısıyla bugüne kadarki fon değeri/dönem güncel fiyatla
-      // ölçülmüyordu. Başlangıç için 1970 gibi sabit erken tarih ise cash-flow
-      // grafiğinde onlarca boş ay üretirdi → en erken işlemden başlarız. İşlem
-      // yoksa (veya hepsi gelecek tarihliyse) getPresetRange varsayılanına düşer.
-      if (preset === 'all-time') {
-        let min = ''
-        for (const t of transactions) {
-          const d = t.date.slice(0, 10)
-          if (!d) continue
-          if (!min || d < min) min = d
-        }
-        const to = format(new Date(), 'yyyy-MM-dd') // bugüne kadar
-        if (min && min <= to) return { from: min, to }
-      }
-      return getPresetRange(preset, customFrom, customTo, presetOffset)
+      if (periodType === 'all' && !custom) return allTimeRange(transactions)
+      return { from: selFrom, to: selTo }
     },
-    [preset, customFrom, customTo, presetOffset, transactions],
+    [periodType, custom, selFrom, selTo, transactions],
   )
 
   /* ── Fon getirisi (gerçekleşmemiş) ──────────────────────────────────
@@ -736,94 +630,12 @@ export default function ReportsPage() {
     <>
       <Header title="Raporlar" />
 
-      {/* ── Filter bar ────────────────────────────────────────────── */}
-      <div className="px-6 py-3 border-b border-border/50 bg-card flex flex-wrap items-center gap-3 flex-shrink-0">
+      <PeriodTabs rightSlot={<FundGainToggle />} />
 
-        <div className="flex gap-0.5 bg-background p-1 rounded-xl">
-          {PRESETS.map(p => (
-            <button
-              key={p.key}
-              // Preset'e basmak "bugüne dön" demektir — aynı sekmeye tekrar
-              // basıldığında preset değişmediği için türev sıfırlama devreye girmez
-              onClick={() => { setPreset(p.key); setNavState({ preset: p.key, offset: 0 }); resetDrilldown() }}
-              className={[
-                'px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap',
-                preset === p.key ? 'bg-secondary text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground rounded-xl',
-              ].join(' ')}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Dönem gezintisi — sabit aralıklı presetlerde ('Tüm Zamanlar', 'Özel')
-            anlamsız, gizlenir */}
-        {canNavigate && (
-          <div className="flex items-center gap-0.5">
-            <button
-              onClick={() => { setPresetOffset(presetOffset - 1); resetDrilldown() }}
-              title="Önceki dönem"
-              className="w-11 h-11 lg:w-6 lg:h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-sm leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-            >
-              ‹
-            </button>
-            <button
-              onClick={() => { setPresetOffset(0); resetDrilldown() }}
-              title={presetOffset !== 0 ? 'Bugüne dön' : undefined}
-              className={[
-                'flex items-center px-2 min-h-11 lg:min-h-0 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors',
-                presetOffset !== 0 ? 'text-primary hover:bg-secondary/60' : 'text-foreground cursor-default',
-              ].join(' ')}
-            >
-              {periodLabel}
-            </button>
-            <button
-              onClick={() => { setPresetOffset(presetOffset + 1); resetDrilldown() }}
-              title="Sonraki dönem"
-              className="w-11 h-11 lg:w-6 lg:h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-sm leading-none text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-            >
-              ›
-            </button>
-          </div>
-        )}
-
-        {preset === 'custom' && (
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={customFrom}
-              onChange={e => { setCustomFrom(e.target.value); resetDrilldown() }}
-              className="border border-border rounded-xl px-2 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:border-primary"
-            />
-            <span className="text-muted-foreground text-xs">—</span>
-            <input
-              type="date"
-              value={customTo}
-              onChange={e => { setCustomTo(e.target.value); resetDrilldown() }}
-              className="border border-border rounded-xl px-2 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:border-primary"
-            />
-          </div>
-        )}
-
-        <label className="ml-auto flex items-center gap-2 cursor-pointer select-none whitespace-nowrap">
-          <input
-            type="checkbox"
-            checked={includeInvestmentIncome}
-            onChange={e => setIncludeInvestmentIncome(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
-          />
-          <span className="text-xs font-medium text-muted-foreground">Fon getirileri dahil</span>
-        </label>
-
-        <SelectField
-          value={accountId}
-          onChange={e => { setAccountId(e.target.value); resetDrilldown() }}
-          options={[
-            { value: 'all', label: 'Tüm Hesaplar' },
-            ...accounts.map(a => ({ value: a.id, label: a.name })),
-          ]}
-          className="w-fit bg-card text-xs"
-        />
+      {/* ── Hesap süzgeci ve araçlar ──────────────────────────────── */}
+      <div className="print:hidden px-4 lg:px-6 py-2 lg:py-3 border-b border-border/50 bg-card flex flex-wrap items-center gap-3 flex-shrink-0">
+        <AccountFilter value={accountId} onChange={id => { setAccountId(id); resetDrilldown() }} />
+        <div className="ml-auto flex items-center gap-3">
         <Link
           href="/reports/monthly"
           className="print:hidden inline-flex items-center px-3 h-8 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -831,6 +643,7 @@ export default function ReportsPage() {
           Aylık Özet
         </Link>
         <PrintButton />
+        </div>
       </div>
 
       <div className="p-6 flex flex-col gap-6 overflow-auto flex-1">
@@ -928,7 +741,7 @@ export default function ReportsPage() {
                       from:  dateRange.from,
                       to:    dateRange.to,
                       // Gezinilen dönemde "Bu Ay" yanıltıcı olur → gerçek dönem adı
-                      label: (presetOffset !== 0 && periodLabel) || PRESETS.find(p => p.key === preset)?.label || 'Dönem',
+                      label: periodLabel || 'Tüm Zamanlar',
                     })}
                     className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-accent transition-colors"
                     title="İşlemleri görüntüle"

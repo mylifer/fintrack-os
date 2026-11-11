@@ -1,55 +1,17 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear } from 'date-fns'
 import { Header } from '@/components/layout/Header'
-import { SelectField } from '@/components/ui/Select'
+import { PeriodTabs } from '@/components/ui/PeriodTabs'
+import { AccountFilter } from '@/components/ui/AccountFilter'
+import { FundGainToggle } from '@/components/dashboard/FundGainToggle'
+import { usePeriod } from '@/lib/hooks/usePeriod'
+import { allTimeRange } from '@/lib/period'
 import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useDebtStore, useSettingsStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
 import { excludeFuture } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { DetailedStats } from '@/components/reports/DetailedStats'
-
-/* ── Types & period helpers (same semantics as the Reports page) ──────── */
-
-type Preset = 'this-month' | 'last-month' | '3-months' | 'this-year' | 'all-time' | 'custom'
-
-const PRESETS: { key: Preset; label: string }[] = [
-  { key: 'this-month', label: 'Bu Ay' },
-  { key: 'last-month', label: 'Geçen Ay' },
-  { key: '3-months',   label: 'Son 3 Ay' },
-  { key: 'this-year',  label: 'Bu Yıl' },
-  { key: 'all-time',   label: 'Tüm Zamanlar' },
-  { key: 'custom',     label: 'Özel' },
-]
-
-function getPresetRange(preset: Preset, customFrom: string, customTo: string) {
-  const now = new Date()
-  switch (preset) {
-    case 'this-month':
-      return { from: format(startOfMonth(now), 'yyyy-MM-dd'), to: format(endOfMonth(now), 'yyyy-MM-dd') }
-    case 'last-month': {
-      const lm = subMonths(now, 1)
-      return { from: format(startOfMonth(lm), 'yyyy-MM-dd'), to: format(endOfMonth(lm), 'yyyy-MM-dd') }
-    }
-    case '3-months':
-      return {
-        from: format(startOfMonth(subMonths(now, 2)), 'yyyy-MM-dd'),
-        to:   format(endOfMonth(now), 'yyyy-MM-dd'),
-      }
-    case 'this-year':
-      return { from: format(startOfYear(now), 'yyyy-MM-dd'), to: format(endOfYear(now), 'yyyy-MM-dd') }
-    case 'all-time':
-      // Gerçek aralık işlemlerden hesaplanır (bkz. dateRange useMemo); burada
-      // yalnızca işlem yokken kullanılan güvenli varsayılan.
-      return { from: format(startOfYear(now), 'yyyy-MM-dd'), to: format(endOfYear(now), 'yyyy-MM-dd') }
-    case 'custom':
-      return {
-        from: customFrom || format(startOfMonth(now), 'yyyy-MM-dd'),
-        to:   customTo   || format(endOfMonth(now),   'yyyy-MM-dd'),
-      }
-  }
-}
 
 /* ── Page ─────────────────────────────────────────────────────────────── */
 
@@ -67,33 +29,15 @@ export default function StatisticsPage() {
   // aynı gelir/gideri göstersin (bkz. DetailedStats.period).
   const includeFundGain = useSettingsStore(s => s.includeFundGain)
 
-  const [preset,     setPreset]     = useState<Preset>('this-month')
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo,   setCustomTo]   = useState('')
   const [accountId,  setAccountId]  = useState('all')
 
+  // Sayfalar arası paylaşılan dönem (bkz. ui.store) — Raporlar ile aynı aralık
+  const { type: periodType, custom, from: selFrom, to: selTo } = usePeriod()
   const dateRange = useMemo(
-    () => {
-      // "Tüm Zamanlar" → aralığı en erken/en geç işlem tarihinden türet
-      // (Raporlar sayfasıyla aynı davranış). İşlem yoksa güvenli varsayılana düşer.
-      if (preset === 'all-time') {
-        let min = '', max = ''
-        for (const t of transactions) {
-          const d = t.date.slice(0, 10)
-          if (!d) continue
-          if (!min || d < min) min = d
-          if (!max || d > max) max = d
-        }
-        if (min && max) return { from: min, to: max }
-      }
-      return getPresetRange(preset, customFrom, customTo)
-    },
-    [preset, customFrom, customTo, transactions],
+    () => (periodType === 'all' && !custom ? allTimeRange(transactions) : { from: selFrom, to: selTo }),
+    [periodType, custom, selFrom, selTo, transactions],
   )
 
-  // Taksitli alışverişler Raporlar'daki gibi bölünmez: grup, satın alma ayına
-  // tek toplam gider olarak indirgenir (collapseInstallments). İndirgeme
-  // excludeFuture'dan ÖNCE olmalı — gelecek taksitler de toplama girsin.
   const reportTxs = useMemo(() => collapseInstallments(transactions), [transactions])
 
   // excludeFuture (isPosted): onay bekleyen/gelecek satırlar dönem gelir/gider
@@ -130,51 +74,9 @@ export default function StatisticsPage() {
     <>
       <Header title="İstatistikler" />
 
-      {/* ── Filter bar ────────────────────────────────────────────── */}
-      <div className="px-6 py-3 border-b border-border/50 bg-card flex flex-wrap items-center gap-3 flex-shrink-0">
-
-        <div className="flex gap-0.5 bg-background p-1 rounded-xl">
-          {PRESETS.map(p => (
-            <button
-              key={p.key}
-              onClick={() => setPreset(p.key)}
-              className={[
-                'px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap',
-                preset === p.key ? 'bg-secondary text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground rounded-xl',
-              ].join(' ')}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {preset === 'custom' && (
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={customFrom}
-              onChange={e => setCustomFrom(e.target.value)}
-              className="border border-border rounded-xl px-2 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:border-primary"
-            />
-            <span className="text-muted-foreground text-xs">—</span>
-            <input
-              type="date"
-              value={customTo}
-              onChange={e => setCustomTo(e.target.value)}
-              className="border border-border rounded-xl px-2 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:border-primary"
-            />
-          </div>
-        )}
-
-        <SelectField
-          value={accountId}
-          onChange={e => setAccountId(e.target.value)}
-          options={[
-            { value: 'all', label: 'Tüm Hesaplar' },
-            ...accounts.map(a => ({ value: a.id, label: a.name })),
-          ]}
-          className="ml-auto w-fit bg-card text-xs"
-        />
+      <PeriodTabs rightSlot={<FundGainToggle />} />
+      <div className="px-4 lg:px-6 py-2 lg:py-3 border-b border-border/50 bg-card flex flex-wrap items-center gap-3 flex-shrink-0">
+        <AccountFilter value={accountId} onChange={setAccountId} />
       </div>
 
       {/* ── Content ───────────────────────────────────────────────── */}

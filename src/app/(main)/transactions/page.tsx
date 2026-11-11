@@ -7,7 +7,8 @@ import { SelectField }     from '@/components/ui/Select'
 import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore, useSettingsStore } from '@/store'
-import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
+import { today } from '@/lib/utils/date'
+import { usePeriod } from '@/lib/hooks/usePeriod'
 import { sumByType, isFlowTx, txTouchesAccount } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { expandByCategory } from '@/lib/utils/categorySplits'
@@ -25,7 +26,6 @@ export default function TransactionsPage() {
   const transactions = useTransactionStore(s => s.transactions)
   const getFiltered  = useTransactionStore(s => s.getFiltered)
   const openModal    = useUIStore(s => s.openModal)
-  const periodType   = useUIStore(s => s.periodType)
   const people       = usePeopleStore(s => s.people)
   const categories   = useCategoryStore(s => s.categories)
   const accounts     = useAccountStore(s => s.accounts)
@@ -42,7 +42,6 @@ export default function TransactionsPage() {
   const showFuture    = useSettingsStore(s => s.showFutureTxs)
   const setShowFuture = useSettingsStore(s => s.setShowFutureTxs)
   const [sortOption, setSortOption] = useState<TxSortOption>('date-desc')
-  const [periodOffset, setPeriodOffset] = useState(0)
 
   // Toplu düzenleme seçim state'i (yalnızca bu sayfa; liste kontrollü seçim alır)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -66,18 +65,8 @@ export default function TransactionsPage() {
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
   const selectedIdList = useMemo(() => [...selectedIds], [selectedIds])
 
-  // Dönem türü değişince gezinti sıfırlanır (render sırasında — bkz.
-  // AccountDetailClient'taki aynı kalıp)
-  const [offsetFor, setOffsetFor] = useState(periodType)
-  if (offsetFor !== periodType) {
-    setOffsetFor(periodType)
-    setPeriodOffset(0)
-  }
-
-  const { from, to } = useMemo(
-    () => getPeriodRangeAt(periodType, periodOffset),
-    [periodType, periodOffset],
-  )
+  // Sayfalar arası paylaşılan dönem (bkz. ui.store)
+  const { type: periodType, from, to } = usePeriod()
 
   const filters = useMemo<TransactionFilters>(() => ({
     search:          search || undefined,
@@ -230,11 +219,6 @@ export default function TransactionsPage() {
       <Header title="İşlemler" action={{ label: 'Ekle', onClick: () => openModal('add-transaction') }} />
 
       <PeriodTabs
-        nav={{
-          offset:   periodOffset,
-          label:    formatPeriodLabel(periodType, periodOffset),
-          onChange: setPeriodOffset,
-        }}
         rightSlot={
           <label className="flex items-center gap-2 cursor-pointer select-none whitespace-nowrap">
             <input

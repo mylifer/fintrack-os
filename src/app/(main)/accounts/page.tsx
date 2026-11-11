@@ -3,11 +3,11 @@
 import { useState, useMemo } from 'react'
 import { Header }        from '@/components/layout/Header'
 import { PeriodTabs }    from '@/components/ui/PeriodTabs'
-import { useAccountStore, useUIStore, useTransactionStore, useInvestmentStore, useDebtStore } from '@/store'
+import { useAccountStore, useTransactionStore, useInvestmentStore, useDebtStore } from '@/store'
 import { useShallow }    from 'zustand/react/shallow'
 import { formatCurrency, formatCompact } from '@/lib/utils/currency'
 import { calcNetWorth, calcDebtBurden } from '@/lib/utils/calculations'
-import { getPeriodRange } from '@/lib/utils/date'
+import { usePeriod } from '@/lib/hooks/usePeriod'
 import { AccountFormModal } from '@/components/accounts/AccountFormModal'
 import { EmptyState }    from '@/components/ui/EmptyState'
 import { Button }        from '@/components/ui/button'
@@ -28,12 +28,12 @@ type ViewId = typeof VIEWS[number]['id']
 export default function AccountsPage() {
   const accounts      = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   const transactions  = useTransactionStore(s => s.transactions)
-  const periodType    = useUIStore(s => s.periodType)
   const investValue   = useInvestmentStore(s => s.getPortfolioValue())
   const prices        = useInvestmentStore(s => s.prices)
   const debts         = useDebtStore(useShallow(s => s.debts))
 
-  const { from, to } = useMemo(() => getPeriodRange(periodType), [periodType])
+  // Sayfalar arası paylaşılan dönem (bkz. ui.store)
+  const { from, to } = usePeriod()
 
   // "toplam net varlık" başlığı borçtan arındırılmıştır (dashboard'daki Net
   // Varlık kartıyla aynı değer olsun diye — bkz. calcDebtBurden).

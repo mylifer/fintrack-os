@@ -1,7 +1,7 @@
 import {
   format, parseISO, startOfMonth, endOfMonth,
   subMonths, addMonths, isWithinInterval, startOfYear, endOfYear,
-  differenceInCalendarDays, isBefore, addDays, subDays, subWeeks, subYears,
+  differenceInCalendarDays, isBefore, addDays,
   addWeeks, addYears, startOfWeek, endOfWeek, startOfDay, isValid,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -96,76 +96,68 @@ export function getPeriodRange(type: PeriodType): { from: string; to: string } {
   return getPeriodRangeAt(type, 0)
 }
 
-/** Period range shifted by `offset` periods from now (offset 0 = current period,
- *  -1 = previous, +1 = next). 'all' ignores the offset. */
-export function getPeriodRangeAt(type: PeriodType, offset: number): { from: string; to: string } {
-  const now = new Date()
+/** Dönemin referans günü: bugün, `offset` dönem birimi kaydırılmış hâliyle.
+ *  'quarterly' ay ay kayar (3 aylık pencere bir ay ilerler); 'all' kaymaz. */
+export function periodAnchor(type: PeriodType, offset: number, now = new Date()): Date {
   switch (type) {
-    case 'daily': {
-      const d = addDays(now, offset)
+    case 'daily':     return addDays(now, offset)
+    case 'weekly':    return addWeeks(now, offset)
+    case 'monthly':
+    case 'quarterly': return addMonths(now, offset)
+    case 'yearly':    return addYears(now, offset)
+    case 'all':       return now
+  }
+}
+
+/** Period range shifted by `offset` periods from now (offset 0 = current period,
+ *  -1 = previous, +1 = next). 'all' ignores the offset. 'quarterly' = referans
+ *  ayla biten 3 aylık pencere (Eyl–Kas). */
+export function getPeriodRangeAt(type: PeriodType, offset: number): { from: string; to: string } {
+  const d = periodAnchor(type, offset)
+  switch (type) {
+    case 'daily':
       return { from: format(d, 'yyyy-MM-dd'), to: format(d, 'yyyy-MM-dd') }
-    }
-    case 'weekly': {
-      const d = addWeeks(now, offset)
+    case 'weekly':
       return {
         from: format(startOfWeek(d, { locale: tr }), 'yyyy-MM-dd'),
         to:   format(endOfWeek(d,   { locale: tr }), 'yyyy-MM-dd'),
       }
-    }
-    case 'monthly': {
-      const d = addMonths(now, offset)
+    case 'monthly':
       return {
         from: format(startOfMonth(d), 'yyyy-MM-dd'),
         to:   format(endOfMonth(d),   'yyyy-MM-dd'),
       }
-    }
-    case 'yearly': {
-      const d = addYears(now, offset)
+    case 'quarterly':
+      return {
+        from: format(startOfMonth(subMonths(d, 2)), 'yyyy-MM-dd'),
+        to:   format(endOfMonth(d),                 'yyyy-MM-dd'),
+      }
+    case 'yearly':
       return {
         from: format(startOfYear(d), 'yyyy-MM-dd'),
         to:   format(endOfYear(d),   'yyyy-MM-dd'),
       }
-    }
     case 'all':
       return { from: '1900-01-01', to: '2099-12-31' }
   }
 }
 
-/** Human label for the period at `offset` — e.g. "Temmuz 2026", "2026", "14 Tem – 20 Tem". */
+/** Human label for the period at `offset` — e.g. "Temmuz 2026", "2026", "14 Tem – 20 Tem", "Eyl – Kas 2026". */
 export function formatPeriodLabel(type: PeriodType, offset: number): string {
   const { from, to } = getPeriodRangeAt(type, offset)
   switch (type) {
-    case 'daily':   return format(parseISO(from), 'd MMMM yyyy', { locale: tr })
-    case 'weekly':  return `${format(parseISO(from), 'd MMM', { locale: tr })} – ${format(parseISO(to), 'd MMM', { locale: tr })}`
-    case 'monthly': return format(parseISO(from), 'MMMM yyyy', { locale: tr })
-    case 'yearly':  return format(parseISO(from), 'yyyy')
-    case 'all':     return ''
+    case 'daily':     return format(parseISO(from), 'd MMMM yyyy', { locale: tr })
+    case 'weekly':    return `${format(parseISO(from), 'd MMM', { locale: tr })} – ${format(parseISO(to), 'd MMM', { locale: tr })}`
+    case 'monthly':   return format(parseISO(from), 'MMMM yyyy', { locale: tr })
+    case 'quarterly': return `${format(parseISO(from), 'MMM', { locale: tr })} – ${format(parseISO(to), 'MMM yyyy', { locale: tr })}`
+    case 'yearly':    return format(parseISO(from), 'yyyy')
+    case 'all':       return ''
   }
 }
 
-export function getPrevPeriodRange(type: PeriodType): { from: string; to: string } | null {
-  const now = new Date()
-  switch (type) {
-    case 'daily':
-      return { from: format(subDays(now, 1), 'yyyy-MM-dd'), to: format(subDays(now, 1), 'yyyy-MM-dd') }
-    case 'weekly': {
-      const prevWeekDay = subWeeks(now, 1)
-      return {
-        from: format(startOfWeek(prevWeekDay, { locale: tr }), 'yyyy-MM-dd'),
-        to:   format(endOfWeek(prevWeekDay,   { locale: tr }), 'yyyy-MM-dd'),
-      }
-    }
-    case 'monthly': {
-      const prev = subMonths(now, 1)
-      return { from: format(startOfMonth(prev), 'yyyy-MM-dd'), to: format(endOfMonth(prev), 'yyyy-MM-dd') }
-    }
-    case 'yearly': {
-      const prev = subYears(now, 1)
-      return { from: format(startOfYear(prev), 'yyyy-MM-dd'), to: format(endOfYear(prev), 'yyyy-MM-dd') }
-    }
-    case 'all':
-      return null
-  }
+/** İki ay arasındaki ay farkı (b − a). */
+export function monthsBetween(a: MonthYear, b: MonthYear): number {
+  return (b.year - a.year) * 12 + (b.month - a.month)
 }
 
 // [bugün, bugün+days] takvim aralığı — isOverdue ile birlikte BOŞLUK bırakmaz.

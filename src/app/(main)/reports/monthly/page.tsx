@@ -1,15 +1,18 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useShallow } from 'zustand/react/shallow'
 import { Header } from '@/components/layout/Header'
 import { PrintButton } from '@/components/layout/PrintSupport'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { useTransactionStore, useCategoryStore, useBudgetStore, useSettingsStore } from '@/store'
+import { useTransactionStore, useCategoryStore, useBudgetStore, useSettingsStore, useUIStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
-import { formatDate, formatMonthYear, prevMonth, nextMonth, currentMonthYear, today } from '@/lib/utils/date'
+import { formatDate, formatMonthYear, prevMonth, currentMonthYear, today } from '@/lib/utils/date'
+import { useSelectedMonth } from '@/lib/hooks/usePeriod'
+import { isDefaultSelection } from '@/lib/period'
+import { MonthStepper } from '@/components/ui/PeriodTabs'
 import { enrichBudget, resolveBudgetCategories } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { baseAmount } from '@/lib/utils/fx'
@@ -22,10 +25,11 @@ import type { MonthYear } from '@/types'
    büyük giderler. Yazdır / PDF ile arşivlenebilir. Hesap kuralları Raporlar ile
    aynıdır (bkz. buildMonthlySummary). */
 
-/** Ayın ilk haftasında varsayılan geçen ay: "ay sonu özeti" en çok o zaman açılır. */
-function defaultMonth(): MonthYear {
-  const my = currentMonthYear()
-  return new Date().getDate() <= 7 ? prevMonth(my) : my
+/** Ayın ilk haftasında, dönem hiç değiştirilmemişse (Aylık · bu ay) geçen ay
+ *  açılır: "ay sonu özeti" en çok o zaman okunur. */
+function opensOnLastMonth(): boolean {
+  const { periodType, periodOffset, customRange } = useUIStore.getState()
+  return new Date().getDate() <= 7 && isDefaultSelection({ type: periodType, offset: periodOffset, custom: customRange })
 }
 
 function sameMonth(a: MonthYear, b: MonthYear) {
@@ -81,7 +85,17 @@ function Section({ title, children, aside }: { title: string; children: React.Re
 }
 
 export default function MonthlySummaryPage() {
-  const [my, setMy] = useState<MonthYear>(defaultMonth)
+  // Sayfalar arası paylaşılan dönemin ayı (bkz. ui.store)
+  const [sharedMonth, setSharedMonth] = useSelectedMonth()
+  const [lastMonthDefault, setLastMonthDefault] = useState(opensOnLastMonth)
+  const my = lastMonthDefault ? prevMonth(currentMonthYear()) : sharedMonth
+  const setMy = (m: MonthYear) => { setLastMonthDefault(false); setSharedMonth(m) }
+  // Varsayılan geçen ay paylaşılan döneme de yazılır → Raporlar'a dönünce aynı ay
+  useEffect(() => {
+    if (lastMonthDefault) setSharedMonth(prevMonth(currentMonthYear()))
+    // yalnız açılışta
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const transactions = useTransactionStore(s => s.transactions)
   const categories   = useCategoryStore(s => s.categories)
   const budgets      = useBudgetStore(useShallow(s => s.budgets))
@@ -111,10 +125,8 @@ export default function MonthlySummaryPage() {
       <Header title="Aylık Özet" />
 
       <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border/50">
-        <button onClick={() => setMy(prevMonth(my))} aria-label="Önceki ay" className="print:hidden text-muted-foreground hover:text-foreground text-sm px-1">←</button>
-        <span className="text-sm font-semibold text-foreground min-w-28 text-center capitalize">{formatMonthYear(my)}</span>
-        <button onClick={() => setMy(nextMonth(my))} aria-label="Sonraki ay" disabled={sameMonth(my, currentMonthYear()) || isFuture}
-          className="print:hidden text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground text-sm px-1">→</button>
+        <span className="print:hidden"><MonthStepper month={my} onChange={setMy} nextDisabled={sameMonth(my, currentMonthYear()) || isFuture} /></span>
+        <span className="hidden print:inline text-sm font-semibold text-foreground capitalize">{formatMonthYear(my)}</span>
         {summary.partial && (
           <span className="text-[11px] rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-0.5">
             Ay sürüyor · {summary.daysCounted}/{summary.daysInMonth} gün — kıyaslar ayın ilk {summary.daysCounted} günüyle

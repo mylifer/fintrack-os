@@ -170,7 +170,7 @@ export default function ForecastAreaChart({ points, shortfallDate, events = [], 
       monthTicks.push(d.date)
     }
   }
-  // Long (Tüm Zamanlar) series: add the year to the labels and thin the ticks
+  // Long (Tüm Geçmiş) series: add the year to the labels and thin the ticks
   // so a multi-year axis stays readable (~12 labels max).
   const multiYear = data.length > 366
   const tickStep = Math.max(1, Math.ceil(monthTicks.length / 12))

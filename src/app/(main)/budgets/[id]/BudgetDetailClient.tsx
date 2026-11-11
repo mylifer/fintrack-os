@@ -2,19 +2,21 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { useBudgetStore, useTransactionStore, useCategoryStore } from '@/store'
+import { useBudgetStore, useTransactionStore, useCategoryStore, useUIStore } from '@/store'
 import { ProgressBar }     from '@/components/ui/ProgressBar'
 import { CategoryIcon }    from '@/components/categories/CategoryIcon'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
+import { useSelectedMonth } from '@/lib/hooks/usePeriod'
+import { MonthStepper } from '@/components/ui/PeriodTabs'
 import { Modal }           from '@/components/ui/Modal'
 import { Button }          from '@/components/ui/button'
 import { CurrencyInput }   from '@/components/ui/CurrencyInput'
 import { Input }           from '@/components/ui/Input'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import {
-  formatMonthYear, prevMonth, nextMonth, currentMonthYear, lastNMonths, monthRange, isInRange,
+  formatMonthYear, currentMonthYear, lastNMonths, monthRange, isInRange,
 } from '@/lib/utils/date'
 import {
   getBudgetCategoryIds, enrichBudget, calcBudgetSpent, calcBudgetCarryover, resolveBudgetCategories,
@@ -57,8 +59,13 @@ export default function BudgetDetailClient({ id }: { id: string }) {
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [search,        setSearch]        = useState('')
-  const [selectedMonth, setSelectedMonth] = useState<MonthYear>(currentMonthYear())
-  const [allTime,       setAllTime]       = useState(false)
+  // Sayfalar arası paylaşılan dönem (bkz. ui.store): ay Bütçeler/Dashboard ile
+  // aynıdır; "Tüm Zamanlar" da paylaşılan dönemin 'all' seçimidir.
+  const [selectedMonth, setSelectedMonth] = useSelectedMonth()
+  const periodType    = useUIStore(s => s.periodType)
+  const customRange   = useUIStore(s => s.customRange)
+  const setPeriodType = useUIStore(s => s.setPeriodType)
+  const allTime       = periodType === 'all' && !customRange
   const [catFilter,     setCatFilter]     = useState<string | null>(null)
   // Toplu düzenleme seçimi — filtre/dönem değişince temizlenir
   const sel = useTxSelection(`${search}|${allTime}|${selectedMonth.year}-${selectedMonth.month}|${catFilter ?? ''}`)
@@ -230,8 +237,6 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   // arasında (yabancı PB gider varsa) uyumsuzluk yaratıyordu.
   const totalSpent = sumBy(collapsedFiltered, baseAmount)
 
-  function navigatePrev() { setAllTime(false); setSelectedMonth(m => prevMonth(m)) }
-  function navigateNext() { setAllTime(false); setSelectedMonth(m => nextMonth(m)) }
 
   return (
     <div className="flex flex-col h-full">
@@ -301,7 +306,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
           {history.map(row => (
             <button
               key={`${row.my.year}-${row.my.month}`}
-              onClick={() => { setSelectedMonth(row.my); setAllTime(false) }}
+              onClick={() => setSelectedMonth(row.my)}
               title={`${row.label}: ${formatCurrency(row.spent)}`}
               className="flex-1 flex flex-col items-center gap-1 group"
             >
@@ -367,31 +372,17 @@ export default function BudgetDetailClient({ id }: { id: string }) {
           className="flex-1 min-w-0 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
         />
 
-        {/* Month nav */}
-        <div className="flex items-center border border-border rounded-xl overflow-hidden flex-shrink-0">
-          <button
-            onClick={navigatePrev}
-            className="px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-sm"
-          >
-            ←
-          </button>
-          <button
-            onClick={() => setAllTime(a => !a)}
-            className={`px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors border-x border-border ${
-              allTime
-                ? 'bg-primary text-primary-foreground'
-                : 'text-foreground hover:bg-accent'
-            }`}
-          >
-            {allTime ? 'Tüm Zamanlar' : formatMonthYear(selectedMonth)}
-          </button>
-          <button
-            onClick={navigateNext}
-            className="px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-sm"
-          >
-            →
-          </button>
-        </div>
+        {/* Ay gezintisi + Tüm Zamanlar (ayrı düğme — eskiden ay adına basınca gizlice açılıyordu) */}
+        {!allTime && <MonthStepper month={selectedMonth} onChange={setSelectedMonth} />}
+        <button
+          onClick={() => (allTime ? setSelectedMonth(currentMonthYear()) : setPeriodType('all'))}
+          aria-pressed={allTime}
+          className={`flex-shrink-0 flex items-center px-3.5 min-h-11 lg:min-h-0 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
+            allTime ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+          }`}
+        >
+          Tüm Zamanlar
+        </button>
       </div>
 
       {/* ── Stats bar ──────────────────────────────────────────────────────── */}

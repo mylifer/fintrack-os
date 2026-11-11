@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
-import { useBudgetStore, useTransactionStore, useCategoryStore, useUIStore } from '@/store'
+import { useBudgetStore, useTransactionStore, useCategoryStore } from '@/store'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,8 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { RolloverField } from '@/components/budgets/RolloverField'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
-import { formatMonthYear, prevMonth, nextMonth } from '@/lib/utils/date'
+import { useSelectedMonth } from '@/lib/hooks/usePeriod'
+import { MonthStepper } from '@/components/ui/PeriodTabs'
 import { getBudgetCategoryIds, enrichBudget, resolveBudgetCategories } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import type { Budget, BudgetWithSpent } from '@/types'
@@ -139,8 +140,9 @@ export default function BudgetsPage() {
   const transactions  = useTransactionStore(s => s.transactions)
   const categories    = useCategoryStore(useShallow(s => s.getByScope('expense')))
   const allCategories = useCategoryStore(s => s.categories)
-  const selectedPeriod = useUIStore(s => s.selectedPeriod)
-  const setPeriod      = useUIStore(s => s.setPeriod)
+  // Sayfalar arası paylaşılan dönemin ayı (bkz. ui.store) — Dashboard'da Mart'a
+  // gidilmişse burada da Mart açılır; burada ay değiştirmek oraya da yansır.
+  const [selectedPeriod, setPeriod] = useSelectedMonth()
   const { budgets: rawBudgets, add, update, remove } = useBudgetStore(
     useShallow(s => ({ budgets: s.budgets, add: s.add, update: s.update, remove: s.remove }))
   )
@@ -262,18 +264,8 @@ export default function BudgetsPage() {
       <Header title="Bütçeler" action={{ label: 'Bütçe Ekle', onClick: startAdd }} />
 
       {/* Period nav */}
-      <div className="flex items-center gap-3 px-6 py-3 bg-transparent border-b border-border/50">
-        <button
-          onClick={() => setPeriod(prevMonth(selectedPeriod))}
-          className="text-muted-foreground hover:text-foreground text-sm transition-colors"
-        >←</button>
-        <span className="text-xs font-medium tracking-wide uppercase text-foreground min-w-24 text-center">
-          {formatMonthYear(selectedPeriod)}
-        </span>
-        <button
-          onClick={() => setPeriod(nextMonth(selectedPeriod))}
-          className="text-muted-foreground hover:text-foreground text-sm transition-colors"
-        >→</button>
+      <div className="flex items-center px-4 lg:px-6 py-2 lg:py-3 bg-transparent border-b border-border/50">
+        <MonthStepper month={selectedPeriod} onChange={setPeriod} />
       </div>
 
       {/* Grid */}
