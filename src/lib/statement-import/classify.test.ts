@@ -3,7 +3,7 @@ import type { Category, Person, Transaction } from '@/types'
 import type { BatchOp } from '@/lib/sync/engine'
 import type { ParsedStatement, StatementLine } from './statement'
 import { addMonthsIso, bankInstallmentAmounts, buildImportPlan, type PlanInput } from './classify'
-import { buildCommit, rowTitle } from './commit'
+import { buildCommit, remapByStableKey, rowTitle } from './commit'
 import { merchantKey, prettyMerchant } from './merchant'
 
 const ACC = 'card-1'
@@ -380,7 +380,7 @@ describe('akıllı alıcı ve kategori eşleştirme', () => {
     const p = p2([line({ description: 'HEPSİPAY-HEP*HEPSİBURADA', amount: 325.12 })], [])
     const r = p.rows[0]
     expect([r.status, r.kind, r.recipientId, r.recommended, r.issue]).toEqual(['review', 'purchase', 'p-hb', 0, 'Alıcı “Hepsiburda” mı?'])
-    expect(r.options.map(o => o.key)).toEqual(['create', 'create-new', 'skip', 'create-existing'])
+    expect(r.options.map(o => o.key)).toEqual(['create-guess', 'create-new', 'skip', 'create-existing'])
     const ok = commit(p, [], { [r.key]: 0 }, { [r.key]: { categoryId: 'c-market' } })
     expect(created(ok.ops)[0].recipientId).toBe('p-hb')
     const fresh = commit(p, [], { [r.key]: 1 }, { [r.key]: { categoryId: 'c-market' } })
@@ -435,5 +435,21 @@ describe('alacak satırını gelir olarak girme', () => {
     // Sonraki ekstre: aynı satır kendiliğinden gelir olarak önerilir
     const next = plan([line({ description: 'Yurt Disi Cikis Harc Iadesi', amount: -1250, date: '2026-10-27' })], [made], { categories: cats }).rows[0]
     expect([next.status, next.kind, next.categoryId]).toEqual(['new', 'income', 'c-inc'])
+  })
+})
+
+describe('yarım kalan ekstre yeniden okununca', () => {
+  it('kararlar satır sırasıyla değil satırın kimliğiyle taşınır; karşılığı olmayan atılır', () => {
+    const a = () => line({ description: 'İDDAALI BÜFE TEKEL', amount: 600, date: '2026-10-05' })
+    const b = () => line({ description: 'ORNEK KAFE', amount: 80, date: '2026-10-06' })
+    const old = plan([a(), b()], [])
+    // Okuyucu düzeltmesiyle araya (ikinci sayfadan) yeni satır girdi, sıra kaydı
+    const fresh = plan([line({ description: 'KART BORC ODEMESI', amount: -500, date: '2026-10-01', kind: 'payment' }), a(), b()], [])
+    const [ka, kb] = [old.rows[0].key, old.rows[1].key]
+    const choices = { [ka]: 'create-new', [kb]: 'skip', L99: 'create' }
+    const moved = remapByStableKey(old.rows, fresh.rows, choices)
+    const rowOf = (desc: string) => fresh.rows.find(r => r.raw === desc)!.key
+    expect(moved).toEqual({ [rowOf('İDDAALI BÜFE TEKEL')]: 'create-new', [rowOf('ORNEK KAFE')]: 'skip' })
+    expect(rowOf('İDDAALI BÜFE TEKEL')).not.toBe(ka)
   })
 })

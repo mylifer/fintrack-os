@@ -20,7 +20,7 @@ import { readImageText } from '@/lib/statement-import/ocr'
 import { parseScreenshot, parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
 import { buildImportPlan, type ImportPlan, type PlanRow, type RowOption } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
-import { buildCommit, commitEffect, optionForEdit, rowTitle, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
+import { buildCommit, commitEffect, optionForEdit, remapByStableKey, rowTitle, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
 import type { BatchOp } from '@/lib/sync/engine'
 import { PreviewList, STATUS_META } from './PreviewList'
@@ -168,8 +168,12 @@ export function StatementImport() {
       setDraftId(id)
       setAccountId(prevAccount ?? best?.id ?? '')
       setSuggested(best && best.matched > 0 ? { id: best.id, matched: best.matched } : null)
-      setChoices(prevAccount ? prev!.choices : {})
-      setEdits(prevAccount ? prev!.edits : {})
+      // Ekstre yeniden okununca satırlar değişmiş olabilir (okuyucu düzeltmesi):
+      // kararlar satır sırasıyla değil, satırın kalıcı kimliğiyle taşınır
+      const oldPlan = prevAccount ? makePlan(prev!.statement, prevAccount) : null
+      const newPlan = prevAccount ? makePlan(st, prevAccount) : null
+      setChoices(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.choices) : {})
+      setEdits(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.edits) : {})
       if (prevAccount) setNotice('Bu ekstre daha önce yüklenip yarım bırakılmış; verdiğin kararlar geri getirildi.')
       setStep('preview')
     } catch (err) {
@@ -188,7 +192,9 @@ export function StatementImport() {
   const openDraft = useCallback(async (id: string) => {
     // Mükerrer kontrolü taslağın kaydedildiği andaki değil, bugünkü kayıtlarla
     // yapılır. (State güncellemeleri bu beklemeden SONRA: efektten çağrılıyor.)
-    await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load()])
+    // Hesaplar da beklenir: sayfa doğrudan taslak bağlantısıyla açılınca hesaplar
+    // henüz yüklenmemiş olur; o zaman taslağın hesabı ve kararları düşüyordu
+    await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load(), useAccountStore.getState().load()])
     const d = useStatementDraftsStore.getState().get(id)
     setNotice('')
     if (!d) { setError('Bu taslak bulunamadı (silinmiş ya da başka bir cihazda kalmış olabilir).'); return }
