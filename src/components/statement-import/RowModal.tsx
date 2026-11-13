@@ -22,6 +22,7 @@ import { optionDisplayOrder, type DraftTx, type PlanRow, type RowOption } from '
 import { recipientEdit, type RowEdit } from '@/lib/statement-import/commit'
 import type { ParsedStatement } from '@/lib/statement-import/statement'
 import { STATUS_META } from './PreviewList'
+import { RefundLinkPicker } from './RefundLinkPicker'
 
 /* ── Ekstre satırının ayrıntısı ──────────────────────────────────────────────
    "İşlem Ekle" penceresiyle aynı düzen: ortada açılır, üstte tür sekmeleri
@@ -188,6 +189,15 @@ export function RowModal({ row, statement, choice, edit, onChoose, onEdit, onClo
                   )
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ── İade: hangi alımın iadesi? ── */}
+          {row.refundLink && sel !== null && row.options[sel]?.key === 'link' && (
+            <div>
+              <div className={cn(sectionLabel, 'mb-1.5')}>Hangi alımın iadesi?</div>
+              <RefundLinkPicker row={row} stacked onPick={onEdit}
+                selectedId={edit?.refundOfId !== undefined ? (edit.refundOfId ?? undefined) : draft?.refundOfId} />
             </div>
           )}
 

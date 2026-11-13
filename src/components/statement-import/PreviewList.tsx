@@ -12,7 +12,8 @@ import { foldText } from '@/lib/auto-category'
 import { usePeopleStore } from '@/store'
 import type { Category, Person } from '@/types'
 import { optionDisplayOrder, type PlanRow, type RowKind, type RowStatus } from '@/lib/statement-import/classify'
-import { chosenIndex, rowTitle, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
+import { chosenIndex, rowTitle, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
+import { RefundLinkPicker, refundLinkSelection } from './RefundLinkPicker'
 
 /* ── Önizleme listesi ────────────────────────────────────────────────────────
    Hiyerarşi: (Sorun) → Kontrol et → Girilecek → Zaten sistemde → Kayda girmez.
@@ -96,6 +97,8 @@ interface ListProps {
   onOpen: (key: string) => void
   openKey: string | null
   onAcceptRecommended: () => void
+  /** Satırın düzenlemesi (iade satırında bağlanacak alımın seçimi) */
+  onEdit: (key: string, patch: RowEdit) => void
   /** Kapalı bölümler (ilerleme listesinden atlarken açılabilsin diye yukarıda tutulur) */
   closed: Record<string, boolean>
   onToggleSection: (s: RowStatus, open?: boolean) => void
@@ -219,6 +222,11 @@ export function PreviewList(props: ListProps) {
         </div>
         <Amount row={r} quiet={quiet} />
         {r.status === 'review' && <div className="col-start-2 col-span-2 mt-2">{decision(r)}</div>}
+        {r.refundLink && r.options[selectedOption(r, choices) ?? -1]?.key === 'link' && (
+          <div className="col-start-2 col-span-2 mt-2 min-w-0">
+            <RefundLinkPicker row={r} selectedId={refundLinkSelection(r, choices, edit)} onPick={patch => props.onEdit(r.key, patch)} />
+          </div>
+        )}
         {problemByKey.has(r.key) && (
           <div className="col-start-2 col-span-2 mt-1.5 flex items-center gap-1.5 text-xs font-medium text-destructive">
             <IconAlertTriangle className="size-3.5 flex-shrink-0" />{problemByKey.get(r.key)} — düzeltmek için tıklayın

@@ -21,6 +21,10 @@ export interface RowEdit {
   familyMemberId?: string | null
   /** Etiketler (abonelik işareti "abonelik" etiketidir) */
   tags?: string[]
+  /** İadenin bağlandığı alım (null: bağlantı kaldırıldı) */
+  refundOfId?: string | null
+  /** Bu düzenleme bir alım seçilerek dolduruldu ("İade, alıma bağla"); karar değişince geri alınır */
+  linkFill?: true
   /** Transferin karşı hesabı (gelen transferde kaynak, giden transferde hedef) */
   fromAccountId?: string
   toAccountId?: string
@@ -138,6 +142,7 @@ function applyEdit(d: DraftTx, e: RowEdit | undefined): DraftTx {
   if (e.categoryId !== undefined) out.categoryId = e.categoryId
   if (e.familyMemberId !== undefined) out.familyMemberId = e.familyMemberId
   if (e.tags !== undefined) out.tags = e.tags
+  if (e.refundOfId !== undefined) out.refundOfId = e.refundOfId ?? undefined
   return out
 }
 
@@ -181,6 +186,10 @@ export function buildCommit(input: CommitInput): CommitResult {
   })
 
   const create = (rowKey: string, d: DraftTx) => {
+    if (d.needsRefundOf && !d.refundOfId) {
+      problems.push({ rowKey, message: 'İadenin bağlanacağı alım seçilmedi' })
+      return
+    }
     if (d.type !== 'transfer' && !d.categoryId) {
       problems.push({ rowKey, message: 'Kategori seçilmedi' })
       return

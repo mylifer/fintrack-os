@@ -429,11 +429,15 @@ export function StatementImport() {
     const typeChanged = typeOf(prevIdx !== null ? row.options[prevIdx] : undefined) !== typeOf(opt)
     setEdits(e => {
       const cur = e[key]
-      if (!cur || (cur.recipientId === undefined && cur.newRecipient === undefined && !(typeChanged && cur.categoryId !== undefined))) return e
+      if (!cur || (cur.recipientId === undefined && cur.newRecipient === undefined && !(typeChanged && cur.categoryId !== undefined) && !cur.linkFill)) return e
       const rest = { ...cur }
       delete rest.recipientId
       delete rest.newRecipient
       if (typeChanged) { delete rest.categoryId; delete rest.categoryAuto }
+      // "İade, alıma bağla"dan çıkınca seçilen alımın doldurdukları da geri alınır
+      if (cur.linkFill) {
+        for (const k of ['refundOfId', 'description', 'categoryId', 'familyMemberId', 'tags', 'linkFill'] as const) delete rest[k]
+      }
       return { ...e, [key]: rest }
     })
   }
@@ -563,6 +567,7 @@ export function StatementImport() {
           onOpen={setOpenKey}
           openKey={openKey}
           onAcceptRecommended={acceptRecommended}
+          onEdit={(key, patch) => { const r = rows.find(x => x.key === key); if (r) editRow(r, patch) }}
           closed={closedSections}
           onToggleSection={(sec, open) => setClosedSections(c => ({ ...c, [sec]: open === undefined ? !c[sec] : !open }))}
           highlightKey={highlightKey}
