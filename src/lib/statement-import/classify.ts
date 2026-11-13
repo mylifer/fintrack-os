@@ -578,7 +578,8 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     const fresh = prettyMerchant(l.description)
     const bare = { ...draft, recipientId: null, description: draft.description === name ? fresh : draft.description }
     return [
-      { key: 'create', label: `“${name}” ile gir`, actions: [{ type: 'create', draft }] },
+      // Ayrı anahtar: eski taslakta "Alıcısız gir" (create) kararı buna dönüşmesin
+      { key: 'create-guess', label: `“${name}” ile gir`, actions: [{ type: 'create', draft }] },
       { key: 'create-new', label: 'Yeni alıcıyla gir', actions: [{ type: 'create', draft: { ...bare, newRecipient: fresh } }] },
       skip,
       { key: 'create-existing', label: 'Başka alıcıyla gir', actions: [{ type: 'create', draft: { ...bare, needsRecipient: true } }] },

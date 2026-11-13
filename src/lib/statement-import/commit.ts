@@ -64,6 +64,35 @@ export function chosenIndex(row: Pick<PlanRow, 'key' | 'options'>, choices: Read
   return i < 0 ? null : i
 }
 
+/** Aynı ekstre yeniden okununca (okuyucu düzeltmesi: satır eklendi/sırası değişti)
+ *  satır anahtarları ("L5") kayar; kararlar ve düzenlemeler satırın kalıcı
+ *  kimliği (stableKey: tarih + işyeri + tutar) üzerinden yeni satırlara taşınır.
+ *  Karşılığı olmayanlar atılır — o satır yeniden sorulur. */
+export function remapByStableKey<T>(
+  oldRows: readonly Pick<PlanRow, 'key' | 'stableKey'>[],
+  newRows: readonly Pick<PlanRow, 'key' | 'stableKey'>[],
+  values: Readonly<Record<string, T>>,
+): Record<string, T> {
+  const stableOf = new Map(oldRows.map(r => [r.key, r.stableKey]))
+  const keyOf = new Map(newRows.map(r => [r.stableKey, r.key]))
+  const out: Record<string, T> = {}
+  for (const [k, v] of Object.entries(values)) {
+    const nk = keyOf.get(stableOf.get(k) ?? '')
+    if (nk !== undefined) out[nk] = v
+  }
+  return out
+}
+
+/** Satırın ekranda görünen başlığı: elle yazılan açıklama, yoksa seçili kararın
+ *  gireceği kaydın açıklaması ("Gelir olarak gir" → "[İade]" öneki olmadan),
+ *  karar yoksa satırın kendi başlığı. */
+export function rowTitle(row: PlanRow, choices: Readonly<RowChoices>, edit?: Pick<RowEdit, 'description'>): string {
+  if (edit?.description !== undefined) return edit.description
+  const i = selectedOption(row, choices)
+  const creates = i !== null ? row.options[i]?.actions.filter(a => a.type === 'create') ?? [] : []
+  return creates.length === 1 && creates[0].type === 'create' ? creates[0].draft.description : row.title
+}
+
 /** Seçili seçenek: kullanıcı seçimi, yoksa satırın varsayılanı. */
 export function selectedOption(row: PlanRow, choices: Readonly<RowChoices>): number | null {
   return chosenIndex(row, choices) ?? row.defaultOption
