@@ -62,7 +62,7 @@ function headerColumns(items: PdfItem[]): Columns | null {
   return { descX: desc.x, etiketX: etiket.x, bonusRight: bonus.right, tutarRight: tutar.right }
 }
 
-interface Raw { date: string; desc: string; amount: number | null; bonus: number | null; inst: { index: number; count: number } | null }
+interface Raw { date: string; desc: string; amount: number | null; bonus: number | null; inst: { index: number; count: number } | null; label: string | null }
 
 export function parseGarantiPeriod(pages: PdfPage[]): ParsedStatement | null {
   if (!pages.length || !isGarantiPeriod(pages)) return null
@@ -81,7 +81,7 @@ export function parseGarantiPeriod(pages: PdfPage[]): ParsedStatement | null {
   // Sayfa başında başlık tekrarlanmayabilir: sütunlar sayfadan sayfaya taşınır
   let cols: Columns | null = null
   for (const page of pages) {
-    for (const line of page.lines) {
+    for (const [li, line] of page.lines.entries()) {
       const items = line.items.map(i => ({ ...i, str: i.str.trim() })).filter(i => i.str)
       const lt = foldText(line.text)
       if (lt.startsWith('acik provizyon islemler')) { section = 'provision'; cols = null; continue }
@@ -109,7 +109,19 @@ export function parseGarantiPeriod(pages: PdfPage[]): ParsedStatement | null {
       const amount = tutarItem ? (isNegative(tutarItem.str) ? 1 : -1) * amountOf(tutarItem.str) : null
       const bonus = bonusItem ? (isNegative(bonusItem.str) ? -1 : 1) * amountOf(bonusItem.str) : null
       if (amount === 0 && bonus === null) continue
-      raw.push({ date, desc, amount, bonus, inst: im ? { index: Number(im[1]), count: Number(im[2]) } : null })
+      // Etiket (bankanın kategorisi) aynı satırda ya da iki satıra bölünmüş:
+      // "Giyim /" bir üstte, "Aksesuar" bir altta
+      const inLabel = (i: { x: number }) => i.x >= c.etiketX - 3 && i.x < c.etiketX + 60
+      const labelOnly = (l?: typeof line) => {
+        const its = l?.items.filter(i => i.str.trim()) ?? []
+        return its.length && its.every(inLabel) ? its.map(i => i.str.trim()).join(' ') : null
+      }
+      let label = items.filter(i => i !== items[0] && inLabel(i) && !AMOUNT_RE.test(i.str)).map(i => i.str).join(' ') || null
+      if (!label) {
+        const above = labelOnly(page.lines[li - 1])
+        if (above?.endsWith('/')) label = `${above} ${labelOnly(page.lines[li + 1]) ?? ''}`.trim()
+      }
+      raw.push({ date, desc, amount, bonus, inst: im ? { index: Number(im[1]), count: Number(im[2]) } : null, label: label?.replace(/\s*\/\s*/g, ' / ') ?? null })
       if (section === 'provision') provisionRows++
     }
   }
@@ -127,6 +139,7 @@ export function parseGarantiPeriod(pages: PdfPage[]): ParsedStatement | null {
       : null,
     foreign: null,
     kind: kindOf(r.desc, r.amount),
+    bankCategory: r.label,
   }))
 
   // Liste tarihi: taksitler ileri tarihli olabilir, en yeni tek çekim/provizyon tarihi alınır

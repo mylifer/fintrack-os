@@ -50,6 +50,9 @@ export interface StatementLine {
   /** Yurt dışı harcamanın asıl tutarı (TL dışı) */
   foreign: { amount: number; currency: string } | null
   kind: LineKind
+  /** Bankanın satıra yazdığı kendi kategorisi (Garanti "Etiket": "Market",
+   *  "Yeme / İçme") — kullanıcının kategorisine eşlenir */
+  bankCategory?: string | null
   /** Vadesiz hesap: işlem saati ("02:43") ve işlemden sonraki bakiye */
   time?: string
   balance?: number
