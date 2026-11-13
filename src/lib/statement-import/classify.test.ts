@@ -463,3 +463,21 @@ describe('satır penceresinden etiket / abonelik', () => {
     expect(created(c.ops)[0].tags).toEqual(['abonelik'])
   })
 })
+
+describe('abonelik öğrenimi', () => {
+  const draftTags = (p: ReturnType<typeof plan>) => {
+    const a = p.rows[0].options[0].actions[0]
+    return a.type === 'create' ? a.draft.tags : undefined
+  }
+  it('tek kayıtta abonelik işaretlendiyse sonraki ekstrede de abonelik gelir', () => {
+    const hist = [tx({ id: 'n1', amount: 229.99, date: '2026-09-10', merchant: 'NETFLIX.COM', recipientId: 'p-itc', categoryId: 'c-food', description: 'Netflix', tags: ['abonelik'] })]
+    expect(draftTags(plan([line({ description: 'NETFLIX.COM', amount: 229.99, date: '2026-10-10' })], hist))).toEqual(['abonelik'])
+  })
+  it('son kayıtta işaret kaldırıldıysa artık abonelik gelmez', () => {
+    const hist = [
+      tx({ id: 'n1', amount: 229.99, date: '2026-08-10', merchant: 'NETFLIX.COM', recipientId: 'p-itc', categoryId: 'c-food', description: 'Netflix', tags: ['abonelik'] }),
+      tx({ id: 'n2', amount: 229.99, date: '2026-09-10', merchant: 'NETFLIX.COM', recipientId: 'p-itc', categoryId: 'c-food', description: 'Netflix' }),
+    ]
+    expect(draftTags(plan([line({ description: 'NETFLIX.COM', amount: 229.99, date: '2026-10-10' })], hist))).toBeUndefined()
+  })
+})
