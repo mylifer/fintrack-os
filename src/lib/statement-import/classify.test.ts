@@ -491,6 +491,9 @@ describe('iadeyi alıma bağlama (satırın altında seçim)', () => {
     const made = created(c.ops)[0]
     expect([made.refundOfId, made.description, made.recipientId, made.categoryId, made.amount]).toEqual(['a1', '[İade] Mutfak robotu', 'p-ys', 'c-ev', -1996.36])
     expect(made.tags).toEqual(['ev', 'İade'])
+  })
+})
+
 describe('abonelik öğrenimi', () => {
   const draftTags = (p: ReturnType<typeof plan>) => {
     const a = p.rows[0].options[0].actions[0]
