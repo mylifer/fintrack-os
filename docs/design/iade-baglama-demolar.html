@@ -1,0 +1,384 @@
+<title>İade Bağlama Demoları</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: üstte varyant seçici, altında tek sahne — FinTrack'in kendi görünümü (Geist, turkuaz vurgu) */
+:root{
+  --bg:#f4f4f1; --stage:#e6e6e2; --scrim:rgba(20,20,18,.38);
+  --surface:#fafaf8; --card:#ffffff; --line:#e3e3df; --soft:#efefec;
+  --fg:#151514; --muted:#64645f;
+  --accent:#2bd4d8; --accent-ink:#06393b; --accent-soft:#e6f9f9; --accent-text:#0a7478;
+  --green:#15803d; --green-soft:#e7f5ea; --orange:#c2410c; --orange-soft:#fdeee5;
+  --font:"Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121211; --stage:#1b1b19; --scrim:rgba(0,0,0,.5);
+  --surface:#1f1f1d; --card:#262624; --line:#363633; --soft:#2c2c2a;
+  --fg:#f1f1ee; --muted:#a3a39d;
+  --accent:#2bd4d8; --accent-ink:#06393b; --accent-soft:#123a3b; --accent-text:#5fe3e6;
+  --green:#4ade80; --green-soft:#16301f; --orange:#fb923c; --orange-soft:#3a2416; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121211; --stage:#1b1b19; --scrim:rgba(0,0,0,.5);
+  --surface:#1f1f1d; --card:#262624; --line:#363633; --soft:#2c2c2a;
+  --fg:#f1f1ee; --muted:#a3a39d;
+  --accent:#2bd4d8; --accent-ink:#06393b; --accent-soft:#123a3b; --accent-text:#5fe3e6;
+  --green:#4ade80; --green-soft:#16301f; --orange:#fb923c; --orange-soft:#3a2416; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.45}
+.wrap{max-width:1100px;margin:0 auto;padding-block:28px 48px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));display:flex;flex-direction:column;gap:18px}
+h1{font-size:24px;font-weight:600;margin:0;text-wrap:balance}
+.lead{color:var(--muted);margin:4px 0 0;max-width:68ch}
+.num{font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.picker{display:flex;flex-wrap:wrap;gap:6px}
+.picker button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:8px 14px;font-weight:500}
+.picker button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.about{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.about div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.about b{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+@media (max-width:640px){.about{grid-template-columns:minmax(0,1fr)}}
+
+.stage{background:var(--stage);border-radius:20px;padding:28px 16px;min-height:640px;display:flex;align-items:flex-start;justify-content:center;position:relative;overflow:hidden}
+.stage.dim::before{content:"";position:absolute;inset:0;background:var(--scrim)}
+.stage > *{position:relative}
+
+/* Ortada açılan pencere (RowModal ile aynı yapı) */
+.modal{width:min(540px,100%);background:var(--surface);border-radius:22px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden}
+.mhead{padding:22px 24px 14px;border-bottom:1px solid var(--line)}
+.eyebrow{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:99px;background:var(--orange)}
+.mtitle{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.mtitle h2{margin:6px 0 0;font-size:19px;font-weight:600}
+.x{border:0;background:none;color:var(--muted);font-size:18px;padding:2px 4px}
+.tabs{margin-top:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;background:var(--soft);border-radius:12px;padding:4px}
+.tabs button{border:0;border-radius:9px;padding:7px;background:none;color:var(--muted);font-weight:500}
+.tabs button[aria-selected="true"]{background:var(--card);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.mbody{padding:18px 24px;display:flex;flex-direction:column;gap:16px}
+.hero{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.hero .amt{font-size:26px;font-weight:600;color:var(--green)}
+.lbl{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.choice{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.opt{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--card);border-radius:14px;padding:10px 12px;text-align:left;width:100%}
+.opt[aria-checked="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.radio{width:16px;height:16px;border-radius:99px;border:1.5px solid var(--muted);flex:none;display:grid;place-items:center}
+.opt[aria-checked="true"] .radio{border-color:var(--accent-text)}
+.opt[aria-checked="true"] .radio::after{content:"";width:8px;height:8px;border-radius:99px;background:var(--accent-text)}
+.opt[disabled]{opacity:.55;cursor:not-allowed}
+.grow{flex:1;min-width:0}
+.t{display:block;font-weight:500}
+.s{display:block;font-size:12px;color:var(--muted)}
+.right{text-align:right;flex:none}
+.badge{display:inline-block;font-size:11px;font-weight:600;border-radius:99px;padding:1px 7px;margin-top:2px}
+.b-green{color:var(--green);background:var(--green-soft)}
+.b-orange{color:var(--orange);background:var(--orange-soft)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.phead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.phead strong{font-weight:600}
+.link{border:0;background:none;padding:2px 0;color:var(--accent-text);font-weight:500;align-self:flex-start}
+.field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:14px;padding:9px 12px}
+.field input{flex:1;min-width:0;border:0;outline:none;background:none;font:inherit;color:var(--fg)}
+.field:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent)}
+.result{border-radius:14px;background:var(--accent-soft);padding:10px 12px;font-size:13px}
+.result b{font-weight:600}
+.mfoot{border-top:1px solid var(--line);padding:12px 24px;display:flex;justify-content:flex-end}
+.primary{border:0;background:var(--accent);color:var(--accent-ink);font-weight:600;border-radius:12px;padding:9px 20px}
+.avatar{width:28px;height:28px;border-radius:99px;background:#232f3e;color:#fff;font-size:11px;font-weight:600;display:grid;place-items:center;flex:none}
+.avatar.hb{background:#ff6000}.avatar.ty{background:#f27a1a}.avatar.bm{background:#111}
+
+/* 2 · combobox */
+.combo{position:relative;display:flex;flex-direction:column;gap:6px}
+.list{position:absolute;top:100%;left:0;right:0;margin-top:6px;z-index:5;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.16);padding:6px;max-height:330px;overflow:auto}
+.group{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px 4px}
+.row{display:flex;align-items:center;gap:10px;border:0;background:none;border-radius:10px;padding:8px 10px;width:100%;text-align:left}
+.row:hover,.row[aria-selected="true"]{background:var(--accent-soft)}
+.row[disabled]{opacity:.5;cursor:not-allowed;background:none}
+.chip{display:flex;align-items:center;gap:10px;border:1.5px solid var(--accent);background:var(--accent-soft);border-radius:14px;padding:8px 10px}
+.chip .x{font-size:15px}
+
+/* 3 · zaman çizelgesi */
+.tl{position:relative;height:150px;margin:6px 6px 0}
+.tl .axis{position:absolute;left:0;right:0;top:78px;height:2px;background:var(--line)}
+.tl .tick{position:absolute;top:88px;font-size:11px;color:var(--muted);transform:translateX(-50%)}
+.pin{position:absolute;transform:translate(-50%,-50%);border:2px solid var(--card);border-radius:99px;background:var(--muted);padding:0}
+.pin[aria-pressed="true"]{background:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent)}
+.pin.refund{background:var(--green);cursor:default}
+.pin[disabled]{opacity:.35;cursor:not-allowed}
+.plabel{position:absolute;transform:translateX(-50%);font-size:11px;white-space:nowrap;color:var(--muted);text-align:center;pointer-events:none}
+.bar{height:10px;border-radius:99px;background:var(--soft);overflow:hidden;display:flex}
+.bar span{background:var(--green)}
+
+/* 4 · liste */
+.page{width:min(860px,100%);background:var(--surface);border-radius:18px;border:1px solid var(--line);overflow:hidden}
+.page header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.page header h3{margin:0;font-size:16px;font-weight:600}
+.li{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:4px 14px;padding:14px 20px;border-bottom:1px solid var(--line)}
+.li.active{background:color-mix(in srgb, var(--accent) 7%, var(--surface))}
+.date{color:var(--muted);font-size:13px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:6px;flex-wrap:wrap}
+.seg button{border:0;border-right:1px solid var(--line);background:var(--card);padding:5px 10px;font-size:12px;color:var(--muted)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.cands{grid-column:2 / -1;display:flex;gap:8px;overflow-x:auto;padding:8px 0 2px}
+.cand{flex:none;width:190px;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:9px 11px;text-align:left}
+.cand[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.cand.more{display:grid;place-items:center;color:var(--accent-text);font-weight:500;width:120px}
+
+/* 5 · eşleştirme */
+.pair{width:min(980px,100%);background:var(--surface);border-radius:18px;border:1px solid var(--line);overflow:hidden}
+.pair header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.pair header h3{margin:0;font-size:16px;font-weight:600}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}
+.col{padding:14px;display:flex;flex-direction:column;gap:8px}
+.col + .col{border-left:1px solid var(--line);background:color-mix(in srgb, var(--soft) 45%, var(--surface))}
+.rf{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 12px;text-align:left;width:100%}
+.rf[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent)}
+.prog{height:6px;border-radius:99px;background:var(--soft);overflow:hidden;width:160px}
+.prog span{display:block;height:100%;background:var(--accent)}
+@media (max-width:720px){.cols{grid-template-columns:minmax(0,1fr)}.col + .col{border-left:0;border-top:1px solid var(--line)}}
+@media (max-width:520px){.choice{grid-template-columns:minmax(0,1fr)}.li{grid-template-columns:minmax(0,1fr) auto}.li .date{grid-column:1 / -1}.cands{grid-column:1 / -1}}
+@media (prefers-reduced-motion: no-preference){.opt,.row,.cand,.rf,.pin{transition:background .15s, border-color .15s, box-shadow .15s}}
+</style>
+
+<div class="wrap">
+  <div>
+    <h1>İade bağlama · 5 tasarım</h1>
+    <p class="lead">Ekstredeki bir iadeyi, hangi alımın iadesi olduğunu seçerek bağlamanın beş yolu. Hepsi tıklanabilir; örnek veri ekstrendeki Amazon iadesine benzetildi.</p>
+  </div>
+  <div class="picker" role="group" aria-label="Tasarım seç" id="picker"></div>
+  <div class="about" id="about"></div>
+  <div class="stage" id="stage"></div>
+</div>
+
+<script>
+const TL = n => '₺' + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const REFUND = { title: 'Amazon', raw: 'IYZICO *AMAZON.COM.T', date: '2 Kasım 2026', amount: 1996.36 }
+const PURCHASES = [
+  { id: 'k1', who: 'Amazon', av: 'AM', cls: '', t: 'Kablosuz kulaklık', d: '26 Eki', day: 299, amt: 1996.36, cat: 'Elektronik' },
+  { id: 'k2', who: 'Amazon', av: 'AM', cls: '', t: 'Mutfak robotu', d: '18 Eki', day: 291, amt: 4143.78, cat: 'Ev', inst: '3 taksit' },
+  { id: 'k4', who: 'Amazon', av: 'AM', cls: '', t: 'Kitap seti', d: '30 Eyl', day: 273, amt: 410.16, cat: 'Kitap' },
+  { id: 'k3', who: 'Amazon', av: 'AM', cls: '', t: 'Koşu ayakkabısı', d: '12 Eyl', day: 255, amt: 2350, cat: 'Giyim' },
+  { id: 'k5', who: 'Amazon', av: 'AM', cls: '', t: 'Telefon kılıfı', d: '2 Ağu', day: 214, amt: 289.9, cat: 'Elektronik' },
+  { id: 'h1', who: 'Hepsiburada', av: 'HB', cls: 'hb', t: 'Dikey süpürge', d: '5 Eki', day: 278, amt: 3199, cat: 'Ev' },
+  { id: 't1', who: 'Trendyol', av: 'TY', cls: 'ty', t: 'Kaban', d: '20 Eki', day: 293, amt: 2499.9, cat: 'Giyim' },
+  { id: 'b1', who: 'Beymen', av: 'BM', cls: 'bm', t: 'Gömlek', d: '28 Eyl', day: 271, amt: 1649, cat: 'Giyim' },
+]
+const amazon = PURCHASES.filter(p => p.who === 'Amazon')
+const eligible = p => p.amt >= REFUND.amount
+const exact = p => Math.round(p.amt * 100) === Math.round(REFUND.amount * 100)
+const byId = id => PURCHASES.find(p => p.id === id)
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+const state = { v: 1, decision: 'refund', pick: 'k1', more: false, q: '', open: true, tab: 'gider',
+  listPick: null, listDecision: null,
+  pairSel: 'r1', pairs: { r2: 'h1' } }
+
+const VARIANTS = [
+  { n: 1, name: 'Pencerede öneri listesi', good: 'Çoğu iadede doğru alım ilk sıradadır; tek tıkla biter. Mevcut pencereye en az değişiklikle eklenir.', weak: 'Aranan alım önerilerde yoksa "Başka bir işlem ara"ya bir tık daha gerekir.' },
+  { n: 2, name: 'Aranabilir seçici', good: 'Alıcı ve kategori seçicileriyle aynı davranış; her alıma yazarak ulaşılır, kart fark etmez.', weak: 'Seçenekler ancak alan açılınca görünür; öneri bir bakışta okunmaz.' },
+  { n: 3, name: 'İşyeri zaman çizelgesi', good: 'İşyerinden yapılan alımlar zamana yayılmış görünür; kısmi iadede kalan tutar açıkça gösterilir.', weak: 'Aynı günlere düşen alımlarda noktalar sıkışır; telefonda dar kalır.' },
+  { n: 4, name: 'Listede, satırın altında', good: 'Pencere açmadan, ekstre listesinin içinde karar verilir; çok iade varken en hızlısı.', weak: 'Satır uzar; alıcı/kategori gibi diğer düzenlemeler yine pencerede kalır.' },
+  { n: 5, name: 'İade eşleştirme ekranı', good: 'Ekstredeki tüm iadeler tek ekranda; sırayla eşleştirilir, ilerleme görünür.', weak: 'Ayrı bir adım; ekstrede tek iade varken fazla gelir.' },
+]
+
+function picker() {
+  document.getElementById('picker').innerHTML = VARIANTS.map(v =>
+    `<button type="button" data-v="${v.n}" aria-pressed="${state.v === v.n}">${v.n} · ${esc(v.name)}</button>`).join('')
+  const v = VARIANTS[state.v - 1]
+  document.getElementById('about').innerHTML = `<div><b>Güçlü yanı</b>${esc(v.good)}</div><div><b>Zayıf yanı</b>${esc(v.weak)}</div>`
+}
+
+function purchaseLine(p, { radio, selected, disabled }) {
+  const badge = exact(p) ? '<span class="badge b-green">Tutar tutuyor</span>'
+    : disabled ? '<span class="badge b-orange">İadeden küçük</span>'
+    : `<span class="s">kısmi iade</span>`
+  return `<button type="button" class="opt" role="radio" aria-checked="${selected}" data-pick="${p.id}" ${disabled ? 'disabled' : ''}>
+    ${radio ? '<span class="radio"></span>' : `<span class="avatar ${p.cls}">${p.av}</span>`}
+    <span class="grow"><span class="t">${esc(p.t)}</span><span class="s">${p.d}${p.inst ? ' · ' + p.inst : ''} · ${esc(p.who)} · ${p.cat}</span></span>
+    <span class="right"><span class="t num">${TL(p.amt)}</span>${badge}</span></button>`
+}
+
+function resultBox() {
+  if (state.decision !== 'refund') return ''
+  if (!state.pick) return `<div class="result">Bağımsız iade olarak girilecek. Alıcı ve kategoriyi sen seçersin.</div>`
+  const p = byId(state.pick)
+  const left = p.amt - REFUND.amount
+  return `<div class="result">Bağlanacak: <b>${esc(p.t)}</b> · ${p.d} · <span class="num">${TL(p.amt)}</span><br>
+    Açıklama “[İade] ${esc(p.t)}”, alıcı ${esc(p.who)}, kategori ${p.cat} bu alımdan gelir.${left > 0.004 ? ` Kısmi iade: alımdan <span class="num">${TL(left)}</span> kalır.` : ''}</div>`
+}
+
+function modalShell(inner, issue = 'İade') {
+  return `<div class="modal" role="dialog" aria-label="Satır ayrıntısı">
+    <div class="mhead">
+      <div class="mtitle"><div><div class="eyebrow"><span class="dot"></span>Kontrol et · ${issue}</div><h2>[İade] ${esc(REFUND.title)}</h2></div><button type="button" class="x" aria-label="Kapat">✕</button></div>
+      <div class="tabs" role="tablist"><button type="button" role="tab" aria-selected="true">Gider</button><button type="button" role="tab" aria-selected="false">Gelir</button></div>
+    </div>
+    <div class="mbody">
+      <div class="hero"><span class="s" style="font-size:14px">${REFUND.date}</span><span class="amt num">+${TL(REFUND.amount)}</span></div>
+      <div><div class="lbl">Karar</div><div class="choice" role="radiogroup" aria-label="Karar">
+        <button type="button" class="opt" role="radio" aria-checked="${state.decision === 'refund'}" data-decision="refund"><span class="radio"></span>İade olarak gir</button>
+        <button type="button" class="opt" role="radio" aria-checked="${state.decision === 'skip'}" data-decision="skip"><span class="radio"></span>Girme</button>
+      </div></div>
+      ${state.decision === 'refund' ? inner : ''}
+      ${resultBox()}
+    </div>
+    <div class="mfoot"><button type="button" class="primary">Tamam</button></div>
+  </div>`
+}
+
+/* 1 · Öneri listesi */
+function v1() {
+  const top = amazon.filter(eligible).sort((a, b) => (exact(b) - exact(a)) || (b.day - a.day))
+  let inner = `<div class="panel" role="radiogroup" aria-label="Hangi alımın iadesi">
+    <div class="phead"><strong>Hangi alımın iadesi?</strong><span class="s">Amazon · son 6 ay</span></div>
+    ${top.map(p => purchaseLine(p, { radio: true, selected: state.pick === p.id })).join('')}
+    <button type="button" class="opt" role="radio" aria-checked="${state.pick === null}" data-pick=""><span class="radio"></span><span class="grow" style="color:var(--muted)">Bağlama, bağımsız iade olarak gir</span></button>`
+  if (state.more) {
+    const q = state.q.toLocaleLowerCase('tr-TR')
+    const hits = PURCHASES.filter(p => !top.includes(p) && (!q || (p.t + ' ' + p.who + ' ' + p.amt).toLocaleLowerCase('tr-TR').includes(q)))
+    inner += `<label class="field"><span class="s">Ara</span><input id="q1" value="${esc(state.q)}" placeholder="işyeri, ürün ya da tutar" autocomplete="off"></label>
+      ${hits.map(p => purchaseLine(p, { radio: true, selected: state.pick === p.id, disabled: !eligible(p) })).join('') || '<span class="s">Sonuç yok.</span>'}`
+  } else inner += `<button type="button" class="link" data-more>Başka bir işlem ara…</button>`
+  return modalShell(inner + '</div>')
+}
+
+/* 2 · Aranabilir seçici */
+function v2() {
+  const q = state.q.toLocaleLowerCase('tr-TR')
+  const match = p => !q || (p.t + ' ' + p.who + ' ' + p.amt.toFixed(2).replace('.', ',')).toLocaleLowerCase('tr-TR').includes(q)
+  const sug = amazon.filter(p => exact(p) && match(p))
+  const same = amazon.filter(p => !exact(p) && match(p))
+  const other = PURCHASES.filter(p => p.who !== 'Amazon' && match(p))
+  const rows = (list) => list.map(p => `<button type="button" class="row" role="option" aria-selected="${state.pick === p.id}" data-pick="${p.id}" ${eligible(p) ? '' : 'disabled'}>
+      <span class="avatar ${p.cls}">${p.av}</span><span class="grow"><span class="t">${esc(p.t)}</span><span class="s">${p.d} · ${esc(p.who)}${eligible(p) ? '' : ' · iadeden küçük'}</span></span>
+      <span class="t num">${TL(p.amt)}</span></button>`).join('')
+  const picked = state.pick ? byId(state.pick) : null
+  const inner = `<div class="combo"><label for="q2" class="s" style="font-weight:500">Bağlı alım</label>
+    ${picked && !state.open ? `<div class="chip"><span class="avatar ${picked.cls}">${picked.av}</span><span class="grow"><span class="t">${esc(picked.t)}</span><span class="s">${picked.d} · ${esc(picked.who)}</span></span><span class="t num">${TL(picked.amt)}</span><button type="button" class="x" data-clear aria-label="Bağlantıyı kaldır">✕</button></div>`
+      : `<div class="field"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="q2" value="${esc(state.q)}" placeholder="Alım ara: işyeri, ürün, tutar" autocomplete="off" role="combobox" aria-expanded="${state.open}"></div>`}
+    ${state.open ? `<div class="list" role="listbox" aria-label="Alımlar">
+      ${sug.length ? '<div class="group">Önerilen · tutar tutuyor</div>' + rows(sug) : ''}
+      ${same.length ? '<div class="group">Amazon · diğer alımlar</div>' + rows(same) : ''}
+      ${other.length ? '<div class="group">Diğer işyerleri</div>' + rows(other) : ''}
+      ${!sug.length && !same.length && !other.length ? '<div class="group">Sonuç yok</div>' : ''}
+    </div>` : ''}</div>`
+  return modalShell(inner + (state.open ? '<div style="height:330px"></div>' : ''))
+}
+
+/* 3 · Zaman çizelgesi */
+function v3() {
+  const min = 205, max = 314, x = d => ((d - min) / (max - min)) * 100
+  const size = a => Math.round(12 + Math.sqrt(a) / 3.2)
+  const months = [{ l: 'Ağu', d: 213 }, { l: 'Eyl', d: 244 }, { l: 'Eki', d: 274 }, { l: 'Kas', d: 305 }]
+  const pins = amazon.map((p, i) => {
+    const s = size(p.amt), up = i % 2 === 0
+    return `<button type="button" class="pin" style="left:${x(p.day)}%;top:79px;width:${s}px;height:${s}px" aria-pressed="${state.pick === p.id}" data-pick="${p.id}" ${eligible(p) ? '' : 'disabled'} aria-label="${esc(p.t)} ${p.d} ${TL(p.amt)}"></button>
+      <span class="plabel num" style="left:${x(p.day)}%;${up ? 'top:22px' : 'top:104px'}"><b style="color:var(--fg);font-weight:500">${esc(p.t)}</b><br>${TL(p.amt)}</span>`
+  }).join('')
+  const ticks = months.map(m => `<span class="tick" style="left:${x(m.d)}%">${m.l}</span>`).join('')
+  const p = state.pick ? byId(state.pick) : null
+  const pct = p ? Math.min(100, (REFUND.amount / p.amt) * 100) : 0
+  const inner = `<div class="panel">
+    <div class="phead"><strong>Amazon alımların</strong><span class="s">Noktaya tıkla · büyüklük tutarı gösterir</span></div>
+    <div class="tl"><div class="axis"></div>${ticks}${pins}
+      <button type="button" class="pin refund" style="left:${x(306)}%;top:79px;width:16px;height:16px" disabled aria-label="İade 2 Kasım"></button>
+      <span class="plabel" style="left:${x(306)}%;top:104px;color:var(--green)"><b style="font-weight:600">İade</b><br>2 Kas</span></div>
+    ${p ? `<div><div class="phead"><span class="s">İade, alımın ne kadarı?</span><span class="s num">${TL(REFUND.amount)} / ${TL(p.amt)}</span></div>
+      <div class="bar" role="img" aria-label="Alımın yüzde ${Math.round(pct)} kadarı iade"><span style="width:${pct}%"></span></div></div>` : ''}
+    <button type="button" class="link" data-pick="">Bağlama, bağımsız iade olarak gir</button></div>`
+  return modalShell(inner)
+}
+
+/* 4 · Liste içinde */
+function v4() {
+  const d = state.listDecision
+  const cands = amazon.filter(eligible).sort((a, b) => (exact(b) - exact(a)) || (b.day - a.day))
+  const other = (date, t, sub, amt, dec) => `<div class="li"><span class="date">${date}</span><div><span class="t">${t}</span><span class="s">${sub}</span>
+      <div class="seg">${dec.map((x, i) => `<button type="button" aria-pressed="false">${x}</button>`).join('')}</div></div><span class="t num">${amt}</span></div>`
+  return `<div class="page"><header><h3>Garanti BBVA kredi kartı · dönem içi işlemler</h3><span class="s">Kontrol et · 3 satır</span></header>
+    ${other('1 Kas', 'Ethem Efendi Migros', 'Migros · Market', TL(54.9), ['Gir', 'Girme'])}
+    <div class="li active"><span class="date">2 Kas</span><div>
+      <span class="t">[İade] Amazon</span><span class="s">${REFUND.raw}</span>
+      <div class="seg" role="group" aria-label="Karar">
+        <button type="button" data-ld="refund" aria-pressed="${d === 'refund'}">İade, alıma bağla</button>
+        <button type="button" data-ld="free" aria-pressed="${d === 'free'}">Bağımsız iade</button>
+        <button type="button" data-ld="income" aria-pressed="${d === 'income'}">Gelir</button>
+        <button type="button" data-ld="skip" aria-pressed="${d === 'skip'}">Girme</button></div></div>
+      <span class="t num" style="color:var(--green)">+${TL(REFUND.amount)}</span>
+      ${d === 'refund' ? `<div class="cands" role="radiogroup" aria-label="Bağlanacak alım">
+        ${cands.map(p => `<button type="button" class="cand" role="radio" aria-pressed="${state.listPick === p.id}" data-lp="${p.id}">
+          <span class="t">${esc(p.t)}</span><span class="s">${p.d}${p.inst ? ' · ' + p.inst : ''}</span>
+          <span class="t num" style="margin-top:4px">${TL(p.amt)}</span>${exact(p) ? '<span class="badge b-green">Tutar tutuyor</span>' : '<span class="s">kısmi iade</span>'}</button>`).join('')}
+        <button type="button" class="cand more">Diğer…</button></div>
+        ${state.listPick ? `<div class="s" style="grid-column:2 / -1">“[İade] ${esc(byId(state.listPick).t)}” olarak, ${byId(state.listPick).d} alımına bağlı girilecek.</div>` : ''}` : ''}
+    </div>
+    ${other('3 Kas', 'Ikea Kartal', 'IKEA · Ev', TL(826.65), ['Gir', 'Girme'])}
+  </div>`
+}
+
+/* 5 · Eşleştirme ekranı */
+const REFUNDS = [
+  { id: 'r1', t: '[İade] Amazon', raw: 'IYZICO *AMAZON.COM.T', d: '2 Kas', amt: 1996.36, who: 'Amazon' },
+  { id: 'r2', t: '[İade] Hepsiburada', raw: 'HEPSİPAY-HEP*HEPSİBURADA', d: '6 Kas', amt: 3199, who: 'Hepsiburada' },
+  { id: 'r3', t: '[İade] Beymen', raw: 'BEYMEN PERAKENDE VE TEKST', d: '28 Kas', amt: 1649, who: 'Beymen' },
+]
+function v5() {
+  const done = Object.keys(state.pairs).length
+  const sel = REFUNDS.find(r => r.id === state.pairSel)
+  const used = new Set(Object.entries(state.pairs).filter(([r]) => r !== sel.id).map(([, p]) => p))
+  const cands = PURCHASES.filter(p => p.amt >= sel.amt && !used.has(p.id))
+    .sort((a, b) => ((b.who === sel.who) - (a.who === sel.who)) || ((Math.round(b.amt * 100) === Math.round(sel.amt * 100)) - (Math.round(a.amt * 100) === Math.round(sel.amt * 100))) || (b.day - a.day))
+  return `<div class="pair"><header><h3>İadeleri eşleştir</h3>
+      <span style="display:flex;align-items:center;gap:10px"><span class="s num">${done}/${REFUNDS.length} eşleşti</span><span class="prog"><span style="width:${(done / REFUNDS.length) * 100}%"></span></span></span></header>
+    <div class="cols">
+      <div class="col"><div class="lbl">Ekstredeki iadeler</div>
+        ${REFUNDS.map(r => { const p = state.pairs[r.id] && byId(state.pairs[r.id]); return `<button type="button" class="rf" aria-pressed="${r.id === sel.id}" data-rs="${r.id}">
+          <span class="grow"><span class="t">${esc(r.t)}</span><span class="s">${r.d} · ${esc(r.raw)}</span>
+          ${p ? `<span class="badge b-green">→ ${esc(p.t)} · ${p.d}</span>` : '<span class="badge b-orange">Eşleşmedi</span>'}</span>
+          <span class="t num" style="color:var(--green)">+${TL(r.amt)}</span></button>` }).join('')}
+      </div>
+      <div class="col"><div class="phead"><span class="lbl" style="margin:0">${esc(sel.t)} için alımlar</span><span class="s">aynı işyeri önce</span></div>
+        ${cands.map(p => `<button type="button" class="opt" role="radio" aria-checked="${state.pairs[sel.id] === p.id}" data-pp="${p.id}">
+          <span class="avatar ${p.cls}">${p.av}</span><span class="grow"><span class="t">${esc(p.t)}</span><span class="s">${p.d} · ${esc(p.who)} · ${p.cat}</span></span>
+          <span class="right"><span class="t num">${TL(p.amt)}</span>${Math.round(p.amt * 100) === Math.round(sel.amt * 100) ? '<span class="badge b-green">Tutar tutuyor</span>' : ''}</span></button>`).join('') || '<span class="s">Uygun alım yok.</span>'}
+        <button type="button" class="link" data-pp="">Bu iadeyi bağımsız gir</button>
+      </div>
+    </div></div>`
+}
+
+function render() {
+  picker()
+  const stage = document.getElementById('stage')
+  const html = [v1, v2, v3, v4, v5][state.v - 1]()
+  stage.className = 'stage' + (state.v <= 3 ? ' dim' : '')
+  const focused = document.activeElement?.id
+  const caret = document.activeElement?.selectionStart
+  stage.innerHTML = html
+  if (focused && document.getElementById(focused)) {
+    const el = document.getElementById(focused); el.focus()
+    if (caret != null && el.setSelectionRange) el.setSelectionRange(caret, caret)
+  }
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return
+  if (b.dataset.v) { const v = +b.dataset.v; Object.assign(state, { v, q: '', more: false, open: v === 2, pick: v === 2 ? null : 'k1', decision: 'refund' }); return render() }
+  if (b.dataset.decision) { state.decision = b.dataset.decision; return render() }
+  if ('pick' in b.dataset) { state.pick = b.dataset.pick || null; if (state.v === 2) state.open = false; return render() }
+  if ('more' in b.dataset) { state.more = true; return render() }
+  if ('clear' in b.dataset) { state.pick = null; state.open = true; state.q = ''; return render() }
+  if (b.dataset.ld) { state.listDecision = b.dataset.ld; if (b.dataset.ld !== 'refund') state.listPick = null; else state.listPick ??= 'k1'; return render() }
+  if (b.dataset.lp) { state.listPick = b.dataset.lp; return render() }
+  if (b.dataset.rs) { state.pairSel = b.dataset.rs; return render() }
+  if ('pp' in b.dataset) {
+    if (b.dataset.pp) state.pairs[state.pairSel] = b.dataset.pp; else delete state.pairs[state.pairSel]
+    const next = REFUNDS.find(r => !state.pairs[r.id]); if (b.dataset.pp && next) state.pairSel = next.id
+    return render()
+  }
+})
+document.addEventListener('focusin', e => { if (e.target.id === 'q2' && !state.open) { state.open = true; render() } })
+document.addEventListener('input', e => { if (e.target.id === 'q1' || e.target.id === 'q2') { state.q = e.target.value; render() } })
+render()
+</script>

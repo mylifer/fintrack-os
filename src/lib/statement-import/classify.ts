@@ -62,6 +62,22 @@ export interface DraftTx {
   editable: boolean
   /** "Var olan alıcıyla gir": alıcı seçilmeden kayıt yapılmaz */
   needsRecipient?: boolean
+  /** "İade, alıma bağla": bağlanacak alım seçilmeden kayıt yapılmaz */
+  needsRefundOf?: boolean
+}
+
+/** İadenin bağlanabileceği bir alım (sistemdeki gider kaydı) */
+export interface RefundCandidate {
+  txId: string
+  title: string
+  date: string
+  amount: number
+  /** Alıcının adı (varsa) */
+  who?: string
+  /** Tutar iadeyle birebir aynı */
+  exact: boolean
+  /** Seçilince satıra uygulanan düzenleme (açıklama, alıcı, kategori alımdan gelir) */
+  patch: { refundOfId: string; description: string; recipientId: string | null; categoryId?: string; familyMemberId: string | null; tags: string[]; linkFill: true }
 }
 
 export type Action =
@@ -108,6 +124,9 @@ export interface PlanRow {
   issue?: string
   note?: string
   options: RowOption[]
+  /** İade satırı: bağlanabilecek alımlar. `candidates` aynı işyeri/alıcı, `more` bu
+   *  karttaki diğer alımlar (son 12 ay, iadeden küçük olmayan) */
+  refundLink?: { candidates: RefundCandidate[]; more: RefundCandidate[] }
   /** Önerilen seçenek (review'da da gösterilir) */
   recommended: number | null
   /** review dışındaki satırlarda seçili seçenek; review'da kullanıcı seçer */
@@ -959,26 +978,48 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
 
     if (l.kind === 'refund') {
       const key = merchantKey(l.description)
-      const origins = accTx.filter(t => t.accountId === acc && t.type === 'expense' && t.amount > 0 &&
-        dayNum(t.date) <= dayNum(dateOf(l)) && dayNum(dateOf(l)) - dayNum(t.date) <= 180 &&
-        ((t.merchant && merchantKey(t.merchant) === key) || (rule?.recipientId && t.recipientId === rule.recipientId)) &&
-        minor(t.amount) >= -minor(l.amount!))
-      const exact = origins.filter(t => minor(t.amount) === -minor(l.amount!)).sort((a, b) => b.date.localeCompare(a.date))[0]
+      const refundMinor = -minor(l.amount!)
+      const ld = dayNum(dateOf(l))
+      // Bağlanabilecek alımlar: bu karttaki, iadeden önceki, iadeden küçük olmayan giderler
+      const pool = accTx.filter(t => t.accountId === acc && t.type === 'expense' && t.amount > 0 && !t.refundOfId &&
+        dayNum(t.date) <= ld && ld - dayNum(t.date) <= 365 && minor(t.amount) >= refundMinor)
+      const sameShop = (t: Transaction) => (!!t.merchant && merchantKey(t.merchant) === key) || (!!rule?.recipientId && t.recipientId === rule.recipientId)
+      const origins = pool.filter(t => ld - dayNum(t.date) <= 180 && sameShop(t))
+      const isExact = (t: Transaction) => minor(t.amount) === refundMinor
+      const exact = origins.filter(isExact).sort((a, b) => b.date.localeCompare(a.date))[0]
+      const cand = (t: Transaction): RefundCandidate => ({
+        txId: t.id, title: t.description, date: t.date, amount: t.amount,
+        who: t.recipientId ? peopleById.get(t.recipientId)?.name : undefined, exact: isExact(t),
+        patch: {
+          refundOfId: t.id, description: `[İade] ${t.description}`, recipientId: t.recipientId ?? null, categoryId: t.categoryId,
+          familyMemberId: t.familyMemberId ?? null, tags: [...(t.tags ?? []).filter(x => x !== refundTag), refundTag], linkFill: true,
+        },
+      })
+      const linkFields = (c: RefundCandidate): Partial<DraftTx> => ({
+        refundOfId: c.patch.refundOfId, description: c.patch.description, recipientId: c.patch.recipientId,
+        categoryId: c.patch.categoryId, familyMemberId: c.patch.familyMemberId, tags: c.patch.tags,
+      })
+      const byRank = (a: Transaction, b: Transaction) => (Number(isExact(b)) - Number(isExact(a))) || b.date.localeCompare(a.date)
+      const candidates = origins.slice().sort(byRank).map(cand)
+      const more = pool.filter(t => !origins.includes(t)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 80).map(cand)
+
       const standalone = draftFor(l, rule, { description: `[İade] ${title}`, tags: [...(rule?.tags ?? []), refundTag] })
       const options: RowOption[] = []
-      if (exact) options.push({ key: 'link', label: `İade olarak gir, ${fmtDay(exact.date)} alımına bağla`, actions: [{ type: 'create', draft: {
-        ...standalone, description: `[İade] ${exact.description}`, recipientId: exact.recipientId ?? null, categoryId: exact.categoryId,
-        familyMemberId: exact.familyMemberId ?? null, refundOfId: exact.id, tags: [...(exact.tags ?? []).filter(x => x !== refundTag), refundTag],
-      } }] })
+      if (candidates.length || more.length) options.push({ key: 'link', label: 'İade, alıma bağla', actions: [{ type: 'create', draft: exact
+        ? { ...standalone, ...linkFields(cand(exact)) }
+        : { ...standalone, needsRefundOf: true } }] })
       options.push({ key: 'standalone', label: 'Bağımsız iade olarak gir', actions: [{ type: 'create', draft: standalone }] }, incomeOption(l, rule, title), skip)
       rows.push({
         ...base, ...rb, status: 'review', kind: 'refund', title: `[İade] ${exact?.description ?? title}`,
         match: exact ? { txIds: [exact.id], text: describeTx(exact) } : undefined,
-        issue: exact ? 'İade — asıl alım bulundu' : 'İadenin alımı bulunamadı',
+        refundLink: options[0].key === 'link' ? { candidates, more } : undefined,
+        issue: exact ? 'İade — asıl alım bulundu' : candidates.length ? 'İade — hangi alımın?' : 'İadenin alımı bulunamadı',
         reason: exact
           ? `${fmtTr(-l.amount!)} ₺ iade; ${fmtDay(exact.date)} tarihli aynı tutardaki alımın iadesi görünüyor. Önerilen: “[İade] …” olarak, alıma bağlı gir.`
-          : `${fmtTr(-l.amount!)} ₺ iade. Son 180 günde bu işyerinden aynı tutarda alım yok (parça iadesi olabilir). Önerilen: bağımsız iade olarak gir.`,
-        options, recommended: 0, defaultOption: null, sideEffects: [],
+          : candidates.length
+            ? `${fmtTr(-l.amount!)} ₺ iade. Bu işyerinden aynı tutarda alım yok ama ${candidates.length} alım var (parça iadesi olabilir). Hangisinin iadesiyse “İade, alıma bağla” ile seç.`
+            : `${fmtTr(-l.amount!)} ₺ iade. Son 180 günde bu işyerinden alım yok. Önerilen: bağımsız iade olarak gir; istersen “İade, alıma bağla” ile karttaki başka bir alımı seç.`,
+        options, recommended: exact ? 0 : options.findIndex(o => o.key === 'standalone'), defaultOption: null, sideEffects: [],
       })
       continue
     }

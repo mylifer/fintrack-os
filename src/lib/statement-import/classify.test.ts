@@ -463,3 +463,51 @@ describe('satır penceresinden etiket / abonelik', () => {
     expect(created(c.ops)[0].tags).toEqual(['abonelik'])
   })
 })
+
+describe('iadeyi alıma bağlama (satırın altında seçim)', () => {
+  const hist = [
+    tx({ id: 'a1', amount: 4143.78, date: '2026-09-18', merchant: 'IYZICO *AMAZON.COM.T', recipientId: 'p-ys', categoryId: 'c-ev', description: 'Mutfak robotu', tags: ['ev'] }),
+    tx({ id: 'a2', amount: 2350, date: '2026-09-12', merchant: 'IYZICO *AMAZON.COM.T', recipientId: 'p-ys', categoryId: 'c-food', description: 'Koşu ayakkabısı' }),
+    tx({ id: 'a3', amount: 410.16, date: '2026-09-30', merchant: 'IYZICO *AMAZON.COM.T', recipientId: 'p-ys', categoryId: 'c-food', description: 'Kitap' }),
+    tx({ id: 'o1', amount: 3199, date: '2026-10-05', merchant: 'HEPSIPAY', recipientId: 'p-itc', categoryId: 'c-ev', description: 'Süpürge' }),
+  ]
+  const refund = () => line({ description: 'IYZICO *AMAZON.COM.T', amount: -1996.36, date: '2026-10-20' })
+
+  it('aynı işyerinin iadeden küçük olmayan alımları aday; diğer alımlar "Diğer…" listesinde', () => {
+    const r = plan([refund()], hist).rows[0]
+    expect(r.options.map(o => o.key)).toEqual(['link', 'standalone', 'income', 'skip'])
+    expect(r.options[r.recommended!].key).toBe('standalone')
+    expect(r.refundLink!.candidates.map(c => c.txId)).toEqual(['a1', 'a2'])
+    expect(r.refundLink!.more.map(c => c.txId)).toEqual(['o1'])
+  })
+
+  it('alım seçilmeden kayıt yapılmaz; seçilen alımın açıklaması, alıcısı, kategorisi ve etiketleri iadeye geçer', () => {
+    const p = plan([refund()], hist)
+    const r = p.rows[0]
+    const mine = (c: ReturnType<typeof commit>) => c.problems.filter(x => x.rowKey === r.key)
+    expect(mine(commit(p, hist, { [r.key]: 0 }))[0].message).toBe('İadenin bağlanacağı alım seçilmedi')
+    const c = commit(p, hist, { [r.key]: 0 }, { [r.key]: r.refundLink!.candidates[0].patch })
+    expect(mine(c)).toEqual([])
+    const made = created(c.ops)[0]
+    expect([made.refundOfId, made.description, made.recipientId, made.categoryId, made.amount]).toEqual(['a1', '[İade] Mutfak robotu', 'p-ys', 'c-ev', -1996.36])
+    expect(made.tags).toEqual(['ev', 'İade'])
+  })
+})
+
+describe('abonelik öğrenimi', () => {
+  const draftTags = (p: ReturnType<typeof plan>) => {
+    const a = p.rows[0].options[0].actions[0]
+    return a.type === 'create' ? a.draft.tags : undefined
+  }
+  it('tek kayıtta abonelik işaretlendiyse sonraki ekstrede de abonelik gelir', () => {
+    const hist = [tx({ id: 'n1', amount: 229.99, date: '2026-09-10', merchant: 'NETFLIX.COM', recipientId: 'p-itc', categoryId: 'c-food', description: 'Netflix', tags: ['abonelik'] })]
+    expect(draftTags(plan([line({ description: 'NETFLIX.COM', amount: 229.99, date: '2026-10-10' })], hist))).toEqual(['abonelik'])
+  })
+  it('son kayıtta işaret kaldırıldıysa artık abonelik gelmez', () => {
+    const hist = [
+      tx({ id: 'n1', amount: 229.99, date: '2026-08-10', merchant: 'NETFLIX.COM', recipientId: 'p-itc', categoryId: 'c-food', description: 'Netflix', tags: ['abonelik'] }),
+      tx({ id: 'n2', amount: 229.99, date: '2026-09-10', merchant: 'NETFLIX.COM', recipientId: 'p-itc', categoryId: 'c-food', description: 'Netflix' }),
+    ]
+    expect(draftTags(plan([line({ description: 'NETFLIX.COM', amount: 229.99, date: '2026-10-10' })], hist))).toBeUndefined()
+  })
+})
