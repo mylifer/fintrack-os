@@ -103,9 +103,9 @@ export function StatementImport() {
   // Plan, store'daki her değişiklikte (başka cihazdan gelen kayıt dahil) yeniden hesaplanır
   const plan = useMemo(() => {
     if (!statement || !accountId) return null
-    void transactions; void people; void categories
+    void transactions; void people; void categories; void accounts
     return makePlan(statement, accountId)
-  }, [statement, accountId, transactions, people, categories, makePlan])
+  }, [statement, accountId, transactions, people, categories, accounts, makePlan])
 
   const existing = useMemo(() => new Map(transactions.map(t => [t.id, t])), [transactions])
 
@@ -199,14 +199,17 @@ export function StatementImport() {
     setNotice('')
     if (!d) { setError('Bu taslak bulunamadı (silinmiş ya da başka bir cihazda kalmış olabilir).'); return }
     setError('')
+    // Hesap (henüz) bulunamasa da taslağın hesabı ve kararları korunur: hesaplar
+    // sonradan gelirse liste kendiliğinden kurulur; kararlar sessizce atılmaz
     const accountOk = useAccountStore.getState().accounts.some(a => a.id === d.accountId)
     setStatement(d.statement)
     setFileName(d.fileName)
     setDraftId(d.id)
-    setAccountId(accountOk ? d.accountId : '')
+    setAccountId(d.accountId)
     setSuggested(null)
-    setChoices(accountOk ? d.choices : {})
-    setEdits(accountOk ? d.edits : {})
+    setChoices(d.choices)
+    setEdits(d.edits)
+    if (!accountOk) setNotice('Bu taslağın hesabı bulunamadı. Listeyi görmek için yukarıdan hesabı seçin; verdiğin kararlar korunuyor.')
     setStep('preview')
   }, [])
 
@@ -479,7 +482,12 @@ export function StatementImport() {
         <span className="text-sm font-semibold">Hesap</span>
         <SelectField
           value={accountId}
-          onChange={e => { setAccountId(e.target.value); setChoices({}); setEdits({}) }}
+          onChange={e => {
+            // Taslağın hesabı bulunamamışsa hesap seçmek bir onarımdır: kararlar korunur
+            const repairing = !!accountId && !accounts.some(a => a.id === accountId)
+            setAccountId(e.target.value)
+            if (!repairing) { setChoices({}); setEdits({}) }
+          }}
           options={candidates.map(a => ({ value: a.id, label: a.name }))}
           placeholder={statement.type === 'checking' ? 'Hesap seçin' : 'Kart seçin'}
           className="w-56 bg-background"
@@ -552,6 +560,12 @@ export function StatementImport() {
       )}
       {notice && <div className="text-xs font-medium px-4 py-2.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400">{notice}</div>}
       {error && <div className="text-xs text-destructive font-medium px-4 py-2.5 bg-destructive/10 rounded-xl">{error}</div>}
+
+      {!plan && step === 'preview' && (
+        <div className="rounded-xl border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+          İşlemleri görmek için yukarıdan ekstrenin <span className="font-medium text-foreground">hesabını seçin</span>.
+        </div>
+      )}
 
       {plan && (
         <PreviewList
