@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { groupLines, type PdfItem } from './pdf-text'
 import { parseQnbPeriod, parseQnbStatement } from './qnb-card'
 import { parseStatement } from './statement'
+import { expectSameAcrossPageBreak } from './test-helpers'
 
 const left = (x: number, s: string, y: number): PdfItem => ({ x, right: x + s.length * 4, y, str: s })
 const right = (r: number, s: string, y: number): PdfItem => ({ x: r - s.length * 4, right: r, y, str: s })
@@ -41,6 +42,10 @@ describe('QNB ekstre', () => {
     ])
     expect(parseStatement([page]).bank).toBe('qnb')
   })
+
+  it('tablo başlıksız bir sonraki sayfaya taşsa da aynı okunur', () => {
+    expectSameAcrossPageBreak(parseQnbStatement, [page], '19/09/2026')
+  })
 })
 
 describe('QNB dönem içi işlemler', () => {
@@ -62,5 +67,9 @@ describe('QNB dönem içi işlemler', () => {
       ['2026-10-13', 'payment', -3278.05],
       ['2026-10-24', 'purchase', 467],
     ])
+  })
+
+  it('tablo başlıksız bir sonraki sayfaya taşsa da aynı okunur', () => {
+    expectSameAcrossPageBreak(parseQnbPeriod, [page], '24/10/2026')
   })
 })

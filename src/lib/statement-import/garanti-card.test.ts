@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { groupLines, type PdfItem, type PdfPage } from './pdf-text'
 import { parseGarantiCard, parseTrDate, parseTrAmount } from './garanti-card'
 import { parseStatement } from './statement'
+import { expectSameAcrossPageBreak } from './test-helpers'
 
 // Gerçek ekstredeki sütun konumları (pt): tarih 105, açıklama 170, taksit 303,
 // Bonus sağ kenarı 445, Tutar sağ kenarı 553. Tutarlar sağa yaslıdır.
@@ -59,6 +60,10 @@ describe('parseTrDate / parseTrAmount', () => {
     expect(parseTrAmount('124.641,96')).toBe(124641.96)
     expect(parseTrAmount('452,77+')).toBe(452.77)
     expect(parseTrAmount('2.053,99-')).toBe(2053.99)
+  })
+
+  it('tablo başlıksız bir sonraki sayfaya taşsa da aynı okunur', () => {
+    expectSameAcrossPageBreak(parseGarantiCard, [samplePage()], 'IYZICO/RUSTANDRICH')
   })
 })
 

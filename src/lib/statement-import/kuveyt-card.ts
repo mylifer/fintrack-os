@@ -101,10 +101,11 @@ export function parseKuveytCard(pages: PdfPage[]): ParsedStatement | null {
 
   // ── İşlem tablosu ──
   const raw: Raw[] = []
+  // Sayfa başında başlık tekrarlanmayabilir: sütunlar sayfadan sayfaya taşınır
+  let tutarX: number | null = null
+  let descX = 0
+  let puanRight = Infinity
   for (const page of pages) {
-    let tutarX: number | null = null
-    let descX = 0
-    let puanRight = Infinity
     for (const line of page.lines) {
       const items = line.items.map(i => ({ ...i, str: i.str.trim() })).filter(i => i.str)
       const lt = foldText(line.text)

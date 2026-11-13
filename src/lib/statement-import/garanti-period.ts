@@ -78,8 +78,9 @@ export function parseGarantiPeriod(pages: PdfPage[]): ParsedStatement | null {
   const totals: number[] = []
   let section: 'provision' | 'period' | null = null
   let provisionRows = 0
+  // Sayfa başında başlık tekrarlanmayabilir: sütunlar sayfadan sayfaya taşınır
+  let cols: Columns | null = null
   for (const page of pages) {
-    let cols: Columns | null = null
     for (const line of page.lines) {
       const items = line.items.map(i => ({ ...i, str: i.str.trim() })).filter(i => i.str)
       const lt = foldText(line.text)
