@@ -406,3 +406,28 @@ describe('akıllı alıcı ve kategori eşleştirme', () => {
     expect([r.kind, r.newRecipient]).toEqual(['unknown', true])
   })
 })
+
+describe('alacak satırını gelir olarak girme', () => {
+  const income: Category = { id: 'c-inc', name: 'Vergi İadesi', icon: '', color: '', scope: 'income', isSystem: false, sortOrder: 0 }
+  const cats = [...categories, income]
+
+  it('her iade satırında "Gelir olarak gir" var; gelir kategorisiyle yazılır ve sonraki ekstrede öğrenilmiş olur', () => {
+    const l = line({ description: 'Yurt Disi Cikis Harc Iadesi', amount: -1250, date: '2026-10-20' })
+    const p = plan([l], [], { categories: cats })
+    const r = p.rows[0]
+    expect(r.kind).toBe('refund')
+    const i = r.options.findIndex(o => o.key === 'income')
+    expect(i).toBeGreaterThan(-1)
+    const draft = (r.options[i].actions[0] as { draft: { type: string; amount: number } }).draft
+    expect([draft.type, draft.amount]).toEqual(['income', 1250])
+    expect(commit(p, [], { [r.key]: i }).problems[0].message).toBe('Kategori seçilmedi')
+    const ok = commit(p, [], { [r.key]: i }, { [r.key]: { categoryId: 'c-inc' } })
+    expect(ok.problems).toEqual([])
+    const made = created(ok.ops)[0]
+    expect([made.type, made.amount, made.categoryId]).toEqual(['income', 1250, 'c-inc'])
+
+    // Sonraki ekstre: aynı satır kendiliğinden gelir olarak önerilir
+    const next = plan([line({ description: 'Yurt Disi Cikis Harc Iadesi', amount: -1250, date: '2026-10-27' })], [made], { categories: cats }).rows[0]
+    expect([next.status, next.kind, next.categoryId]).toEqual(['new', 'income', 'c-inc'])
+  })
+})

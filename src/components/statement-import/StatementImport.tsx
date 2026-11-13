@@ -18,7 +18,7 @@ import { formatDate, today } from '@/lib/utils/date'
 import { readPdfPages } from '@/lib/statement-import/pdf-text'
 import { readImageText } from '@/lib/statement-import/ocr'
 import { parseScreenshot, parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
-import { buildImportPlan, type ImportPlan, type PlanRow } from '@/lib/statement-import/classify'
+import { buildImportPlan, type ImportPlan, type PlanRow, type RowOption } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
 import { buildCommit, commitEffect, optionForEdit, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
@@ -416,13 +416,18 @@ export function StatementImport() {
     const opt = row?.options[i]
     if (!row || !opt) return
     setChoices(c => ({ ...c, [key]: opt.key }))
-    if (selectedOption(row, choices) === i) return
+    const prevIdx = selectedOption(row, choices)
+    if (prevIdx === i) return
+    // Gider ↔ gelir geçişinde seçilmiş kategori öteki türe ait olur: o da silinir
+    const typeOf = (o?: RowOption) => { const a = o?.actions.find(x => x.type === 'create'); return a?.type === 'create' ? a.draft.type : undefined }
+    const typeChanged = typeOf(prevIdx !== null ? row.options[prevIdx] : undefined) !== typeOf(opt)
     setEdits(e => {
       const cur = e[key]
-      if (!cur || (cur.recipientId === undefined && cur.newRecipient === undefined)) return e
+      if (!cur || (cur.recipientId === undefined && cur.newRecipient === undefined && !(typeChanged && cur.categoryId !== undefined))) return e
       const rest = { ...cur }
       delete rest.recipientId
       delete rest.newRecipient
+      if (typeChanged) { delete rest.categoryId; delete rest.categoryAuto }
       return { ...e, [key]: rest }
     })
   }

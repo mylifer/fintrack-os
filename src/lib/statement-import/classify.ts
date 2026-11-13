@@ -1,4 +1,4 @@
-import { foldText } from '@/lib/auto-category'
+import { foldText, recipientCategory } from '@/lib/auto-category'
 import { deterministicUuid } from '@/lib/utils/id'
 import { toMajor, toMinor } from '@/lib/utils/money'
 import type { Account, Category, Person, Transaction } from '@/types'
@@ -563,6 +563,16 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
   }
 
   const skip: RowOption = { key: 'skip', label: 'Girme', actions: [] }
+  /** Alacak satırını gelir olarak girme (vergi/harç iadesi, üyelik iadesi, cashback):
+   *  gelir kategorisiyle yazılır; seçim öğrenilir, sonraki ekstrede kendiliğinden gelir olur */
+  const incomeOption = (l: StatementLine, rule: MerchantRule | undefined, title: string): RowOption => {
+    const rid = rule?.recipientId
+    return { key: 'income', label: 'Gelir olarak gir', actions: [{ type: 'create', draft: {
+      type: 'income', amount: -l.amount!, date: dateOf(l), description: title, merchant: merchantLabel(l.description),
+      recipientId: rid ?? null, categoryId: rid ? recipientCategory(rid, 'income', live as Transaction[], input.categories as Category[]) : undefined,
+      idSeed: seedOf.get(l.index)!, editable: true,
+    } }] }
+  }
   /** Benzer alıcı önerisi: önerilen alıcı / yeni alıcı / girme / başka alıcı */
   const guessOptions = (draft: DraftTx, name: string, l: StatementLine): RowOption[] => {
     const fresh = prettyMerchant(l.description)
@@ -959,7 +969,7 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
         ...standalone, description: `[İade] ${exact.description}`, recipientId: exact.recipientId ?? null, categoryId: exact.categoryId,
         familyMemberId: exact.familyMemberId ?? null, refundOfId: exact.id, tags: [...(exact.tags ?? []).filter(x => x !== refundTag), refundTag],
       } }] })
-      options.push({ key: 'standalone', label: 'Bağımsız iade olarak gir', actions: [{ type: 'create', draft: standalone }] }, skip)
+      options.push({ key: 'standalone', label: 'Bağımsız iade olarak gir', actions: [{ type: 'create', draft: standalone }] }, incomeOption(l, rule, title), skip)
       rows.push({
         ...base, ...rb, status: 'review', kind: 'refund', title: `[İade] ${exact?.description ?? title}`,
         match: exact ? { txIds: [exact.id], text: describeTx(exact) } : undefined,
