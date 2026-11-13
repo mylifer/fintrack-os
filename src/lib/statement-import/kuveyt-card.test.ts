@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { groupLines, type PdfItem } from './pdf-text'
 import { parseKuveytCard } from './kuveyt-card'
 import { parseStatement } from './statement'
+import { expectSameAcrossPageBreak } from './test-helpers'
 
 const left = (x: number, s: string, y: number): PdfItem => ({ x, right: x + s.length * 4, y, str: s })
 const right = (r: number, s: string, y: number): PdfItem => ({ x: r - s.length * 4, right: r, y, str: s })
@@ -66,5 +67,9 @@ describe('Kuveyt Türk kredi kartı ekstresi', () => {
 
   it('başka bankayı tanımaz', () => {
     expect(parseKuveytCard([{ lines: groupLines([left(30, 'Garanti Hesap Kesim Tarihi', 700)]) }])).toBeNull()
+  })
+
+  it('tablo başlıksız bir sonraki sayfaya taşsa da aynı okunur', () => {
+    expectSameAcrossPageBreak(parseKuveytCard, [page(rows)], 'MİGROS ERENKÖY')
   })
 })

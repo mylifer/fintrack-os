@@ -158,9 +158,10 @@ export function parseQnbPeriod(pages: PdfPage[]): ParsedStatement | null {
 
   interface Raw { date: string; desc: string; amount: number }
   const raw: Raw[] = []
+  // Sayfa başında başlık tekrarlanmayabilir: sütunlar sayfadan sayfaya taşınır
+  let tutarRight: number | null = null
+  let descX = 90
   for (const page of pages) {
-    let tutarRight: number | null = null
-    let descX = 90
     for (const line of page.lines) {
       const items = line.items.map(i => ({ ...i, str: clean(i.str).trim() })).filter(i => i.str)
       const tutar = items.find(i => i.str === 'Tutar')

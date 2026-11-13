@@ -160,11 +160,14 @@ export function parseGarantiCard(pages: PdfPage[]): ParsedStatement | null {
   const raw: RawRow[] = []
   let tableTotal: number | null = null
   let done = false
+  // Sayfa başında başlık tekrarlanmayabilir: sütunlar sayfadan sayfaya taşınır
+  let cols: Columns | null = null
   for (const page of pages) {
     if (done) break
-    let cols: Columns | null = null
     for (const line of page.lines) {
-      if (!cols) { cols = headerColumns(line); continue }
+      const h = headerColumns(line)
+      if (h) { cols = h; continue }
+      if (!cols) continue
       if (foldText(line.items[0]?.str ?? '') === 'toplam') {
         const c = cols
         const t = line.items.find(i => AMOUNT_RE.test(i.str.trim()) && Math.abs(i.right - c.tutarRight) <= COL_TOLERANCE)

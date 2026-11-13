@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { groupLines, type PdfItem } from './pdf-text'
 import { parseOdeabankCard } from './odeabank-card'
 import { parseStatement } from './statement'
+import { expectSameAcrossPageBreak } from './test-helpers'
 
 const left = (x: number, s: string, y: number): PdfItem => ({ x, right: x + s.length * 4, y, str: s })
 const right = (r: number, s: string, y: number): PdfItem => ({ x: r - s.length * 4, right: r, y, str: s })
@@ -70,5 +71,9 @@ describe('Odeabank kredi kartı ekstresi', () => {
 
   it('vadesiz hesap dökümünü ya da başka bankayı tanımaz', () => {
     expect(parseOdeabankCard([{ lines: groupLines([left(20, 'Garanti Hesap Kesim Tarihi', 700)]) }])).toBeNull()
+  })
+
+  it('tablo başlıksız bir sonraki sayfaya taşsa da aynı okunur', () => {
+    expectSameAcrossPageBreak(parseOdeabankCard, [page1, page2], 'SHELL ACIBADEM')
   })
 })

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { groupLines, type PdfItem } from './pdf-text'
 import { parseBurganCard } from './burgan-card'
 import { parseStatement } from './statement'
+import { expectSameAcrossPageBreak } from './test-helpers'
 
 const left = (x: number, s: string, y: number): PdfItem => ({ x, right: x + s.length * 4, y, str: s })
 const right = (r: number, s: string, y: number): PdfItem => ({ x: r - s.length * 4, right: r, y, str: s })
@@ -43,5 +44,9 @@ describe('Burgan (ON) ekstresi', () => {
       ['payment', -10000, 'KREDI KARTI BORC ODEME'],
     ])
     expect(parseStatement([page]).bank).toBe('burgan')
+  })
+
+  it('tablo başlıksız bir sonraki sayfaya taşsa da aynı okunur', () => {
+    expectSameAcrossPageBreak(parseBurganCard, [page], 'ORNEK KUAFOR')
   })
 })

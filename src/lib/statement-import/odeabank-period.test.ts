@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { groupLines, type PdfItem } from './pdf-text'
 import { parseOdeabankPeriod } from './odeabank-period'
 import { parseStatement } from './statement'
+import { expectSameAcrossPageBreak } from './test-helpers'
 
 const left = (x: number, s: string, y: number): PdfItem => ({ x, right: x + s.length * 6, y, str: s })
 const right = (r: number, s: string, y: number): PdfItem => ({ x: r - s.length * 6, right: r, y, str: s })
@@ -69,5 +70,9 @@ describe('Odeabank dönem içi işlemler', () => {
 
   it('başka listeyi tanımaz', () => {
     expect(parseOdeabankPeriod([{ lines: groupLines([left(10, 'Dönemiçi İşlemler - TL', 700)]) }])).toBeNull()
+  })
+
+  it('tablo başlıksız bir sonraki sayfaya taşsa da aynı okunur', () => {
+    expectSameAcrossPageBreak(parseOdeabankPeriod, [page('4151,14')], 'PARATIKA')
   })
 })

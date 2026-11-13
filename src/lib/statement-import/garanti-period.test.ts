@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { groupLines, type PdfItem } from './pdf-text'
 import { parseGarantiPeriod } from './garanti-period'
 import { parseStatement } from './statement'
+import { expectSameAcrossPageBreak } from './test-helpers'
 
 const left = (x: number, s: string, y: number): PdfItem => ({ x, right: x + s.length * 4, y, str: s })
 const right = (r: number, s: string, y: number): PdfItem => ({ x: r - s.length * 4, right: r, y, str: s })
@@ -76,5 +77,9 @@ describe('Garanti dönem içi işlemler', () => {
 
   it('başka bankanın listesini tanımaz', () => {
     expect(parseGarantiPeriod([{ lines: groupLines([left(20, 'QNB Dönem İçi Hareketler', 700)]) }])).toBeNull()
+  })
+
+  it('tablo başlıksız bir sonraki sayfaya taşsa da aynı okunur', () => {
+    expectSameAcrossPageBreak(parseGarantiPeriod, pages, 'MİGROS')
   })
 })

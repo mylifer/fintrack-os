@@ -117,9 +117,10 @@ export function parseOdeabankCard(pages: PdfPage[]): ParsedStatement | null {
   const raw: Raw[] = []
   let tableTotal: number | null = null
   let done = false
+  // Sayfa başında başlık tekrarlanmayabilir: sütunlar sayfadan sayfaya taşınır
+  let cols: Columns | null = null
   for (const page of pages) {
     if (done) break
-    let cols: Columns | null = null
     for (const line of page.lines) {
       const items = line.items.map(i => ({ ...i, str: i.str.trim() })).filter(i => i.str)
       const h = headerColumns(items)

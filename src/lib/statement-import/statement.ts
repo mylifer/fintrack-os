@@ -1,4 +1,5 @@
 import type { PdfPage } from './pdf-text'
+import { toMinor } from '@/lib/utils/money'
 import { parseGarantiCard } from './garanti-card'
 import { parseGarantiPeriod } from './garanti-period'
 import { parseOdeabankAccount } from './odeabank-account'
@@ -112,8 +113,33 @@ export interface ParsedStatement {
 /** Desteklenen bankalardan birini tanıyıp ayrıştırır; tanınmazsa açıklayıcı hata. */
 export function parseStatement(pages: PdfPage[]): ParsedStatement {
   const parsed = parseGarantiCard(pages) ?? parseQnbStatement(pages) ?? parseBurganCard(pages) ?? parseYapiKrediCard(pages) ?? parseQnbPeriod(pages) ?? parseGarantiPeriod(pages) ?? parseOdeabankCard(pages) ?? parseKuveytCard(pages) ?? parseOdeabankPeriod(pages) ?? parseOdeabankAccount(pages)
-  if (parsed) return parsed
+  if (parsed) return withDiffHint(parsed)
   throw new Error('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA, QNB, Burgan (ON), Yapı Kredi, Odeabank ve Kuveyt Türk kredi kartı ekstresi, Garanti BBVA, QNB ve Odeabank dönem içi işlemler ve Odeabank vadesiz hesap dökümü (PDF) destekleniyor.')
+}
+
+/** Toplam tutmadığında farkın nereden geldiğine dair ipucu ekler: fark tam
+ *  olarak kart ödemelerinin toplamına ya da tek bir satıra eşitse onu söyler.
+ *  Yanlış satırı bulmak (kullanıcı için de, düzeltme için de) çok kolaylaşır. */
+export function withDiffHint(st: ParsedStatement): ParsedStatement {
+  const { check } = st
+  if (check.ok || st.type !== 'credit_card' || !check.diff) return st
+  const d = Math.abs(toMinor(check.diff))
+  const tl = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const payments = st.lines.filter(l => l.kind === 'payment' && l.amount !== null)
+  const paySum = Math.abs(payments.reduce((s, l) => s + toMinor(l.amount!), 0))
+  let hint: string | null = null
+  if (payments.length && paySum === d) {
+    hint = `Fark, kart ödemelerinin toplamına (${tl(paySum / 100)} TL) eşit: banka bu toplamda ödemeleri saymıyor olabilir.`
+  } else {
+    const same = st.lines.filter(l => l.amount !== null && Math.abs(toMinor(l.amount)) === d)
+    if (same.length === 1) {
+      const l = same[0]
+      hint = `Fark, "${l.description}"${l.date ? ` (${l.date.slice(8, 10)}.${l.date.slice(5, 7)})` : ''} satırının tutarına eşit: bu satır yanlış okunmuş ya da banka toplamına katmıyor olabilir.`
+    } else if (check.diff < 0) {
+      hint = 'Okunan toplam bankanınkinden az: bazı satırlar (ör. sayfa geçişinde) okunamamış olabilir.'
+    }
+  }
+  return hint ? { ...st, check: { ...check, issues: [...check.issues, hint] } } : st
 }
 
 /** Ekran görüntüsü (OCR) — yalnız ekstresi PDF olarak alınamayan dönem içi listeler. */
