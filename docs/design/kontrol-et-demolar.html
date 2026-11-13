@@ -1,0 +1,332 @@
+<title>Kontrol Et Demoları</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: üstte öneri seçici, altında aynı "Kontrol et" bölümünün sadeleştirilmiş hali */
+:root{
+  --bg:#f4f4f1; --panel:#fafaf8; --card:#ffffff; --line:#e3e3df; --soft:#efefec; --hover:#f3f3f0;
+  --fg:#151514; --muted:#64645f; --faint:#8a8a85;
+  --accent:#2bd4d8; --accent-ink:#06393b; --accent-soft:#e3f8f8; --accent-text:#0a7478;
+  --green:#15803d; --orange:#c2410c; --orange-soft:#fdeee5; --new:#0a7478;
+  --font:"Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f0f0e; --panel:#171716; --card:#1d1d1b; --line:#2e2e2b; --soft:#252523; --hover:#222220;
+  --fg:#f1f1ee; --muted:#a3a39d; --faint:#7d7d77;
+  --accent:#2bd4d8; --accent-ink:#06393b; --accent-soft:#123637; --accent-text:#5fe3e6;
+  --green:#4ade80; --orange:#fb923c; --orange-soft:#3a2416; --new:#5fe3e6; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f0f0e; --panel:#171716; --card:#1d1d1b; --line:#2e2e2b; --soft:#252523; --hover:#222220;
+  --fg:#f1f1ee; --muted:#a3a39d; --faint:#7d7d77;
+  --accent:#2bd4d8; --accent-ink:#06393b; --accent-soft:#123637; --accent-text:#5fe3e6;
+  --green:#4ade80; --orange:#fb923c; --orange-soft:#3a2416; --new:#5fe3e6; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.45}
+.wrap{max-width:1000px;margin:0 auto;padding-block:28px 48px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));display:flex;flex-direction:column;gap:16px}
+h1{font-size:24px;font-weight:600;margin:0;text-wrap:balance}
+.lead{color:var(--muted);margin:4px 0 0;max-width:70ch}
+.num{font-variant-numeric:tabular-nums}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.picker{display:flex;flex-wrap:wrap;gap:6px}
+.picker button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:8px 14px;font-weight:500}
+.picker button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.about{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.about div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 13px}
+.about b{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+@media (max-width:720px){.about{grid-template-columns:minmax(0,1fr)}}
+
+/* Bölüm */
+.section{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.shead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.shead .dot{width:8px;height:8px;border-radius:99px;background:var(--orange)}
+.shead strong{font-weight:600}
+.shead .count{color:var(--muted)}
+.miss{font-size:12px;font-weight:600;color:var(--orange);background:var(--orange-soft);border-radius:99px;padding:1px 8px}
+.spacer{flex:1}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:6px 12px;font-weight:500;font-size:13px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.prog{width:120px;height:6px;border-radius:99px;background:var(--soft);overflow:hidden}
+.prog span{display:block;height:100%;background:var(--accent)}
+
+.row{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:2px 14px;padding:12px 16px;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.row.done{opacity:.62}
+.date{color:var(--muted);font-size:13px;padding-top:1px}
+.title{font-weight:500}
+.meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:2px}
+.av{width:18px;height:18px;border-radius:5px;display:inline-grid;place-items:center;font-size:9px;font-weight:700;color:#fff;flex:none}
+.cat{display:inline-flex;align-items:center;gap:5px}
+.cico{width:18px;height:18px;border-radius:5px;display:inline-block;flex:none}
+.newp{color:var(--new);font-weight:500}
+.amt{font-weight:600;text-align:right}
+.amt.credit{color:var(--green)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;border-radius:99px;padding:2px 9px;border:1px solid var(--line);background:var(--card);color:var(--muted);white-space:nowrap}
+.pill.warn{color:var(--orange);border-color:transparent;background:var(--orange-soft)}
+.pill.ok{color:var(--accent-text);border-color:transparent;background:var(--accent-soft)}
+
+/* 1 · tek düğme + değiştir */
+.act{grid-column:2 / -1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;position:relative}
+.chosen{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-text);border-radius:10px;padding:5px 10px;font-weight:600;font-size:13px}
+.ghost{border:0;background:none;color:var(--muted);font-size:13px;padding:5px 6px;border-radius:8px}
+.ghost:hover{background:var(--hover);color:var(--fg)}
+.menu{position:absolute;top:calc(100% + 4px);left:0;z-index:5;display:flex;flex-direction:column;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:4px;box-shadow:0 10px 28px rgba(0,0,0,.18);min-width:220px}
+.menu button{border:0;background:none;text-align:left;padding:7px 10px;border-radius:8px;font-size:13px}
+.menu button:hover,.menu button[aria-checked="true"]{background:var(--accent-soft)}
+.why{font-size:12px;color:var(--muted)}
+
+/* 2 · gruplar */
+.group{border-top:1px solid var(--line)}
+.group:first-of-type{border-top:0}
+.ghead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--soft)}
+.ghead strong{font-weight:600}
+.ghead .why{flex:1;min-width:180px}
+.mini{display:grid;grid-template-columns:52px minmax(0,1fr) auto auto;gap:4px 12px;align-items:center;padding:9px 16px;border-top:1px solid var(--line)}
+.mini select{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:4px 6px;font-size:12px;max-width:150px}
+
+/* 3 · sakin satır, açılınca karar */
+.calm{display:grid;grid-template-columns:52px minmax(0,1fr) auto auto;gap:2px 12px;align-items:center;padding:10px 16px;border-top:1px solid var(--line);width:100%;text-align:left;background:none;border-left:0;border-right:0;border-bottom:0}
+.calm:hover{background:var(--hover)}
+.calm[aria-expanded="true"]{background:var(--hover)}
+.drop{padding:4px 16px 14px 82px;display:flex;flex-direction:column;gap:8px;background:var(--hover)}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opt{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:6px 11px;font-size:13px}
+.opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.opt .rec{font-size:11px;color:var(--accent-text);margin-left:4px}
+.chev{color:var(--faint);font-size:12px}
+
+/* 4 · tek tek */
+.focus{padding:20px;display:flex;flex-direction:column;gap:16px}
+.fcard{border:1px solid var(--line);background:var(--card);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.fhead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.fhead .t{font-size:18px;font-weight:600}
+.fhead .a{font-size:22px;font-weight:600}
+.big{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.big button{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:11px 12px;text-align:left;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.big button.rec{border-color:var(--accent);background:var(--accent-soft)}
+kbd{font-family:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;color:var(--muted);background:var(--card)}
+.queue{display:flex;flex-direction:column}
+.qrow{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:12px;padding:8px 4px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+.qrow.cur{color:var(--fg);font-weight:500}
+
+/* 5 · tablo */
+.tblwrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:760px}
+th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 12px;border-top:1px solid var(--line);vertical-align:middle}
+td.r,th.r{text-align:right}
+td select{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:5px 7px;font-size:13px;width:100%}
+td select.need{border-color:var(--orange)}
+.cell{display:flex;align-items:center;gap:6px;min-width:0}
+.cell span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* iade bağlama kartları + ayrıntı penceresi */
+.cands{grid-column:1 / -1;display:flex;gap:8px;overflow-x:auto;padding:6px 0 4px 64px}
+.candc{flex:none;width:176px;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:8px 10px;text-align:left}
+.candc[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.candc .t{display:block;font-weight:500;font-size:13px}
+.candc .s{display:block;font-size:12px;color:var(--muted)}
+.candc .m{display:block;font-weight:600;margin-top:2px}
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:99px;padding:0 7px;color:var(--green);background:color-mix(in srgb, var(--green) 14%, transparent)}
+.more{flex:none;width:96px;border:1px dashed var(--line);background:none;border-radius:12px;color:var(--accent-text);font-weight:500}
+tr.sub td{border-top:0;padding-top:0}
+tr.sub .cands,.dlg .cands{padding-left:0}
+.dlg .cands + .why{padding-left:0 !important}
+.tlink{border:0;background:none;padding:0;font-weight:500;text-align:left;cursor:pointer;color:var(--fg)}
+.tlink:hover{text-decoration:underline;text-underline-offset:3px}
+.dots{border:1px solid var(--line);background:var(--card);border-radius:8px;width:30px;height:28px;color:var(--muted)}
+.overlay{position:fixed;inset:0;z-index:50;background:var(--scrim, rgba(0,0,0,.45));display:grid;place-items:center;padding:16px}
+.dlg{width:min(520px,100%);max-height:calc(100% - 32px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.dlg header{padding:18px 20px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+.dlg header h2{margin:4px 0 0;font-size:18px;font-weight:600}
+.dlg .body{padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.dlg .fld{display:flex;flex-direction:column;gap:4px}
+.dlg .fld span:first-child{font-size:12px;font-weight:500;color:var(--muted)}
+.dlg .box{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:8px}
+.dlg footer{border-top:1px solid var(--line);padding:12px 20px;display:flex;justify-content:flex-end}
+@media (max-width:560px){.cands{padding-left:0}}
+@media (max-width:560px){.row{grid-template-columns:minmax(0,1fr) auto}.row .date{grid-column:1 / -1}.act{grid-column:1 / -1}.mini{grid-template-columns:minmax(0,1fr) auto}.mini .date{display:none}.calm{grid-template-columns:minmax(0,1fr) auto}.calm .date,.calm .chev{display:none}.drop{padding-left:16px}.big{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion: no-preference){.opt,.calm,.btn,.big button{transition:background .15s,border-color .15s}}
+</style>
+
+<div class="wrap">
+  <div>
+    <h1>“Kontrol et” · 5 sadeleştirme</h1>
+    <p class="lead">Aynı liste, aynı bilgiler; yalnız karar verme biçimi değişiyor. Hepsi tıklanabilir. Satırlar ekran görüntündeki Odeabank listesinden.</p>
+  </div>
+  <div class="picker" role="group" aria-label="Öneri seç" id="picker"></div>
+  <div class="about" id="about"></div>
+  <div id="stage"></div>
+</div>
+
+<script>
+const TL = n => '₺' + Math.abs(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const CAT = { Yemek: '#f97316', 'Night Life': '#6d28d9', Tütün: '#57534e', Pets: '#84cc16', Market: '#16a34a' }
+
+const NEW = ['Yeni alıcıyla gir', 'Alıcısız gir', 'Var olan alıcıyla gir', 'Girme']
+const REF = ['İade, alıma bağla', 'Bağımsız iade olarak gir', 'Gelir olarak gir', 'Girme']
+const LINK = 0
+const ROWS = [
+  { id: 1, date: '24 Eki', t: '[İade] Yemeksepeti', who: 'Yemeksepeti', av: 'Y', avc: '#e11d48', cat: 'Yemek', amt: -143.98, kind: 'refund', issue: 'İade — asıl alım bulundu', opts: REF, rec: 0,
+    cands: [{ id: 'c1', t: 'Komagene', d: '20 Eki', amt: 143.98, exact: true }, { id: 'c2', t: 'Dilay Ocakbaşı', d: '10 Eki', amt: 300 }] },
+  { id: 2, date: '24 Eki', t: 'Rose Marine', who: 'Rose Marine', isNew: true, cat: 'Night Life', amt: 3000, kind: 'new', issue: 'Yeni alıcı', opts: NEW, rec: 0 },
+  { id: 3, date: '24 Eki', t: 'Dilek Tekel', who: 'Dilek Tekel', isNew: true, cat: 'Tütün', amt: 1000, kind: 'new', issue: 'Yeni alıcı', opts: NEW, rec: 0 },
+  { id: 4, date: '25 Eki', t: 'Supermarket', who: 'Supermarket', isNew: true, cat: 'Night Life', amt: 5487, kind: 'new', issue: 'Yeni alıcı', opts: NEW, rec: 0 },
+  { id: 5, date: '25 Eki', t: '[İade] Yemeksepeti', who: 'Yemeksepeti', av: 'Y', avc: '#e11d48', cat: 'Yemek', amt: -73.26, kind: 'refund', issue: 'İade — hangi alımın?', opts: REF, rec: 1,
+    cands: [{ id: 'c1', t: 'Komagene', d: '20 Eki', amt: 143.98 }, { id: 'c2', t: 'Dilay Ocakbaşı', d: '10 Eki', amt: 300 }] },
+  { id: 6, date: '27 Eki', t: 'Posvital Veteriner', who: 'Posvital Veteriner', isNew: true, cat: 'Pets', amt: 1250, kind: 'new', issue: 'Yeni alıcı', opts: NEW, rec: 0 },
+  { id: 7, date: '28 Eki', t: 'Sosa Zorlu', who: 'Sosa Zorlu', isNew: true, cat: null, amt: 880, kind: 'new', issue: 'Yeni alıcı · kategori yok', opts: NEW, rec: 0 },
+]
+const state = { v: 1, choice: { 2: 0, 3: 0, 4: 0, 6: 0 }, menu: null, open: 1, cur: 1, link: { 1: 'c1' }, detail: null }
+
+const VARIANTS = [
+  { n: 1, name: 'Önerilen tek düğme', what: 'Satırda dört eşit düğme yerine yalnız önerilen karar görünür; diğerleri “Değiştir” menüsünde.', good: 'Göz tek seçimi okur; çoğu satırda öneri doğrudur.', weak: 'Seçenekleri görmek için bir tık daha.' },
+  { n: 2, name: 'Sorun türüne göre gruplar', what: '“Yeni alıcı · 5”, “İade · 2” gibi gruplar; grup başlığında toplu karar, satırda küçük bir seçici. “İade, alıma bağla” seçilince aday alımlar satırın altında açılır; satırın adına tıklayınca ayrıntı penceresi açılır.', good: 'Aynı kararı tek tek vermek gerekmez.', weak: 'Liste tarih sırasından çıkar.' },
+  { n: 3, name: 'Sakin satır, tıklayınca karar', what: 'Satır tek satıra iner: ad, alıcı/kategori, durum etiketi, tutar. Kararlar satıra tıklayınca altında açılır.', good: 'Liste ekstre gibi okunur; en az görsel gürültü.', weak: 'Bir bakışta hangi kararın seçildiği yalnız etiketten anlaşılır.' },
+  { n: 4, name: 'Tek tek kontrol', what: 'Kontrol edilecekler sırayla tek kartta; büyük düğmeler ve klavye kısayolları (1–4, Enter = önerilen).', good: 'Odaklı ve hızlı; telefonda rahat.', weak: 'Toplu bakış kaybolur; aşağıda kısa kuyruk kalır.' },
+  { n: 5, name: 'Tablo görünümü', what: 'Sütunlar: tarih, açıklama, alıcı, kategori, karar (açılır liste), tutar. “İade, alıma bağla” seçilince aday alımlar satırın altında açılır; açıklamaya ya da ⋯ düğmesine tıklayınca ayrıntı penceresi açılır.', good: 'Yoğun ama düzenli; çok satırda tarama kolay.', weak: 'Telefonda yatay kaydırma gerekir.' },
+]
+
+const isDone = r => state.choice[r.id] !== undefined
+const linking = r => r.kind === 'refund' && (state.choice[r.id] ?? -1) === LINK
+const candsHTML = r => `<div class="cands" role="radiogroup" aria-label="Hangi alımın iadesi">${r.cands.map(c => `<button type="button" class="candc" role="radio" aria-pressed="${state.link[r.id] === c.id}" data-link="${r.id}:${c.id}"><span class="t">${esc(c.t)}</span><span class="s">${c.d} · Yemeksepeti</span><span class="m num">${TL(c.amt)}</span>${c.exact ? '<span class="tag">Tutar tutuyor</span>' : '<span class="s">kısmi iade</span>'}</button>`).join('')}<button type="button" class="more">Diğer…</button></div>${state.link[r.id] ? '' : '<div class="why" style="grid-column:1 / -1;padding-left:64px;color:var(--orange)">Hangi alımın iadesi olduğunu seçin.</div>'}`
+const titleBtn = r => `<button type="button" class="tlink title" data-detail="${r.id}" title="Ayrıntıyı aç">${esc(linkedTitle(r))}</button>`
+const linkedTitle = r => linking(r) && state.link[r.id] ? '[İade] ' + r.cands.find(c => c.id === state.link[r.id]).t : r.t
+function detailHTML() {
+  const r = ROWS.find(x => x.id === state.detail); if (!r) return ''
+  const c = state.choice[r.id] ?? r.rec
+  return `<div class="overlay" data-close><div class="dlg" role="dialog" aria-modal="true" aria-label="Satır ayrıntısı">
+    <header><div><div class="why" style="font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:11px">${esc(r.issue)}</div><h2>${esc(linkedTitle(r))}</h2></div><button type="button" class="ghost" data-close aria-label="Kapat">✕</button></header>
+    <div class="body">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end"><span class="why">${r.date} 2026</span>${amtHTML(r).replace('class="amt', 'style="font-size:22px" class="amt')}</div>
+      <div class="opts">${r.opts.map((o, i) => `<button type="button" class="opt" aria-pressed="${c === i}" data-pick="${r.id}:${i}">${esc(o)}${i === r.rec ? '<span class="rec">önerilen</span>' : ''}</button>`).join('')}</div>
+      ${linking(r) ? `<div style="display:grid">${candsHTML(r).replace('padding:6px 0 4px 64px', '')}</div>` : ''}
+      <div class="fld"><span>Açıklama</span><div class="box">${esc(linkedTitle(r))}</div></div>
+      <div class="fld"><span>Alıcı</span><div class="box">${r.isNew ? `<span class="newp">Yeni: ${esc(r.who)}</span>` : esc(r.who)}</div></div>
+      <div class="fld"><span>Kategori</span><div class="box">${r.cat ? `<span class="cico" style="background:${CAT[r.cat]}"></span>${esc(r.cat)}` : '<span style="color:var(--orange)">Seçin</span>'}</div></div>
+      <div class="fld"><span>Etiketler</span><div class="box why">Etiket seçin ya da oluşturun</div></div>
+    </div>
+    <footer><button type="button" class="btn primary" data-close>Tamam</button></footer></div></div>`
+}
+const pending = () => ROWS.filter(r => !isDone(r)).length
+const metaHTML = r => `${r.isNew ? `<span class="newp">Yeni: ${esc(r.who)}</span>` : `<span class="cat"><span class="av" style="background:${r.avc}">${r.av}</span>${esc(r.who)}</span>`}
+  ${r.cat ? `· <span class="cat"><span class="cico" style="background:${CAT[r.cat]}"></span>${esc(r.cat)}</span>` : '· <span style="color:var(--orange)">kategori seçilmeli</span>'}`
+const amtHTML = r => `<span class="amt num ${r.amt < 0 ? 'credit' : ''}">${r.amt < 0 ? '+' : ''}${TL(r.amt)}</span>`
+const head = (extra = '') => `<div class="shead"><span class="dot"></span><strong>Kontrol et</strong><span class="count num">${ROWS.length - pending()}/${ROWS.length}</span>
+  ${pending() ? `<span class="miss">${pending()} karar bekliyor</span>` : '<span class="pill ok">Hepsi tamam</span>'}<span class="spacer"></span>${extra}
+  <button type="button" class="btn" data-acceptall>Önerilenleri uygula</button></div>`
+
+/* 1 */
+function v1() {
+  return `<div class="section">${head()}${ROWS.map(r => {
+    const c = state.choice[r.id], label = r.opts[c ?? r.rec]
+    return `<div class="row ${isDone(r) ? '' : ''}"><span class="date">${r.date}</span><div><div class="title">${esc(r.t)}</div><div class="meta">${metaHTML(r)}</div></div>${amtHTML(r)}
+      <div class="act">
+        ${isDone(r) ? `<span class="chosen">✓ ${esc(label)}</span>` : `<button type="button" class="btn primary" data-pick="${r.id}:${r.rec}">${esc(r.opts[r.rec])}</button>`}
+        <button type="button" class="ghost" data-menu="${r.id}" aria-expanded="${state.menu === r.id}">Değiştir ▾</button>
+        ${!isDone(r) ? `<span class="why">${esc(r.issue)}</span>` : ''}
+        ${state.menu === r.id ? `<div class="menu" role="menu">${r.opts.map((o, i) => `<button type="button" role="menuitemradio" aria-checked="${c === i}" data-pick="${r.id}:${i}">${esc(o)}${i === r.rec ? ' · önerilen' : ''}</button>`).join('')}</div>` : ''}
+      </div></div>`
+  }).join('')}</div>`
+}
+
+/* 2 */
+function v2() {
+  const groups = [
+    { key: 'new', name: 'Yeni alıcı', why: 'Bu işyerleri daha önce geçmemiş. Önerilen: her biri için yeni alıcı oluştur.', all: 'Hepsini yeni alıcıyla gir' },
+    { key: 'refund', name: 'İade', why: 'Hangi alımın iadesi olduğu seçilir; tutarı tutan alım varsa o önerilir.', all: 'Önerilenleri uygula' },
+  ]
+  return `<div class="section">${head()}${groups.map(g => {
+    const rs = ROWS.filter(r => r.kind === g.key), left = rs.filter(r => !isDone(r)).length
+    return `<div class="group"><div class="ghead"><strong>${g.name}</strong><span class="pill ${left ? 'warn' : 'ok'}">${left ? left + ' bekliyor' : 'tamam'}</span><span class="why">${g.why}</span>
+      <button type="button" class="btn primary" data-groupall="${g.key}">${g.all}</button></div>
+      ${rs.map(r => `<div class="mini"><span class="date">${r.date}</span><div style="min-width:0"><div>${titleBtn(r)}</div><div class="meta">${metaHTML(r)}</div></div>
+        <select aria-label="${esc(r.t)} için karar" data-sel="${r.id}">${isDone(r) ? '' : '<option value="">Seçin…</option>'}${r.opts.map((o, i) => `<option value="${i}" ${state.choice[r.id] === i ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
+        ${amtHTML(r)}${linking(r) ? candsHTML(r) : ''}</div>`).join('')}</div>`
+  }).join('')}</div>`
+}
+
+/* 3 */
+function v3() {
+  return `<div class="section">${head()}${ROWS.map(r => {
+    const c = state.choice[r.id], open = state.open === r.id
+    return `<button type="button" class="calm" aria-expanded="${open}" data-open="${r.id}"><span class="date">${r.date}</span>
+        <span style="min-width:0"><span class="title" style="display:block">${esc(r.t)}</span><span class="meta">${metaHTML(r)}</span></span>
+        <span>${isDone(r) ? `<span class="pill ok">${esc(r.opts[c])}</span>` : `<span class="pill warn">${esc(r.issue)}</span>`}</span>
+        <span style="display:flex;align-items:center;gap:10px">${amtHTML(r)}<span class="chev">${open ? '▴' : '▾'}</span></span></button>
+      ${open ? `<div class="drop"><span class="why">${r.kind === 'refund' ? 'Bu iadenin alımı sistemde bulunamadı.' : 'Bu işyeri daha önce hiç geçmemiş; “' + esc(r.who) + '” adıyla yeni alıcı önerildi.'}</span>
+        <div class="opts">${r.opts.map((o, i) => `<button type="button" class="opt" aria-pressed="${c === i}" data-pick="${r.id}:${i}">${esc(o)}${i === r.rec ? '<span class="rec">önerilen</span>' : ''}</button>`).join('')}</div></div>` : ''}`
+  }).join('')}</div>`
+}
+
+/* 4 */
+function v4() {
+  const queue = ROWS.filter(r => !isDone(r))
+  const r = queue.find(x => x.id === state.cur) ?? queue[0]
+  if (!r) return `<div class="section">${head()}<div class="focus"><div class="fcard" style="align-items:center;text-align:center"><strong style="font-size:18px">Hepsi kontrol edildi</strong><span class="why">Onaylayıp girebilirsin.</span><button type="button" class="btn" data-reset>Demoyu baştan al</button></div></div></div>`
+  const idx = ROWS.length - queue.length + 1
+  return `<div class="section">${head(`<span class="prog" aria-hidden="true"><span style="width:${((idx - 1) / ROWS.length) * 100}%"></span></span>`)}
+    <div class="focus">
+      <div class="fcard">
+        <div class="fhead"><div><div class="why">${r.date} · ${idx}. / ${ROWS.length}</div><div class="t">${esc(r.t)}</div><div class="meta">${metaHTML(r)}</div></div>${amtHTML(r).replace('class="amt', 'class="a amt')}</div>
+        <span class="pill warn" style="align-self:flex-start">${esc(r.issue)}</span>
+        <div class="big">${r.opts.map((o, i) => `<button type="button" class="${i === r.rec ? 'rec' : ''}" data-pick="${r.id}:${i}" data-next><span>${esc(o)}${i === r.rec ? ' <span class="why">· önerilen</span>' : ''}</span><kbd>${i + 1}</kbd></button>`).join('')}</div>
+        <div class="why">Klavye: <kbd>1</kbd>–<kbd>${r.opts.length}</kbd> seçer, <kbd>Enter</kbd> önerileni seçer, <kbd>←</kbd> atla.</div>
+      </div>
+      <div><div class="lbl why" style="margin-bottom:4px">Sıradakiler</div><div class="queue">${queue.filter(x => x !== r).slice(0, 4).map(x => `<div class="qrow"><span>${x.date}</span><span>${esc(x.t)}</span><span class="num">${x.amt < 0 ? '+' : ''}${TL(x.amt)}</span></div>`).join('') || '<span class="why">Başka yok.</span>'}</div></div>
+    </div></div>`
+}
+
+/* 5 */
+function v5() {
+  return `<div class="section">${head()}<div class="tblwrap"><table><thead><tr><th>Tarih</th><th>Açıklama</th><th>Alıcı</th><th>Kategori</th><th style="width:210px">Karar</th><th class="r">Tutar</th><th style="width:44px"><span class="why" style="position:absolute;left:-9999px">Ayrıntı</span></th></tr></thead><tbody>
+    ${ROWS.map(r => `<tr><td class="date">${r.date}</td><td>${titleBtn(r)}</td>
+      <td><span class="cell">${r.isNew ? `<span class="newp">+ ${esc(r.who)}</span>` : `<span class="av" style="background:${r.avc}">${r.av}</span><span>${esc(r.who)}</span>`}</span></td>
+      <td><span class="cell">${r.cat ? `<span class="cico" style="background:${CAT[r.cat]}"></span><span>${esc(r.cat)}</span>` : '<span style="color:var(--orange)">Seçin</span>'}</span></td>
+      <td><select class="${isDone(r) ? '' : 'need'}" aria-label="${esc(r.t)} için karar" data-sel="${r.id}">${isDone(r) ? '' : '<option value="">Karar seçin…</option>'}${r.opts.map((o, i) => `<option value="${i}" ${state.choice[r.id] === i ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></td>
+      <td class="r">${amtHTML(r)}</td><td><button type="button" class="dots" data-detail="${r.id}" aria-label="${esc(r.t)} ayrıntısı">⋯</button></td></tr>
+      ${linking(r) ? `<tr class="sub"><td></td><td colspan="6">${candsHTML(r)}</td></tr>` : ''}`).join('')}
+  </tbody></table></div></div>`
+}
+
+function render() {
+  document.getElementById('picker').innerHTML = VARIANTS.map(v => `<button type="button" data-v="${v.n}" aria-pressed="${state.v === v.n}">${v.n} · ${esc(v.name)}</button>`).join('')
+  const v = VARIANTS[state.v - 1]
+  document.getElementById('about').innerHTML = `<div><b>Ne değişiyor</b>${esc(v.what)}</div><div><b>Güçlü yanı</b>${esc(v.good)}</div><div><b>Zayıf yanı</b>${esc(v.weak)}</div>`
+  document.getElementById('stage').innerHTML = [v1, v2, v3, v4, v5][state.v - 1]() + detailHTML()
+}
+
+function pick(id, i) { state.choice[id] = i; state.menu = null }
+function advance() { const q = ROWS.filter(r => !isDone(r)); state.cur = q[0]?.id }
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return
+  if (b.dataset.v) { state.v = +b.dataset.v; state.menu = null; state.detail = null; return render() }
+  if (b.dataset.detail) { state.detail = +b.dataset.detail; return render() }
+  if ('close' in b.dataset) { state.detail = null; return render() }
+  if (b.dataset.link) { const [id, c] = b.dataset.link.split(':'); state.link[+id] = c; return render() }
+  if (b.dataset.pick) { const [id, i] = b.dataset.pick.split(':').map(Number); pick(id, i); if ('next' in b.dataset) advance(); return render() }
+  if (b.dataset.menu) { const id = +b.dataset.menu; state.menu = state.menu === id ? null : id; return render() }
+  if (b.dataset.open) { const id = +b.dataset.open; state.open = state.open === id ? null : id; return render() }
+  if ('acceptall' in b.dataset) { ROWS.forEach(r => { if (!isDone(r)) state.choice[r.id] = r.rec }); return render() }
+  if (b.dataset.groupall) { ROWS.filter(r => r.kind === b.dataset.groupall).forEach(r => { state.choice[r.id] = r.rec }); return render() }
+  if ('reset' in b.dataset) { state.choice = {}; state.cur = 1; return render() }
+})
+document.addEventListener('mousedown', e => { if (e.target.classList?.contains('overlay')) { state.detail = null; render() } })
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.detail) { state.detail = null; render() } })
+document.addEventListener('change', e => {
+  const s = e.target.closest('select[data-sel]'); if (!s || s.value === '') return
+  pick(+s.dataset.sel, +s.value); render()
+})
+document.addEventListener('keydown', e => {
+  if (state.v !== 4 || e.target.closest('input,select,textarea')) return
+  const r = ROWS.filter(x => !isDone(x)).find(x => x.id === state.cur) ?? ROWS.find(x => !isDone(x)); if (!r) return
+  if (/^[1-9]$/.test(e.key) && +e.key <= r.opts.length) { pick(r.id, +e.key - 1); advance(); render() }
+  else if (e.key === 'Enter') { pick(r.id, r.rec); advance(); render() }
+  else if (e.key === 'ArrowLeft') { const q = ROWS.filter(x => !isDone(x)); const i = q.indexOf(r); state.cur = q[(i + 1) % q.length].id; render() }
+})
+render()
+</script>
