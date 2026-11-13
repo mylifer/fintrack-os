@@ -12,7 +12,11 @@ import type { LineKind, ParsedStatement, StatementLine } from './statement'
      dönem içi listede sistemdeki taksit kaydına da bakar).
    • Kontrol: harcama satırlarının toplamı "Dönem İçi Toplam TL Harcama"yı
      tutmalı. "Toplam TL Ödeme" kontrol edilmez: banka önceki ekstre borcuna
-     yapılan ödemeyi listeler ama bu toplama katmıyor. */
+     yapılan ödemeyi listeler ama bu toplama katmıyor.
+   • Tablo sayfa sınırında başlıksız devam eder: sütun konumları önceki
+     sayfadan taşınır.
+   • "Bekleyen Provizyonlar" tablosu harcama toplamına girmez; kendi net
+     toplamı "Toplam Türk Lirası İşlem Tutarı" ile kontrol edilir. */
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 const AMOUNT_RE = /^([+-]?)([\d.]+(?:,\d{1,2})?)\s*TL$/
@@ -60,12 +64,22 @@ export function parseOdeabankPeriod(pages: PdfPage[]): ParsedStatement | null {
   }
   const spendTotal = valueNear('donem ici toplam tl harcama')
 
-  const raw: { date: string; desc: string; amount: number }[] = []
+  const raw: { date: string; desc: string; amount: number; provision: boolean }[] = []
+  let provisionTotal: number | null = null
+  // Sayfa başında başlık tekrarlanmaz: sütunlar sayfadan sayfaya taşınır
+  let tutarRight: number | null = null
+  let descX = 0
+  let provision = false
   for (const page of pages) {
-    let tutarRight: number | null = null
-    let descX = 0
     for (const line of page.lines) {
       const items = line.items.map(i => ({ ...i, str: i.str.trim() })).filter(i => i.str)
+      const lt = foldText(line.text)
+      if (lt.startsWith('bekleyen provizyonlar')) { provision = true; tutarRight = null; continue }
+      if (lt.includes('toplam turk lirasi islem tutari')) {
+        const v = [...items].reverse().find(i => AMOUNT_RE.test(i.str))
+        if (v) provisionTotal = trAmount(v.str)
+        continue
+      }
       const tutar = items.find(i => foldText(i.str) === 'tutar')
       if (tutar && items.some(i => foldText(i.str) === 'tarih')) {
         tutarRight = tutar.right
@@ -85,7 +99,7 @@ export function parseOdeabankPeriod(pages: PdfPage[]): ParsedStatement | null {
         if (parts.length > 1 && /^[\p{Lu}İ .-]+$/u.test(parts[parts.length - 1])) parts.pop()
       }
       // Listede harcama "−": kart borcuna etkisi tersidir
-      raw.push({ date, desc: parts.join(' ').replace(/\s+/g, ' ').trim(), amount: -signed })
+      raw.push({ date, desc: parts.join(' ').replace(/\s+/g, ' ').trim(), amount: -signed, provision })
     }
   }
   raw.sort((a, b) => a.date.localeCompare(b.date))
@@ -95,11 +109,17 @@ export function parseOdeabankPeriod(pages: PdfPage[]): ParsedStatement | null {
     kind: kindOf(r.desc, r.amount),
   }))
 
-  const spentMinor = lines.reduce((s, l) => s + (l.amount! > 0 ? toMinor(l.amount!) : 0), 0)
+  const spentMinor = raw.reduce((s, r) => s + (!r.provision && r.amount > 0 ? toMinor(r.amount) : 0), 0)
   const issues: string[] = []
   if (!lines.length) issues.push('Listede işlem satırı bulunamadı.')
   if (spendTotal === null) issues.push('Listenin "Dönem İçi Toplam TL Harcama" tutarı okunamadı; toplam kontrol edilemedi.')
   const diff = spendTotal === null ? 0 : toMajor(spentMinor - toMinor(spendTotal))
+  const provRows = raw.filter(r => r.provision)
+  if (provRows.length && provisionTotal !== null) {
+    const provMinor = provRows.reduce((s, r) => s + toMinor(r.amount), 0)
+    const pdiff = toMajor(provMinor - toMinor(provisionTotal))
+    if (pdiff !== 0) issues.push(`Okunan bekleyen provizyonların toplamı (${toMajor(provMinor).toFixed(2)}) listenin toplamını (${provisionTotal.toFixed(2)}) tutmuyor: fark ${pdiff.toFixed(2)}.`)
+  }
   if (diff !== 0) issues.push(`Okunan harcamaların toplamı (${toMajor(spentMinor).toFixed(2)}) listenin toplam harcamasını (${spendTotal!.toFixed(2)}) tutmuyor: fark ${diff.toFixed(2)}.`)
 
   const asOf = raw.reduce<string | null>((m, r) => (!m || r.date > m ? r.date : m), null)
