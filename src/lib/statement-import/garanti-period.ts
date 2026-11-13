@@ -14,7 +14,8 @@ import type { LineKind, ParsedStatement, StatementLine } from './statement'
      "0,41" kazanılan, "-779,35" harcanan, "+285,00" kampanya bonusu.
    • Taksit açıklamada: "BEYMEN … (3/6)". Satır tarihi o taksidin tarihidir
      (alım + 2 ay); toplam tutar listede yok, taksit × adet ile tahmin edilir.
-   • Kontrol: tabloların "Toplam … Tutarı" satırları okunan satırlarla tutmalı. */
+   • Kontrol: tabloların "Toplam … Tutarı" satırları okunan satırlarla tutmalı.
+     Harcama toplamı kart ödemelerini ("BonusFlaş Ödeme") içermez, iadeleri içerir. */
 
 const DATE_RE = /^(\d{2})\/(\d{2})\/(\d{4})$/
 const AMOUNT_RE = /^[+-]?[\d.]+,\d{2}$/
@@ -133,7 +134,8 @@ export function parseGarantiPeriod(pages: PdfPage[]): ParsedStatement | null {
     ?? prevStatementDate
   if (!asOf) throw new Error('Garanti dönem içi işlem listesinde tarih okunamadı.')
 
-  const computedMinor = lines.reduce((s, l) => s + (l.amount === null ? 0 : toMinor(l.amount)), 0)
+  // "Toplam TL Harcama Tutarı" kart ödemelerini saymaz (iadeleri sayar): ödemeler kontrole girmez
+  const computedMinor = lines.reduce((s, l) => s + (l.amount === null || l.kind === 'payment' ? 0 : toMinor(l.amount)), 0)
   const computed = toMajor(computedMinor)
   const issues: string[] = []
   const expectedCount = (provisionRows > 0 ? 1 : 0) + (raw.length > provisionRows ? 1 : 0)

@@ -30,6 +30,7 @@ const pages = [
       ...row(342, '28/11/2026', 'BEYMEN PERAKENDE VE TEKST (3/6)', '1.649,00'),
       ...row(321, '28/11/2026', 'BEYMEN PERAKENDE VE TEKST (3/6)', '-1.649,00'),
       ...row(300, '06/11/2026', 'MİGROS- ETHEMEFENDİ MİGRO', '-22,25', '0,01'),
+      ...row(280, '06/11/2026', 'BonusFlaş Ödeme', '76.650,35', null, ''),
     ]),
   },
   {
@@ -44,7 +45,7 @@ const pages = [
 ]
 
 describe('Garanti dönem içi işlemler', () => {
-  it('provizyon + dönem içi satırları; bonus borcu etkilemez; toplam tutar', () => {
+  it('provizyon + dönem içi satırları; bonus borcu etkilemez; toplam tutar (ödeme hariç)', () => {
     const st = parseGarantiPeriod(pages)!
     expect(st).toMatchObject({
       bank: 'garanti', provisional: true, cards: ['1234'], statementDate: '2026-11-07',
@@ -55,13 +56,14 @@ describe('Garanti dönem içi işlemler', () => {
       ['2026-11-02', 'purchase', 1328.85, 6.22, 'IYZICO *AMAZON.COM.T'],
       ['2026-11-03', 'bonus', null, 285, 'TRENDYOLGO YEMEK'],
       ['2026-11-05', 'bonus', null, -285.45, 'HEPSİPAY-HEP*HEPSİBURADA'],
+      ['2026-11-06', 'payment', -76650.35, null, 'BonusFlaş Ödeme'],
       ['2026-11-06', 'purchase', 22.25, 0.01, 'MİGROS- ETHEMEFENDİ MİGRO'],
       ['2026-11-07', 'purchase', 500, null, 'HGS YÜKLEME'],
       ['2026-11-28', 'purchase', 1649, null, 'BEYMEN PERAKENDE VE TEKST'],
       ['2026-11-28', 'refund', -1649, null, 'BEYMEN PERAKENDE VE TEKST'],
     ])
     expect(st.lines[0].installment).toEqual({ index: 1, count: 3, total: 3986.55 })
-    expect(st.lines[5].installment).toEqual({ index: 3, count: 6, total: 9894 })
+    expect(st.lines[6].installment).toEqual({ index: 3, count: 6, total: 9894 })
     expect(parseStatement(pages).provisional).toBe(true)
   })
 
