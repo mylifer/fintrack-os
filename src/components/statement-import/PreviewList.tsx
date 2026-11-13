@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { IconAlertTriangle, IconChevronRight, IconSearch } from '@tabler/icons-react'
+import { IconAlertTriangle, IconChevronRight, IconDots, IconSearch } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
@@ -17,10 +17,11 @@ import { RefundLinkPicker, refundLinkSelection } from './RefundLinkPicker'
 
 /* ── Önizleme listesi ────────────────────────────────────────────────────────
    Hiyerarşi: (Sorun) → Kontrol et → Girilecek → Zaten sistemde → Kayda girmez.
-   Dikkat isteyenler açık ve en üstte; sorunsuzlar kapalı başlar. Satır sade:
-   ad, altında tek gri satırda alıcı ve kategori (kendi ikonlarıyla), sağda
-   tutar. Bankanın ham metni adın üzerine gelince görünür. Karar gereken
-   satırın seçenekleri bitişik bir düğme grubudur. */
+   Dikkat isteyenler açık ve en üstte; sorunsuzlar kapalı başlar. Geniş ekranda
+   tablo: Tarih | Açıklama | Alıcı | Kategori | Karar | Tutar | ⋯; telefonda
+   alıcı ve kategori başlığın altına, karar onun altına iner. Karar bir açılır
+   listedir (önerilen işaretli). Satıra ya da ⋯'e tıklamak ayrıntı penceresini
+   açar; "İade, alıma bağla" seçilince aday alımlar satırın altında açılır. */
 
 export const STATUS_META: Record<'error' | RowStatus, { label: string; dot: string; hint: string }> = {
   error:  { label: 'Sorun',          dot: 'bg-destructive',       hint: 'Bunlar çözülmeden kayıt yapılmaz.' },
@@ -133,72 +134,89 @@ export function PreviewList(props: ListProps) {
     requestAnimationFrame(() => document.getElementById(`stmt-sec-${s}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
-  // ── Alt satır: alıcı (avatar) · kategori (ikon) · etiket ──
-  const metaLine = (r: PlanRow) => {
+  // ── Hücreler: alıcı (avatar), kategori (ikon), ek bilgi ──
+  const noParty = (r: PlanRow) => r.kind === 'bonus' || r.kind === 'payment' || r.kind === 'transfer-in' || r.kind === 'transfer-out'
+
+  const recipientCell = (r: PlanRow): React.ReactNode => {
+    if (noParty(r)) return null
     const edit = edits[r.key]
-    const bits: React.ReactNode[] = []
-    if (r.kind !== 'bonus' && r.kind !== 'payment' && r.kind !== 'transfer-in' && r.kind !== 'transfer-out') {
-      const pickedExisting = edit?.recipientId !== undefined
-      const person: Person | undefined = pickedExisting
-        ? (edit.recipientId ? personById.get(edit.recipientId) : undefined)
-        : (r.recipientId ? personById.get(r.recipientId) : undefined)
-      const newName = !pickedExisting && r.newRecipient ? (edit?.newRecipient ?? r.recipientName) : undefined
-      if (person) {
-        bits.push(<span key="p" className="inline-flex items-center gap-1.5 min-w-0"><PersonAvatar person={person} size="xs" /><span className="truncate">{person.name}</span></span>)
-      } else if (newName) {
-        bits.push(
-          <span key="p" className="inline-flex items-center gap-1.5 min-w-0 text-primary font-medium">
-            <PersonAvatar person={{ name: newName, role: 'recipient' }} size="xs" />
-            <span className="truncate">Yeni: {newName}</span>
-          </span>,
-        )
-      }
-      const cat = catById.get(edit?.categoryId ?? r.categoryId ?? '')
-      if (cat) {
-        const guess = r.categoryGuess && !edit?.categoryId
-        bits.push(
-          <span key="c" className="inline-flex items-center gap-1.5 min-w-0" title={guess ? `${catPath(cat.id)} — tahmin; gerekçesi satırın ayrıntısında` : catPath(cat.id)}>
-            <CategoryIcon icon={cat.icon} color={cat.color} size={10} />
-            <span className={cn('truncate', guess && 'border-b border-dashed border-muted-foreground/60')}>{cat.name}</span>
-          </span>,
-        )
-      }
+    const pickedExisting = edit?.recipientId !== undefined
+    const person: Person | undefined = pickedExisting
+      ? (edit.recipientId ? personById.get(edit.recipientId) : undefined)
+      : (r.recipientId ? personById.get(r.recipientId) : undefined)
+    const newName = !pickedExisting && r.newRecipient ? (edit?.newRecipient ?? r.recipientName) : undefined
+    if (person) return <span className="inline-flex items-center gap-1.5 min-w-0"><PersonAvatar person={person} size="xs" /><span className="truncate">{person.name}</span></span>
+    if (newName) {
+      return (
+        <span className="inline-flex items-center gap-1.5 min-w-0 text-primary font-medium" title="Yeni alıcı · onayda oluşturulur">
+          <PersonAvatar person={{ name: newName, role: 'recipient' }} size="xs" />
+          <span className="truncate">+ {newName}</span>
+        </span>
+      )
     }
+    return null
+  }
+
+  const categoryCell = (r: PlanRow): React.ReactNode => {
+    if (noParty(r)) return null
+    const edit = edits[r.key]
+    const cat = catById.get(edit?.categoryId ?? r.categoryId ?? '')
+    if (!cat) return r.status === 'review' || r.status === 'new' ? <span className="text-orange-600">Seçin</span> : null
+    const guess = r.categoryGuess && !edit?.categoryId
+    return (
+      <span className="inline-flex items-center gap-1.5 min-w-0" title={guess ? `${catPath(cat.id)} — tahmin; gerekçesi satırın ayrıntısında` : catPath(cat.id)}>
+        <CategoryIcon icon={cat.icon} color={cat.color} size={10} />
+        <span className={cn('truncate', guess && 'border-b border-dashed border-muted-foreground/60')}>{cat.name}</span>
+      </span>
+    )
+  }
+
+  /** Başlığın altındaki küçük bilgi: taksit, not, onaylanacak */
+  const extraLine = (r: PlanRow) => {
+    const bits: React.ReactNode[] = []
     const tag = KIND_TAG[r.kind]?.(r)
     if (tag) bits.push(<span key="t" className="whitespace-nowrap">{tag}</span>)
     if (r.note) bits.push(<span key="n" className="whitespace-nowrap">{r.note}</span>)
     if (r.sideEffects.some(a => a.type === 'patch' && a.patch.approvalStatus === 'approved')) bits.push(<span key="a" className="text-green-600 whitespace-nowrap">onaylanacak</span>)
-    if (!bits.length) return <span className="truncate text-muted-foreground/70">{r.raw}</span>
-    return bits.flatMap((b, i) => (i ? [<Dot key={`d${i}`} />, b] : [b]))
+    return bits.length ? bits.flatMap((b, i) => (i ? [<Dot key={`d${i}`} />, b] : [b])) : null
   }
 
-  // ── Karar: konu + bitişik seçenek grubu ──
+  // ── Karar: açılır liste (önerilen işaretli); karar verilmemişse turuncu çerçeve ──
   const decision = (r: PlanRow) => {
     const sel = chosenIndex(r, choices)
-    const decided = sel !== null
     return (
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5" onClick={e => e.stopPropagation()}>
-        <span className={cn('text-xs font-semibold', decided ? 'text-muted-foreground' : 'text-orange-600')}>{decided ? '✓ ' : ''}{r.issue}</span>
-        <div className="inline-flex flex-wrap rounded-lg border border-border bg-muted/40 overflow-hidden">
-          {optionDisplayOrder(r.options).map(i => { const o = r.options[i]; return (
-            <button
-              key={o.key} type="button" onClick={() => props.onChoose(r.key, i)}
-              className={cn('px-2.5 py-1 text-xs border-l border-border first:border-l-0 transition-colors',
-                sel === i ? 'bg-primary/10 text-primary font-semibold' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}
-              title={!decided && r.recommended === i ? 'Önerilen' : undefined}
-            >
-              {o.label}
-              {!decided && r.recommended === i && <span className="ml-1.5 inline-block size-1.5 rounded-full bg-primary align-middle" aria-label="önerilen" />}
-            </button>
-          ) })}
-        </div>
-      </div>
+      <select
+        aria-label={`${r.title} için karar`}
+        value={sel === null ? '' : String(sel)}
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => e.stopPropagation()}
+        onChange={e => { if (e.target.value !== '') props.onChoose(r.key, Number(e.target.value)) }}
+        title={r.issue}
+        className={cn('h-8 w-full min-w-0 rounded-lg border bg-background px-2 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+          sel === null ? 'border-orange-500 text-orange-700 dark:text-orange-400' : 'border-input')}
+      >
+        {sel === null && <option value="">{r.issue ? `${r.issue} — seçin…` : 'Karar seçin…'}</option>}
+        {optionDisplayOrder(r.options).map(i => (
+          <option key={r.options[i].key} value={i}>{r.options[i].label}{r.recommended === i ? ' · önerilen' : ''}</option>
+        ))}
+      </select>
     )
   }
+
+  /* Geniş ekranda tablo sütunları, telefonda alt alta (yatay kaydırma yok):
+     Tarih | Açıklama | Alıcı | Kategori | Karar | Tutar | ⋯ */
+  const COLS = 'md:grid-cols-[52px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.9fr)_200px_110px_32px]'
+  const headerRow = (
+    <div className={cn('hidden md:grid gap-x-3 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border/60', COLS)}>
+      <span>Tarih</span><span>Açıklama</span><span>Alıcı</span><span>Kategori</span><span>Karar</span><span className="text-right">Tutar</span><span />
+    </div>
+  )
 
   const rowView = (r: PlanRow) => {
     const edit = edits[r.key]
     const quiet = r.status === 'exists' || r.status === 'info'
+    const extra = extraLine(r)
+    const linking = r.refundLink && r.options[selectedOption(r, choices) ?? -1]?.key === 'link'
     return (
       <div
         key={r.key}
@@ -207,28 +225,44 @@ export function PreviewList(props: ListProps) {
         onClick={() => props.onOpen(r.key)}
         onKeyDown={e => { if (e.key === 'Enter') props.onOpen(r.key) }}
         className={cn(
-          'grid grid-cols-[48px_minmax(0,1fr)_auto] sm:grid-cols-[56px_minmax(0,1fr)_auto] gap-x-3 sm:gap-x-4 px-4 py-2.5 border-t border-border/60 first:border-t-0 cursor-pointer hover:bg-muted/40',
+          'group grid grid-cols-[48px_minmax(0,1fr)_auto] gap-x-3 gap-y-1 md:items-center px-4 py-2.5 border-t border-border/60 first:border-t-0 cursor-pointer hover:bg-muted/40',
+          COLS,
           props.openKey === r.key && 'bg-primary/5',
           props.highlightKey === r.key && 'bg-primary/10 ring-2 ring-inset ring-primary/60',
           'scroll-mt-24 transition-colors',
         )}
       >
-        <div className="text-xs text-muted-foreground tabular-nums whitespace-nowrap pt-0.5">{formatDate(r.date, 'd MMM')}</div>
+        <div className="text-xs text-muted-foreground tabular-nums whitespace-nowrap pt-0.5 md:pt-0">{formatDate(r.date, 'd MMM')}</div>
         <div className="min-w-0">
-          <div className={cn('text-sm truncate', quiet ? 'text-foreground/80' : 'font-medium')} title={r.raw}>
+          <div className={cn('text-sm truncate group-hover:underline underline-offset-2', quiet ? 'text-foreground/80' : 'font-medium')} title={`${r.raw} — ayrıntı için tıklayın`}>
             {rowTitle(r, choices, edit)}{r.lines.length > 1 && <span className="text-muted-foreground font-normal"> · {r.lines.length} satır</span>}
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 overflow-hidden whitespace-nowrap">{metaLine(r)}</div>
+          {/* Telefonda alıcı ve kategori başlığın altında */}
+          <div className="mt-0.5 flex md:hidden items-center gap-1.5 text-xs text-muted-foreground min-w-0 overflow-hidden whitespace-nowrap">
+            {[recipientCell(r), categoryCell(r)].filter(Boolean).flatMap((b, i) => (i ? [<Dot key={`m${i}`} />, <span key={`c${i}`} className="contents">{b}</span>] : [<span key={`c${i}`} className="contents">{b}</span>]))}
+          </div>
+          {extra && <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground min-w-0 overflow-hidden whitespace-nowrap">{extra}</div>}
         </div>
-        <Amount row={r} quiet={quiet} />
-        {r.status === 'review' && <div className="col-start-2 col-span-2 mt-2">{decision(r)}</div>}
-        {r.refundLink && r.options[selectedOption(r, choices) ?? -1]?.key === 'link' && (
-          <div className="col-start-2 col-span-2 mt-2 min-w-0">
+        <div className="hidden md:flex text-xs text-muted-foreground min-w-0">{recipientCell(r)}</div>
+        <div className="hidden md:flex text-xs text-muted-foreground min-w-0">{categoryCell(r)}</div>
+        <div className="col-start-2 col-span-2 row-start-2 md:row-start-auto md:col-start-auto md:col-span-1 min-w-0" onClick={e => e.stopPropagation()}>
+          {r.status === 'review' ? decision(r) : null}
+        </div>
+        <div className="row-start-1 col-start-3 md:row-start-auto md:col-start-auto"><Amount row={r} quiet={quiet} /></div>
+        <button
+          type="button" aria-label={`${r.title} ayrıntısı`} title="Ayrıntı"
+          onClick={e => { e.stopPropagation(); props.onOpen(r.key) }}
+          className="hidden md:inline-flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <IconDots className="size-4" />
+        </button>
+        {linking && (
+          <div className="col-start-2 col-span-2 md:col-start-2 md:col-span-6 mt-1.5 min-w-0">
             <RefundLinkPicker row={r} selectedId={refundLinkSelection(r, choices, edit)} onPick={patch => props.onEdit(r.key, patch)} />
           </div>
         )}
         {problemByKey.has(r.key) && (
-          <div className="col-start-2 col-span-2 mt-1.5 flex items-center gap-1.5 text-xs font-medium text-destructive">
+          <div className="col-start-2 col-span-2 md:col-span-6 mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
             <IconAlertTriangle className="size-3.5 flex-shrink-0" />{problemByKey.get(r.key)} — düzeltmek için tıklayın
           </div>
         )}
@@ -327,7 +361,7 @@ export function PreviewList(props: ListProps) {
                 : s === 'new' && <span className="text-sm text-muted-foreground tabular-nums">{sum < 0 ? '+' : ''}{formatCurrency(Math.abs(sum))}</span>}
               <IconChevronRight className={cn('size-4 text-muted-foreground transition-transform flex-shrink-0', !isClosed && 'rotate-90')} />
             </div>
-            {!isClosed && <div className="border-t border-border">{body}</div>}
+            {!isClosed && <div className="border-t border-border">{headerRow}{body}</div>}
           </section>
         )
       })}
