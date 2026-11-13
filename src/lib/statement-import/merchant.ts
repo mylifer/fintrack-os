@@ -1,5 +1,6 @@
 import { foldText, keywordCategory, recipientCategory } from '@/lib/auto-category'
 import type { Category, Person, Transaction } from '@/types'
+import { brandOf, GATEWAY_RE, MAYBE, merchantCore, nameScore, sameCore, SURE } from './merchant-match'
 
 /* ── Banka işyeri adı → alıcı / kategori öğrenimi ─────────────────────────────
    Banka işyerini kendi biçiminde yazar ("YEMEKPAY *Y. RESTORAN"); kullanıcı
@@ -10,8 +11,15 @@ import type { Category, Person, Transaction } from '@/types'
    seferinde bu geçmişten yeniden çıkarılır — kullanıcı sonradan bir işlemin
    alıcısını değiştirirse sonraki ekstre bunu kendiliğinden görür.
 
-   Öncelik: 1) aynı işyeri adıyla geçmiş işlemler  2) adı işyeri metninde geçen
-   alıcı (onun geçmişteki kategorisiyle)  3) kategori anahtar kelime kuralı. */
+   Öncelik (alıcı):
+     1) aynı işyeri adıyla geçmiş işlemler (birebir, sonra bankadan bankaya
+        yazım farkıyla: "ÖZEL DURU VETERİNERL" = "OZEL DURU VETERINERL ISTANBUL")
+     2) adı işyeri metninde geçen alıcı — kesik/bitişik yazıma toleranslı
+        ("Yemeksepeti" ~ "YEMEKSEPETIPAY/YEMEKSEPISTANBUL")
+     3) aynı markanın geçmişi ("IKEA-KARTAL" → IKEA-ÜMRANİYE alımlarının alıcısı)
+   Emin olunamayan benzerlik `confidence: 'maybe'` döner: önerilir ama sorulur.
+   Kategori: alıcının geçmişi > bankanın kendi kategorisi (Garanti "Etiket")
+   > anahtar kelime kuralı. */
 
 /** Karşılaştırma anahtarı: Türkçe harfler katlanır, taksit eki ve fazla boşluk atılır. */
 export function merchantKey(description: string): string {
@@ -25,8 +33,6 @@ export function merchantLabel(description: string): string {
 
 const alnum = (s: string) => foldText(s).replace(/[^a-z0-9]/g, '')
 
-// Ödeme aracısı önekleri: asıl işyeri arkadan gelir ("IYZICO *AMAZON.COM.T")
-const GATEWAY_RE = /^(iyzico|paytr odeme|hepsipay-hep|mokaunited|tami-odeme|yemekpay|parati|garantipay|param|papara|sipay|craftgate)\s*[*/]\s*/i
 
 /** Büyük harfli banka metnini kelime kelime "Baş Harf" biçimine çevirir. Bankalar
  *  marka adlarında ASCII "I" kullanır (IKEA, IYZICO): "I" → "i" sayılır; "İ" ile
@@ -86,7 +92,13 @@ export interface MerchantRule {
   tags?: string[]
   /** Kuralı besleyen işlem sayısı */
   count: number
-  source: 'history' | 'recipient' | 'keyword'
+  source: 'history' | 'recipient' | 'brand' | 'keyword' | 'bank'
+  /** sure: doğrudan uygulanır · maybe: önerilir, kullanıcıya sorulur */
+  confidence: 'sure' | 'maybe'
+  /** Eşleşmenin dayandığı metin (geçmişteki işyeri adı ya da marka) */
+  via?: string
+  /** Kategori nereden: alıcı geçmişi, bankanın kategorisi, anahtar kelime */
+  categoryFrom?: 'history' | 'bank' | 'keyword'
 }
 
 type Tx = Pick<Transaction, 'id' | 'type' | 'amount' | 'date' | 'description' | 'merchant' | 'recipientId' | 'categoryId' | 'familyMemberId' | 'tags' | 'deleted_at'>
@@ -137,11 +149,14 @@ function ruleFromHistory(txs: readonly Tx[], people: ReadonlyMap<string, Person>
     tags: tags.length ? tags : undefined,
     count: rows.length,
     source: 'history',
+    confidence: 'sure',
+    categoryFrom: categoryId ? 'history' : undefined,
   }
 }
 
 export interface RuleBook {
-  ruleFor(description: string): MerchantRule | undefined
+  /** `bankCategory`: bankanın satıra yazdığı kategori ("Market", "Yeme / İçme") */
+  ruleFor(description: string, bankCategory?: string | null): MerchantRule | undefined
 }
 
 /** Kural kitabı. `extra`: bu ekstrede eşleşen (henüz merchant'ı yazılmamış)
@@ -152,6 +167,8 @@ export function buildRuleBook(opts: {
   people: readonly Person[]
   categories: readonly Category[]
   refundTag: string
+  /** Bankanın kategori etiketi → kullanıcının kategorisi */
+  bankCategory?: (label: string) => string | undefined
 }): RuleBook {
   const byKey = new Map<string, Tx[]>()
   const push = (key: string, tx: Tx) => {
@@ -168,28 +185,90 @@ export function buildRuleBook(opts: {
     .filter(r => r.key.length >= 4)
     .sort((a, b) => b.key.length - a.key.length)
 
-  return {
-    ruleFor(description) {
-      const hist = byKey.get(merchantKey(description))
-      const fromHist = hist ? ruleFromHistory(hist, peopleById, opts.refundTag, opts.transactions) : undefined
-      if (fromHist) return fromHist
+  // Marka → o markanın geçmiş harcamaları ("ikea" → IKEA-KARTAL, IKEA-ÜMRANİYE …)
+  const byBrand = new Map<string, { keys: Set<string>; txs: Tx[] }>()
+  for (const [key, txs] of byKey) {
+    const b = brandOf(key)
+    if (!b) continue
+    const e = byBrand.get(b) ?? { keys: new Set<string>(), txs: [] }
+    e.keys.add(key)
+    for (const t of txs) if (!e.txs.some(x => x.id === t.id)) e.txs.push(t)
+    byBrand.set(b, e)
+  }
+  const keys = [...byKey.keys()]
 
-      const hit = recipients.find(r => nameInText(r.p.name, description))
-      if (hit) {
-        const own = opts.transactions.filter(t => t.recipientId === hit.p.id && t.type === 'expense' && t.amount > 0 && !t.deleted_at)
-        const categoryId = recipientCategory(hit.p.id, 'expense', own as Transaction[], opts.categories as Category[])
-        return {
-          recipientId: hit.p.id,
-          categoryId,
-          categorySure: !!categoryId && allSame(own.map(t => t.categoryId ?? undefined)),
-          description: pairDescription(opts.transactions, hit.p.id, categoryId) ?? hit.p.name,
-          count: own.length,
-          source: 'recipient',
+  const recipientRule = (p: Person, confidence: MerchantRule['confidence']): MerchantRule => {
+    const own = opts.transactions.filter(t => t.recipientId === p.id && t.type === 'expense' && t.amount > 0 && !t.deleted_at)
+    const categoryId = recipientCategory(p.id, 'expense', own as Transaction[], opts.categories as Category[])
+    return {
+      recipientId: p.id,
+      categoryId,
+      categorySure: !!categoryId && allSame(own.map(t => t.categoryId ?? undefined)),
+      description: pairDescription(opts.transactions, p.id, categoryId) ?? p.name,
+      count: own.length,
+      source: 'recipient',
+      confidence,
+      categoryFrom: categoryId ? 'history' : undefined,
+    }
+  }
+
+  /** Alıcı kararından bağımsız kategori: bankanın etiketi, sonra anahtar kelime */
+  const fallbackCategory = (description: string, bankLabel?: string | null) => {
+    const fromBank = bankLabel ? opts.bankCategory?.(bankLabel) : undefined
+    if (fromBank) return { categoryId: fromBank, categoryFrom: 'bank' as const }
+    const kw = keywordCategory(description, 'expense', opts.categories as Category[])
+    return kw ? { categoryId: kw, categoryFrom: 'keyword' as const } : undefined
+  }
+  const withCategory = (rule: MerchantRule, description: string, bankLabel?: string | null): MerchantRule => {
+    if (rule.categoryId) return rule
+    const fb = fallbackCategory(description, bankLabel)
+    return fb ? { ...rule, ...fb, categorySure: false } : rule
+  }
+
+  return {
+    ruleFor(description, bankLabel) {
+      // 1) Geçmiş: birebir aynı işyeri metni, sonra bankadan bankaya yazım farkı
+      const exact = byKey.get(merchantKey(description))
+      const fromHist = exact ? ruleFromHistory(exact, peopleById, opts.refundTag, opts.transactions) : undefined
+      if (fromHist) return withCategory(fromHist, description, bankLabel)
+      const twins = keys.filter(k => sameCore(k, description))
+      if (twins.length) {
+        const r = ruleFromHistory(twins.flatMap(k => byKey.get(k)!), peopleById, opts.refundTag, opts.transactions)
+        const shown = byKey.get(twins[0])!.find(t => t.merchant)?.merchant ?? twins[0]
+        if (r) return withCategory({ ...r, via: shown }, description, bankLabel)
+      }
+
+      // 2) Alıcı adı işyeri metninde (kesik/bitişik yazıma toleranslı)
+      let best: { p: Person; score: number } | undefined
+      for (const r of recipients) {
+        const score = nameInText(r.p.name, description) ? 1 : nameScore(r.p.name, description)
+        if (score >= MAYBE && (!best || score > best.score || (score === best.score && r.key.length > alnum(best.p.name).length))) best = { p: r.p, score }
+      }
+      if (best && best.score >= SURE) return withCategory(recipientRule(best.p, 'sure'), description, bankLabel)
+
+      // 3) Aynı markanın geçmişi: hepsi tek alıcıdaysa o alıcı
+      const brand = brandOf(description)
+      const fam = brand ? byBrand.get(brand) : undefined
+      const famRule = fam ? ruleFromHistory(fam.txs, peopleById, opts.refundTag, opts.transactions) : undefined
+      if (fam && famRule?.recipientId) {
+        const rows = fam.txs.filter(t => t.type === 'expense' && t.amount > 0 && !t.deleted_at)
+        const agree = rows.filter(t => t.recipientId === famRule.recipientId).length
+        // İki ayrı işyeri metninde ve hep aynı alıcı: emin; tek kayıt ya da çoğunluk: öneri
+        // Kısa ve baştaki kelime değilse ("ÖZEL DURU" → "duru") rastlantı olabilir: yalnız öneri
+        const distinctive = merchantCore(description).tokens[0] === brand || brand!.length >= 5
+        const sure = distinctive && agree === rows.length && (fam.keys.size >= 2 || rows.length >= 2)
+        if (sure || agree / rows.length >= 2 / 3) {
+          // Ürün/restoran açıklaması markanın başka şubesine taşınmaz
+          const rn = peopleById.get(famRule.recipientId)?.name
+          return withCategory({ ...famRule, source: 'brand', confidence: sure ? 'sure' : 'maybe', via: brand!, description: rn ?? famRule.description }, description, bankLabel)
         }
       }
 
-      const categoryId = keywordCategory(description, 'expense', opts.categories as Category[])
-      if (categoryId) return { categoryId, categorySure: false, count: 0, source: 'keyword' }
+      // 4) Benzer ad, emin değil: öneri olarak sorulur
+      if (best) return withCategory(recipientRule(best.p, 'maybe'), description, bankLabel)
+
+      const fb = fallbackCategory(description, bankLabel)
+      if (fb) return { ...fb, categorySure: false, count: 0, source: fb.categoryFrom, confidence: 'sure' }
       return undefined
     },
   }

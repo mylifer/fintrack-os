@@ -68,6 +68,18 @@ describe('Garanti dönem içi işlemler', () => {
     expect(parseStatement(pages).provisional).toBe(true)
   })
 
+  it('bankanın kategorisi (Etiket) okunur; iki satıra bölünmüşü birleştirilir', () => {
+    const st = parseGarantiPeriod(pages)!
+    expect(st.lines.find(l => l.description.startsWith('MİGROS'))!.bankCategory).toBe('Market')
+    const wrapped = [{ lines: groupLines([
+      ...pages[0].lines.flatMap(l => l.items).filter(i => i.y >= 385),
+      ...header(363),
+      left(354, 'Giyim /', 352), ...row(342, '28/11/2026', 'BEYMEN PERAKENDE VE TEKST (3/6)', '-1.649,00').filter(i => i.str !== 'Market'), left(354, 'Aksesuar', 332),
+      left(354, 'Toplam TL Harcama Tutarı :', 105), right(561, '1.649,00 TL', 105),
+    ]) }]
+    expect(parseGarantiPeriod(wrapped)!.lines.find(l => l.description.startsWith('BEYMEN'))!.bankCategory).toBe('Giyim / Aksesuar')
+  })
+
   it('toplam tutmazsa uyarır', () => {
     const broken = [pages[0], { lines: pages[1].lines.filter(l => !l.text.includes('AMAZON')) }]
     const st = parseGarantiPeriod(broken)!

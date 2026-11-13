@@ -154,7 +154,7 @@ export function PreviewList(props: ListProps) {
       if (cat) {
         const guess = r.categoryGuess && !edit?.categoryId
         bits.push(
-          <span key="c" className="inline-flex items-center gap-1.5 min-w-0" title={guess ? `${catPath(cat.id)} — bu işyerinde kategori değişken; en sık olanı önerildi` : catPath(cat.id)}>
+          <span key="c" className="inline-flex items-center gap-1.5 min-w-0" title={guess ? `${catPath(cat.id)} — tahmin; gerekçesi satırın ayrıntısında` : catPath(cat.id)}>
             <CategoryIcon icon={cat.icon} color={cat.color} size={10} />
             <span className={cn('truncate', guess && 'border-b border-dashed border-muted-foreground/60')}>{cat.name}</span>
           </span>,

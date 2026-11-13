@@ -74,6 +74,8 @@ describe('yardımcılar', () => {
     expect(prettyMerchant('PAYTR ODEME /AROASTINGLAB')).toBe('Aroastinglab')
     expect(prettyMerchant('WWW.İDEFİX.COM')).toBe('İdefix')
     expect(prettyMerchant('IYZICO/RUSTANDRICH.COM.TR')).toBe('Rustandrich')
+    expect(prettyMerchant('PAYTR /THECHAMP')).toBe('Thechamp')
+    expect(prettyMerchant('MONEYPAY/MIGROSONE ISTANBUL TR')).toBe('Migrosone')
   })
 })
 
@@ -138,7 +140,7 @@ describe('taksitler', () => {
     line({ description: 'IKEA-ÜMRANIYE MAĞAZA', amount, date, installment: { index: k, count: 3, total: 1099.91 } })
 
   it('yeni taksitli alım bankanın tutarlarıyla tüm taksitleri oluşturur; sonraki ay kimlikten bulunur', () => {
-    const hist = [tx({ id: 'h', amount: 10, date: '2026-08-01', merchant: 'IKEA-ÜMRANIYE MAĞAZA', recipientId: 'p-ikea', categoryId: 'c-ev', description: 'IKEA' })]
+    const hist = [tx({ id: 'h', amount: 10, date: '2026-08-01', merchant: 'KOÇTAŞ-ÜMRANİYE MAĞAZA', recipientId: 'p-ikea', categoryId: 'c-ev', description: 'IKEA' })]
     const p1 = plan([inst(1, '2026-10-11', 366.65)], hist)
     expect([p1.rows[0].status, p1.rows[0].kind]).toEqual(['new', 'installment-new'])
     const c1 = commit(p1, hist)
@@ -335,5 +337,72 @@ describe('işyeri adı ve ödeme', () => {
     const pay = tx({ id: 'pay-inc', type: 'income', amount: 4146.64, date: '2026-10-12', description: 'Kredi Kartı Ödemesi' })
     const p = plan([line({ date: '2026-10-12', description: 'ÖDEME-İNTERNET BANKACILIĞI', amount: -4146.64, kind: 'payment' })], [pay])
     expect(p.rows[0]).toMatchObject({ status: 'exists', match: { txIds: ['pay-inc'] } })
+  })
+})
+
+describe('akıllı alıcı ve kategori eşleştirme', () => {
+  const vet: Person = { id: 'p-vet', name: 'Özel Duru Veteriner', role: 'recipient', createdAt: '' }
+  const migros: Person = { id: 'p-migros', name: 'Migros', role: 'recipient', createdAt: '' }
+  const hb: Person = { id: 'p-hb', name: 'Hepsiburda', role: 'recipient', createdAt: '' }
+  const more = [...people, vet, migros, hb]
+  const cats = [...categories, cat('c-market', 'Market'), cat('c-pet', 'Evcil Hayvan'), cat('c-giyim', 'Giyim')]
+  const p2 = (lines: StatementLine[], txs: Transaction[]) => plan(lines, txs, { people: more, categories: cats })
+
+  it('kesik ve aracılı yazım kayıtlı alıcıya gider (yeni alıcı sanılmaz)', () => {
+    const hist = [tx({ id: 'h1', amount: 900, date: '2026-08-01', recipientId: 'p-vet', categoryId: 'c-pet', description: 'Aşı' })]
+    const rows = p2([
+      line({ description: 'OZEL DURU VETERINERL ISTANBUL TR', amount: 2500 }),
+      line({ description: 'MONEYPAY/MIGROSONE ISTANBUL TR', amount: 273.8 }),
+      line({ description: 'YEMEKSEPETIPAY/YEMEKSEPISTANBUL', amount: 260 }),
+    ], hist).rows
+    expect(rows.map(r => [r.status, r.recipientId])).toEqual([['new', 'p-vet'], ['new', 'p-migros'], ['new', 'p-ys']])
+    expect(rows[0].categoryId).toBe('c-pet')
+  })
+
+  it('başka bankanın yazımı geçmişteki aynı işyerini bulur', () => {
+    const hist = [tx({ id: 'h1', amount: 120, date: '2026-08-01', merchant: 'ÖZEL DURU VETERİNERL', recipientId: 'p-itc', categoryId: 'c-pet', description: 'Mama' })]
+    const r = p2([line({ description: 'OZEL DURU VETERINERL ISTANBUL TR', amount: 2500 })], hist).rows[0]
+    expect([r.status, r.recipientId, r.categoryId]).toEqual(['new', 'p-itc', 'c-pet'])
+    expect(r.reason).toContain('ÖZEL DURU VETERİNERL')
+  })
+
+  it('aynı markanın başka şubesi markanın alıcısına gider', () => {
+    const hist = [
+      tx({ id: 'h1', amount: 100, date: '2026-08-01', merchant: 'KOÇTAŞ-ÜMRANİYE MAĞAZA', recipientId: 'p-itc', categoryId: 'c-ev', description: 'Raf' }),
+      tx({ id: 'h2', amount: 200, date: '2026-08-03', merchant: 'KOCTAS BAYRAMPASA', recipientId: 'p-itc', categoryId: 'c-ev', description: 'Lamba' }),
+    ]
+    const r = p2([line({ description: 'KOÇTAŞ-KARTAL MAĞAZASI', amount: 826.65 })], hist).rows[0]
+    expect([r.status, r.recipientId, r.categoryId]).toEqual(['new', 'p-itc', 'c-ev'])
+    expect(r.title).toBe('iTC')   // ürün açıklaması şubeye taşınmaz
+  })
+
+  it('emin olunamayan benzerlik sorulur: önerilen alıcı, yeni alıcı, girme, başka alıcı', () => {
+    const p = p2([line({ description: 'HEPSİPAY-HEP*HEPSİBURADA', amount: 325.12 })], [])
+    const r = p.rows[0]
+    expect([r.status, r.kind, r.recipientId, r.recommended, r.issue]).toEqual(['review', 'purchase', 'p-hb', 0, 'Alıcı “Hepsiburda” mı?'])
+    expect(r.options.map(o => o.key)).toEqual(['create', 'create-new', 'skip', 'create-existing'])
+    const ok = commit(p, [], { [r.key]: 0 }, { [r.key]: { categoryId: 'c-market' } })
+    expect(created(ok.ops)[0].recipientId).toBe('p-hb')
+    const fresh = commit(p, [], { [r.key]: 1 }, { [r.key]: { categoryId: 'c-market' } })
+    expect(fresh.createdPeople.map(x => x.name)).toEqual(['Hepsiburada'])
+  })
+
+  it('bankanın kategorisi: önce bu ekstrede eşleşen satırlardan, yoksa kategori adından', () => {
+    const hist = [tx({ id: 'm1', amount: 40, date: '2026-10-10', categoryId: 'c-food', description: 'Fırın' })]
+    const rows = p2([
+      line({ description: 'FIRINCI', amount: 40, bankCategory: 'Yeme / İçme' }),         // sistemde var → öğretir
+      line({ description: 'SMOOK CAFE GIDA', amount: 900, bankCategory: 'Yeme / İçme' }), // öğrenilenden
+      line({ description: 'HAKMAR LTD', amount: 338.55, bankCategory: 'Market' }),        // ad benzerliğinden
+      line({ description: 'TRENDYOL', amount: 99, bankCategory: 'Diğer' }),               // eşlenmez
+    ], hist).rows
+    expect(rows.map(r => [r.status, r.categoryId, r.categoryGuess]).slice(1)).toEqual([
+      ['review', 'c-food', true], ['review', 'c-market', true], ['review', undefined, false],
+    ])
+    expect(rows[1].reason).toContain('“Yeme / İçme”')
+  })
+
+  it('rastlantısal benzerlik yeni alıcı olarak kalır', () => {
+    const r = p2([line({ description: 'DÜRÜMLE ISTANBUL TR', amount: 442 })], []).rows[0]
+    expect([r.kind, r.newRecipient]).toEqual(['unknown', true])
   })
 })

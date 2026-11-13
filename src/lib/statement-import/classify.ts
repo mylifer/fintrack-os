@@ -431,7 +431,39 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     const t = byId.get(m.txIds[0])
     if (t && (l.kind === 'purchase') && t.type === 'expense' && t.amount > 0) extra.push({ description: l.description, tx: t })
   }
-  const rules = buildRuleBook({ transactions: live, extra, people: input.people, categories: input.categories, refundTag })
+  // Bankanın kategori etiketi → kullanıcının kategorisi. Önce bu ekstrede sistemle
+  // eşleşen satırlardan öğrenilir (Garanti "Market" satırlarını hep "Market"e
+  // giriyorsan), yoksa kategori adının benzerliğinden.
+  const labelTally = new Map<string, Map<string, number>>()
+  for (const [idx, m] of matchOf) {
+    const l = lineByIdx.get(idx)!
+    const t = byId.get(m.txIds[0])
+    if (!l.bankCategory || !t?.categoryId || t.type !== 'expense') continue
+    const k = foldText(l.bankCategory)
+    const tally = labelTally.get(k) ?? new Map<string, number>()
+    tally.set(t.categoryId, (tally.get(t.categoryId) ?? 0) + 1)
+    labelTally.set(k, tally)
+  }
+  const expenseCats = input.categories.filter(c => c.scope === 'expense' && !c.isArchived)
+  const bankCategory = (label: string): string | undefined => {
+    const tally = labelTally.get(foldText(label))
+    if (tally) {
+      const [best, n] = [...tally].sort((a, b) => b[1] - a[1])[0]
+      const total = [...tally.values()].reduce((s2, x) => s2 + x, 0)
+      if (n / total >= 0.6) return best
+    }
+    // "Yeme / İçme" ~ "Yeme İçme", "Market" ~ "Market"; "Diğer"/"Kart Ödemesi" eşlenmez
+    if (/^(diger|kart odemesi)$/.test(foldText(label))) return undefined
+    const words = (x: string) => foldText(x).split(/[^a-z0-9]+/).filter(w => w.length >= 3)
+    const lw = words(label)
+    if (!lw.length) return undefined
+    const same = expenseCats.filter(c => words(c.name).join(' ') === lw.join(' '))
+    if (same.length === 1) return same[0].id
+    // Biri ötekinin kelimelerini kapsıyor ("Sağlık / Bakım" ~ "Sağlık"); tek aday olmalı
+    const near = expenseCats.filter(c => { const cw = words(c.name); return cw.length > 0 && (cw.every(w => lw.includes(w)) || lw.every(w => cw.includes(w))) })
+    return near.length === 1 ? near[0].id : undefined
+  }
+  const rules = buildRuleBook({ transactions: live, extra, people: input.people, categories: input.categories, refundTag, bankCategory })
 
   // Alacak satırı → gelir (QNB "alşv ind", "Indirim": kullanıcı "Yemek Cashback" geliri olarak giriyor).
   // Anahtar tutarsızdır ("… 414.00 alşv ind" → "… alşv ind"); bu kartta aynı anahtarla girilmiş gelirlerden öğrenilir.
@@ -474,12 +506,26 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     if (!rule) return ''
     const rn = rule.recipientId ? peopleById.get(rule.recipientId)?.name : undefined
     const cn = catPath(rule.categoryId)
+    const catText = rule.categoryFrom === 'bank'
+      ? ` Kategori, bankanın “${l.bankCategory}” etiketinden: ${cn}.`
+      : rule.categoryFrom === 'keyword' ? ` Kategori, ${cn} kategorisinin anahtar kelime kuralından.` : ''
     if (rule.source === 'history') {
-      return `“${merchantLabel(l.description)}” daha önce ${rule.count} kez eşleşti: alıcı ${rn ?? 'yok'}` +
-        (cn ? (rule.categorySure ? `, kategori hep ${cn}.` : `, kategori değişken; en sık olanı (${cn}) önerildi.`) : '.')
+      const seen = rule.via ? `“${merchantLabel(l.description)}”, daha önce “${rule.via}” olarak ${rule.count} kez eşleşen işyeriyle aynı` : `“${merchantLabel(l.description)}” daha önce ${rule.count} kez eşleşti`
+      return `${seen}: alıcı ${rn ?? 'yok'}` +
+        (rule.categoryFrom === 'history' && cn ? (rule.categorySure ? `, kategori hep ${cn}.` : `, kategori değişken; en sık olanı (${cn}) önerildi.`) : '.') + catText
     }
-    if (rule.source === 'recipient') return `İşyeri adında “${rn}” geçiyor. Kategori bu alıcıya en sık verdiğin: ${cn ?? 'yok'}.`
-    return `Kategori, ${cn} kategorisinin anahtar kelime kuralından.`
+    if (rule.source === 'brand') {
+      return `“${rule.via?.toUpperCase()}” markasının önceki ${rule.count} alımı “${rn}” alıcısına girilmiş` +
+        (rule.confidence === 'maybe' ? '; bu şube de aynı alıcı olabilir.' : '; bu şube de ona eşlendi.') +
+        (rule.categoryFrom === 'history' && cn ? ` Kategori: ${cn}.` : '') + catText
+    }
+    if (rule.source === 'recipient') {
+      return (rule.confidence === 'maybe'
+        ? `İşyeri adı kayıtlı “${rn}” alıcısına benziyor (yazım biraz farklı).`
+        : `İşyeri adında “${rn}” geçiyor.`) +
+        (rule.categoryFrom === 'history' ? ` Kategori bu alıcıya en sık verdiğin: ${cn ?? 'yok'}.` : '') + catText
+    }
+    return catText.trim()
   }
 
   const draftFor = (l: StatementLine, rule: MerchantRule | undefined, extraFields: Partial<DraftTx> = {}): DraftTx => {
@@ -517,6 +563,17 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
   }
 
   const skip: RowOption = { key: 'skip', label: 'Girme', actions: [] }
+  /** Benzer alıcı önerisi: önerilen alıcı / yeni alıcı / girme / başka alıcı */
+  const guessOptions = (draft: DraftTx, name: string, l: StatementLine): RowOption[] => {
+    const fresh = prettyMerchant(l.description)
+    const bare = { ...draft, recipientId: null, description: draft.description === name ? fresh : draft.description }
+    return [
+      { key: 'create', label: `“${name}” ile gir`, actions: [{ type: 'create', draft }] },
+      { key: 'create-new', label: 'Yeni alıcıyla gir', actions: [{ type: 'create', draft: { ...bare, newRecipient: fresh } }] },
+      skip,
+      { key: 'create-existing', label: 'Başka alıcıyla gir', actions: [{ type: 'create', draft: { ...bare, needsRecipient: true } }] },
+    ]
+  }
   const keep: RowOption = { key: 'keep', label: 'Sistemdeki kayıt kalsın', actions: [] }
 
   // 3a) Taksitli iptal / taksitli iade kümeleri (alım hesabın açılışından sonra)
@@ -549,7 +606,7 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       const hasFirst = members.some(l => l.installment!.index === 1)
       const net = toMajor(members.reduce((s, l) => s + minor(l.amount!), 0))
       const head = members[0]
-      const rule = rules.ruleFor(head.description)
+      const rule = rules.ruleFor(head.description, head.bankCategory)
       const options: RowOption[] = []
       const recommended = 0
       if (deletable) options.push({ key: 'cancel-group', label: `Taksitli alımı iptal et (sistemdeki ${groupTx.length} kaydı sil)`, actions: [{ type: 'delete', txIds: groupTx.map(t => t.id) }] })
@@ -607,7 +664,7 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     const twin = lines.find(p => p.kind === 'purchase' && !p.installment && !handled.has(p.index) && !matchOf.has(p.index) &&
       merchantKey(p.description) === merchantKey(r.description) && minor(p.amount!) === -minor(r.amount!) && dayDiff(dateOf(p), dateOf(r)) <= 10)
     if (!twin) continue
-    const rule = rules.ruleFor(twin.description)
+    const rule = rules.ruleFor(twin.description, twin.bankCategory)
     const purchaseDraft = draftFor(twin, rule)
     const purchaseId = txIdFromSeed(purchaseDraft.idSeed)
     const matchedSibling = lines.find(p => p !== twin && matchOf.has(p.index) && merchantKey(p.description) === merchantKey(twin.description) && minor(p.amount ?? 0) === minor(twin.amount!))
@@ -726,7 +783,7 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       continue
     }
 
-    const rule = rules.ruleFor(l.description)
+    const rule = rules.ruleFor(l.description, l.bankCategory)
     const rb = ruleBits(rule)
     const title = rule?.description ?? rb.recipientName ?? prettyMerchant(l.description)
 
@@ -794,6 +851,17 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
           installments: { amounts, dates: amounts.map((_, i) => addMonthsIso(pd, i)) },
         })
         const isNew = !rule?.recipientId
+        const guess = !isNew && rule?.confidence === 'maybe'
+        if (guess) {
+          rows.push({
+            ...base, ...rb, status: 'review', kind: 'installment-new', title,
+            issue: `Alıcı “${rb.recipientName}” mı? · yeni taksitli alım`,
+            reason: `Yeni taksitli alım: ${inst.count} taksit oluşturulur (toplam ${fmtTr(inst.total)} ₺). ${ruleReason(l, rule)}`,
+            options: guessOptions(draft, rb.recipientName!, l),
+            recommended: 0, defaultOption: null, sideEffects: [],
+          })
+          continue
+        }
         rows.push({
           ...base, ...rb, status: isNew ? 'review' : 'new', kind: 'installment-new', title,
           newRecipient: isNew,
@@ -923,13 +991,23 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       })
       continue
     }
+    if (rule?.recipientId && rule.confidence === 'maybe') {
+      rows.push({
+        ...base, ...rb, status: 'review', kind: 'purchase', title,
+        issue: `Alıcı “${rb.recipientName}” mı?`,
+        reason: `${ruleReason(l, rule)} Onaylarsan bir dahaki ekstrede kendiliğinden tanınır.`,
+        options: guessOptions(draft, rb.recipientName!, l),
+        recommended: 0, defaultOption: null, sideEffects: [],
+      })
+      continue
+    }
     if (!rule?.recipientId) {
       const suggested = prettyMerchant(l.description)
       rows.push({
         ...base, ...rb, status: 'review', kind: 'unknown', title: suggested, newRecipient: true,
         recipientName: suggested,
         issue: 'Yeni alıcı',
-        reason: `Bu işyeri daha önce hiç geçmemiş. Önerilen yeni alıcı: “${suggested}”${rb.categoryId ? `, kategori ${catPath(rb.categoryId)}` : '; kategori seçmen gerekiyor'}. Onaylarsan bir dahaki ekstrede kendiliğinden tanınır.`,
+        reason: `Bu işyeri daha önce hiç geçmemiş. Önerilen yeni alıcı: “${suggested}”${rb.categoryId ? `, kategori ${catPath(rb.categoryId)}${rule?.categoryFrom === 'bank' ? ` (bankanın “${l.bankCategory}” etiketinden)` : ''}` : '; kategori seçmen gerekiyor'}. Onaylarsan bir dahaki ekstrede kendiliğinden tanınır.`,
         options: [
           { key: 'create-new', label: 'Yeni alıcıyla gir', actions: [{ type: 'create', draft: { ...draft, newRecipient: suggested, description: suggested } }] },
           { key: 'create', label: 'Alıcısız gir', actions: [{ type: 'create', draft: { ...draft, description: suggested } }] },
