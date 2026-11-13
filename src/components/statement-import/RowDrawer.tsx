@@ -86,7 +86,7 @@ export function RowDrawer({ row, statement, choice, edit, onChoose, onEdit, onCl
             <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               <span className={cn('size-2 rounded-full', meta.dot)} />{meta.label}
             </div>
-            <div className="text-base font-semibold mt-1 break-words">{edit?.description ?? row.title}</div>
+            <div className="text-base font-semibold mt-1 break-words">{edit?.description ?? draft?.description ?? row.title}</div>
             <div className="text-xs text-muted-foreground tabular-nums">{formatDate(row.date)}</div>
           </div>
           <div className="flex flex-col items-end gap-2">

@@ -3,7 +3,7 @@ import type { Category, Person, Transaction } from '@/types'
 import type { BatchOp } from '@/lib/sync/engine'
 import type { ParsedStatement, StatementLine } from './statement'
 import { addMonthsIso, bankInstallmentAmounts, buildImportPlan, type PlanInput } from './classify'
-import { buildCommit } from './commit'
+import { buildCommit, rowTitle } from './commit'
 import { merchantKey, prettyMerchant } from './merchant'
 
 const ACC = 'card-1'
@@ -425,6 +425,12 @@ describe('alacak satırını gelir olarak girme', () => {
     expect(ok.problems).toEqual([])
     const made = created(ok.ops)[0]
     expect([made.type, made.amount, made.categoryId]).toEqual(['income', 1250, 'c-inc'])
+
+    // Liste başlığı seçilen karara uyar: iade "[İade] …", gelir öneksiz, elle yazılan her zaman
+    expect(rowTitle(r, {})).toBe(r.title)
+    expect(rowTitle(r, { [r.key]: 'standalone' })).toBe('[İade] Yurt Disi Cikis Harc Iadesi')
+    expect(rowTitle(r, { [r.key]: 'income' })).toBe('Yurt Disi Cikis Harc Iadesi')
+    expect(rowTitle(r, { [r.key]: 'income' }, { description: 'Harç iadesi' })).toBe('Harç iadesi')
 
     // Sonraki ekstre: aynı satır kendiliğinden gelir olarak önerilir
     const next = plan([line({ description: 'Yurt Disi Cikis Harc Iadesi', amount: -1250, date: '2026-10-27' })], [made], { categories: cats }).rows[0]

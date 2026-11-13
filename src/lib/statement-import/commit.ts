@@ -64,6 +64,16 @@ export function chosenIndex(row: Pick<PlanRow, 'key' | 'options'>, choices: Read
   return i < 0 ? null : i
 }
 
+/** Satırın ekranda görünen başlığı: elle yazılan açıklama, yoksa seçili kararın
+ *  gireceği kaydın açıklaması ("Gelir olarak gir" → "[İade]" öneki olmadan),
+ *  karar yoksa satırın kendi başlığı. */
+export function rowTitle(row: PlanRow, choices: Readonly<RowChoices>, edit?: Pick<RowEdit, 'description'>): string {
+  if (edit?.description !== undefined) return edit.description
+  const i = selectedOption(row, choices)
+  const creates = i !== null ? row.options[i]?.actions.filter(a => a.type === 'create') ?? [] : []
+  return creates.length === 1 && creates[0].type === 'create' ? creates[0].draft.description : row.title
+}
+
 /** Seçili seçenek: kullanıcı seçimi, yoksa satırın varsayılanı. */
 export function selectedOption(row: PlanRow, choices: Readonly<RowChoices>): number | null {
   return chosenIndex(row, choices) ?? row.defaultOption

@@ -20,7 +20,7 @@ import { readImageText } from '@/lib/statement-import/ocr'
 import { parseScreenshot, parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
 import { buildImportPlan, type ImportPlan, type PlanRow, type RowOption } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
-import { buildCommit, commitEffect, optionForEdit, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
+import { buildCommit, commitEffect, optionForEdit, rowTitle, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
 import type { BatchOp } from '@/lib/sync/engine'
 import { PreviewList, STATUS_META } from './PreviewList'
@@ -617,7 +617,7 @@ export function StatementImport() {
                       <span className={cn('size-2 rounded-full mt-1.5 flex-shrink-0', t.undecided ? 'bg-orange-600' : 'bg-destructive')} />
                       <span className="min-w-0 flex-1">
                         <span className="flex justify-between gap-2 text-sm">
-                          <span className="truncate font-medium">{t.row.title}</span>
+                          <span className="truncate font-medium">{rowTitle(t.row, choices, edits[t.row.key])}</span>
                           {t.row.amount !== null && <span className="tabular-nums text-muted-foreground whitespace-nowrap">{formatCurrency(t.row.amount)}</span>}
                         </span>
                         <span className="block text-xs text-muted-foreground truncate">{t.why}</span>

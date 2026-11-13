@@ -12,7 +12,7 @@ import { foldText } from '@/lib/auto-category'
 import { usePeopleStore } from '@/store'
 import type { Category, Person } from '@/types'
 import { optionDisplayOrder, type PlanRow, type RowKind, type RowStatus } from '@/lib/statement-import/classify'
-import { chosenIndex, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
+import { chosenIndex, rowTitle, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 
 /* ── Önizleme listesi ────────────────────────────────────────────────────────
    Hiyerarşi: (Sorun) → Kontrol et → Girilecek → Zaten sistemde → Kayda girmez.
@@ -213,7 +213,7 @@ export function PreviewList(props: ListProps) {
         <div className="text-xs text-muted-foreground tabular-nums whitespace-nowrap pt-0.5">{formatDate(r.date, 'd MMM')}</div>
         <div className="min-w-0">
           <div className={cn('text-sm truncate', quiet ? 'text-foreground/80' : 'font-medium')} title={r.raw}>
-            {edit?.description ?? r.title}{r.lines.length > 1 && <span className="text-muted-foreground font-normal"> · {r.lines.length} satır</span>}
+            {rowTitle(r, choices, edit)}{r.lines.length > 1 && <span className="text-muted-foreground font-normal"> · {r.lines.length} satır</span>}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 overflow-hidden whitespace-nowrap">{metaLine(r)}</div>
         </div>
