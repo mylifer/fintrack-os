@@ -1,5 +1,6 @@
 import { foldText, keywordCategory, recipientCategory } from '@/lib/auto-category'
 import type { Category, Person, Transaction } from '@/types'
+import { SUBSCRIPTION_TAG, isSubscriptionTag } from '@/lib/subscriptions/brands'
 import { brandOf, GATEWAY_RE, MAYBE, merchantCore, nameScore, sameCore, SURE } from './merchant-match'
 
 /* ── Banka işyeri adı → alıcı / kategori öğrenimi ─────────────────────────────
@@ -136,7 +137,11 @@ function ruleFromHistory(txs: readonly Tx[], people: ReadonlyMap<string, Person>
   const descs = rows.map(t => t.description)
   const recipientName = recipientId ? people.get(recipientId)?.name : undefined
   const tagLists = rows.map(t => (t.tags ?? []).filter(x => foldText(x).replace('#', '') !== foldText(refundTag).replace('#', '')))
-  const tags = rows.length >= 2 ? tagLists.reduce<string[]>((acc, l, i) => (i === 0 ? [...l] : acc.filter(x => l.includes(x))), []) : []
+  const common = rows.length >= 2 ? tagLists.reduce<string[]>((acc, l, i) => (i === 0 ? [...l] : acc.filter(x => l.includes(x))), []) : []
+  // Abonelik her ay tekrarlanır: tek kayıttan da öğrenilir. Son kayıt belirler —
+  // bir kez işaretlenince sonraki ay da abonelik gelir; işaret kaldırılınca gelmez.
+  const latest = tagLists[rows.reduce((bi, t, i) => (t.date >= rows[bi].date ? i : bi), 0)]
+  const tags = [...common.filter(x => !isSubscriptionTag(x)), ...(latest.some(isSubscriptionTag) ? [SUBSCRIPTION_TAG] : [])]
   const fam = rows.map(t => t.familyMemberId ?? undefined)
   return {
     recipientId,
