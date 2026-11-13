@@ -19,6 +19,8 @@ export interface RowEdit {
   /** categoryId alıcıdan otomatik geldi (elle seçilmedi): başka alıcı seçilince yenilenebilir */
   categoryAuto?: boolean
   familyMemberId?: string | null
+  /** Etiketler (abonelik işareti "abonelik" etiketidir) */
+  tags?: string[]
   /** Transferin karşı hesabı (gelen transferde kaynak, giden transferde hedef) */
   fromAccountId?: string
   toAccountId?: string
@@ -135,6 +137,7 @@ function applyEdit(d: DraftTx, e: RowEdit | undefined): DraftTx {
   else if (e.newRecipient !== undefined) { out.newRecipient = e.newRecipient.trim() || undefined; out.recipientId = null }
   if (e.categoryId !== undefined) out.categoryId = e.categoryId
   if (e.familyMemberId !== undefined) out.familyMemberId = e.familyMemberId
+  if (e.tags !== undefined) out.tags = e.tags
   return out
 }
 

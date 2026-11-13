@@ -453,3 +453,13 @@ describe('yarım kalan ekstre yeniden okununca', () => {
     expect(rowOf('İDDAALI BÜFE TEKEL')).not.toBe(ka)
   })
 })
+
+describe('satır penceresinden etiket / abonelik', () => {
+  it('düzenlemedeki etiketler (abonelik) kayda yazılır', () => {
+    const p = plan([line({ description: 'NETFLIX.COM', amount: 229.99 })], [])
+    const r = p.rows[0]
+    const c = commit(p, [], { [r.key]: 0 }, { [r.key]: { categoryId: 'c-food', tags: ['abonelik'] } })
+    expect(c.problems).toEqual([])
+    expect(created(c.ops)[0].tags).toEqual(['abonelik'])
+  })
+})

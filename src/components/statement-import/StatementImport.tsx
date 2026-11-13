@@ -24,7 +24,7 @@ import { buildCommit, commitEffect, optionForEdit, remapByStableKey, rowTitle, s
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
 import type { BatchOp } from '@/lib/sync/engine'
 import { PreviewList, STATUS_META } from './PreviewList'
-import { RowDrawer } from './RowDrawer'
+import { RowModal } from './RowModal'
 
 type Step = 'upload' | 'reading' | 'preview' | 'saving' | 'done'
 
@@ -569,7 +569,8 @@ export function StatementImport() {
         />
       )}
 
-      <RowDrawer
+      {openRow && <RowModal
+        key={openRow.key}
         row={openRow}
         statement={statement}
         choice={openRow ? selectedOption(openRow, choices) : null}
@@ -577,7 +578,7 @@ export function StatementImport() {
         onChoose={i => openRow && choose(openRow.key, i)}
         onEdit={patch => openRow && editRow(openRow, patch)}
         onClose={() => setOpenKey(null)}
-      />
+      />}
 
       {/* Onay çubuğu — düğme solda: sağ alttaki senkron uyarısı (SyncStatusBanner) üstüne binmesin */}
       <footer className="sticky bottom-20 lg:bottom-0 z-20 -mx-4 sm:-mx-6 border-t border-border bg-background/95 backdrop-blur">
