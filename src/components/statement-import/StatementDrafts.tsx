@@ -1,5 +1,6 @@
 'use client'
 
+import { rowInWorkspace } from '@/lib/workspace-context'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { IconFileTypePdf, IconTrash } from '@tabler/icons-react'
@@ -28,7 +29,7 @@ export function StatementDrafts() {
   const [confirm, setConfirm] = useState<string | null>(null)
   useEffect(() => { useStatementDraftsStore.getState().load() }, [])
 
-  const drafts = allDrafts.filter(d => d.workspaceId === workspaceId)
+  const drafts = allDrafts.filter(d => !workspaceId || rowInWorkspace(d, workspaceId))
 
   if (!drafts.length) {
     return (

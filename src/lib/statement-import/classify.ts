@@ -76,6 +76,8 @@ export interface RefundCandidate {
   who?: string
   /** Tutar iadeyle birebir aynı */
   exact: boolean
+  /** Alım bu ekstrede (henüz sistemde değil; bu onayla girilecek) */
+  fromStatement?: boolean
   /** Seçilince satıra uygulanan düzenleme (açıklama, alıcı, kategori alımdan gelir) */
   patch: { refundOfId: string; description: string; recipientId: string | null; categoryId?: string; familyMemberId: string | null; tags: string[]; linkFill: true }
 }
@@ -986,7 +988,6 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       const sameShop = (t: Transaction) => (!!t.merchant && merchantKey(t.merchant) === key) || (!!rule?.recipientId && t.recipientId === rule.recipientId)
       const origins = pool.filter(t => ld - dayNum(t.date) <= 180 && sameShop(t))
       const isExact = (t: Transaction) => minor(t.amount) === refundMinor
-      const exact = origins.filter(isExact).sort((a, b) => b.date.localeCompare(a.date))[0]
       const cand = (t: Transaction): RefundCandidate => ({
         txId: t.id, title: t.description, date: t.date, amount: t.amount,
         who: t.recipientId ? peopleById.get(t.recipientId)?.name : undefined, exact: isExact(t),
@@ -999,27 +1000,58 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
         refundOfId: c.patch.refundOfId, description: c.patch.description, recipientId: c.patch.recipientId,
         categoryId: c.patch.categoryId, familyMemberId: c.patch.familyMemberId, tags: c.patch.tags,
       })
-      const byRank = (a: Transaction, b: Transaction) => (Number(isExact(b)) - Number(isExact(a))) || b.date.localeCompare(a.date)
-      const candidates = origins.slice().sort(byRank).map(cand)
-      const more = pool.filter(t => !origins.includes(t)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 80).map(cand)
+      // Aynı ekstredeki alımlar da aday: iade çoğu zaman aynı listedeki alımın
+      // iadesidir (Yemeksepeti siparişi ve iadesi aynı gün). Sistemle eşleşmişse
+      // o kayıt, değilse bu onayla girilecek kaydın kimliği bağlanır.
+      const knownIds = new Set(origins.map(t => t.id))
+      const fromLines: RefundCandidate[] = []
+      for (const p of lines) {
+        if (p === l || p.kind !== 'purchase' || p.installment || p.amount === null || minor(p.amount) < refundMinor) continue
+        const pd = dayNum(dateOf(p))
+        if (pd > ld || ld - pd > 180) continue
+        const pr = rules.ruleFor(p.description, p.bankCategory)
+        if (merchantKey(p.description) !== key && !(rule?.recipientId && pr?.recipientId === rule.recipientId)) continue
+        const m = matchOf.get(p.index)
+        if (m) {
+          const t = byId.get(m.txIds[0])
+          if (t && t.type === 'expense' && !knownIds.has(t.id)) { knownIds.add(t.id); fromLines.push(cand(t)) }
+          continue
+        }
+        const txId = txIdFromSeed(seedOf.get(p.index)!)
+        const pTitle = pr?.description ?? (pr?.recipientId ? peopleById.get(pr.recipientId)?.name : undefined) ?? prettyMerchant(p.description)
+        fromLines.push({
+          txId, title: pTitle, date: dateOf(p), amount: p.amount, fromStatement: true,
+          who: pr?.recipientId ? peopleById.get(pr.recipientId)?.name : undefined, exact: minor(p.amount) === refundMinor,
+          patch: {
+            refundOfId: txId, description: `[İade] ${pTitle}`, recipientId: pr?.recipientId ?? null, categoryId: pr?.categoryId,
+            familyMemberId: pr?.familyMemberId ?? null, tags: [...(pr?.tags ?? []).filter(x => x !== refundTag), refundTag], linkFill: true,
+          },
+        })
+      }
+      // Sıra: tutarı tutan önce, sonra iadeye en yakın tarih
+      const near = (c: RefundCandidate) => Math.abs(ld - dayNum(c.date))
+      const candidates = [...origins.map(cand), ...fromLines].sort((a, b) => (Number(b.exact) - Number(a.exact)) || (near(a) - near(b)))
+      const more = pool.filter(t => !knownIds.has(t.id)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 80).map(cand)
+      const exactCand = candidates.find(c => c.exact)
 
       const standalone = draftFor(l, rule, { description: `[İade] ${title}`, tags: [...(rule?.tags ?? []), refundTag] })
       const options: RowOption[] = []
-      if (candidates.length || more.length) options.push({ key: 'link', label: 'İade, alıma bağla', actions: [{ type: 'create', draft: exact
-        ? { ...standalone, ...linkFields(cand(exact)) }
+      const exact = exactCand && !exactCand.fromStatement ? origins.find(t => t.id === exactCand.txId) : undefined
+      if (candidates.length || more.length) options.push({ key: 'link', label: 'İade, alıma bağla', actions: [{ type: 'create', draft: exactCand
+        ? { ...standalone, ...linkFields(exactCand) }
         : { ...standalone, needsRefundOf: true } }] })
       options.push({ key: 'standalone', label: 'Bağımsız iade olarak gir', actions: [{ type: 'create', draft: standalone }] }, incomeOption(l, rule, title), skip)
       rows.push({
-        ...base, ...rb, status: 'review', kind: 'refund', title: `[İade] ${exact?.description ?? title}`,
+        ...base, ...rb, status: 'review', kind: 'refund', title: `[İade] ${exactCand?.title ?? title}`,
         match: exact ? { txIds: [exact.id], text: describeTx(exact) } : undefined,
         refundLink: options[0].key === 'link' ? { candidates, more } : undefined,
-        issue: exact ? 'İade — asıl alım bulundu' : candidates.length ? 'İade — hangi alımın?' : 'İadenin alımı bulunamadı',
-        reason: exact
-          ? `${fmtTr(-l.amount!)} ₺ iade; ${fmtDay(exact.date)} tarihli aynı tutardaki alımın iadesi görünüyor. Önerilen: “[İade] …” olarak, alıma bağlı gir.`
+        issue: exactCand ? 'İade — asıl alım bulundu' : candidates.length ? 'İade — hangi alımın?' : 'İadenin alımı bulunamadı',
+        reason: exactCand
+          ? `${fmtTr(-l.amount!)} ₺ iade; ${fmtDay(exactCand.date)} tarihli aynı tutardaki alımın${exactCand.fromStatement ? ' (bu ekstrede)' : ''} iadesi görünüyor. Önerilen: “[İade] …” olarak, alıma bağlı gir.`
           : candidates.length
             ? `${fmtTr(-l.amount!)} ₺ iade. Bu işyerinden aynı tutarda alım yok ama ${candidates.length} alım var (parça iadesi olabilir). Hangisinin iadesiyse “İade, alıma bağla” ile seç.`
             : `${fmtTr(-l.amount!)} ₺ iade. Son 180 günde bu işyerinden alım yok. Önerilen: bağımsız iade olarak gir; istersen “İade, alıma bağla” ile karttaki başka bir alımı seç.`,
-        options, recommended: exact ? 0 : options.findIndex(o => o.key === 'standalone'), defaultOption: null, sideEffects: [],
+        options, recommended: exactCand ? 0 : options.findIndex(o => o.key === 'standalone'), defaultOption: null, sideEffects: [],
       })
       continue
     }

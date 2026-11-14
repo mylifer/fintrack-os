@@ -45,7 +45,7 @@ function Card({ c, selected, onPick, wide }: { c: RefundCandidate; selected: boo
     >
       <span className={cn('block min-w-0', wide && 'flex-1')}>
         <span className="block text-sm font-medium truncate">{c.title}</span>
-        <span className="block text-xs text-muted-foreground truncate">{shortDate(c.date)}{c.who ? ` · ${c.who}` : ''}</span>
+        <span className="block text-xs text-muted-foreground truncate">{shortDate(c.date)}{c.fromStatement ? ' · bu ekstrede' : c.who ? ` · ${c.who}` : ''}</span>
       </span>
       <span className={cn('block', wide ? 'text-right flex-none' : 'mt-1')}>
         <span className="block text-sm font-semibold tabular-nums">{formatCurrency(c.amount)}</span>
