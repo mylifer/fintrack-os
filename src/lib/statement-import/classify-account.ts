@@ -568,7 +568,14 @@ export function buildAccountPlan(input: PlanInput): ImportPlan {
         match: { txIds: [dup.id], text: describeTx(dup) },
         reason: 'Tarihi farklı ama tutarı aynı bir kayıt var. Aynı işlemse kaydın tarihi dökümdeki gibi düzeltilir (yeni kayıt girilmez, sonraki yüklemelerde doğrudan eşleşir); ayrı bir işlemse gir.',
         options: [
-          { key: 'same', label: `Aynı kayıt (tarihi ${fmtDay(l.date!)} olsun)`, actions: [{ type: 'patch', txId: dup.id, patch: { date: l.date!, ...(dup.merchant ? {} : { merchant: it.label }) } }] },
+          // Tarih dökümdeki güne çekilir. Kayıt onay bekliyorsa damga da düşer:
+          // döküm o işlemin gerçekleştiğini gösteriyor, ayrıca sorulmasına gerek yok
+          // (kart ekstresi tarafında sideEffectsFor aynısını yapar).
+          { key: 'same', label: `Aynı kayıt (tarihi ${fmtDay(l.date!)} olsun)`, actions: [{ type: 'patch', txId: dup.id, patch: {
+            date: l.date!,
+            ...(dup.merchant ? {} : { merchant: it.label }),
+            ...(dup.approvalStatus === 'pending' ? { approvalStatus: 'approved' as const } : {}),
+          } }] },
           createOpt('new', 'Ayrı kayıt, gir', d),
         ],
         recommended: 0, defaultOption: null, sideEffects: [],
