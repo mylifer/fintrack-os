@@ -1,9 +1,12 @@
 'use client'
 
-import { useUIStore } from '@/store'
+import { useUIStore, useWorkspaceStore, selectActiveReadOnly } from '@/store'
 
 export function QuickAddFAB() {
   const openModal = useUIStore(s => s.openModal)
+  // Salt okuma alanında (0028) gizli — kilit yine engine'de
+  const readOnly  = useWorkspaceStore(selectActiveReadOnly)
+  if (readOnly) return null
 
   return (
     <button

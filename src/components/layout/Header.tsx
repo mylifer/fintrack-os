@@ -1,6 +1,6 @@
 'use client'
 
-import { useUIStore } from '@/store'
+import { useUIStore, useWorkspaceStore, selectActiveReadOnly } from '@/store'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { PrivacyToggle } from '@/components/layout/PrivacyToggle'
 
@@ -14,6 +14,9 @@ interface HeaderProps {
 
 export function Header({ title, action }: HeaderProps) {
   const openModal = useUIStore(s => s.openModal)
+  // Salt okuma alanında (0028) ekleme düğmeleri gösterilmez — yalnız ipucu;
+  // kilit yerel yazma katmanında (sync/engine) ve sunucuda.
+  const readOnly  = useWorkspaceStore(selectActiveReadOnly)
 
   return (
     <header className="flex items-center justify-between px-6 py-5 border-b border-border bg-background sticky top-0 z-30">
@@ -24,7 +27,7 @@ export function Header({ title, action }: HeaderProps) {
         <PrivacyToggle className="w-11 h-11 lg:w-9 lg:h-9 rounded-xl" />
         <NotificationBell />
         {/* h-11 (44px) dokunmatikte; masaüstünde eski h-9 yoğunluğu korunur. */}
-        {action && (
+        {action && !readOnly && (
           <button
             onClick={action.onClick}
             className="flex items-center gap-1.5 px-4 h-11 lg:h-9 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
@@ -33,7 +36,7 @@ export function Header({ title, action }: HeaderProps) {
             {action.label}
           </button>
         )}
-        {!action && (
+        {!action && !readOnly && (
           <button
             onClick={() => openModal('add-transaction')}
             className="lg:hidden flex items-center gap-1.5 px-4 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
