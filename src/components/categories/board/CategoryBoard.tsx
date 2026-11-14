@@ -6,7 +6,7 @@ import { useCategoryStore, useTransactionStore } from '@/store'
 import { useUndoStore } from '@/store/undo.store'
 import { CategoryIcon } from '../CategoryIcon'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Modal } from '@/components/ui/Modal'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -243,9 +243,13 @@ export function CategoryBoard() {
             </div>
 
             {/* İşlem kuralları (kenar çubuğunda ayrı öğe yok — buradan açılır) */}
-            <Button size="sm" variant="secondary" asChild>
-              <Link href="/categories/rules" title="Açıklamaya göre otomatik kategori, etiket ve alıcı">Kurallar</Link>
-            </Button>
+            <Link
+              href="/categories/rules"
+              title="Açıklamaya göre otomatik kategori, etiket ve alıcı"
+              className={buttonVariants({ variant: 'secondary', size: 'sm' })}
+            >
+              Kurallar
+            </Link>
             <Button size="sm" onClick={() => setAdding(true)}>+ Yeni Kategori</Button>
           </div>
 

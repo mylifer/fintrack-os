@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { BackupManager }  from '@/components/backup/BackupManager'
 import { TransactionImportModal } from '@/components/settings/TransactionImportModal'
@@ -213,9 +213,12 @@ export default function SettingsPage() {
                   işlem formunda ve ekstre içe aktarmada.
                 </div>
               </div>
-              <Button size="sm" variant="secondary" asChild className="flex-shrink-0 rounded-xl px-4 h-9">
-                <Link href="/categories/rules">Kuralları yönet</Link>
-              </Button>
+              <Link
+                href="/categories/rules"
+                className={`${buttonVariants({ variant: 'secondary', size: 'sm' })} flex-shrink-0 rounded-xl px-4 h-9`}
+              >
+                Kuralları yönet
+              </Link>
             </div>
           </CardContent>
         </Card>
