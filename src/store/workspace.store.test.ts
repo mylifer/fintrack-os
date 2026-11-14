@@ -21,6 +21,7 @@ vi.mock('@/lib/sync/engine', () => ({
   lastPullWasAuthoritative: () => authoritative,
   localUpsert: async (_table: string, entity: unknown) => { upserts.push(entity) },
   localPatch: async () => {},
+  dropReadOnlyPending: async () => 0,
 }))
 vi.mock('@/lib/db', () => ({ db: { workspaces: { toArray: async () => [] } } }))
 vi.mock('@/lib/reload-stores', () => ({ reloadAllStores: async () => {} }))

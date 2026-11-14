@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useWorkspaceStore } from '@/store'
+import { ReadOnlyBadge } from '@/components/settings/ReadOnlyBadge'
 import { Input } from '@/components/ui/Input'
 
 /* `dense`: Kompakt kenar çubuğunun 44px'lik üst şeridi için. Orada tetikleyici
@@ -99,6 +100,7 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
         <span className="flex-1 min-w-0 truncate text-xs font-semibold text-foreground">
           {switching ? 'Geçiş yapılıyor…' : (active?.name ?? 'Çalışma Alanı')}
         </span>
+        {activeId && sharing.readOnly.includes(activeId) && !switching && <ReadOnlyBadge />}
         <svg
           fill="none" stroke="currentColor" strokeWidth={2}
           viewBox="0 0 24 24" width={13} height={13}
@@ -126,6 +128,7 @@ export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
               ].join(' ')}
             >
               <span className="flex-1 min-w-0 truncate">{ws.name}</span>
+              {sharing.readOnly.includes(ws.id) && <ReadOnlyBadge />}
               {(sharing.owned.includes(ws.id) || sharing.member.includes(ws.id)) && (
                 <span className="flex-shrink-0 text-xs" title={sharing.member.includes(ws.id) ? 'Sizinle paylaşılan alan' : 'Paylaştığınız alan'} aria-label="Paylaşılan alan">👥</span>
               )}

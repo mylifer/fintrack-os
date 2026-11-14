@@ -2,8 +2,8 @@
 
 import type { Budget, Category, CategorySplit, RecurringTransaction, Transaction } from '@/types'
 import { localBatch, lastPullWasAuthoritative, type BatchOp, type SyncTable } from '@/lib/sync/engine'
-import { getActiveWorkspaceId } from '@/lib/workspace-context'
-import { getBudgetCategoryIds } from '@/lib/utils/calculations'
+import { getActiveWorkspaceId, maintenanceWritesAllowed } from '@/lib/workspace-context'
+import { getBudgetCategoryIds, isCategoryBudget } from '@/lib/utils/calculations'
 import { primarySplitCategoryId } from '@/lib/utils/categorySplits'
 import { toMinor, toMajor } from '@/lib/utils/money'
 import { useCategoryStore, useTransactionStore, useBudgetStore, useRecurringStore } from '@/store'
@@ -153,7 +153,8 @@ function retargetBudget(
 export function planCategoryRestructure(input: RestructureInput): RestructurePlan {
   const cats = tracker(input.categories)
   const txs  = tracker(input.transactions)
-  const buds = tracker(input.budgets)
+  // Toplam limit satırı kategoriye bağlı değildir; yeniden yapılandırma onu görmez
+  const buds = tracker(input.budgets.filter(isCategoryBudget))
   const recs = tracker(input.recurring)
 
   const resolve = (name: string): Category | undefined => {
@@ -291,6 +292,9 @@ function applyToStores(plan: RestructurePlan, side: 'patch' | 'prev'): void {
 
 export async function runCategoryRestructurePass(): Promise<void> {
   if (hierarchyPassDone()) return
+  // Salt okuma alanında (0028) bakım yazması denenmez; bayrak da kalkmaz —
+  // yazma yetkisi gelince geçiş çalışır
+  if (!maintenanceWritesAllowed()) return
   if (!REQUIRED_PULLS.every(t => lastPullWasAuthoritative(t))) return
 
   const plan = planCategoryRestructure({

@@ -2,6 +2,8 @@
 
 import { memo, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { Wand2 } from 'lucide-react'
+import { suggestPatternFrom } from '@/lib/utils/transaction-rules'
 import { AlertDialog } from 'radix-ui'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCategoryStore, useAccountStore, useUIStore, usePeopleStore, useTransactionStore, useInvestmentStore } from '@/store'
@@ -554,6 +556,15 @@ const TableTxRow = memo(function TableTxRow({
                 <RefundIcon size={12} />
               </button>
             )}
+            {tx.type !== 'transfer' && tx.description && (
+              <Link
+                href={`/categories/rules?yeni=${encodeURIComponent(suggestPatternFrom(tx.description))}`}
+                className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                title="Bu açıklamadan kural oluştur"
+              >
+                <Wand2 size={12} />
+              </Link>
+            )}
             <button
               onClick={() => openModal('edit-transaction', { id: tx.id })}
               className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -681,6 +692,15 @@ const CardTxRow = memo(function CardTxRow({
               >
                 <RefundIcon size={12} />
               </button>
+            )}
+            {tx.type !== 'transfer' && tx.description && (
+              <Link
+                href={`/categories/rules?yeni=${encodeURIComponent(suggestPatternFrom(tx.description))}`}
+                className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                title="Bu açıklamadan kural oluştur"
+              >
+                <Wand2 size={12} />
+              </Link>
             )}
             <button
               onClick={() => openModal('edit-transaction', { id: tx.id })}

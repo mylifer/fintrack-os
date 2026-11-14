@@ -3,6 +3,7 @@ import { fetchTefasSeries, snapPeriod } from '@/lib/server/tefas-api'
 import { BoundedCache } from '@/lib/server/bounded-cache'
 import { fetchMarketHistory } from '@/lib/server/yahoo'
 import { parseMarketAsset } from '@/lib/market'
+import { rateLimit } from '@/lib/server/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -137,6 +138,9 @@ async function tefasHistory(code: string, from: string): Promise<PricePoint[] | 
 }
 
 export async function GET(request: Request) {
+  const limited = rateLimit(request, 'history')
+  if (limited) return limited
+
   const { searchParams } = new URL(request.url)
   const asset        = searchParams.get('asset') as AssetGroup | null
   const from         = searchParams.get('from')

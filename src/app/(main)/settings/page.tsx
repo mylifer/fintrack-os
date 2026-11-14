@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { BackupManager }  from '@/components/backup/BackupManager'
 import { TransactionImportModal } from '@/components/settings/TransactionImportModal'
@@ -13,6 +14,7 @@ import { PrivacySettings } from '@/components/settings/PrivacySettings'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
 import { InvestmentsViewSettings } from '@/components/settings/InvestmentsViewSettings'
 import { FundTaxSettings } from '@/components/settings/FundTaxSettings'
+import { ErrorLogsCard } from '@/components/settings/ErrorLogsCard'
 import { loadDemoData, clearAllData } from '@/lib/seed'
 import { scanDemoData, removeDemoData, type DemoScan } from '@/lib/demo-cleanup'
 import { SelectField } from '@/components/ui/Select'
@@ -201,12 +203,36 @@ export default function SettingsPage() {
         {/* Görünüm — Yatırımlar sayfası düzeni */}
         <InvestmentsViewSettings />
 
+        {/* İşlem Kuralları — yönetim ekranı Kategoriler altında */}
+        <Card>
+          <CardContent>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-2">İşlem Kuralları</div>
+                <div className="text-xs text-muted-foreground">
+                  Açıklamaya (ve isteğe bağlı hesap/tutara) göre işlemlere otomatik kategori, etiket ve alıcı önerir —
+                  işlem formunda ve ekstre içe aktarmada.
+                </div>
+              </div>
+              <Link
+                href="/categories/rules"
+                className={`${buttonVariants({ variant: 'secondary', size: 'sm' })} flex-shrink-0 rounded-xl px-4 h-9`}
+              >
+                Kuralları yönet
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* ── TEFAS fon stopajı ───────────────────────────────── */}
         <FundTaxSettings />
 
         {/* Çalışma Alanları */}
         <WorkspaceManager />
         <SharingSettings />
+
+        {/* Hata kayıtları — son 30 gün, kullanıcının kendi kayıtları (0027) */}
+        <ErrorLogsCard />
 
         {/* Demo & Reset */}
         <Card>

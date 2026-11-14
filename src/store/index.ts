@@ -4,7 +4,7 @@ export { useTransactionStore } from './transactions.store'
 
 export { useCategoryStore } from './categories.store'
 
-export { useBudgetStore } from './budgets.store'
+export { useBudgetStore, selectTotalBudget } from './budgets.store'
 
 export { useDebtStore } from './debts.store'
 
@@ -22,7 +22,7 @@ export { useNotificationsStore } from './notifications.store'
 
 export { useSettingsStore } from './settings.store'
 
-export { useWorkspaceStore } from './workspace.store'
+export { useWorkspaceStore, selectActiveReadOnly } from './workspace.store'
 
 export { usePaymentsStore } from './payments.store'
 

@@ -3,22 +3,25 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
-import { localUpsert, localPatch, reconcilingPull, lastPullWasAuthoritative, purgeWorkspacesLocal } from '@/lib/sync/engine'
+import { localUpsert, localPatch, reconcilingPull, lastPullWasAuthoritative, purgeWorkspacesLocal, dropReadOnlyPending } from '@/lib/sync/engine'
 import {
   getPersistedActiveWorkspaceId, setActiveWorkspaceId, setDefaultWorkspaceId,
-  getMemberWorkspaceIds, setMemberWorkspaceIds,
+  getMemberWorkspaceIds, setMemberWorkspaceIds, getReadOnlyWorkspaceIds, setReadOnlyWorkspaceIds,
 } from '@/lib/workspace-context'
+import { readOnlyWorkspaceIdsOf } from '@/lib/workspace-permissions'
 import { fetchMyMemberships, memberWorkspaceIdsOf, removeMember } from '@/lib/sharing'
 import { useSyncStatusStore } from '@/store/sync-status.store'
 import { supabase } from '@/lib/supabase'
 import { reloadAllStores } from '@/lib/reload-stores'
 import type { Workspace } from '@/types'
 
-/** Paylaşım durumu (0021). owned: paylaştığım alanlar; member: üyesi olduklarım. */
+/** Paylaşım durumu (0021). owned: paylaştığım alanlar; member: üyesi olduklarım;
+ *  readOnly: member'ın salt okuma (viewer, 0028) olanları. */
 export interface SharingState {
   available: boolean
   owned: string[]
   member: string[]
+  readOnly: string[]
 }
 
 interface WorkspaceState {
@@ -43,20 +46,27 @@ function sortWorkspaces(list: Workspace[]): Workspace[] {
   })
 }
 
+/** Aktif alan salt okuma mı (0028)? Yalnız arayüz ipucu — asıl kilit
+ *  yerel yazma katmanında (sync/engine) ve sunucuda. */
+export function selectActiveReadOnly(s: Pick<WorkspaceState, 'activeId' | 'sharing'>): boolean {
+  return s.activeId !== null && s.sharing.readOnly.includes(s.activeId)
+}
+
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   workspaces: [],
   activeId: null,
   ready: false,
-  sharing: { available: false, owned: [], member: getMemberWorkspaceIds() },
+  sharing: { available: false, owned: [], member: getMemberWorkspaceIds(), readOnly: getReadOnlyWorkspaceIds() },
 
   syncSharing: async () => {
     const m = await fetchMyMemberships()
     if (!m.complete) {
       // Çevrimdışı / hata: bilinen üyeliklerle devam — hiçbir şey silinmez
-      set(s => ({ sharing: { ...s.sharing, available: m.available, member: getMemberWorkspaceIds() } }))
+      set(s => ({ sharing: { ...s.sharing, available: m.available, member: getMemberWorkspaceIds(), readOnly: getReadOnlyWorkspaceIds() } }))
       return
     }
     const next = memberWorkspaceIdsOf(m.mine)
+    const readOnly = readOnlyWorkspaceIdsOf(m.mine)
     const revoked = getMemberWorkspaceIds().filter(id => !next.includes(id))
     if (revoked.length) {
       const names = get().workspaces.filter(w => revoked.includes(w.id)).map(w => w.name)
@@ -66,11 +76,22 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       )
     }
     setMemberWorkspaceIds(next)
+    // Salt okuma kümesi yerel yazma kilidinden (engine) ÖNCE güncellenir;
+    // salt okumaya düşen alanın kuyrukta kalmış yazmaları sunucuda kalıcı
+    // reddedileceği için düşürülür (bkz. dropReadOnlyPending).
+    setReadOnlyWorkspaceIds(readOnly)
+    const dropped = await dropReadOnlyPending(readOnly)
+    if (dropped > 0) {
+      useSyncStatusStore.getState().notify(
+        `${dropped} bekleyen değişiklik gönderilmedi: alan artık sizinle salt okuma olarak paylaşılıyor.`,
+      )
+    }
     set({
       sharing: {
         available: true,
         owned: m.mine.filter(x => x.role === 'owner').map(x => x.workspace_id),
         member: next,
+        readOnly,
       },
     })
   },

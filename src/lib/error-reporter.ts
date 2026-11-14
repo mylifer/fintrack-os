@@ -28,6 +28,9 @@ export interface ErrorReport {
 /** Tarayıcı olayından kayıt satırı; gönderilmeyecekse null (saf, testli). */
 export function buildReport(kind: Kind, reason: unknown, env: { path: string; userAgent: string; release: string }): ErrorReport | null {
   const err = reason instanceof Error ? reason : null
+  // Salt okuma alanına yazma denemesi (0028) bir hata değil, beklenen bir
+  // ret: kullanıcıya zaten bildirildi (sync/engine assertWritable).
+  if (err?.name === 'ReadOnlyWorkspaceError') return null
   const message = (err?.message ?? (typeof reason === 'string' ? reason : safeString(reason))).trim()
   if (!message) return null
   // Tarayıcı eklentileri ve kaynak yükleme gürültüsü: uygulamanın hatası değil

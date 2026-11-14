@@ -34,7 +34,7 @@ vi.stubGlobal('localStorage', {
 
 const { useCategoryStore } = await import('./categories.store')
 const { useUndoStore } = await import('./undo.store')
-const { setActiveWorkspaceId } = await import('@/lib/workspace-context')
+const { setActiveWorkspaceId, setReadOnlyWorkspaceIds } = await import('@/lib/workspace-context')
 
 const cat = (o: Partial<Category>): Category => ({
   id: 'c1', name: 'Market', icon: 'package', color: '#6366F1', scope: 'expense',
@@ -47,6 +47,7 @@ beforeEach(() => {
   patches.length = 0
   storage.clear()
   setActiveWorkspaceId('ws-1')
+  setReadOnlyWorkspaceIds([])
   useCategoryStore.setState({ categories: [], loading: false, ready: false })
   useUndoStore.setState({ toasts: [] })
 })
@@ -164,5 +165,19 @@ describe('categories.store anlamsal renk geçişi', () => {
     pulled = [cat({ id: 'p', name: 'Pets', icon: 'paw', color: '#FF0000' })]
     await useCategoryStore.getState().load()
     expect(patches).toHaveLength(0)
+  })
+})
+
+describe('salt okuma alanı (0028): bakım yazması denenmez', () => {
+  it('ikon geçişi ve göç yazmaz, bildirim/geri al çıkmaz; bayrak kalkmaz', async () => {
+    pulled = [cat({ id: 'a', name: 'Market' })]
+    setReadOnlyWorkspaceIds(['ws-1'])
+    await useCategoryStore.getState().load()
+    expect(patches).toEqual([])
+    expect(useUndoStore.getState().toasts).toEqual([])
+    // Yazma yetkisi gelince geçiş çalışır
+    setReadOnlyWorkspaceIds([])
+    await useCategoryStore.getState().load()
+    expect(patches.length).toBeGreaterThan(0)
   })
 })

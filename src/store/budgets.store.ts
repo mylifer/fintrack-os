@@ -3,10 +3,10 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
-import { enrichBudget, getBudgetCategoryIds } from '@/lib/utils/calculations'
+import { enrichBudget, getBudgetCategoryIds, isMonthlyCategoryBudget, isTotalBudget, totalBudgetId, TOTAL_BUDGET_CATEGORY } from '@/lib/utils/calculations'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
-import { rowInActiveWorkspace } from '@/lib/workspace-context'
+import { getActiveWorkspaceId, maintenanceWritesAllowed, rowInActiveWorkspace } from '@/lib/workspace-context'
 import { loadEntities } from './entity-helpers'
 import { useCategoryStore } from './categories.store'
 import { useUndoStore, type RemoveOptions } from './undo.store'
@@ -31,6 +31,15 @@ interface BudgetState {
   update: (id: string, patch: Partial<Budget>) => Promise<void>
   remove: (id: string, opts?: RemoveOptions) => Promise<void>
   getMonthBudgets: (my: MonthYear, transactions: Transaction[]) => BudgetWithSpent[]
+  /** Aktif alanın toplam aylık harcama limitini koyar/günceller; null ya da
+   *  ≤ 0 limiti kaldırır (tombstone). Bkz. calculations.ts → isTotalBudget. */
+  setTotalLimit: (amount: number | null, alertThreshold?: number) => Promise<void>
+}
+
+/** Aktif alanın toplam aylık limiti (yoksa undefined). Store yalnız aktif
+ *  alanın satırlarını tutar; kimlik alandan türediği için en çok bir tane. */
+export function selectTotalBudget(s: Pick<BudgetState, 'budgets'>): Budget | undefined {
+  return s.budgets.find(isTotalBudget)
 }
 
 export const useBudgetStore = create<BudgetState>()((set, get) => ({
@@ -51,9 +60,10 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     // pattern (mirror categories.store load): patch in-memory + flow through the
     // outbox via localPatch.
     const toStamp: Array<{ id: string; categoryName: string }> = []
-    if (useCategoryStore.getState().categories.length > 0) {
+    // Salt okuma alanında (0028) bakım yazması denenmez (bkz. maintenanceWritesAllowed)
+    if (useCategoryStore.getState().categories.length > 0 && maintenanceWritesAllowed()) {
       for (const b of budgets) {
-        if (b.categoryName) continue
+        if (b.categoryName || isTotalBudget(b)) continue
         const categoryName = liveCategoryName(b)
         if (categoryName) {
           b.categoryName = categoryName
@@ -103,11 +113,36 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     }
   },
 
+  setTotalLimit: async (amount, alertThreshold) => {
+    const workspaceId = getActiveWorkspaceId()
+    if (!workspaceId) throw new Error('Çalışma alanı henüz yüklenmedi — biraz sonra tekrar deneyin.')
+    const id = totalBudgetId(workspaceId)
+    const existing = get().budgets.find(b => b.id === id)
+    if (amount === null || !(amount > 0)) {
+      if (!existing) return
+      await softDelete('budgets', id)
+      set(s => ({ budgets: s.budgets.filter(b => b.id !== id) }))
+      return
+    }
+    const row: Budget = {
+      id,
+      categoryId: TOTAL_BUDGET_CATEGORY,
+      amount,
+      period: 'total',
+      rollover: false,
+      alertThreshold: alertThreshold ?? existing?.alertThreshold ?? 80,
+      workspaceId,
+    }
+    // Aynı kimlikle yeniden koymak eski tombstone'u diriltir (deleted_at null itilir)
+    await localUpsert('budgets', row)
+    set(s => ({ budgets: [...s.budgets.filter(b => b.id !== id), row] }))
+  },
+
   getMonthBudgets: (my, transactions) => {
     // Üst kategoriye açılan bütçe alt kategori harcamalarını da kapsasın
     const categories = useCategoryStore.getState().categories
     return get().budgets
-      .filter(b => b.period === 'monthly')
+      .filter(isMonthlyCategoryBudget)
       .map(b => enrichBudget(b, transactions, my, categories))
       .sort((a, b) => b.percentUsed - a.percentUsed)
   },

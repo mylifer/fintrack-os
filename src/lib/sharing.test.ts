@@ -1,7 +1,10 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 
 const calls: string[] = []
+const rpcArgs: Record<string, unknown>[] = []
 let deleteError: { message: string } | null = null
+// İki argümanlı RPC (0028) yokken PostgREST PGRST202 döner
+let twoArgMissing = false
 vi.mock('@/lib/supabase', () => {
   const chain = {
     delete: () => { calls.push('delete'); return chain },
@@ -14,15 +17,22 @@ vi.mock('@/lib/supabase', () => {
   return {
     supabase: {
       from: (t: string) => { calls.push(`from:${t}`); return chain },
-      rpc: (fn: string) => { calls.push(`rpc:${fn}`); return Promise.resolve({ data: 'tok', error: null }) },
+      rpc: (fn: string, args: Record<string, unknown>) => {
+        calls.push(`rpc:${fn}`)
+        rpcArgs.push(args)
+        if (twoArgMissing && 'p_role' in args) {
+          return Promise.resolve({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } })
+        }
+        return Promise.resolve({ data: fn === 'set_workspace_member_role' ? null : 'tok', error: null })
+      },
     },
   }
 })
 
-import { createInviteLink, friendly, memberWorkspaceIdsOf, revokePendingInvites, safeInviteNext, type Membership } from './sharing'
+import { createInviteLink, friendly, memberWorkspaceIdsOf, revokePendingInvites, safeInviteNext, setMemberRole, type Membership } from './sharing'
 
 describe('davet iptali', () => {
-  beforeEach(() => { calls.length = 0; deleteError = null })
+  beforeEach(() => { calls.length = 0; rpcArgs.length = 0; deleteError = null; twoArgMissing = false })
 
   it('revokePendingInvites alanın kullanılmamış davetlerini siler', async () => {
     await revokePendingInvites('ws1')
@@ -46,6 +56,37 @@ describe('davet iptali', () => {
   })
 })
 
+describe('davet rolü ve rol değişimi (0028)', () => {
+  beforeEach(() => { calls.length = 0; rpcArgs.length = 0; deleteError = null; twoArgMissing = false })
+
+  it('davet seçilen rolü sunucuya iletir (varsayılan editör)', async () => {
+    await createInviteLink('ws1', 'https://x', 'viewer')
+    await createInviteLink('ws1', 'https://x')
+    expect(rpcArgs).toEqual([
+      { p_workspace: 'ws1', p_role: 'viewer' },
+      { p_workspace: 'ws1', p_role: 'editor' },
+    ])
+  })
+
+  it('0028 yoksa editör daveti eski tek argümanlı fonksiyona düşer', async () => {
+    twoArgMissing = true
+    expect(await createInviteLink('ws1', 'https://x', 'editor')).toBe('https://x/davet/tok')
+    expect(rpcArgs.at(-1)).toEqual({ p_workspace: 'ws1' })
+  })
+
+  it('0028 yoksa salt okuma daveti ÜRETİLMEZ (sessizce editöre dönmesin)', async () => {
+    twoArgMissing = true
+    await expect(createInviteLink('ws1', 'https://x', 'viewer')).rejects.toThrow(/0028/)
+    expect(rpcArgs).toHaveLength(1)
+  })
+
+  it('rol değişimi RPC ile yapılır', async () => {
+    await setMemberRole('ws1', 'u2', 'viewer')
+    expect(calls.at(-1)).toBe('rpc:set_workspace_member_role')
+    expect(rpcArgs.at(-1)).toEqual({ p_workspace: 'ws1', p_user: 'u2', p_role: 'viewer' })
+  })
+})
+
 const TOKEN = 'a'.repeat(64)
 
 describe('safeInviteNext — girişten sonra dönülecek adres', () => {
@@ -64,7 +105,7 @@ describe('memberWorkspaceIdsOf', () => {
   it('sahibi olduğum paylaşılan alanlar hariç, üyesi olduklarım', () => {
     const m = (workspace_id: string, role: Membership['role']): Membership =>
       ({ workspace_id, role, user_id: 'u', email: null, created_at: '' })
-    expect(memberWorkspaceIdsOf([m('benim', 'owner'), m('aile', 'editor')])).toEqual(['aile'])
+    expect(memberWorkspaceIdsOf([m('benim', 'owner'), m('aile', 'editor'), m('kardes', 'viewer')])).toEqual(['aile', 'kardes'])
   })
 })
 

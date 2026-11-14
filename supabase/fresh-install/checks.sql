@@ -20,8 +20,8 @@ begin
     if not has_table_privilege('authenticated', r.oid, 'insert') then
       raise exception 'authenticated rolünün izni yok (GRANT eksik): public.%', r.relname;
     end if;
-    -- error_logs bilerek yalnız ekleme alır; diğerleri okunabilmeli
-    if r.relname <> 'error_logs' and not has_table_privilege('authenticated', r.oid, 'select') then
+    -- error_logs da okunabilir (0027: yalnız kendi satırları, politika aşağıda sınanır)
+    if not has_table_privilege('authenticated', r.oid, 'select') then
       raise exception 'authenticated okuyamıyor (GRANT eksik): public.%', r.relname;
     end if;
     if has_table_privilege('anon', r.oid, 'select') or has_table_privilege('anon', r.oid, 'insert') then
@@ -51,6 +51,9 @@ insert into transactions (id, user_id, type, amount, "amountTry", currency, date
   values ('t1', auth.uid(), 'expense', -50, -50, 'TRY', '2026-10-01', 'a1', 'İade', false, '2026-10-01',
           '2026-10-01T00:00:00.000Z', 'ws-aile', '[{"categoryId":"c","amount":-50}]', '["x"]', 'approved');
 insert into error_logs (kind, message, path, user_agent, release) values ('error', 'test', '/x', 'ua', 'local');
+do $$ begin
+  if (select count(*) from error_logs) <> 1 then raise exception 'kullanıcı kendi hata kaydını okuyamıyor (0027)'; end if;
+end $$;
 select public.create_workspace_invite('ws-aile') as token \gset
 commit;
 
@@ -63,6 +66,9 @@ do $$ begin
   if (select count(*) from transactions) <> 0 then raise exception 'eş katılmadan sahibin verisini görüyor'; end if;
 end $$;
 select public.accept_workspace_invite(:'token');
+do $$ begin
+  if (select count(*) from error_logs) <> 0 then raise exception 'başkasının hata kaydı görünüyor (paylaşılan alanda bile)'; end if;
+end $$;
 do $$ begin
   if (select count(*) from transactions) <> 1 then raise exception 'eş katıldıktan sonra paylaşılan veriyi görmüyor'; end if;
 end $$;
@@ -130,7 +136,54 @@ do $$ begin
   end if;
 end $$;
 
--- 6. Girişsiz erişim reddedilir
+-- 6. İşlem kuralları (0025): paylaşılan alanda üye görür/düzenler, sahiplik
+--    alan sahibinde kalır, eski damgalı yazma yeniyi ezemez
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+select set_config('request.jwt.claims', '{"email":"sahip@test","aal":"aal1"}', true);
+insert into transaction_rules (id, user_id, pattern, "matchKind", "accountId", "minAmount", "maxAmount",
+                               "categoryId", tags, "recipientId", "sortOrder", "isActive", "createdAt", "updatedAt", "workspaceId")
+  values ('r1', auth.uid(), 'migros', 'contains', 'a1', null, 500, null, '["market"]', null, 1, true,
+          '2026-11-14T00:00:00.000Z', '2026-11-14T10:00:00.000Z', 'ws-aile')
+  on conflict (id) do update set pattern = excluded.pattern;
+insert into transaction_rules (id, user_id, pattern, "matchKind", "sortOrder", "isActive", "createdAt", "updatedAt")
+  values ('r-ozel', auth.uid(), 'kira', 'equals', 2, true, '2026-11-14', '2026-11-14T10:00:00.000Z');
+commit;
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+select set_config('request.jwt.claims', '{"email":"es@test","aal":"aal1"}', true);
+do $$ begin
+  if (select string_agg(id, ',') from transaction_rules) is distinct from 'r1' then
+    raise exception 'eş paylaşılan kuralı görmüyor ya da kişisel alandaki kuralı görüyor';
+  end if;
+end $$;
+update transaction_rules set pattern = 'eski', "updatedAt" = '2026-11-14T09:00:00.000Z' where id = 'r1';
+update transaction_rules set "isActive" = false, "updatedAt" = '2026-11-14T11:00:00.000Z' where id = 'r1';
+commit;
+do $$ begin
+  if (select pattern from transaction_rules where id = 'r1') <> 'migros' then
+    raise exception 'eski damgalı kural yazması yeniyi ezdi (keep_newer_row)';
+  end if;
+  if (select "isActive" from transaction_rules where id = 'r1') then
+    raise exception 'eşin yeni kural düzenlemesi yazılmadı';
+  end if;
+  if exists (select 1 from transaction_rules where user_id <> '11111111-1111-1111-1111-111111111111') then
+    raise exception 'paylaşılan alandaki kuralın sahipliği eşe geçti';
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'transaction_rules') then
+    raise exception 'transaction_rules Realtime yayınında değil';
+  end if;
+  if (select relforcerowsecurity from pg_class where relnamespace = 'public'::regnamespace and relname = 'transaction_rules') is not true then
+    raise exception 'transaction_rules FORCE RLS değil';
+  end if;
+  if position('transaction_rules' in pg_get_functiondef('public.create_workspace_invite(text)'::regprocedure)) = 0 then
+    raise exception 'create_workspace_invite transaction_rules temizliğini kapsamıyor (0021 sonrası 0025 yeniden çalıştırılmalı)';
+  end if;
+end $$;
+
+-- 7. Girişsiz erişim reddedilir
 begin;
 set local role anon;
 do $$ begin

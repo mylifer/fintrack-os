@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { localBatch, lastPullWasAuthoritative } from '@/lib/sync/engine'
 import { reloadTable } from '@/lib/reload-stores'
 import { useSyncStatusStore } from '@/store/sync-status.store'
+import { isWorkspaceReadOnly } from '@/lib/workspace-context'
 import {
   findMislabeledInvestmentRows, planLedgerFixes, type PricePoint,
 } from '@/lib/utils/investment-ledger-fix'
@@ -32,7 +33,9 @@ export async function fixForeignInvestmentLedger(): Promise<void> {
   if (!lastPullWasAuthoritative('transactions') || !lastPullWasAuthoritative('accounts')) return
 
   const [transactions, accounts] = await Promise.all([db.transactions.toArray(), db.accounts.toArray()])
+  // Salt okuma alanının (0028) satırları onarılamaz — onları alanın sahibi/editörü düzeltir
   const rows = findMislabeledInvestmentRows(transactions as Transaction[], accounts)
+    .filter(t => !isWorkspaceReadOnly(t.workspaceId))
   if (rows.length === 0) return
 
   // Para birimi başına tek seri isteği, en eski satırın gününden itibaren

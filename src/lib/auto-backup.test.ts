@@ -31,6 +31,7 @@ const tables = {
   paymentPlans:           new FakeTable(),
   paymentOccurrences:     new FakeTable(),
   savingsGoals:           new FakeTable(),
+  transactionRules:       new FakeTable(),
   workspaces:             new FakeTable(),
 }
 

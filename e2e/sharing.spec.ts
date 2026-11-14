@@ -17,6 +17,14 @@ test('aile paylaşımı kartı: alan oluşturma ve oturumsuz davet', async ({ pa
   // Oturum yok / sunucu hazır değil / bağlantı yok — hangisi olursa olsun anlaşılır ileti
   await expect(page.getByText(/yetkiniz yok|0021|Bağlantı yok|tekrar deneyin/)).toBeVisible()
   await expect(page.getByLabel('Davet bağlantısı')).toHaveCount(0)
+
+  // Rol seçimi (0028): editör varsayılan; salt okuma seçilebilir
+  const role = page.getByLabel('Davet edilen kişinin yetkisi')
+  await expect(role).toHaveValue('editor')
+  await role.selectOption('viewer')
+  await page.getByRole('button', { name: 'Davet bağlantısı oluştur' }).click()
+  await expect(page.getByText(/yetkiniz yok|0021|0028|Bağlantı yok|tekrar deneyin/).first()).toBeVisible()
+  await expect(page.getByLabel('Davet bağlantısı')).toHaveCount(0)
 })
 
 test('davet sayfası: bozuk bağlantı anlaşılır hatayla durur', async ({ page }) => {

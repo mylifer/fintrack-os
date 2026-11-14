@@ -11,6 +11,7 @@ import { formatCompact, formatCurrency, formatWhole } from '@/lib/utils/currency
 import { Icon, Chevron, IC } from './icons'
 import { NAV_GROUPS } from './nav'
 import { useSidebarData } from './useSidebarData'
+import { SearchTrigger } from '@/components/layout/command-palette/SearchTrigger'
 
 /* ── Varyant: RAFİNE ──────────────────────────────────────────────────────
    Ferah satırlar, dört başlıklı gruplama, yumuşak aksan hapları ve ayrı bir
@@ -67,6 +68,11 @@ export function SidebarRefined() {
       {/* ── Çalışma alanı geçişi ── */}
       <div className="px-3 pb-2 flex-shrink-0">
         <WorkspaceSwitcher />
+      </div>
+
+      {/* ── Genel arama (Ctrl+K) ── */}
+      <div className="px-3 pb-1 flex-shrink-0">
+        <SearchTrigger />
       </div>
 
       {/* ── Gruplanmış nav ── */}

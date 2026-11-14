@@ -10,6 +10,7 @@ import { planIdFor } from '@/lib/payments/ids'
 import { cardCycle, shiftMonthKey, type CycleOverride, type MonthKey } from '@/lib/payments/card-cycles'
 import { MAX_GAP, MIN_GAP, nominalDueDay, resolveCardDays } from '@/lib/payments/bank-rules'
 import { formatCurrency } from '@/lib/utils/currency'
+import { createSerialQueue } from '@/lib/utils/serial-queue'
 import { formatDate, today } from '@/lib/utils/date'
 import type { Account, PaymentOccurrence } from '@/types'
 
@@ -125,22 +126,40 @@ function CardRow({ card, months }: { card: Account; months: MonthKey[] }) {
 
   const money = (n: number) => formatCurrency(n, card.currency)
 
-  /** Kesim girilince son ödeme kendiliğinden: kesim + fark (bankada 10 gün). */
-  async function setStatementDay(v: number | null) {
-    await updateAcc(card.id, { statementDay: v ?? undefined })
-    if (v === null) return
-    const g = gap ?? rule.gapDays
-    await updateAcc(card.id, { dueGapDays: g })
-    await savePlan('card', card.id, { dayOfMonth: nominalDueDay(v, g) })
+  // Satırın kayıtları sıraya girer ve her biri GÜNCEL durumdan okur: kesim
+  // günü girilip hemen son ödeme yazılınca, render anındaki bayat değerle
+  // başlayan çok adımlı kesim kaydı geç bitip son ödemeyi ezmesin.
+  const [enqueue] = useState(createSerialQueue)
+  function currentDays() {
+    const acc = useAccountStore.getState().accounts.find(a => a.id === card.id) ?? card
+    const p   = usePaymentsStore.getState().plans.find(x => x.id === planIdFor('card', card.id))
+    return resolveCardDays(acc, p)
   }
-  async function setGap(v: number | null) {
-    await updateAcc(card.id, { dueGapDays: v })
-    if (v !== null && days.statementDay) await savePlan('card', card.id, { dayOfMonth: nominalDueDay(days.statementDay, v) })
+
+  /** Kesim girilince son ödeme kendiliğinden: kesim + fark (bankada 10 gün). */
+  function setStatementDay(v: number | null) {
+    return enqueue(async () => {
+      const { days: cur, rule: curRule } = currentDays()
+      await updateAcc(card.id, { statementDay: v ?? undefined })
+      if (v === null) return
+      const g = (cur.gapDays ?? null) ?? curRule.gapDays
+      await updateAcc(card.id, { dueGapDays: g })
+      await savePlan('card', card.id, { dayOfMonth: nominalDueDay(v, g) })
+    })
+  }
+  function setGap(v: number | null) {
+    return enqueue(async () => {
+      const { days: cur } = currentDays()
+      await updateAcc(card.id, { dueGapDays: v })
+      if (v !== null && cur.statementDay) await savePlan('card', card.id, { dayOfMonth: nominalDueDay(cur.statementDay, v) })
+    })
   }
   /** Son ödeme günü elle: sabit gün modu (fark silinir). */
-  async function setDueDay(v: number | null) {
-    await updateAcc(card.id, { dueGapDays: null })
-    await savePlan('card', card.id, { dayOfMonth: v })
+  function setDueDay(v: number | null) {
+    return enqueue(async () => {
+      await updateAcc(card.id, { dueGapDays: null })
+      await savePlan('card', card.id, { dayOfMonth: v })
+    })
   }
 
   return (

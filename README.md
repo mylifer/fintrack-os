@@ -54,6 +54,10 @@ npm run dev                  # http://localhost:3000
 1. SQL Editor'de `supabase_schema.sql`'i çalıştırın (tablolar, `deleted_at`, RLS).
 2. Ardından `supabase/migrations/` altındaki dosyaları **numara sırasıyla** çalıştırın
    (0001 → son). Hepsi idempotenttir; tekrar çalıştırmak güvenlidir.
+   0021 bir daha çalıştırılırsa (ör. `supabase_schema.sql` yeniden uygulandıktan sonra)
+   ardından 0025 de çalıştırılmalı: 0021 davet fonksiyonunu işlem kurallarını bilmeyen eski
+   listeyle yazar, 0025 genişletir. 0028'in salt okuma kilidi (RESTRICTIVE politikalar +
+   davet rolü tetikleyicisi) bu yeniden çalıştırmalardan etkilenmez.
 3. Authentication → URL Configuration:
    - Site URL: uygulamanın adresi
    - Redirect URLs: `https://<adres>/auth/callback**` (şifre sıfırlama ve e-posta onayı)

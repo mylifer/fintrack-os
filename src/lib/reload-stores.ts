@@ -5,6 +5,7 @@ import {
   useBudgetStore, useDebtStore, useInvestmentStore, usePeopleStore,
   useRecurringStore, usePaymentsStore, useGoalsStore, useWorkspaceStore,
 } from '@/store'
+import { useRulesStore } from '@/store/rules.store'
 import { runCategoryRestructurePass } from '@/lib/category-restructure'
 import type { SyncTable } from '@/lib/sync/engine'
 
@@ -25,6 +26,7 @@ export async function reloadAllStores(): Promise<void> {
   const { load: loadRecurring } = useRecurringStore.getState()
   const { load: loadPayments } = usePaymentsStore.getState()
   const { load: loadGoals } = useGoalsStore.getState()
+  const { load: loadRules } = useRulesStore.getState()
 
   // Phase 1: FK parent tabloları — child'lar yüklenmeden önce hazır olmalı.
   // Yeni/boş bir çalışma alanı için initCategories() varsayılan kategorileri
@@ -44,6 +46,7 @@ export async function reloadAllStores(): Promise<void> {
     loadRecurring(),
     loadPayments(),   // ödeme takibi: hesaplara/borçlara/işlemlere referans verir
     loadGoals(),      // birikim hedefleri: hesaplara referans verir
+    loadRules(),      // işlem kuralları: hesaplara/kategorilere/alıcılara referans verir
   ])
 
   // Tek seferlik kategori düzeni geçişi — işlem/bütçe/tekrarlayan bağlarını da
@@ -79,6 +82,7 @@ export async function reloadTable(table: SyncTable): Promise<void> {
     case 'payment_plans':
     case 'payment_occurrences':    await usePaymentsStore.getState().load(); break
     case 'savings_goals':          await useGoalsStore.getState().load(); break
+    case 'transaction_rules':      await useRulesStore.getState().load(); break
     case 'workspaces': {
       const before = useWorkspaceStore.getState().activeId
       await useWorkspaceStore.getState().load()

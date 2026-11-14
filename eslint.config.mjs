@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Derleme öncesi kopyalanan, git dışı OCR varlıkları (scripts/copy-ocr-assets.mjs).
+    "public/ocr/**",
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

@@ -191,6 +191,12 @@ function tokenizeCsv(text: string, delimiter: CsvDelimiter): { records: string[]
   return { records, recordLines }
 }
 
+/** Başlık aramadan ham hücre ızgarası (Ekstre Yükle'nin elle sütun eşlemesi
+ *  başlığı kendisi bulur; bkz. lib/statement-import/column-map.ts). */
+export function parseCsvRecords(text: string, delimiter: CsvDelimiter = detectDelimiter(text)): string[][] {
+  return tokenizeCsv(text, delimiter).records
+}
+
 export function parseCsvText(text: string, delimiter: CsvDelimiter = detectDelimiter(text)): ParsedCsv {
   const { records, recordLines } = tokenizeCsv(text, delimiter)
   return recordsToParsed(records, recordLines)

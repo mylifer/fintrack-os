@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { BoundedCache } from '@/lib/server/bounded-cache'
+import { rateLimit } from '@/lib/server/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,6 +96,9 @@ async function resolveDomain(name: string): Promise<string | null> {
 // GET /api/brand-logo?name=Migros → { domain: "migros.ch" } | { domain: null }
 // Yalnızca birebir isim eşleşmesi kabul edilir; benzer/kısmi eşleşme dönmez.
 export async function GET(request: NextRequest) {
+  const limited = rateLimit(request, 'brandLogo')
+  if (limited) return limited
+
   const name = (request.nextUrl.searchParams.get('name') ?? '').trim()
   if (name.length < 2 || name.length > MAX_NAME_LEN) {
     return NextResponse.json({ error: 'Geçersiz isim' }, { status: 400 })

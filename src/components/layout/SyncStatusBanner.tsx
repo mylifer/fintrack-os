@@ -108,7 +108,9 @@ export function SyncStatusBanner() {
   }
 
   return (
-    <div className="fixed bottom-24 lg:bottom-4 right-4 z-50 max-w-sm flex flex-col gap-2 print:hidden">
+    // Mobilde QuickAddFAB (bottom-20 + 56px = 136px) ve alt menünün ÜSTÜNDE
+    // durur: eskiden bottom-24 ile FAB'ın üstüne biniyordu. Masaüstünde FAB yok.
+    <div className="fixed bottom-[calc(9.5rem+env(safe-area-inset-bottom))] lg:bottom-4 left-4 right-4 sm:left-auto z-50 sm:max-w-sm flex flex-col gap-2 print:hidden">
       {/* Bilgi bandı: motor kendi başına buluta kayıt geri yüklediğinde
           (requeue) görünür — sessiz veri hareketi yasağı. Kapatılabilir. */}
       {notice && (
