@@ -1,4 +1,4 @@
-import { test, expect, openApp, createAccount, importCsv, trDate } from './helpers'
+import { test, expect, openApp, createAccount } from './helpers'
 
 /* Mobil "Diğer" menüsü ve genel arama (komut paleti). Telefon genişliğinde
    kenar çubuğu gizli; alt menüdeki "Diğer" tüm sayfalara ulaştırmalı. */
@@ -77,21 +77,32 @@ test('masaüstü: Ctrl+K, ok tuşları ve kenar çubuğu girişi', async ({ page
   await expect(palette).toBeHidden()
 })
 
-test('işlem araması düzenleme penceresini açar', async ({ page }, testInfo) => {
+test('işlem araması düzenleme penceresini açar', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
   await openApp(page)
-  const dlg = await createAccount(page, 'E2E Arama Banka')
-  await dlg.getByRole('button', { name: 'Kaydet' }).click()
-  await expect(page.getByText('E2E Arama Banka').first()).toBeVisible()
-  await importCsv(page, testInfo, ['TARİH;AÇIKLAMA;TUTAR', `${trDate(new Date())};KAHVECI ZEYNEP;-123,45`].join('\n'), 1)
+  const acc = await createAccount(page, 'E2E Arama Banka')
+  await acc.getByRole('button', { name: 'Kaydet' }).click()
+  await expect(page.getByText('E2E Arama Banka').filter({ visible: true }).first()).toBeVisible()
+
+  // Hızlı ekle (FAB) ile tek işlem
+  await page.getByRole('button', { name: 'İşlem ekle' }).click()
+  const form = page.getByRole('dialog')
+  await form.getByLabel('Tutar').fill('123,45')
+  await form.getByPlaceholder('Migros, Maaş, Kira...').fill('Kahveci Zeynep')
+  const combos = form.getByRole('combobox')
+  await combos.nth(0).click()
+  await page.getByRole('option', { name: /E2E Arama Banka/ }).click()
+  await combos.nth(1).click()
+  await page.getByText('Diğer Gider', { exact: true }).click()
+  await form.getByRole('button', { name: /^Kaydet/ }).last().click()
+  await expect(form).toBeHidden()
 
   await page.keyboard.press('Control+k')
   const palette = page.getByRole('dialog', { name: 'Genel arama' })
   await palette.getByRole('combobox').fill('kahveci')
-  const opt = palette.getByRole('option', { name: /KAHVECI ZEYNEP/i })
-  await expect(opt).toBeVisible()
+  await expect(palette.getByRole('option', { name: /Kahveci Zeynep/ })).toBeVisible()
   await palette.getByRole('combobox').press('Enter')
   await expect(palette).toBeHidden()
-  // Düzenleme penceresi açılır (TransactionFormModal)
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(page.getByRole('dialog').locator('input[value*="KAHVECI" i], textarea').first()).toBeVisible()
+  // Düzenleme penceresi aynı işlemle açılır (TransactionFormModal)
+  await expect(page.getByRole('dialog').getByPlaceholder('Migros, Maaş, Kira...')).toHaveValue('Kahveci Zeynep')
 })
