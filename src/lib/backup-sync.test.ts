@@ -15,6 +15,7 @@ const tables = {
   paymentPlans:       { rows: [] as Row[], toArray: async () => tables.paymentPlans.rows },
   paymentOccurrences: { rows: [] as Row[], toArray: async () => tables.paymentOccurrences.rows },
   savingsGoals:       { rows: [] as Row[], toArray: async () => tables.savingsGoals.rows },
+  transactionRules:   { rows: [] as Row[], toArray: async () => tables.transactionRules.rows },
 }
 const batches: unknown[][] = []
 
@@ -36,6 +37,7 @@ beforeEach(() => {
   tables.paymentPlans.rows = []
   tables.paymentOccurrences.rows = []
   tables.savingsGoals.rows = []
+  tables.transactionRules.rows = []
 })
 
 describe('replaceOutboxTables', () => {
@@ -107,5 +109,15 @@ describe('dış ikon adresleri (F6)', () => {
     expect(externalIconHosts(data).sort()).toEqual(['evil.example', 'other.example'])
     const stripped = stripExternalIcons(data) as { accounts: { id: string; icon?: string }[] }
     expect(stripped.accounts.map(a => a.icon)).toEqual([undefined, undefined, 'data:image/png;base64,AAAA', '🏦', undefined])
+  })
+
+  it('işlem kuralları da yedekteyse değiştirilir (0025)', async () => {
+    tables.transactionRules.rows = [{ id: 'r-keep' }, { id: 'r-gone' }]
+    await replaceOutboxTables({ ...base, transactionRules: [{ id: 'r-keep' }] as never })
+    const ops = batches[0] as { kind: string; table: string; id?: string; entity?: { id: string } }[]
+    expect(ops.map(o => [o.kind, o.table, o.id ?? o.entity?.id])).toEqual([
+      ['patch', 'transaction_rules', 'r-gone'],
+      ['upsert', 'transaction_rules', 'r-keep'],
+    ])
   })
 })

@@ -77,9 +77,8 @@ function TxDeleteDialog({ tx, onDelete }: { tx: Transaction; onDelete: () => voi
 function DebtDeleteDialog({ debt, linkedCount, onDelete }: {
   debt: Debt
   linkedCount: number
-  onDelete: (withTransactions: boolean) => void
+  onDelete: () => void
 }) {
-  const [withTx, setWithTx] = useState(false)
   return (
     <AlertDialog.Root>
       <AlertDialog.Trigger asChild>
@@ -104,28 +103,17 @@ function DebtDeleteDialog({ debt, linkedCount, onDelete }: {
             saniye içinde geri alabilirsin.
           </AlertDialog.Description>
           {linkedCount > 0 && (
-            <label className="flex items-start gap-2.5 mb-5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={withTx}
-                onChange={e => setWithTx(e.target.checked)}
-                className="mt-0.5 rounded accent-primary"
-              />
-              <span className="flex flex-col gap-0.5">
-                <span className="text-sm text-foreground">Bağlı {linkedCount} işlemi de sil</span>
-                <span className="text-xs text-muted-foreground">
-                  Borç yanlış girildiyse işaretleyin. Kapanmış bir borcu temizliyorsanız işaretlemeyin: ödemeler gerçekten
-                  yapıldığı için hesap bakiyelerinde kalmalı.
-                </span>
-              </span>
-            </label>
+            <div role="alert" className="mb-5 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-foreground">
+              Bu borca bağlı <span className="font-semibold">{linkedCount} işlem</span> de silinecek (anapara ve ödemeler),
+              hesap bakiyeleri buna göre değişecek. Emin misiniz?
+            </div>
           )}
           <div className="flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
               <button className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-accent transition-colors">İptal</button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
-              <button onClick={() => onDelete(withTx)} className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors">Sil</button>
+              <button onClick={onDelete} className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors">Sil</button>
             </AlertDialog.Action>
           </div>
         </AlertDialog.Content>
@@ -236,7 +224,6 @@ function emptyForm() {
 export default function DebtsPage() {
   const add          = useDebtStore(s => s.add)
   const update       = useDebtStore(s => s.update)
-  const remove       = useDebtStore(s => s.remove)
   const accounts     = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
   // Subscribe to the raw array and enrich in a memo — getActive() builds new
   // objects per call, so selecting it (even with useShallow) re-renders forever.
@@ -554,7 +541,7 @@ export default function DebtsPage() {
             <DebtDeleteDialog
               debt={debt}
               linkedCount={debtLinkedTransactions(debt, transactions).length}
-              onDelete={withTx => { void (withTx ? deleteDebtWithTransactions(debt) : remove(debt.id)) }}
+              onDelete={() => { void deleteDebtWithTransactions(debt) }}
             />
           </div>
         </div>

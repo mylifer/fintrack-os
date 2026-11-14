@@ -75,6 +75,7 @@ const tables = {
   budgets: new FakeTable(), debts: new FakeTable(), investmentTransactions: new FakeTable(),
   people: new FakeTable(), recurringTransactions: new FakeTable(), workspaces: new FakeTable(),
   paymentPlans: new FakeTable(), paymentOccurrences: new FakeTable(), savingsGoals: new FakeTable(),
+  transactionRules: new FakeTable(),
   _outbox: new FakeTable(),
 }
 
@@ -653,6 +654,23 @@ describe('senkron bütünlüğü — updatedAt, silme/düzenleme çakışması, 
     await localPatch('people', 'p1', { name: 'Veli' })
     await flushOutbox()
     expect(calls.map(c => 'updatedAt' in c)).toEqual([false])
+  })
+
+  it('tablo bulutta yoksa (migration bekliyor) yazma kuyrukta SAYAÇSIZ bekler, diğer tablolar akar', async () => {
+    upsertImpl = async (table) => table === 'transaction_rules'
+      ? { error: { code: 'PGRST205', message: "Could not find the table 'public.transaction_rules' in the schema cache" } as { message: string } }
+      : { error: null }
+    await localUpsert('transaction_rules', { id: 'r1', pattern: 'migros' })
+    await localUpsert('people', { id: 'p1', name: 'Ali' })
+    await flushOutbox()
+    const entry = (await outbox.get('transaction_rules:r1'))!
+    expect(entry.attempts).toBe(0)                       // dead-letter'a doğru ilerlemez
+    expect(await outbox.get('people:p1')).toBeUndefined() // öteki tablo ACK'lendi
+    // Aynı oturumda tekrar denenmez (gereksiz istek yok), yerel satır durur
+    upsertCalls.length = 0
+    await flushOutbox()
+    expect(upsertCalls.filter(c => c.table === 'transaction_rules')).toHaveLength(0)
+    expect(await tables.transactionRules.get('r1')).toBeDefined()
   })
 
   it('anahtar tabanlı sayfalama: 2.500 satırın hepsi, her biri bir kez okunur (#23)', async () => {

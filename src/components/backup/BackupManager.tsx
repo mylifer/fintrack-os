@@ -35,6 +35,8 @@ interface BackupFile {
     paymentOccurrences?:    unknown[]
     // Birikim Hedefleri — aynı kural
     savingsGoals?:          unknown[]
+    // İşlem Kuralları — aynı kural
+    transactionRules?:      unknown[]
     // Çalışma alanları — yoksa (eski yedek) mevcut alanlara dokunulmaz
     workspaces?:            unknown[]
   }
@@ -52,6 +54,7 @@ const TABLE_LABELS: Record<keyof BackupFile['data'], string> = {
   paymentPlans:           'Ödeme Planı',
   paymentOccurrences:     'Ödeme Kaydı',
   savingsGoals:           'Birikim Hedefi',
+  transactionRules:       'İşlem Kuralı',
   workspaces:             'Çalışma Alanı',
 }
 
@@ -125,6 +128,11 @@ const RECORD_GUARDS: Record<keyof BackupFile['data'], RecordGuard> = {
   savingsGoals: r =>
     isNonEmptyStr(r.id) && isStr(r.name) && isFiniteNum(r.targetAmount) &&
     isOptFiniteNum(r.savedAmount) && isStr(r.color) && isStr(r.createdAt),
+  transactionRules: r =>
+    isNonEmptyStr(r.id) && isNonEmptyStr(r.pattern) && isStr(r.matchKind) &&
+    isOptFiniteNum(r.minAmount) && isOptFiniteNum(r.maxAmount) && isFiniteNum(r.sortOrder) &&
+    typeof r.isActive === 'boolean' && isStr(r.createdAt) &&
+    (r.tags === undefined || r.tags === null || (Array.isArray(r.tags) && r.tags.every(isStr))),
   workspaces: r =>
     isNonEmptyStr(r.id) && isStr(r.name) && isStr(r.createdAt) &&
     (r.isDefault === undefined || r.isDefault === null || typeof r.isDefault === 'boolean'),
@@ -151,7 +159,7 @@ function validateBackup(raw: unknown): BackupFile {
   // Ödeme Takibi ve Birikim Hedefi tabloları bilerek boş diziye ÇEVRİLMEZ:
   // anahtarın yokluğu "bu yedek o tabloyu bilmiyor" demektir ve geri yükleme
   // mevcut kayıtları korur. Varsa dizi olmalı.
-  for (const key of ['paymentPlans', 'paymentOccurrences', 'savingsGoals', 'workspaces'] as const) {
+  for (const key of ['paymentPlans', 'paymentOccurrences', 'savingsGoals', 'transactionRules', 'workspaces'] as const) {
     if (b.data[key] !== undefined && !Array.isArray(b.data[key])) throw new Error(`"${key}" alanı bozuk.`)
   }
 
@@ -454,7 +462,7 @@ export function BackupManager() {
 
       setPreview(null)
       setFileName('')
-      if (paymentsFailed) setError('Yedek geri yüklendi, ancak ödeme takibi ve hedef kayıtları geri yüklenemedi.')
+      if (paymentsFailed) setError('Yedek geri yüklendi, ancak ödeme takibi, hedef ve kural kayıtları geri yüklenemedi.')
       else flash('success', 'Yedek geri yüklendi ve buluta senkronize edildi.')
     } catch (err) {
       console.error('[backup:restore]', err)

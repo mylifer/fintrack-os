@@ -5,7 +5,7 @@ import { localBatch, type BatchOp } from './sync/engine'
 import type {
   Account, Transaction, Category, Budget, Debt,
   InvestmentTransaction, Person, RecurringTransaction,
-  PaymentPlan, PaymentOccurrence, SavingsGoal, Workspace,
+  PaymentPlan, PaymentOccurrence, SavingsGoal, TransactionRule, Workspace,
 } from '@/types'
 
 /**
@@ -36,6 +36,8 @@ export interface BackupData {
   paymentOccurrences?:    PaymentOccurrence[]
   // Birikim Hedefleri — aynı kural: anahtar yoksa (eski yedek) dokunulmaz.
   savingsGoals?:          SavingsGoal[]
+  // İşlem Kuralları (0025) — aynı kural: anahtar yoksa (eski yedek) dokunulmaz.
+  transactionRules?:      TransactionRule[]
   // Çalışma alanları (yalnız SAHİBİ olduklarım). Diğer tabloların satırları
   // workspaceId taşır; tanımlar yedekte olmazsa yeni bir hesaba/projeye geri
   // yüklemede hiçbir satırın alanı bulunamaz ve veri görünmez olur. RPC (0009)
@@ -58,12 +60,13 @@ export async function cloudReplaceAll(data: BackupData, userId: string): Promise
 /** RPC'nin kapsamı DIŞINDA kalan, geri yüklemede outbox üzerinden değiştirilen
  *  tablolar. BackupManager.writeDexie bunların bekleyen outbox girdilerini
  *  silmez — bkz. replaceOutboxTables. */
-export const OUTBOX_RESTORED_TABLES = ['payment_plans', 'payment_occurrences', 'savings_goals'] as const
+export const OUTBOX_RESTORED_TABLES = ['payment_plans', 'payment_occurrences', 'savings_goals', 'transaction_rules'] as const
 type OutboxRestoredTable = typeof OUTBOX_RESTORED_TABLES[number]
 
 /**
  * RPC'nin bilmediği tabloları — Ödeme Takibi (payment_plans,
- * payment_occurrences) ve Birikim Hedefleri (savings_goals) — yedektekilerle
+ * payment_occurrences), Birikim Hedefleri (savings_goals) ve İşlem Kuralları
+ * (transaction_rules) — yedektekilerle
  * değiştirir.
  *
  * restore_user_backup RPC'si bu tabloları bilmiyor (0009'un tablo listesi sabit;
@@ -95,6 +98,7 @@ export async function replaceOutboxTables(data: BackupData): Promise<void> {
   if (data.paymentPlans) collect('payment_plans', await db.paymentPlans.toArray(), data.paymentPlans)
   if (data.paymentOccurrences) collect('payment_occurrences', await db.paymentOccurrences.toArray(), data.paymentOccurrences)
   if (data.savingsGoals) collect('savings_goals', await db.savingsGoals.toArray(), data.savingsGoals)
+  if (data.transactionRules) collect('transaction_rules', await db.transactionRules.toArray(), data.transactionRules)
   await localBatch(ops)
 }
 

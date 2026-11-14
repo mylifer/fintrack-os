@@ -7,7 +7,7 @@ import { Dialog as DialogPrimitive } from 'radix-ui'
 import { Icon, IC } from '@/components/layout/sidebar/icons'
 import { ALL_NAV_ITEMS, MOBILE_PRIMARY_HREFS, NAV_GROUPS, SETTINGS_ITEM, activeNavHref, type NavItem } from '@/components/layout/sidebar/nav'
 import { useNavBadges, navBadge, type NavBadgeCounts } from '@/components/layout/sidebar/useNavBadges'
-import { openCommandPalette } from '@/components/layout/command-palette/useCommandPalette'
+import { openCommandPalette, useCommandPalette } from '@/components/layout/command-palette/useCommandPalette'
 
 /* ── Mobil alt menü ───────────────────────────────────────────────────────
    Kenar çubuğu lg altında gizli; bu yüzden alt menü dört ana sayfa + "Diğer"
@@ -61,6 +61,9 @@ export function MobileNav() {
             <DialogPrimitive.Overlay className="lg:hidden print:hidden fixed inset-0 z-[60] bg-black/50 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
             <DialogPrimitive.Content
               aria-describedby={undefined}
+              // "Ara" ile kapanırken odak "Diğer" düğmesine dönmesin: komut
+              // paletinin arama alanındaki odağı çalıyordu.
+              onCloseAutoFocus={e => { if (useCommandPalette.getState().open) e.preventDefault() }}
               className={[
                 'lg:hidden print:hidden fixed inset-x-0 bottom-0 z-[60] flex flex-col max-h-[85dvh]',
                 'bg-background border-t border-border rounded-t-2xl shadow-xl outline-none',

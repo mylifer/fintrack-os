@@ -59,7 +59,12 @@ function buildCsp(nonce: string): string {
     // (HTML'e enjekte edilmiş) nonce'suz script her durumda engellenir.
     // 'unsafe-eval' is only added in dev because React uses eval() for enhanced
     // error stacks; it is not needed (and not added) in production.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://vitals.vercel-insights.com${isDev ? " 'unsafe-eval'" : ''}`,
+    // 'wasm-unsafe-eval': YALNIZ WebAssembly derlemesine izin verir (JS eval'e
+    // değil). Tesseract OCR worker'ı (/ocr/worker.min.js) bu politikayı kendi
+    // yanıt başlığından alır ve çekirdeği wasm olarak derler; yoksa ekran
+    // görüntüsü okuma "WebAssembly.instantiate ... violates CSP" ile düşer
+    // (Playwright'ta doğrulandı).
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' https://vitals.vercel-insights.com${isDev ? " 'unsafe-eval'" : ''}`,
     // 'unsafe-inline' is required for Tailwind / inline style attributes (React
     // style={{}} ve Radix'in konumlama stilleri). Bilinçli ödünç: stiller nonce
     // korumasında değil; script ve bağlantı yönergeleri sıkı kaldığı sürece

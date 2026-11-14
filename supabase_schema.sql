@@ -21,7 +21,7 @@
 --
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
--- çalıştırdıktan SONRA supabase/migrations/0001..0024'ü sırayla uygulayın.
+-- çalıştırdıktan SONRA supabase/migrations/0001..0025'i sırayla uygulayın.
 -- Doğru sıra ve kontroller: supabase/fresh-install/run.sh (CI'da her PR'da
 -- boş bir Postgres'te çalışır — bu zincir kırılırsa ya da bir tablonun
 -- izni unutulursa PR kırmızı olur).
@@ -37,14 +37,21 @@
 --     delete_my_account() RPC'si              → 0013 — bu dosya TÜM politikaları
 --                                                silip kurduğu için bunu
 --                                                çalıştırdıktan sonra 0013,
---                                                0015 ve 0021'i YENİDEN
---                                                çalıştırın (0021 olmadan
---                                                paylaşılan alanlara erişim
---                                                kalkar)
+--                                                0015, 0021 ve 0025'i
+--                                                YENİDEN çalıştırın (0021
+--                                                olmadan paylaşılan alanlara
+--                                                erişim kalkar; 0021 davet
+--                                                fonksiyonunu eski listeyle
+--                                                yazar, 0025 genişletir)
 --   • Çalışma alanı paylaşımı (üyelik, davet,
 --     sahip-veya-üye politikaları)            → 0021
 --   • categories."matchKeywords"              → 0014 (aşağıda da var)
 --   • savings_goals tablosu                   → 0015 (aşağıda da var)
+--   • transaction_rules tablosu (işlem
+--     kuralları) + RLS/tetikleyici/Realtime → 0025 (YALNIZ orada: aşağıdaki
+--                                                sahip-yalnız döngüye bilerek
+--                                                girmez — paylaşım politikaları
+--                                                0025'te)
 --   • "updatedAt" (8 tablo) + keep_newer_row
 --     tetikleyicisi + Realtime yayını       → 0016 (sütunlar aşağıda da var)
 -- Sütunlar aşağıda tutulmaya çalışılıyor ama geçmişte kaydı: `categorySplits`

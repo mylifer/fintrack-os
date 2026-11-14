@@ -6,7 +6,8 @@
 #   PGHOST=localhost PGUSER=postgres PGPASSWORD=… supabase/fresh-install/run.sh
 #
 # Sıra supabase_schema.sql başlığındakiyle aynı: önce şema, sonra 0001..N,
-# sonra politikaları yeniden kuran 0013 / 0015 / 0021.
+# sonra politikaları yeniden kuran 0013 / 0015 / 0021 ve 0021'in davet
+# fonksiyonunu genişleten 0025.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -23,7 +24,8 @@ run() {
 run supabase/fresh-install/supabase-stub.sql
 run supabase_schema.sql
 for f in supabase/migrations/0*.sql; do run "$f"; done
-for f in supabase/migrations/0013_*.sql supabase/migrations/0015_*.sql supabase/migrations/0021_*.sql; do run "$f"; done
+for f in supabase/migrations/0013_*.sql supabase/migrations/0015_*.sql supabase/migrations/0021_*.sql \
+         supabase/migrations/0025_*.sql; do run "$f"; done
 
 echo "→ supabase/fresh-install/checks.sql"
 PGOPTIONS='--client-min-messages=error' psql -q -X -v ON_ERROR_STOP=1 -At -d "$DB" \
