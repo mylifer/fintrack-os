@@ -308,12 +308,9 @@ end $$;
 commit;
 \echo ok - paylaşım: editör çalışma alanı satırını düzenleyemez
 
--- BİLİNEN HATA (#R1): iki alanın editörü, bir alanın satırını ÖTEKİ alana
--- taşıyabiliyor. set_workspace_owner (0021) user_id'yi YENİ alanın sahibine
--- çevirir, WITH CHECK yalnız "yeni alanın üyesi miyim"e bakar — eski alanın
--- sahibi (A) satırı bir daha göremez; veri başka bir hesaba (C) geçer.
--- Beklenen: güncellemede alan değişikliği ya reddedilmeli ya da yalnız
--- satırın ŞU ANKİ sahibi yapabilmeli.
+-- #R1 (0026): alan taşıması satırın sahipliğini değiştiremez. Eskiden iki
+-- alanın editörü A'nın satırını C'nin alanına taşıyabiliyordu;
+-- set_workspace_owner user_id'yi C'ye çeviriyor, A satırı kaybediyordu.
 begin; :asC
 insert into workspaces (id, user_id, name, "isDefault", "createdAt") values ('wsC-ortak', auth.uid(), 'C ortak', false, '2026-01-01');
 select public.create_workspace_invite('wsC-ortak') as token_c \gset
@@ -322,17 +319,44 @@ begin; :asB
 select public.accept_workspace_invite(:'token_c') \gset
 do $$ begin
   update transactions set "workspaceId" = 'wsC-ortak' where id = 's2';
+  raise exception 'R1: editör A''nın satırını C''nin alanına taşıyabildi';
 exception when insufficient_privilege then null;
 end $$;
 commit;
-\echo BİLİNEN HATA (#R1, beklenen) - editör A’nın satırını C’nin alanına taşıyıp sahipliği C’ye geçirebiliyor
 do $$ begin
-  if (select user_id from transactions where id = 's2') <> 'cccccccc-0000-0000-0000-00000000000c' then
-    raise exception 'XPASS #R1: editör artık satırı başka hesabın alanına taşıyamıyor — bu bloğu normal kontrole çevirin';
+  if (select user_id from transactions where id = 's2') <> 'aaaaaaaa-0000-0000-0000-00000000000a'
+     or (select "workspaceId" from transactions where id = 's2') <> 'wsA-aile' then
+    raise exception 'R1: taşıma reddedildi ama satır değişti';
   end if;
 end $$;
--- Sonraki adımlar için geri al (süper kullanıcı)
-update transactions set "workspaceId" = 'wsA-aile', user_id = 'aaaaaaaa-0000-0000-0000-00000000000a' where id = 's2';
+\echo ok - taşıma: editör satırı başka sahibin alanına taşıyamaz (sahiplik devri yok)
+
+-- Meşru taşımalar bozulmadı: sahip kendi alanları arasında; editör AYNI
+-- sahibin iki paylaşılan alanı arasında
+begin; :asA
+insert into workspaces (id, user_id, name, "isDefault", "createdAt") values ('wsA-is', auth.uid(), 'İş', false, '2026-01-01');
+select public.create_workspace_invite('wsA-is') as token_is \gset
+update transactions set "workspaceId" = 'wsA-aile' where id = 'k1';
+commit;
+do $$ begin
+  if (select "workspaceId" from transactions where id = 'k1') <> 'wsA-aile' then raise exception 'taşıma: sahip kendi satırını kendi alanına taşıyamadı'; end if;
+end $$;
+begin; :asA
+update transactions set "workspaceId" = 'wsA-genel' where id = 'k1';
+commit;
+begin; :asB
+select public.accept_workspace_invite(:'token_is') \gset
+update transactions set "workspaceId" = 'wsA-is' where id = 's2';
+update transactions set "workspaceId" = 'wsA-aile' where id = 's2';
+commit;
+do $$ begin
+  if (select "workspaceId" from transactions where id = 'k1') <> 'wsA-genel' then raise exception 'taşıma: sahip satırı paylaşılan alandan geri alamadı'; end if;
+  if (select "workspaceId" from transactions where id = 's2') <> 'wsA-aile'
+     or (select user_id from transactions where id = 's2') <> 'aaaaaaaa-0000-0000-0000-00000000000a' then
+    raise exception 'taşıma: editör aynı sahibin alanları arasında taşıyamadı';
+  end if;
+end $$;
+\echo ok - taşıma: sahip kendi alanları arasında, editör aynı sahibin paylaşılan alanları arasında taşıyabilir
 
 -- Sahip editörü çıkarır → erişim anında kesilir (kendi eklediği s2 dahil)
 begin; :asA
