@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Budget, PriceData, Transaction } from '@/types'
 import {
-  calcMonthlyFlow, enrichTotalBudget, isTotalBudget, isTotalBudgetId, resolveBudgetCategories,
+  calcMonthlyFlow, enrichTotalBudget, isCategoryBudget, isMonthlyCategoryBudget, isTotalBudget, isTotalBudgetId, resolveBudgetCategories,
   summarizeTotalBudget, totalBudgetId, TOTAL_BUDGET_CATEGORY,
 } from './calculations'
 import { collapseInstallments } from './installments'
@@ -34,6 +34,14 @@ describe('toplam bütçe satırı', () => {
     expect(isTotalBudgetId('b1')).toBe(false)
     expect(isTotalBudget(total(1000))).toBe(true)
     expect(isTotalBudget(catBudget('b', 1))).toBe(false)
+  })
+
+  it('isCategoryBudget / isMonthlyCategoryBudget toplam satırını her iki işaretiyle de dışlar', () => {
+    expect(isCategoryBudget(total(1000))).toBe(false)
+    expect(isCategoryBudget({ period: 'monthly', categoryId: TOTAL_BUDGET_CATEGORY })).toBe(false)
+    expect(isMonthlyCategoryBudget(catBudget('b', 1))).toBe(true)
+    expect(isMonthlyCategoryBudget(catBudget('y', 1, 'yearly'))).toBe(false)
+    expect(isMonthlyCategoryBudget({ period: 'monthly', categoryId: TOTAL_BUDGET_CATEGORY })).toBe(false)
   })
 
   it('bildirim paneli etiketi kategori aramaz, "(arşiv)" demez', () => {

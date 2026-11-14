@@ -153,6 +153,18 @@ describe('planCategoryRestructure — birleştirmeler', () => {
     expect(p.recurring).toEqual([{ id: 'r1', patch: { categoryId: 'tekno' }, prev: { categoryId: 'tech' } }])
   })
 
+  it('toplam aylık limit satırına (kategorisiz, period total) dokunmaz', () => {
+    const p = plan({
+      categories: base,
+      budgets: [
+        budget({ id: 'total-budget-ws', categoryId: '__total__', period: 'total' }),
+        // Bozuk/eski yazma: period monthly kalmış ama özel categoryId taşıyor
+        budget({ id: 'total-eski', categoryId: '__total__' }),
+      ],
+    })
+    expect(p.budgets).toEqual([])
+  })
+
   it('bölünmüş işlemde payları birleştirir; tek pay kalırsa bölmeyi kaldırır', () => {
     const p = plan({
       categories: base,

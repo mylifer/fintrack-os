@@ -7,7 +7,7 @@ import {
 } from '@/store'
 import { useRulesStore } from '@/store/rules.store'
 import { runCategoryRestructurePass } from '@/lib/category-restructure'
-import { runBackgroundWrites, type SyncTable } from '@/lib/sync/engine'
+import type { SyncTable } from '@/lib/sync/engine'
 
 /* Tüm veri store'larını (fiyat feed'i / sync altyapısı HARİÇ — bunlar
    workspace'e özgü değil, uygulama ömrü boyunca bir kez kurulur) yeniden
@@ -16,12 +16,6 @@ import { runBackgroundWrites, type SyncTable } from '@/lib/sync/engine'
    yükle" yolu icat etmeye gerek yok: reconcilingPull zaten aktif çalışma
    alanına göre filtreliyor (bkz. src/lib/sync/engine.ts). */
 export async function reloadAllStores(): Promise<void> {
-  // Yüklemelerdeki kendiliğinden bakım yazmaları salt okuma alanında (0028)
-  // sessizce atlanır — yükleme yarıda kesilmesin (bkz. engine runBackgroundWrites)
-  return runBackgroundWrites(reloadAllStoresInner)
-}
-
-async function reloadAllStoresInner(): Promise<void> {
   const { load: loadAccounts, recomputeBalances } = useAccountStore.getState()
   const { load: loadCategories, initDefaults: initCategories } = useCategoryStore.getState()
   const { load: loadDebts } = useDebtStore.getState()
@@ -67,10 +61,6 @@ async function reloadAllStoresInner(): Promise<void> {
  *  başka cihazdaki bir değişikliği bildirdiğinde. Bakiyeler hesap ya da işlem
  *  değişince yeniden hesaplanır; aktif çalışma alanı düştüyse hepsi yenilenir. */
 export async function reloadTable(table: SyncTable): Promise<void> {
-  return runBackgroundWrites(() => reloadTableInner(table))
-}
-
-async function reloadTableInner(table: SyncTable): Promise<void> {
   const recompute = () =>
     useAccountStore.getState().recomputeBalances(useTransactionStore.getState().transactions)
 

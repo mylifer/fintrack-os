@@ -10,7 +10,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useTransactionStore, useCategoryStore, useBudgetStore, useSettingsStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, formatMonthYear, prevMonth, nextMonth, currentMonthYear, today } from '@/lib/utils/date'
-import { enrichBudget, resolveBudgetCategories } from '@/lib/utils/calculations'
+import { enrichBudget, resolveBudgetCategories, isMonthlyCategoryBudget } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { baseAmount } from '@/lib/utils/fx'
 import { pctChange } from '@/lib/utils/period-compare'
@@ -95,7 +95,7 @@ export default function MonthlySummaryPage() {
   const monthBudgets = useMemo(() => {
     const ledger = collapseInstallments(transactions)
     return budgets
-      .filter(b => b.period === 'monthly')
+      .filter(isMonthlyCategoryBudget)
       .map(b => enrichBudget(b, ledger, my, categories))
       .sort((a, b) => b.percentUsed - a.percentUsed)
   }, [budgets, transactions, my, categories])

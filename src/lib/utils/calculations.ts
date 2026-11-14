@@ -303,6 +303,18 @@ export function isTotalBudget(b: Pick<Budget, 'period'>): boolean {
   return b.period === 'total'
 }
 
+/** Bir kategoriye bağlı (gerçek) bütçe mi? Toplam limit satırı — period ya da
+ *  özel categoryId'siyle (bozuk/eski bir yazmada biri eksik kalsa bile) —
+ *  hariç. Bütçe listeleyen, kategori kimliklerini dolaşan HER yer bunu kullanır. */
+export function isCategoryBudget(b: Pick<Budget, 'period' | 'categoryId'>): boolean {
+  return !isTotalBudget(b) && b.categoryId !== TOTAL_BUDGET_CATEGORY
+}
+
+/** Aylık kategori bütçesi — bütçe kartları, kenar çubuğu, rapor, bildirim. */
+export function isMonthlyCategoryBudget(b: Pick<Budget, 'period' | 'categoryId'>): boolean {
+  return b.period === 'monthly' && isCategoryBudget(b)
+}
+
 export function totalBudgetId(workspaceId: string): string {
   return `${TOTAL_BUDGET_ID_PREFIX}${workspaceId}`
 }
@@ -356,7 +368,7 @@ export function summarizeTotalBudget(
   const daysLeft = day > to ? 0
     : day < from ? daysInMonth
     : daysInMonth - Number(day.slice(8, 10)) + 1
-  const categoryBudgetsTotal = sumBy(budgets.filter(b => b.period === 'monthly' && !b.deleted_at), b => b.amount)
+  const categoryBudgetsTotal = sumBy(budgets.filter(b => isMonthlyCategoryBudget(b) && !b.deleted_at), b => b.amount)
   return {
     spent: e.spent,
     limit: e.limit,

@@ -10,7 +10,7 @@ import {
   useAccountStore, useInvestmentStore,
   useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore,
 } from '@/store'
-import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
+import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted, isMonthlyCategoryBudget } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
 import { useCountUp } from '@/lib/hooks/useCountUp'
@@ -63,7 +63,7 @@ export function useSidebarData() {
   const prevWealth = totalWealth - trendAmount
   const trendPct   = prevWealth !== 0 ? (trendAmount / Math.abs(prevWealth)) * 100 : null
 
-  const budgets       = useBudgetStore(useShallow(s => s.budgets.filter(b => b.period === 'monthly')))
+  const budgets       = useBudgetStore(useShallow(s => s.budgets.filter(isMonthlyCategoryBudget)))
   const allCategories = useCategoryStore(useShallow(s => s.categories))
 
   // Bölüme girilince alt liste açılır; çıkınca kullanıcının seçimi korunur.

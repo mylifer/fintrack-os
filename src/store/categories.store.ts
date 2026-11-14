@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localBulkUpsert, localPatch, reconcilingPull, lastPullWasAuthoritative } from '@/lib/sync/engine'
-import { rowInActiveWorkspace } from '@/lib/workspace-context'
+import { maintenanceWritesAllowed, rowInActiveWorkspace } from '@/lib/workspace-context'
 import type { Category, CategoryScope, DefaultCategoryDef } from '@/types'
 import { DEFAULT_CATEGORIES } from '@/types'
 // One-time icon migration map (emoji / Lucide PascalCase / noto: → Tabler kebab).
@@ -135,8 +135,9 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       const rows = await reconcilingPull<Category>('categories')
       const { categories, dirty } = applyIconMigration(rows.sort(compareCategoriesByName))
       set({ categories, loading: false, ready: true })
-      // Persist migrated icons durably (Dexie + outbox).
-      for (const cat of dirty) {
+      // Persist migrated icons durably (Dexie + outbox). Salt okuma alanında
+      // (0028) bakım yazması denenmez — göç yalnız bellekte görünür.
+      for (const cat of maintenanceWritesAllowed() ? dirty : []) {
         await localPatch('categories', cat.id, { icon: cat.icon, color: cat.color })
       }
     } catch (err) {
@@ -148,7 +149,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
     // Tek seferlik geçişler — yalnızca yetkili bir çekişten sonra (bkz.
     // AUTO_ICON_KEY / RECOLOR_KEY açıklamaları). Yazmalar outbox üzerinden kalıcı.
-    if (!lastPullWasAuthoritative('categories')) return
+    if (!lastPullWasAuthoritative('categories') || !maintenanceWritesAllowed()) return
 
     const announce = (updates: PassUpdate[], label: string) => {
       if (updates.length === 0) return
@@ -186,7 +187,8 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     // Yetkisiz (başarısız/eksik) bir çekişten sonra yerel boşluk "kategori yok"
     // demek değildir — varsayılanları eklemek, bulut kategorileri gelince hepsini
     // ÇİFTLİYORDU. Bir sonraki başarılı yüklemede zaten yeniden çalışır.
-    if (!lastPullWasAuthoritative('categories')) return
+    // Salt okuma alanına (0028) varsayılan kategori yazılmaz
+    if (!lastPullWasAuthoritative('categories') || !maintenanceWritesAllowed()) return
 
     // Sadece AKTİF çalışma alanının kategorileri sayılır — aksi halde başka
     // bir çalışma alanında zaten var olan bir isim burada da "var" sayılıp

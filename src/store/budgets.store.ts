@@ -3,10 +3,10 @@
 import { create } from 'zustand'
 import { db } from '@/lib/db'
 import type { Budget, BudgetWithSpent, Transaction, MonthYear } from '@/types'
-import { enrichBudget, getBudgetCategoryIds, isTotalBudget, totalBudgetId, TOTAL_BUDGET_CATEGORY } from '@/lib/utils/calculations'
+import { enrichBudget, getBudgetCategoryIds, isMonthlyCategoryBudget, isTotalBudget, totalBudgetId, TOTAL_BUDGET_CATEGORY } from '@/lib/utils/calculations'
 import { isLive } from '@/lib/sync/tombstone'
 import { localUpsert, localPatch, softDelete } from '@/lib/sync/engine'
-import { getActiveWorkspaceId, rowInActiveWorkspace } from '@/lib/workspace-context'
+import { getActiveWorkspaceId, maintenanceWritesAllowed, rowInActiveWorkspace } from '@/lib/workspace-context'
 import { loadEntities } from './entity-helpers'
 import { useCategoryStore } from './categories.store'
 import { useUndoStore, type RemoveOptions } from './undo.store'
@@ -60,7 +60,8 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     // pattern (mirror categories.store load): patch in-memory + flow through the
     // outbox via localPatch.
     const toStamp: Array<{ id: string; categoryName: string }> = []
-    if (useCategoryStore.getState().categories.length > 0) {
+    // Salt okuma alanında (0028) bakım yazması denenmez (bkz. maintenanceWritesAllowed)
+    if (useCategoryStore.getState().categories.length > 0 && maintenanceWritesAllowed()) {
       for (const b of budgets) {
         if (b.categoryName || isTotalBudget(b)) continue
         const categoryName = liveCategoryName(b)
@@ -141,7 +142,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     // Üst kategoriye açılan bütçe alt kategori harcamalarını da kapsasın
     const categories = useCategoryStore.getState().categories
     return get().budgets
-      .filter(b => b.period === 'monthly')
+      .filter(isMonthlyCategoryBudget)
       .map(b => enrichBudget(b, transactions, my, categories))
       .sort((a, b) => b.percentUsed - a.percentUsed)
   },

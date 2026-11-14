@@ -187,27 +187,15 @@ function nullifyPatch(patch: Record<string, unknown>): Record<string, unknown> {
    (0028 RESTRICTIVE politikaları) — bu katman yalnız kullanıcı deneyimi ve
    outbox hijyeni içindir.
 
-   ARKA PLAN YAZMALARI: store yüklemelerindeki kendiliğinden bakım geçişleri
-   (simge/renk göçü, ad anlık görüntüsü, varsayılan kategoriler, defter
-   onarımı…) kullanıcı eylemi değildir. runBackgroundWrites içinde salt okuma
-   alanına dokunan yazma hata/bildirim OLMADAN atlanır — yoksa salt okuma
-   alanını açan üyenin yüklemesi (Promise.all) yarıda kesilirdi. Sonuç
-   yine aynı: hiçbir şey yazılmaz. */
-let backgroundDepth = 0
-
-/** fn'deki salt okuma alanına yazmaları sessizce atlar (bkz. yukarısı). */
-export async function runBackgroundWrites<T>(fn: () => Promise<T>): Promise<T> {
-  backgroundDepth++
-  try { return await fn() } finally { backgroundDepth-- }
-}
-
-/** true: yazma serbest. false: arka planda, salt okuma alanı — sessizce atla.
- *  Kullanıcı yazmasında salt okuma alanı → bildirim + ReadOnlyWorkspaceError. */
+   SESSİZ ATLAMA YOK: burada her ret bildirilir — açılıştaki yükleme sırasında
+   da. Kendiliğinden bakım yazmaları (simge/renk göçü, ad anlık görüntüsü,
+   varsayılan kategoriler, kategori yeniden yapılandırma, defter onarımı) salt
+   okuma alanında buraya HİÇ gelmez: kendi kapılarında
+   (workspace-context maintenanceWritesAllowed) atlanırlar. */
 function assertWritable(table: SyncTable, touched: Array<string | null | undefined>): boolean {
   if (table === 'workspaces') return true
   const blocked = blockedWorkspace(touched, getReadOnlyWorkspaceIds())
   if (blocked === null) return true
-  if (backgroundDepth > 0) return false
   const err = new ReadOnlyWorkspaceError(blocked)
   useSyncStatusStore.getState().notify(err.message)
   throw err
@@ -365,7 +353,7 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
           const before = await t.where('id').anyOf(op.ids).toArray()
           ok = assertWritable(op.table, [...before.map(wsOf), patchWs(op.patch)])
         }
-        if (!ok) return   // arka plan: toplu işlemin tamamı sessizce atlanır
+        if (!ok) return
       }
     }
     for (const op of ops) {

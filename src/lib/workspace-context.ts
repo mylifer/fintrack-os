@@ -115,3 +115,11 @@ export function setReadOnlyWorkspaceIds(ids: string[]): void {
 export function isWorkspaceReadOnly(id: string | null | undefined): boolean {
   return !!id && getReadOnlyWorkspaceIds().includes(id)
 }
+
+/** Kendiliğinden bakım yazmaları (yüklemedeki göçler, varsayılanlar, onarım
+ *  geçişleri) AKTİF alana yazabilir mi? Salt okuma alanında (0028) bakım hiç
+ *  denenmez — kullanıcı eylemi olmadığından bildirim de çıkmamalı. Kullanıcı
+ *  yazmaları bu kapıdan geçmez; onları engine'deki kilit reddeder ve bildirir. */
+export function maintenanceWritesAllowed(): boolean {
+  return !isWorkspaceReadOnly(activeWorkspaceId)
+}

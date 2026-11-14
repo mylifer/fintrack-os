@@ -89,7 +89,8 @@ export interface AccountInfo {
 }
 
 export interface ParsedStatement {
-  bank: 'garanti' | 'odeabank' | 'qnb' | 'burgan' | 'yapikredi' | 'kuveyt'
+  /** custom: tanınmayan ekstre, sütunları kullanıcı eşledi (column-map.ts) */
+  bank: 'garanti' | 'odeabank' | 'qnb' | 'burgan' | 'yapikredi' | 'kuveyt' | 'custom'
   bankLabel: string
   /** credit_card: kart ekstresi · checking: vadesiz hesap dökümü */
   type: 'credit_card' | 'checking'
@@ -111,13 +112,24 @@ export interface ParsedStatement {
   /** Henüz ekstresi kesilmemiş dönem içi işlem listesi: toplam kontrolü yok,
    *  tarihleri Kart Takvimi'ne yazılmaz */
   provisional?: boolean
+  /** Yalnız elle sütun eşlenen ekstrede: eşleme hafızası anahtarı ve vadesiz
+   *  dökümde bakiye sütunu okunup okunmadığı (yoksa bakiye kıyası gösterilmez) */
+  mapped?: { signature: string; hasBalance: boolean }
+}
+
+/** Biçim tanınmadı: arayüz bu durumda hata yerine elle sütun eşleme adımını açar. */
+export class UnrecognizedStatementError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UnrecognizedStatementError'
+  }
 }
 
 /** Desteklenen bankalardan birini tanıyıp ayrıştırır; tanınmazsa açıklayıcı hata. */
 export function parseStatement(pages: PdfPage[]): ParsedStatement {
   const parsed = parseGarantiCard(pages) ?? parseQnbStatement(pages) ?? parseBurganCard(pages) ?? parseYapiKrediCard(pages) ?? parseQnbPeriod(pages) ?? parseGarantiPeriod(pages) ?? parseOdeabankCard(pages) ?? parseKuveytCard(pages) ?? parseOdeabankPeriod(pages) ?? parseOdeabankAccount(pages)
   if (parsed) return withDiffHint(parsed)
-  throw new Error('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA, QNB, Burgan (ON), Yapı Kredi, Odeabank ve Kuveyt Türk kredi kartı ekstresi, Garanti BBVA, QNB ve Odeabank dönem içi işlemler ve Odeabank vadesiz hesap dökümü (PDF) destekleniyor.')
+  throw new UnrecognizedStatementError('Bu ekstrenin biçimi henüz tanınmıyor. Şimdilik Garanti BBVA, QNB, Burgan (ON), Yapı Kredi, Odeabank ve Kuveyt Türk kredi kartı ekstresi, Garanti BBVA, QNB ve Odeabank dönem içi işlemler ve Odeabank vadesiz hesap dökümü (PDF) destekleniyor.')
 }
 
 /** Toplam tutmadığında farkın nereden geldiğine dair ipucu ekler: fark tam

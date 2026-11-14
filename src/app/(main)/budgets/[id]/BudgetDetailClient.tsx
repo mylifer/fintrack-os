@@ -18,7 +18,7 @@ import {
 } from '@/lib/utils/date'
 import {
   getBudgetCategoryIds, enrichBudget, calcBudgetSpent, calcBudgetCarryover, resolveBudgetCategories,
-  expandCategoryIds, isFlowTx,
+  expandCategoryIds, isFlowTx, isCategoryBudget,
 } from '@/lib/utils/calculations'
 import { RolloverField } from '@/components/budgets/RolloverField'
 import { collapseInstallments } from '@/lib/utils/installments'
@@ -115,7 +115,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
   // ── Derived (all before conditional returns — Rules of Hooks) ─────────────
   // Başka bütçelerde kullanılan kategoriler seçilemez (liste sayfasıyla aynı kural)
   const usedCatIds = useMemo(
-    () => new Set(allBudgets.filter(b => b.id !== id).flatMap(b => getBudgetCategoryIds(b))),
+    () => new Set(allBudgets.filter(b => b.id !== id && isCategoryBudget(b)).flatMap(b => getBudgetCategoryIds(b))),
     [allBudgets, id],
   )
 

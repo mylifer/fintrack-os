@@ -816,3 +816,37 @@ do $$ begin
   end if;
 end $$;
 \echo ok - viewer: davet rolü kabulde uygulanır; tek argümanlı (eski) davet editördür
+
+-- ============================================================================
+-- 7. Toplam aylık bütçe: budgets satırı, period = 'total' (migration'sız)
+-- ============================================================================
+-- Şemada budgets.period üzerinde CHECK/enum yok (supabase_schema.sql: düz text) —
+-- biri eklenirse bu kontrol kırmızı olur ve istemcinin 'total' satırı reddedilir
+do $$ begin
+  if exists (select 1 from pg_constraint where conrelid = 'public.budgets'::regclass and contype = 'c') then
+    raise exception 'budgets: CHECK kısıtı var — toplam bütçe satırı (period total) reddedilebilir: %',
+      (select string_agg(pg_get_constraintdef(oid), '; ') from pg_constraint where conrelid = 'public.budgets'::regclass and contype = 'c');
+  end if;
+  if (select data_type from information_schema.columns where table_schema = 'public' and table_name = 'budgets' and column_name = 'period') <> 'text' then
+    raise exception 'budgets.period artık text değil (enum?) — toplam bütçe satırı reddedilebilir';
+  end if;
+end $$;
+-- İki cihaz aynı alanda aynı anda limit koyar: kimlik alandan türediği için
+-- ikinci yazma AYNI satırı günceller (istemcinin upsert'ü), iki satır olmaz
+begin; :asA
+insert into budgets (id, user_id, "categoryId", amount, period, rollover, "alertThreshold", "updatedAt", "workspaceId")
+values ('total-budget-wsA-aile', auth.uid(), '__total__', 10000, 'total', false, 80, '2026-11-01T10:00:00.000Z', 'wsA-aile')
+on conflict (id) do update set amount = excluded.amount, "updatedAt" = excluded."updatedAt", user_id = excluded.user_id;
+commit;
+begin; :asA
+insert into budgets (id, user_id, "categoryId", amount, period, rollover, "alertThreshold", "updatedAt", "workspaceId")
+values ('total-budget-wsA-aile', auth.uid(), '__total__', 12000, 'total', false, 80, '2026-11-01T10:00:01.000Z', 'wsA-aile')
+on conflict (id) do update set amount = excluded.amount, "updatedAt" = excluded."updatedAt", user_id = excluded.user_id;
+commit;
+do $$ begin
+  if (select count(*) from budgets where "workspaceId" = 'wsA-aile' and period = 'total' and deleted_at is null) <> 1
+     or (select amount from budgets where id = 'total-budget-wsA-aile') <> 12000 then
+    raise exception 'toplam bütçe: iki cihazın yazması tek satırda birleşmedi';
+  end if;
+end $$;
+\echo ok - toplam bütçe: period total kabul edilir (CHECK yok); iki cihazın limiti tek satırda birleşir

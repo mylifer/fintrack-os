@@ -453,8 +453,9 @@ export function applyMapping(t: StatementTable, m: ColumnMapping): MappingResult
   return { rows, skipped }
 }
 
-const FEE_RE = /\b(faiz|kkdf|bsmv|ucret|ucreti|komisyon|aidat|gecikme)\b/
-const PAYMENT_RE = /\b(odeme|odemeniz|payment|tahsilat)\b/
+// Ek alır: "FAİZİ", "ÖDEMESİ", "ÖDEMENİZ"
+const FEE_RE = /\b(faiz|kkdf|bsmv|ucret|komisyon|aidat|gecikme)/
+const PAYMENT_RE = /\b(odeme|payment|tahsilat)/
 
 function kindOf(amount: number, description: string, type: ColumnMapping['statementType']): LineKind {
   if (type === 'checking') return amount > 0 ? 'debit' : 'credit'
@@ -469,12 +470,7 @@ const prevDay = (iso: string) => {
   return d.toISOString().slice(0, 10)
 }
 
-export interface MappedStatementInfo {
-  /** Eşleme hafızası anahtarı (tableSignature) */
-  signature: string
-  /** Vadesiz dökümde bakiye sütunu okundu mu (yoksa bakiye kıyası gösterilmez) */
-  hasBalance: boolean
-}
+export type MappedStatementInfo = NonNullable<ParsedStatement['mapped']>
 
 /** Eşlenmiş tabloyu banka ayrıştırıcılarının ürettiği ParsedStatement'a çevirir.
  *  Toplam kontrolü yapılamaz (bankanın özet satırı bilinmiyor): kart ekstresi

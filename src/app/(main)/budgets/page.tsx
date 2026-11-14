@@ -20,7 +20,7 @@ import { useSyncStatusStore } from '@/store/sync-status.store'
 import { READ_ONLY_MESSAGE } from '@/lib/workspace-permissions'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import { formatMonthYear, prevMonth, nextMonth } from '@/lib/utils/date'
-import { getBudgetCategoryIds, enrichBudget, resolveBudgetCategories } from '@/lib/utils/calculations'
+import { getBudgetCategoryIds, enrichBudget, resolveBudgetCategories, isCategoryBudget, isMonthlyCategoryBudget } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import type { Budget, BudgetWithSpent } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
@@ -165,7 +165,7 @@ export default function BudgetsPage() {
   const budgets = useMemo(
     () =>
       rawBudgets
-        .filter(b => b.period === 'monthly')
+        .filter(isMonthlyCategoryBudget)
         .map(b => enrichBudget(b, reportTxs, selectedPeriod, allCategories))
         .sort((a, b) => b.percentUsed - a.percentUsed),
     [rawBudgets, reportTxs, selectedPeriod, allCategories],
@@ -264,7 +264,7 @@ export default function BudgetsPage() {
   const usedCatIds = useMemo(
     () =>
       rawBudgets
-        .filter(b => b.id !== editingBudget?.id)
+        .filter(b => b.id !== editingBudget?.id && isCategoryBudget(b))
         .flatMap(b => getBudgetCategoryIds(b)),
     [rawBudgets, editingBudget],
   )
