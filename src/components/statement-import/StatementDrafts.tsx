@@ -7,7 +7,9 @@ import { IconFileTypePdf, IconTrash } from '@tabler/icons-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAccountStore, useWorkspaceStore } from '@/store'
-import { isCommitted, useStatementDraftsStore } from '@/store/statement-drafts.store'
+import { isCommitted, statementKind, useStatementDraftsStore, type StatementKind } from '@/store/statement-drafts.store'
+import { useSearchParams } from 'next/navigation'
+import { KindTabs } from './StatementHistory'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
@@ -30,9 +32,17 @@ export function StatementDrafts() {
   // Başka cihazda başlanan ya da bitirilen ekstreler için bulutla eşitle
   useEffect(() => { const s = useStatementDraftsStore.getState(); s.load(); void s.sync() }, [])
 
-  const drafts = allDrafts.filter(d => !isCommitted(d) && (!workspaceId || rowInWorkspace(d, workspaceId)))
+  const searchParams = useSearchParams()
+  const open = allDrafts.filter(d => !isCommitted(d) && (!workspaceId || rowInWorkspace(d, workspaceId)))
+  const counts = {
+    statement: open.filter(d => statementKind(d.statement) === 'statement').length,
+    period: open.filter(d => statementKind(d.statement) === 'period').length,
+  }
+  const tur = searchParams.get('tur')
+  const kind: StatementKind = tur === 'donem-ici' ? 'period' : tur === 'ekstre' ? 'statement' : counts.statement || !counts.period ? 'statement' : 'period'
+  const drafts = open.filter(d => statementKind(d.statement) === kind)
 
-  if (!drafts.length) {
+  if (!open.length) {
     return (
       <div className="max-w-2xl mx-auto w-full rounded-xl border border-border bg-card">
         <EmptyState
@@ -46,6 +56,12 @@ export function StatementDrafts() {
 
   return (
     <div className="max-w-3xl mx-auto w-full flex flex-col gap-3">
+      <KindTabs base="/ekstre-yukle/taslaklar" kind={kind} counts={counts} />
+      {!drafts.length && (
+        <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+          {kind === 'period' ? 'Yarım kalan dönem içi işlem listesi yok.' : 'Yarım kalan ekstre yok.'}
+        </div>
+      )}
       <p className="text-sm text-muted-foreground">
         Onaylanmamış ekstreler. Açtığında satırlar o anki kayıtlarınla yeniden karşılaştırılır; verdiğin kararlar korunur.
         Onayladığın ekstreler <Link href="/ekstre-yukle/yuklenenler" className="text-primary underline-offset-2 hover:underline">Yüklenen Ekstreler</Link>&apos;de.

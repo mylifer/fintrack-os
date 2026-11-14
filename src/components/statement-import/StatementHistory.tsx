@@ -10,7 +10,7 @@ import { TransactionList } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { useAccountStore, usePeopleStore, useTransactionStore, useWorkspaceStore } from '@/store'
-import { isCommitted, useStatementDraftsStore, type StatementDraft } from '@/store/statement-drafts.store'
+import { isCommitted, statementKind, useStatementDraftsStore, type StatementDraft, type StatementKind } from '@/store/statement-drafts.store'
 import { rowInWorkspace } from '@/lib/workspace-context'
 import { foldText } from '@/lib/auto-category'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -55,6 +55,7 @@ export function StatementHistory() {
   const allDrafts   = useStatementDraftsStore(s => s.drafts)
   const searchParams = useSearchParams()
   const openId = searchParams.get('ekstre')
+  const kindParam: StatementKind | null = searchParams.get('tur') === 'donem-ici' ? 'period' : searchParams.get('tur') === 'ekstre' ? 'statement' : null
   // Başka cihazda onaylanan ekstreler için bulutla eşitle
   useEffect(() => { const s = useStatementDraftsStore.getState(); s.load(); void s.sync() }, [])
 
@@ -64,21 +65,46 @@ export function StatementHistory() {
 
   const open = openId ? list.find(d => d.id === openId) : undefined
   if (openId && open) return <StatementDetail draft={open} />
-  return <StatementIndex list={list} missing={!!openId} />
+  // Sekme: adresteki tür, yoksa ekstre (ekstre yoksa dönem içi)
+  const kind = kindParam ?? (list.some(d => statementKind(d.statement) === 'statement') || !list.length ? 'statement' : 'period')
+  return <StatementIndex list={list} kind={kind} missing={!!openId} />
 }
 
-function StatementIndex({ list, missing }: { list: StatementDraft[]; missing: boolean }) {
+export const KIND_LABEL: Record<StatementKind, string> = { statement: 'Ekstreler', period: 'Dönem içi işlemler' }
+const kindParamOf = (k: StatementKind) => (k === 'period' ? 'donem-ici' : 'ekstre')
+
+/** Ekstreler / Dönem içi işlemler sekmeleri (bağlantı: sekme adreste kalır) */
+export function KindTabs({ base, kind, counts }: { base: string; kind: StatementKind; counts: Record<StatementKind, number> }) {
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 w-full sm:w-fit" role="tablist">
+      {(['statement', 'period'] as const).map(k => (
+        <Link key={k} href={`${base}?tur=${kindParamOf(k)}`} role="tab" aria-selected={kind === k} replace
+          className={cn('rounded-md px-3 py-1.5 text-sm font-medium text-center transition-all whitespace-nowrap',
+            kind === k ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          {KIND_LABEL[k]} <span className="tabular-nums text-muted-foreground font-normal">{counts[k]}</span>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+function StatementIndex({ list: all, kind, missing }: { list: StatementDraft[]; kind: StatementKind; missing: boolean }) {
   const accounts = useAccountStore(s => s.accounts)
   const remove   = useStatementDraftsStore(s => s.remove)
   const [confirm, setConfirm] = useState<string | null>(null)
   const [accountFilter, setAccountFilter] = useState('')
+  const counts = {
+    statement: all.filter(d => statementKind(d.statement) === 'statement').length,
+    period: all.filter(d => statementKind(d.statement) === 'period').length,
+  }
+  const list = all.filter(d => statementKind(d.statement) === kind)
 
   const usedAccounts = [...new Set(list.map(d => d.accountId))]
     .map(id => accounts.find(a => a.id === id))
     .filter((a): a is NonNullable<typeof a> => !!a)
   const shown = accountFilter ? list.filter(d => d.accountId === accountFilter) : list
 
-  if (!list.length) {
+  if (!all.length) {
     return (
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-3">
         {missing && <div className="text-xs font-medium px-4 py-2.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400">Bu ekstre bulunamadı (listeden kaldırılmış ya da başka bir çalışma alanına ait olabilir).</div>}
@@ -96,9 +122,18 @@ function StatementIndex({ list, missing }: { list: StatementDraft[]; missing: bo
   return (
     <div className="max-w-3xl mx-auto w-full flex flex-col gap-3">
       {missing && <div className="text-xs font-medium px-4 py-2.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400">Bu ekstre bulunamadı (listeden kaldırılmış ya da başka bir çalışma alanına ait olabilir).</div>}
+      <KindTabs base="/ekstre-yukle/yuklenenler" kind={kind} counts={counts} />
       <p className="text-sm text-muted-foreground">
-        Onayladığın ekstreler. Birini açınca o ekstreden girilen işlemleri ve dönemdeki bütün işlemleri görür, düzenlersin.
+        {kind === 'period'
+          ? 'Onayladığın dönem içi işlem listeleri (ekstresi henüz kesilmemiş harcamalar). Ekstreler ayrı sekmede.'
+          : 'Onayladığın kart ekstreleri ve hesap dökümleri.'}
+        {' '}Birini açınca ondan girilen işlemleri ve dönemdeki bütün işlemleri görür, düzenlersin.
       </p>
+      {!list.length && (
+        <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+          {kind === 'period' ? 'Onaylanmış dönem içi işlem listesi yok.' : 'Onaylanmış ekstre yok.'}
+        </div>
+      )}
       {usedAccounts.length > 1 && (
         <div className="flex flex-wrap gap-1.5">
           {[{ id: '', name: 'Tümü' }, ...usedAccounts].map(a => (
@@ -191,8 +226,8 @@ function StatementDetail({ draft }: { draft: StatementDraft }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Link href="/ekstre-yukle/yuklenenler" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <IconArrowLeft className="size-4" />Yüklenen ekstreler
+          <Link href={`/ekstre-yukle/yuklenenler?tur=${kindParamOf(statementKind(draft.statement))}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <IconArrowLeft className="size-4" />{KIND_LABEL[statementKind(draft.statement)]}
           </Link>
           <h2 className="text-xl font-semibold tracking-tight mt-1">{statementTitle(draft)}</h2>
           <div className="text-sm text-muted-foreground mt-0.5 tabular-nums">

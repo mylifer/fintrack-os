@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { draftIdFor } from './statement-drafts.store'
+import { draftIdCandidates, draftIdFor, statementKind } from './statement-drafts.store'
 import type { ParsedStatement } from '@/lib/statement-import/statement'
 
 const st = (over: Partial<ParsedStatement> = {}): ParsedStatement => ({
@@ -16,6 +16,21 @@ describe('draftIdFor', () => {
   it('farklı kesim ya da dönem borcu ayrı taslaktır', () => {
     expect(draftIdFor(st())).not.toBe(draftIdFor(st({ statementDate: '2026-09-28' })))
     expect(draftIdFor(st())).not.toBe(draftIdFor(st({ summary: { previous: 0, spending: 0, fees: 0, payments: 0, debt: 1, minPayment: null } })))
+  })
+})
+
+describe('ekstre ve dönem içi liste ayrı kaydedilir', () => {
+  it('aynı kart ve tarihte bile farklı kimlik; tür ayrı', () => {
+    const period = st({ provisional: true, summary: null })
+    const statement = st({ summary: null })
+    expect(draftIdFor(period)).not.toBe(draftIdFor(statement))
+    expect(statementKind(period)).toBe('period')
+    expect(statementKind(statement)).toBe('statement')
+  })
+  it('ekstrenin kimliği değişmedi; dönem içi listenin eski kimliği aday olarak aranır', () => {
+    const period = st({ provisional: true, summary: null })
+    expect(draftIdCandidates(st())[0]).toBe(draftIdFor(st()))
+    expect(draftIdCandidates(period)).toContain(draftIdFor(st({ summary: null })))
   })
 })
 

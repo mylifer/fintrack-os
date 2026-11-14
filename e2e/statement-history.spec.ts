@@ -64,7 +64,12 @@ test('yeni alıcının adı düzeltilir; onaylanan ekstre Yüklenenler’de aç�
   await expect(page.getByText('YENI DUKKAN KADIKOY').first()).toBeVisible()
 
   await page.goto('/ekstre-yukle/yuklenenler')
+  await expect(page.getByRole('tab', { name: 'Ekstreler 1' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByText(/1 satır · 1 kayıt girildi/)).toBeVisible()
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/history-list.png` })
+  // Dönem içi listeler ayrı sekmede
+  await page.getByRole('tab', { name: 'Dönem içi işlemler 0' }).click()
+  await expect(page.getByText('Onaylanmış dönem içi işlem listesi yok.')).toBeVisible()
   await page.goto('/ekstre-yukle/taslaklar')
   await expect(page.getByText('Yarım kalan ekstre yok')).toBeVisible()
 })

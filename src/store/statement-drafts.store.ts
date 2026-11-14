@@ -74,9 +74,29 @@ function cap(drafts: StatementDraft[]): StatementDraft[] {
  *  alanda yüklenirse taslakları birbirinin üzerine yazmaz. `workspaceId`
  *  verilmezse eski (alansız) kimlik döner — önceki taslaklar böyle bulunur. */
 export function draftIdFor(st: ParsedStatement, workspaceId?: string | null): string {
-  const base = `stmt-draft:${st.bank}:${st.statementDate}:${st.account?.iban ?? st.cards.join(',')}:${st.summary?.debt ?? st.check.expected}`
+  return idFrom(st, workspaceId, true)
+}
+
+function idFrom(st: ParsedStatement, workspaceId: string | null | undefined, withKind: boolean): string {
+  // Dönem içi liste ekstreden ayrı kaydedilir: aynı gün indirilen liste ile
+  // ekstre (aynı kart, aynı tarih) asla aynı kimliğe düşmez
+  const kind = withKind && statementKind(st) === 'period' ? ':period' : ''
+  const base = `stmt-draft:${st.bank}:${st.statementDate}:${st.account?.iban ?? st.cards.join(',')}:${st.summary?.debt ?? st.check.expected}${kind}`
   return deterministicUuid(workspaceId ? `${base}:ws:${workspaceId}` : base)
 }
+
+/** Bu ekstrenin önceden kaydedilmiş olabileceği kimlikler, öncelik sırasıyla:
+ *  bu alanın kimliği, alansız (eski) kimlik ve dönem içi liste ayrılmadan
+ *  önceki kimlikler. Bulunan taslağın türü ekstreyle aynı olmalı (çağıran bakar). */
+export function draftIdCandidates(st: ParsedStatement, workspaceId?: string | null): string[] {
+  const ids = [idFrom(st, workspaceId, true), idFrom(st, null, true), idFrom(st, workspaceId, false), idFrom(st, null, false)]
+  return [...new Set(ids)]
+}
+
+/** Kaydedilen dosyanın türü: kesilmiş ekstre (kart ekstresi, hesap dökümü) ya da
+ *  henüz ekstresi kesilmemiş dönem içi işlem listesi */
+export type StatementKind = 'statement' | 'period'
+export const statementKind = (st: Pick<ParsedStatement, 'provisional'>): StatementKind => (st.provisional ? 'period' : 'statement')
 
 function read(): StatementDraft[] {
   if (typeof window === 'undefined') return []

@@ -9,7 +9,7 @@ import { SelectField } from '@/components/ui/Select'
 import { useAccountStore, useCategoryStore, usePaymentsStore, usePeopleStore, useTransactionStore, useWorkspaceStore } from '@/store'
 import { planIdFor } from '@/lib/payments/ids'
 import { cardCalendarUpdate, type CalendarUpdate } from '@/lib/statement-import/card-calendar'
-import { draftIdFor, isCommitted, useStatementDraftsStore, type StatementDraft } from '@/store/statement-drafts.store'
+import { draftIdCandidates, draftIdFor, isCommitted, statementKind, useStatementDraftsStore, type StatementDraft } from '@/store/statement-drafts.store'
 import { rowInWorkspace } from '@/lib/workspace-context'
 import { localBatch, lastPullWasAuthoritative } from '@/lib/sync/engine'
 import { foldText } from '@/lib/auto-category'
@@ -247,9 +247,10 @@ export function StatementImport() {
     const best = bestAccount(st, makePlan)
     // Bu alanın taslağı; yoksa eski (alansız) kimlikle kaydedilmiş ve bu alana ait olan
     const drafts = useStatementDraftsStore.getState()
-    const legacy = drafts.get(draftIdFor(st))
-    const own = drafts.get(draftIdFor(st, workspaceId))
-    const prev = own ?? (legacy && (!workspaceId || rowInWorkspace(legacy, workspaceId)) ? legacy : undefined)
+    // Ekstre ile dönem içi liste birbirinin kaydına düşmez (tür aynı olmalı)
+    const prev = draftIdCandidates(st, workspaceId)
+      .map(i => drafts.get(i))
+      .find(d => d && statementKind(d.statement) === statementKind(st) && (!workspaceId || rowInWorkspace(d, workspaceId)))
     const id = prev?.id ?? draftIdFor(st, workspaceId)
     const prevAccount = prev && useAccountStore.getState().accounts.some(a => a.id === prev.accountId) ? prev.accountId : null
     setStatement(st)
@@ -265,7 +266,7 @@ export function StatementImport() {
     setChoices(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.choices) : {})
     setEdits(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.edits) : {})
     if (prevAccount) setNotice(prev?.committedAt
-      ? 'Bu ekstre daha önce yüklenip onaylanmış; girilen kayıtlar “Zaten sistemde” görünür, verdiğin kararlar geri getirildi.'
+      ? (statementKind(st) === 'period' ? 'Bu dönem içi liste daha önce yüklenip onaylanmış;' : 'Bu ekstre daha önce yüklenip onaylanmış;') + ' girilen kayıtlar “Zaten sistemde” görünür, verdiğin kararlar geri getirildi.'
       : 'Bu ekstre daha önce yüklenip yarım bırakılmış; verdiğin kararlar geri getirildi.')
     setStep('preview')
   }
