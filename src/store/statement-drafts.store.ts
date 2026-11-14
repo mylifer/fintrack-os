@@ -50,15 +50,53 @@ export interface StatementDraft {
   progress: DraftProgress
   createdAt: string
   updatedAt: string
+  /** Onaylandığı an: onaylanan ekstre silinmez, "Yüklenen Ekstreler"de kalır
+   *  (yoksa yarım kalan taslaktır) */
+  committedAt?: string
+  /** Bu ekstrenin onaylarında girilen işlemler (yeniden onaylanınca birleşir) */
+  createdTxIds?: string[]
+}
+
+/** Onaylanmış (yüklenmiş) ekstre mi, yoksa yarım kalan taslak mı */
+export const isCommitted = (d: Pick<StatementDraft, 'committedAt'>) => !!d.committedAt
+
+/** Saklanan en fazla yüklenmiş ekstre */
+const COMMITTED_LIMIT = 120
+
+/** Sınır yarım kalanlar ve yüklenenler için ayrı uygulanır: çok sayıda onaylanmış
+ *  ekstre yarım kalanları itip silmesin (ve tersi). */
+function cap(drafts: StatementDraft[]): StatementDraft[] {
+  let open = 0, done = 0
+  return drafts.filter(d => (isCommitted(d) ? ++done <= COMMITTED_LIMIT : ++open <= LIMIT))
 }
 
 /** Taslak kimliği ekstreden ve çalışma alanından türetilir: aynı ekstre iki
  *  alanda yüklenirse taslakları birbirinin üzerine yazmaz. `workspaceId`
  *  verilmezse eski (alansız) kimlik döner — önceki taslaklar böyle bulunur. */
 export function draftIdFor(st: ParsedStatement, workspaceId?: string | null): string {
-  const base = `stmt-draft:${st.bank}:${st.statementDate}:${st.account?.iban ?? st.cards.join(',')}:${st.summary?.debt ?? st.check.expected}`
+  return idFrom(st, workspaceId, true)
+}
+
+function idFrom(st: ParsedStatement, workspaceId: string | null | undefined, withKind: boolean): string {
+  // Dönem içi liste ekstreden ayrı kaydedilir: aynı gün indirilen liste ile
+  // ekstre (aynı kart, aynı tarih) asla aynı kimliğe düşmez
+  const kind = withKind && statementKind(st) === 'period' ? ':period' : ''
+  const base = `stmt-draft:${st.bank}:${st.statementDate}:${st.account?.iban ?? st.cards.join(',')}:${st.summary?.debt ?? st.check.expected}${kind}`
   return deterministicUuid(workspaceId ? `${base}:ws:${workspaceId}` : base)
 }
+
+/** Bu ekstrenin önceden kaydedilmiş olabileceği kimlikler, öncelik sırasıyla:
+ *  bu alanın kimliği, alansız (eski) kimlik ve dönem içi liste ayrılmadan
+ *  önceki kimlikler. Bulunan taslağın türü ekstreyle aynı olmalı (çağıran bakar). */
+export function draftIdCandidates(st: ParsedStatement, workspaceId?: string | null): string[] {
+  const ids = [idFrom(st, workspaceId, true), idFrom(st, null, true), idFrom(st, workspaceId, false), idFrom(st, null, false)]
+  return [...new Set(ids)]
+}
+
+/** Kaydedilen dosyanın türü: kesilmiş ekstre (kart ekstresi, hesap dökümü) ya da
+ *  henüz ekstresi kesilmemiş dönem içi işlem listesi */
+export type StatementKind = 'statement' | 'period'
+export const statementKind = (st: Pick<ParsedStatement, 'provisional'>): StatementKind => (st.provisional ? 'period' : 'statement')
 
 function read(): StatementDraft[] {
   if (typeof window === 'undefined') return []
@@ -118,11 +156,24 @@ interface DraftsState {
   /** Bulutla birleştir (açılışta kendiliğinden; Yarım Kalanlar açılınca yeniden) */
   sync: () => Promise<void>
   get: (id: string) => StatementDraft | undefined
-  save: (draft: Omit<StatementDraft, 'createdAt' | 'updatedAt'>) => void
+  save: (draft: Omit<StatementDraft, 'createdAt' | 'updatedAt' | 'committedAt' | 'createdTxIds'>) => void
+  /** Ekstre onaylandı: silinmez, yüklenen ekstre olarak saklanır */
+  markCommitted: (id: string, createdTxIds: readonly string[]) => void
+  /** Onay geri alındı: ekstre onay öncesindeki haline döner (yoksa silinir) */
+  restore: (id: string, before: StatementDraft | undefined) => void
   remove: (id: string) => void
 }
 
-export const useStatementDraftsStore = create<DraftsState>()((set, get) => ({
+export const useStatementDraftsStore = create<DraftsState>()((set, get) => {
+  /** Taslağı yazar (cihaz + bulut), en yeni başta */
+  const put = (next: StatementDraft) => {
+    const drafts = cap([next, ...get().drafts.filter(d => d.id !== next.id)]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))
+    write(drafts)
+    set({ drafts })
+    schedule({ kind: 'draft', draft: next })
+  }
+  return {
   drafts: [],
   loaded: false,
 
@@ -139,7 +190,7 @@ export const useStatementDraftsStore = create<DraftsState>()((set, get) => ({
       if (!cloud) return
       // Bekleme sırasında yapılan yerel değişiklikler kaybolmasın: güncel hali birleştir
       const { drafts, push, settledTombstones } = mergeDrafts(read(), readDeleted(), cloud)
-      const kept = drafts.slice(0, LIMIT)
+      const kept = cap(drafts)
       write(kept)
       if (settledTombstones.length) writeDeleted(readDeleted().filter(t => !settledTombstones.includes(t.id)))
       set({ drafts: kept, loaded: true })
@@ -157,13 +208,26 @@ export const useStatementDraftsStore = create<DraftsState>()((set, get) => ({
     get().load()
     const now = new Date().toISOString()
     const prev = get().drafts.find(d => d.id === draft.id)
-    const next: StatementDraft = { ...draft, createdAt: prev?.createdAt ?? now, updatedAt: now }
-    const drafts = [next, ...get().drafts.filter(d => d.id !== draft.id)]
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, LIMIT)
-    write(drafts)
-    set({ drafts })
-    schedule({ kind: 'draft', draft: next })
+    // Yüklenmiş ekstre yeniden açılıp düzenlenince yüklenmiş olarak kalır
+    const next: StatementDraft = {
+      ...draft, createdAt: prev?.createdAt ?? now, updatedAt: now,
+      ...(prev?.committedAt ? { committedAt: prev.committedAt, createdTxIds: prev.createdTxIds } : {}),
+    }
+    put(next)
+  },
+
+  markCommitted: (id, createdTxIds) => {
+    get().load()
+    const prev = get().drafts.find(d => d.id === id)
+    if (!prev) return
+    const now = new Date().toISOString()
+    put({ ...prev, committedAt: now, updatedAt: now, createdTxIds: [...new Set([...(prev.createdTxIds ?? []), ...createdTxIds])] })
+  },
+
+  restore: (id, before) => {
+    if (!before) { get().remove(id); return }
+    get().load()
+    put({ ...before, updatedAt: new Date().toISOString() })
   },
 
   remove: (id) => {
@@ -175,4 +239,5 @@ export const useStatementDraftsStore = create<DraftsState>()((set, get) => ({
     writeDeleted([...readDeleted().filter(t => t.id !== id), { id, at }])
     schedule({ kind: 'delete', id, at })
   },
-}))
+}
+})

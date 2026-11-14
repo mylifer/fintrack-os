@@ -163,7 +163,7 @@ export function SidebarCompact() {
                 return (
                   <Link key={item.href} href={item.href} className={subCls(pathname === item.href)}>
                     <span className="flex-1 truncate">{item.label}</span>
-                    {draftCount > 0 && (
+                    {item.badge === 'drafts' && draftCount > 0 && (
                         <span title="Onaylanmamış ekstre" className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-500 leading-none flex-shrink-0">{draftCount}</span>
                       )}
                   </Link>

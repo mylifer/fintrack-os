@@ -31,6 +31,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/transactions', label: 'İşlemler',    icon: IC.tx },
       { href: '/ekstre-yukle', label: 'Ekstre Yükle', icon: IC.upload },
       { href: '/ekstre-yukle/taslaklar', label: 'Yarım Kalanlar', icon: IC.upload, sub: true, badge: 'drafts' },
+      { href: '/ekstre-yukle/yuklenenler', label: 'Yüklenenler', icon: IC.upload, sub: true },
       { href: '/categories',   label: 'Kategoriler', icon: IC.categories },
       { href: '/tags',         label: 'Etiketler',   icon: IC.tags },
     ],

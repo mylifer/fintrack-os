@@ -51,6 +51,11 @@ describe('alıcı adı benzerliği', () => {
   it('küçük yazım farkı öneri olarak sunulur', () => {
     maybe('Hepsiburda', 'HEPSİPAY-HEP*HEPSİBURADA')
   })
+  it('aynı markayla başlayan ad, geri kalanı metinde olmasa da öneri olarak sunulur', () => {
+    maybe('Shell Petrol', 'SHELL ISTASYON KADIKOY')
+    maybe('Starbucks Coffee', 'STARBUCKS BAGDAT CAD ISTANBUL TR')
+    maybe('Migros Jet', 'MIGROS 5M KADIKOY')
+  })
   it('rastlantısal benzerlik eşleşmez', () => {
     no('Aksi', 'BITAKSI 34 TR')
     no('Market', 'ERENKÖY EKMEK MARKET')

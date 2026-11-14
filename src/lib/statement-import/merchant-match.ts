@@ -149,7 +149,13 @@ export function nameScore(name: string, text: string): number {
   if (tj && nj.length >= 5) score = Math.max(score, tj === nj ? 1 : 0.9)
   // En ayırt edici kelime hiç karşılanmadıysa ad tutmuyor demektir
   const key = [...distinctive].sort((a, b) => b.length - a.length)[0]
-  if (tokenMatch(key, t) === 0 && !tj) return Math.min(score, 0.4)
+  if (tokenMatch(key, t) === 0 && !tj) score = Math.min(score, 0.4)
+  // Aynı marka: adın ilk ayırt edici kelimesi metnin markasıyla aynı ("Shell Petrol"
+  // ~ "SHELL ISTASYON KADIKOY", "Starbucks Coffee" ~ "STARBUCKS BAGDAT CAD"). Adın
+  // geri kalanı metinde olmasa da aynı işyeri olabilir: emin değil, öneri olarak sorulur.
+  const nameBrand = n.find(w => !GENERIC.has(w) && w.length >= 4 && !/^\d+$/.test(w))
+  const textBrand = t.find(w => !GENERIC.has(w) && w.length >= 3 && !/^\d+$/.test(w))
+  if (nameBrand && textBrand && score < MAYBE && tokenMatch(nameBrand, [textBrand]) >= 0.9) score = Math.max(score, 0.75)
   return Math.round(score * 100) / 100
 }
 

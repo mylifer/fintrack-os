@@ -6,7 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   useAccountStore, useRecurringStore, useTransactionStore, useDebtStore, usePaymentsStore, useWorkspaceStore,
 } from '@/store'
-import { useStatementDraftsStore } from '@/store/statement-drafts.store'
+import { isCommitted, useStatementDraftsStore } from '@/store/statement-drafts.store'
 import { assignCardPayments, buildSchedule, buildTargets, monthOf } from '@/lib/payments/schedule'
 import { today } from '@/lib/utils/date'
 import type { NavItem } from './nav'
@@ -30,7 +30,7 @@ export function useNavBadges(): NavBadgeCounts {
 
   // Yarım kalan ekstreler (bu cihazdaki taslaklar, aktif çalışma alanı)
   const activeWorkspace = useWorkspaceStore(s => s.activeId)
-  const draftCount = useStatementDraftsStore(s => s.drafts.filter(d => !activeWorkspace || rowInWorkspace(d, activeWorkspace)).length)
+  const draftCount = useStatementDraftsStore(s => s.drafts.filter(d => !isCommitted(d) && (!activeWorkspace || rowInWorkspace(d, activeWorkspace))).length)
   useEffect(() => { useStatementDraftsStore.getState().load() }, [])
 
   // Ödeme Takibi rozeti: gecikmiş ya da son günü bugün olan kart/borç ödemesi.

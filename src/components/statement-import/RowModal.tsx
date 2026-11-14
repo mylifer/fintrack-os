@@ -102,6 +102,13 @@ export function RowModal({ row, statement, choice, edit, onChoose, onEdit, onClo
   const categoryId = edit?.categoryId ?? draft?.categoryId ?? ''
   const description = edit?.description ?? draft?.description ?? row.title
 
+  /** Yeni alıcının adı yazıldı/düzeltildi. Açıklama alıcı adının kendisiyse
+   *  (elle değiştirilmediyse) o da yeni adı izler. */
+  function setNewRecipient(name: string) {
+    const followsName = newRecipientName !== undefined && description === newRecipientName
+    onEdit({ recipientId: undefined, newRecipient: name, ...(followsName && name.trim() ? { description: name } : {}) })
+  }
+
   // ── Ödeme türü: tek çekim / taksitli (bankadan, kilitli) / abonelik
   const canPayType = !!draft && draft.editable && draft.type === 'expense' && draft.amount > 0
   const payType = draft?.installments ? 'installment' : isSubscription ? 'subscription' : 'one'
@@ -239,10 +246,24 @@ export function RowModal({ row, statement, choice, edit, onChoose, onEdit, onClo
                     onEdit(id ? recipientEdit(edit, id, rid => draft.type === 'transfer' ? undefined : recipientCategory(rid, draft.type, transactions, categories))
                       : { recipientId: null, newRecipient: undefined })
                   }}
-                  onCreate={async name => { onEdit({ recipientId: undefined, newRecipient: name }); return PENDING_ID }}
+                  onCreate={async name => { setNewRecipient(name); return PENDING_ID }}
+                  createAlongsideResults
                   placeholder="Alıcı seçin"
                 />
-                {newRecipientName !== undefined && <span className="text-[11px] text-muted-foreground">Yeni alıcı · onayda oluşturulur.</span>}
+                {newRecipientName !== undefined && (
+                  <div className="flex flex-col gap-1">
+                    <input
+                      aria-label="Yeni alıcının adı"
+                      value={newRecipientName}
+                      onChange={e => setNewRecipient(e.target.value)}
+                      placeholder="Yeni alıcının adı"
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      Yeni alıcı · adı buradan düzeltebilirsin; onayda oluşturulur. Kayıtlı biriyse yukarıdan seç.
+                    </span>
+                  </div>
+                )}
                 {draft.needsRecipient && newRecipientName === undefined && !recipientId && <span className="text-[11px] text-destructive">Alıcı seçilmeden kayıt yapılmaz.</span>}
               </div>
 

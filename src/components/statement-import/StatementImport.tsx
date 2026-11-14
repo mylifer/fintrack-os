@@ -9,7 +9,7 @@ import { SelectField } from '@/components/ui/Select'
 import { useAccountStore, useCategoryStore, usePaymentsStore, usePeopleStore, useTransactionStore, useWorkspaceStore } from '@/store'
 import { planIdFor } from '@/lib/payments/ids'
 import { cardCalendarUpdate, type CalendarUpdate } from '@/lib/statement-import/card-calendar'
-import { draftIdFor, useStatementDraftsStore } from '@/store/statement-drafts.store'
+import { draftIdCandidates, draftIdFor, isCommitted, statementKind, useStatementDraftsStore, type StatementDraft } from '@/store/statement-drafts.store'
 import { rowInWorkspace } from '@/lib/workspace-context'
 import { localBatch, lastPullWasAuthoritative } from '@/lib/sync/engine'
 import { foldText } from '@/lib/auto-category'
@@ -45,6 +45,9 @@ interface DoneState {
   skippedKeys: string[]
   accountId: string
   undone: boolean
+  /** Onaylanan ekstrenin kimliği ve onaydan önceki hali (geri almada geri konur) */
+  draftId: string | null
+  draftBefore?: StatementDraft
 }
 
 /** Bütün kayıtlar ve uzak değişiklikler yüklendikten sonra planın imzası:
@@ -119,9 +122,9 @@ export function StatementImport() {
   const workspaceId  = useWorkspaceStore(s => s.activeId)
   const drafts       = useStatementDraftsStore(s => s.drafts)
   const saveDraft    = useStatementDraftsStore(s => s.save)
-  const removeDraft  = useStatementDraftsStore(s => s.remove)
   useEffect(() => { useStatementDraftsStore.getState().load() }, [])
-  const draftCount = drafts.filter(d => !workspaceId || rowInWorkspace(d, workspaceId)).length
+  const draftCount = drafts.filter(d => !isCommitted(d) && (!workspaceId || rowInWorkspace(d, workspaceId))).length
+  const committedCount = drafts.filter(d => isCommitted(d) && (!workspaceId || rowInWorkspace(d, workspaceId))).length
 
   const candidates = useMemo(() => accounts.filter(a => accountFits(a, statement)), [accounts, statement])
   const account = accounts.find(a => a.id === accountId)
@@ -244,9 +247,10 @@ export function StatementImport() {
     const best = bestAccount(st, makePlan)
     // Bu alanın taslağı; yoksa eski (alansız) kimlikle kaydedilmiş ve bu alana ait olan
     const drafts = useStatementDraftsStore.getState()
-    const legacy = drafts.get(draftIdFor(st))
-    const own = drafts.get(draftIdFor(st, workspaceId))
-    const prev = own ?? (legacy && (!workspaceId || rowInWorkspace(legacy, workspaceId)) ? legacy : undefined)
+    // Ekstre ile dönem içi liste birbirinin kaydına düşmez (tür aynı olmalı)
+    const prev = draftIdCandidates(st, workspaceId)
+      .map(i => drafts.get(i))
+      .find(d => d && statementKind(d.statement) === statementKind(st) && (!workspaceId || rowInWorkspace(d, workspaceId)))
     const id = prev?.id ?? draftIdFor(st, workspaceId)
     const prevAccount = prev && useAccountStore.getState().accounts.some(a => a.id === prev.accountId) ? prev.accountId : null
     setStatement(st)
@@ -261,7 +265,9 @@ export function StatementImport() {
     const newPlan = prevAccount ? makePlan(st, prevAccount) : null
     setChoices(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.choices) : {})
     setEdits(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.edits) : {})
-    if (prevAccount) setNotice('Bu ekstre daha önce yüklenip yarım bırakılmış; verdiğin kararlar geri getirildi.')
+    if (prevAccount) setNotice(prev?.committedAt
+      ? (statementKind(st) === 'period' ? 'Bu dönem içi liste daha önce yüklenip onaylanmış;' : 'Bu ekstre daha önce yüklenip onaylanmış;') + ' girilen kayıtlar “Zaten sistemde” görünür, verdiğin kararlar geri getirildi.'
+      : 'Bu ekstre daha önce yüklenip yarım bırakılmış; verdiğin kararlar geri getirildi.')
     setStep('preview')
   }
 
@@ -381,7 +387,17 @@ export function StatementImport() {
       const cal = applyCalendar ? calendarFor(statement, accountId) : null
       await localBatch([...res.ops, ...(cal?.ops ?? [])])
       rememberSkipped(accountId, res.skippedKeys)
-      if (draftId) removeDraft(draftId)
+      // Onaylanan ekstre silinmez: "Yüklenen Ekstreler"de dönemiyle birlikte kalır
+      const drafts = useStatementDraftsStore.getState()
+      const draftBefore = draftId ? drafts.get(draftId) : undefined
+      if (draftId) {
+        const review = fresh.rows.filter(r => r.status === 'review')
+        drafts.save({
+          id: draftId, workspaceId: draftWs !== undefined ? draftWs : workspaceId, fileName, statement, accountId, choices, edits,
+          progress: { review: review.length, pending: review.filter(r => selectedOption(r, choices) === null).length, create: res.createdTxIds.length },
+        })
+        drafts.markCommitted(draftId, res.createdTxIds)
+      }
       await Promise.all([
         useTransactionStore.getState().load(), usePeopleStore.getState().load(),
         ...(cal?.ops.length ? [useAccountStore.getState().load(), usePaymentsStore.getState().load()] : []),
@@ -391,6 +407,7 @@ export function StatementImport() {
         calendar: cal?.changes.length ?? 0,
         created: res.createdTxIds.length, people: res.createdPeople.length, deleted: res.deletedTxIds.length,
         patched: res.patchedTxIds.length, undo: [...res.undo, ...(cal?.undo ?? [])], skippedKeys: res.skippedKeys, accountId, undone: false,
+        draftId, draftBefore,
       })
       setStep('done')
     } catch (err) {
@@ -406,6 +423,8 @@ export function StatementImport() {
     try {
       await localBatch(done.undo)
       forgetSkipped(done.accountId, done.skippedKeys)
+      // Ekstre onaydan önceki haline döner (yarım kalan taslak olarak)
+      if (done.draftId) useStatementDraftsStore.getState().restore(done.draftId, done.draftBefore)
       await Promise.all([
         useTransactionStore.getState().load(), usePeopleStore.getState().load(),
         ...(done.calendar ? [useAccountStore.getState().load(), usePaymentsStore.getState().load()] : []),
@@ -459,6 +478,12 @@ export function StatementImport() {
             <span className="text-primary font-medium">Devam et →</span>
           </Link>
         )}
+        {committedCount > 0 && step === 'upload' && (
+          <Link href="/ekstre-yukle/yuklenenler" className="rounded-xl border border-border bg-card px-4 py-3 text-sm flex items-center justify-between gap-3 hover:bg-muted/40 transition-colors">
+            <span><span className="font-semibold tabular-nums">{committedCount}</span> yüklenmiş ekstre</span>
+            <span className="text-primary font-medium">İşlemleri gör →</span>
+          </Link>
+        )}
         {notice && <div className="text-xs font-medium px-4 py-2.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400">{notice}</div>}
         {error && <div className="text-xs text-destructive font-medium px-4 py-2.5 bg-destructive/10 rounded-xl">{error}</div>}
       </div>
@@ -498,6 +523,9 @@ export function StatementImport() {
         <div className="flex gap-2 flex-wrap justify-center">
           {!done.undone && <Button variant="secondary" onClick={handleUndo} loading={undoing} className="rounded-xl">Geri al</Button>}
           <Button variant="outline" onClick={reset} className="rounded-xl">Başka ekstre yükle</Button>
+          {!done.undone && done.draftId && (
+            <Link href={`/ekstre-yukle/yuklenenler?ekstre=${done.draftId}`} className={buttonVariants({ variant: 'outline', className: 'rounded-xl' })}>Ekstrenin işlemleri</Link>
+          )}
           {account && <Link href={`/accounts/${account.id}`} className={buttonVariants({ className: 'rounded-xl' })}>{account.name}</Link>}
         </div>
       </div>

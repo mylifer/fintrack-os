@@ -4,6 +4,7 @@ import type { Account, Category, Transaction } from '@/types'
 import type { StatementLine } from './statement'
 import { merchantKey, nameInText } from './merchant'
 import { applyUserRulesToRows } from './user-rules'
+import { nameScore, SURE } from './merchant-match'
 import { txIdFromSeed, type Action, type DraftTx, type ImportPlan, type PlanInput, type PlanRow, type RowKind, type RowOption } from './classify'
 
 /* ── Vadesiz hesap dökümünü sistemle karşılaştırma ───────────────────────────
@@ -326,7 +327,18 @@ export function buildAccountPlan(input: PlanInput): ImportPlan {
     .map(p => ({ p, key: alnum(p.name) }))
     .filter(r => r.key.length >= 4)
     .sort((a, b) => b.key.length - a.key.length)
-  const recipientFor = (name: string) => recipients.find(r => nameInText(r.p.name, name) || nameInText(name, r.p.name))?.p
+  // Önce ad metinde kelime olarak geçiyor mu; yoksa kesik/bitişik yazıma toleranslı
+  // benzerlik (yalnız emin olunan: "MEHMET SELMAN MALKO" ~ "Mehmet Selman Malkoç")
+  const recipientFor = (name: string) => {
+    const exact = recipients.find(r => nameInText(r.p.name, name) || nameInText(name, r.p.name))?.p
+    if (exact) return exact
+    let best: { p: (typeof recipients)[number]['p']; score: number } | undefined
+    for (const r of recipients) {
+      const score = Math.max(nameScore(r.p.name, name), nameScore(name, r.p.name))
+      if (score >= SURE && (!best || score > best.score)) best = { p: r.p, score }
+    }
+    return best?.p
+  }
   const catByName = (name: string, scope: Category['scope']) =>
     input.categories.find(c => !c.isArchived && c.scope === scope && foldText(c.name) === foldText(name))?.id
   const personByName = (name: string) => input.people.find(p => p.role === 'recipient' && !p.deleted_at && foldText(p.name) === foldText(name))?.id
