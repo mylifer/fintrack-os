@@ -152,6 +152,8 @@ export function buildCommit(input: CommitInput): CommitResult {
   const ops: BatchOp[] = []
   const undo: BatchOp[] = []
   const createdTxIds: string[] = []
+  /** İade → bağlandığı alım; alım ne sistemde ne bu onayda varsa kayıt yapılmaz */
+  const refundLinks: { rowKey: string; id: string }[] = []
   const createdPeople: Person[] = []
   const deleted = new Set<string>()
   const patched = new Map<string, Partial<Transaction>>()
@@ -190,6 +192,7 @@ export function buildCommit(input: CommitInput): CommitResult {
       problems.push({ rowKey, message: 'İadenin bağlanacağı alım seçilmedi' })
       return
     }
+    if (d.refundOfId) refundLinks.push({ rowKey, id: d.refundOfId })
     if (d.type !== 'transfer' && !d.categoryId) {
       problems.push({ rowKey, message: 'Kategori seçilmedi' })
       return
@@ -274,6 +277,11 @@ export function buildCommit(input: CommitInput): CommitResult {
     if ((row.status === 'review' || row.status === 'new') && chosen && chosen.actions.length === 0) skippedKeys.push(row.stableKey)
     for (const a of chosen?.actions ?? []) run(row.key, a, input.edits[row.key])
     for (const a of row.sideEffects) run(row.key, a, undefined)
+  }
+  for (const r of refundLinks) {
+    if (!input.existing.has(r.id) && !createdTxIds.includes(r.id)) {
+      problems.push({ rowKey: r.rowKey, message: 'Bağlanan alım bu onayda girilmiyor; önce o alımı girin ya da başka bir alım seçin' })
+    }
   }
 
   // Yeni alıcılar işlemlerden ÖNCE (yabancı anahtar sırası)

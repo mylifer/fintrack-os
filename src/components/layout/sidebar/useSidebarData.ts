@@ -1,5 +1,6 @@
 'use client'
 
+import { rowInWorkspace } from '@/lib/workspace-context'
 import { useEffect, useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { useShallow } from 'zustand/react/shallow'
@@ -40,7 +41,7 @@ export function useSidebarData() {
 
   // Yarım kalan ekstreler (bu cihazdaki taslaklar, aktif çalışma alanı)
   const activeWorkspace = useWorkspaceStore(s => s.activeId)
-  const draftCount = useStatementDraftsStore(s => s.drafts.filter(d => d.workspaceId === activeWorkspace).length)
+  const draftCount = useStatementDraftsStore(s => s.drafts.filter(d => !activeWorkspace || rowInWorkspace(d, activeWorkspace)).length)
   useEffect(() => { useStatementDraftsStore.getState().load() }, [])
 
   // Ödeme Takibi rozeti: gecikmiş ya da son günü bugün olan kart/borç ödemesi.

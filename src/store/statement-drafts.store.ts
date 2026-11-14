@@ -47,8 +47,12 @@ export interface StatementDraft {
   updatedAt: string
 }
 
-export function draftIdFor(st: ParsedStatement): string {
-  return deterministicUuid(`stmt-draft:${st.bank}:${st.statementDate}:${st.account?.iban ?? st.cards.join(',')}:${st.summary?.debt ?? st.check.expected}`)
+/** Taslak kimliği ekstreden ve çalışma alanından türetilir: aynı ekstre iki
+ *  alanda yüklenirse taslakları birbirinin üzerine yazmaz. `workspaceId`
+ *  verilmezse eski (alansız) kimlik döner — önceki taslaklar böyle bulunur. */
+export function draftIdFor(st: ParsedStatement, workspaceId?: string | null): string {
+  const base = `stmt-draft:${st.bank}:${st.statementDate}:${st.account?.iban ?? st.cards.join(',')}:${st.summary?.debt ?? st.check.expected}`
+  return deterministicUuid(workspaceId ? `${base}:ws:${workspaceId}` : base)
 }
 
 function read(): StatementDraft[] {

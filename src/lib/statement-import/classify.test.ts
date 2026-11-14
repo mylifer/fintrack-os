@@ -511,3 +511,30 @@ describe('abonelik öğrenimi', () => {
     expect(draftTags(plan([line({ description: 'NETFLIX.COM', amount: 229.99, date: '2026-10-10' })], hist))).toBeUndefined()
   })
 })
+
+describe('iade adayları: aynı ekstredeki alımlar', () => {
+  const ys = (amount: number, date: string) => line({ description: 'YEMEKSEPETIPAY/YEMEKSEPISTANBUL', amount, date })
+
+  it('aynı gün aynı işyerinden alımlar aday olur; en yakın tarih önce', () => {
+    const p = plan([ys(1329.52, '2026-10-24'), ys(1265.73, '2026-10-24'), ys(476.15, '2026-10-20'), ys(-143.98, '2026-10-24')], [])
+    const r = p.rows.find(x => x.kind === 'refund')!
+    const c = r.refundLink!.candidates
+    expect(c.map(x => [x.amount, x.fromStatement])).toEqual([[1329.52, true], [1265.73, true], [476.15, true]])
+    expect(r.options.map(o => o.key)[0]).toBe('link')
+  })
+
+  it('bağlanan ekstre alımı da girilirse kayıt olur; alım "Girme" ile atlanırsa uyarı verir', () => {
+    const p = plan([ys(1329.52, '2026-10-24'), ys(-143.98, '2026-10-24')], [])
+    const buy = p.rows.find(x => x.kind !== 'refund')!
+    const ref = p.rows.find(x => x.kind === 'refund')!
+    const patch = { ...ref.refundLink!.candidates[0].patch, categoryId: 'c-food' }
+    const pick = (o: string) => buy.options.findIndex(x => x.key === o)
+    expect(buy.recipientId).toBe('p-ys')   // "Yemeksepeti" alıcısı tanınır: satır doğrudan "Gir"
+    const ok = commit(p, [], { [buy.key]: pick('create'), [ref.key]: 0 }, { [buy.key]: { categoryId: 'c-food' }, [ref.key]: patch })
+    expect(ok.problems).toEqual([])
+    const made = created(ok.ops)
+    expect(made.find(t => t.amount < 0)!.refundOfId).toBe(made.find(t => t.amount > 0)!.id)
+    const bad = commit(p, [], { [buy.key]: pick('skip'), [ref.key]: 0 }, { [ref.key]: patch })
+    expect(bad.problems.map(x => x.message)).toEqual(['Bağlanan alım bu onayda girilmiyor; önce o alımı girin ya da başka bir alım seçin'])
+  })
+})

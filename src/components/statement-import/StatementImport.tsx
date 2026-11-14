@@ -10,6 +10,7 @@ import { useAccountStore, useCategoryStore, usePaymentsStore, usePeopleStore, us
 import { planIdFor } from '@/lib/payments/ids'
 import { cardCalendarUpdate, type CalendarUpdate } from '@/lib/statement-import/card-calendar'
 import { draftIdFor, useStatementDraftsStore } from '@/store/statement-drafts.store'
+import { rowInWorkspace } from '@/lib/workspace-context'
 import { localBatch, lastPullWasAuthoritative } from '@/lib/sync/engine'
 import { foldText } from '@/lib/auto-category'
 import { cn } from '@/lib/utils'
@@ -48,6 +49,22 @@ const planSignature = (p: ImportPlan) => p.rows.map(r => `${r.stableKey}:${r.sta
 const accountFits = (a: { type: string; isArchived?: boolean }, st: ParsedStatement | null) =>
   !a.isArchived && (!st || st.type === 'credit_card' ? a.type === 'credit_card' : a.type !== 'credit_card')
 
+/** Çalışma alanının adı (bildirimlerde) */
+function wsName(id: string | null | undefined): string {
+  const ws = useWorkspaceStore.getState().workspaces
+  return (id ? ws.find(w => w.id === id) : ws.find(w => w.isDefault))?.name ?? 'başka bir'
+}
+
+/** Hesap önerisi: kayıtlarıyla en çok eşleşen hesap (kart ekstresinde kart,
+ *  vadesiz dökümde kart dışı hesap); eşitlikte adı bankayı içeren */
+function bestAccount(st: ParsedStatement, plan: (st: ParsedStatement, accId: string) => ImportPlan | null) {
+  const scored = useAccountStore.getState().accounts
+    .filter(a => !a.isArchived && accountFits(a, st))
+    .map(a => ({ id: a.id, name: a.name, matched: plan(st, a.id)?.matchedLines ?? 0, byName: foldText(a.name).includes(st.bank) }))
+  scored.sort((x, y) => (y.matched - x.matched) || (Number(y.byName) - Number(x.byName)))
+  return scored[0] ?? null
+}
+
 export function StatementImport() {
   const accounts     = useAccountStore(s => s.accounts)
   const transactions = useTransactionStore(s => s.transactions)
@@ -71,6 +88,8 @@ export function StatementImport() {
   const [undoing, setUndoing]       = useState(false)
   const [offlineOk, setOfflineOk]   = useState(false)
   const [draftId, setDraftId]       = useState<string | null>(null)
+  /** Açık ekstrenin ait olduğu çalışma alanı (açıldığı ya da yüklendiği an) */
+  const [draftWs, setDraftWs]       = useState<string | null | undefined>(undefined)
   const [applyCalendar, setApplyCalendar] = useState(true)
   const [closedSections, setClosedSections] = useState<Record<string, boolean>>({ exists: true, info: true })
   const [highlightKey, setHighlightKey] = useState<string | null>(null)
@@ -85,7 +104,7 @@ export function StatementImport() {
   const saveDraft    = useStatementDraftsStore(s => s.save)
   const removeDraft  = useStatementDraftsStore(s => s.remove)
   useEffect(() => { useStatementDraftsStore.getState().load() }, [])
-  const draftCount = drafts.filter(d => d.workspaceId === workspaceId).length
+  const draftCount = drafts.filter(d => !workspaceId || rowInWorkspace(d, workspaceId)).length
 
   const candidates = useMemo(() => accounts.filter(a => accountFits(a, statement)), [accounts, statement])
   const account = accounts.find(a => a.id === accountId)
@@ -151,21 +170,18 @@ export function StatementImport() {
       const st = isPdf
         ? parseStatement(await readPdfPages(await file.arrayBuffer()))
         : parseScreenshot(await readImageText(file))
-      // Hesap önerisi: kayıtlarıyla en çok eşleşen hesap (kart ekstresinde kart,
-      // vadesiz dökümde kart dışı hesap); eşitlikte adı bankayı içeren
-      let best: { id: string; matched: number; byName: boolean } | null = null
-      for (const a of useAccountStore.getState().accounts.filter(x => accountFits(x, st))) {
-        const p = makePlan(st, a.id)
-        const byName = foldText(a.name).includes(st.bank)
-        const matched = p?.matchedLines ?? 0
-        if (!best || matched > best.matched || (matched === best.matched && byName && !best.byName)) best = { id: a.id, matched, byName }
-      }
-      const id = draftIdFor(st)
-      const prev = useStatementDraftsStore.getState().get(id)
+      const best = bestAccount(st, makePlan)
+      // Bu alanın taslağı; yoksa eski (alansız) kimlikle kaydedilmiş ve bu alana ait olan
+      const drafts = useStatementDraftsStore.getState()
+      const legacy = drafts.get(draftIdFor(st))
+      const own = drafts.get(draftIdFor(st, workspaceId))
+      const prev = own ?? (legacy && (!workspaceId || rowInWorkspace(legacy, workspaceId)) ? legacy : undefined)
+      const id = prev?.id ?? draftIdFor(st, workspaceId)
       const prevAccount = prev && useAccountStore.getState().accounts.some(a => a.id === prev.accountId) ? prev.accountId : null
       setStatement(st)
       setFileName(file.name)
       setDraftId(id)
+      setDraftWs(workspaceId)
       setAccountId(prevAccount ?? best?.id ?? '')
       setSuggested(best && best.matched > 0 ? { id: best.id, matched: best.matched } : null)
       // Ekstre yeniden okununca satırlar değişmiş olabilir (okuyucu düzeltmesi):
@@ -184,7 +200,7 @@ export function StatementImport() {
 
   function reset() {
     setStep('upload'); setStatement(null); setFileName(''); setAccountId(''); setChoices({}); setEdits({})
-    setError(''); setNotice(''); setDone(null); setOpenKey(null); setOfflineOk(false); setDraftId(null)
+    setError(''); setNotice(''); setDone(null); setOpenKey(null); setOfflineOk(false); setDraftId(null); setDraftWs(undefined)
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -198,6 +214,12 @@ export function StatementImport() {
     const d = useStatementDraftsStore.getState().get(id)
     setNotice('')
     if (!d) { setError('Bu taslak bulunamadı (silinmiş ya da başka bir cihazda kalmış olabilir).'); return }
+    // Başka alanın taslağı bu alanın hesaplarıyla açılamaz
+    const active = useWorkspaceStore.getState().activeId
+    if (active && !rowInWorkspace(d, active)) {
+      setError(`Bu yarım kalan ekstre “${wsName(d.workspaceId)}” alanına ait. Devam etmek için o alana geçin.`)
+      return
+    }
     setError('')
     // Hesap (henüz) bulunamasa da taslağın hesabı ve kararları korunur: hesaplar
     // sonradan gelirse liste kendiliğinden kurulur; kararlar sessizce atılmaz
@@ -205,13 +227,19 @@ export function StatementImport() {
     setStatement(d.statement)
     setFileName(d.fileName)
     setDraftId(d.id)
-    setAccountId(d.accountId)
+    setDraftWs(d.workspaceId ?? null)
+    // Hesap bulunamazsa ekstreye en uygun hesap seçilir (yüklemedeki öneriyle aynı);
+    // aynı ekstrenin satırları olduğu için kararlar geçerli kalır
+    const fallback = accountOk ? null : bestAccount(d.statement, makePlan)
+    setAccountId(accountOk ? d.accountId : fallback?.id ?? d.accountId)
     setSuggested(null)
     setChoices(d.choices)
     setEdits(d.edits)
-    if (!accountOk) setNotice('Bu taslağın hesabı bulunamadı. Listeyi görmek için yukarıdan hesabı seçin; verdiğin kararlar korunuyor.')
+    if (!accountOk) setNotice(fallback
+      ? `Bu taslağın kayıtlı hesabı bulunamadı; ekstreye en uygun hesap “${fallback.name}” seçildi. Doğru değilse yukarıdan değiştirin; verdiğin kararlar korunuyor.`
+      : 'Bu taslağın hesabı bulunamadı. Listeyi görmek için yukarıdan hesabı seçin; verdiğin kararlar korunuyor.')
     setStep('preview')
-  }, [])
+  }, [makePlan])
 
   // /ekstre-yukle?taslak=<id> → taslağı aç, adres çubuğunu temizle
   const draftParam = searchParams.get('taslak')
@@ -222,10 +250,26 @@ export function StatementImport() {
     void openDraft(draftParam)
   }, [draftParam, openDraft, router])
 
+  // Alan değişince açık ekstre kapanır: o alanın hesaplarıyla eşleştirilemez,
+  // taslağı da öbür alana taşınmamalı. Taslak yerinde kalır; o alana dönünce açılır.
+  // Alan henüz yüklenmemişken (activeId null) bir şey yapılmaz: ilk yüklemede
+  // null → gerçek alan geçişi bir alan değişikliği değildir.
+  useEffect(() => {
+    if (step !== 'preview' || draftWs === undefined || !workspaceId) return
+    if (rowInWorkspace({ workspaceId: draftWs }, workspaceId)) return
+    const name = wsName(draftWs)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- bilinçli: çalışma alanı (dış durum) değişince açık ekstre kapatılır
+    reset()
+    setNotice(`Çalışma alanı değişti. Açık ekstre “${name}” alanına ait; o alana dönünce Yarım Kalanlar'dan kaldığın yerden devam edebilirsin.`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnız alan değişince
+  }, [workspaceId])
+
   // Önizlemedeki her değişiklik taslağa yazılır; içerik değişmediyse yazılmaz
   const lastSaved = useRef('')
   useEffect(() => {
     if (step !== 'preview' || !statement || !draftId || !plan || !preview) return
+    // Taslak yalnız ait olduğu alanda yazılır (alan değişirken öbür alana taşınmasın)
+    if (draftWs !== undefined && workspaceId && !rowInWorkspace({ workspaceId: draftWs }, workspaceId)) return
     const review = plan.rows.filter(r => r.status === 'review')
     const progress = {
       review: review.length,
@@ -236,7 +280,7 @@ export function StatementImport() {
     if (sig === lastSaved.current) return
     lastSaved.current = sig
     saveDraft({ id: draftId, workspaceId, fileName, statement, accountId, choices, edits, progress })
-  }, [step, statement, draftId, accountId, choices, edits, fileName, plan, preview, workspaceId, saveDraft])
+  }, [step, statement, draftId, draftWs, accountId, choices, edits, fileName, plan, preview, workspaceId, saveDraft])
 
   // ── Onay ─────────────────────────────────────────────────────────────────
   const authoritative = lastPullWasAuthoritative('transactions')
@@ -346,6 +390,7 @@ export function StatementImport() {
             <span className="text-primary font-medium">Devam et →</span>
           </Link>
         )}
+        {notice && <div className="text-xs font-medium px-4 py-2.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400">{notice}</div>}
         {error && <div className="text-xs text-destructive font-medium px-4 py-2.5 bg-destructive/10 rounded-xl">{error}</div>}
       </div>
     )
