@@ -629,3 +629,190 @@ do $$ begin
   end if;
 end $$;
 \echo ok - restore_user_backup: editörün geri yüklemesi paylaşılan alandaki sahip verisine dokunmaz
+
+-- ============================================================================
+-- 6. Salt okuma üyesi (0028): okur, hiçbir paylaşılan tabloya yazamaz
+-- ============================================================================
+\set E '''eeeeeeee-0000-0000-0000-00000000000e'''
+\set asE 'set local role authenticated; set local request.jwt.claim.sub = ' :E '; set local request.jwt.claims = ''{"email":"e@test","aal":"aal1"}'';'
+insert into auth.users values (:E, 'e@test');
+
+-- Geçersiz rolle davet reddedilir
+begin; :asA
+do $$ begin
+  perform public.create_workspace_invite('wsA-aile', 'owner');
+  raise exception 'viewer: owner rolüyle davet oluşturulabildi';
+exception when invalid_parameter_value then null;
+end $$;
+select public.create_workspace_invite('wsA-aile', 'viewer') as token_v \gset
+commit;
+begin; :asE
+select public.accept_workspace_invite(:'token_v') \gset
+commit;
+do $$ begin
+  if (select role from workspace_members where workspace_id = 'wsA-aile' and user_id = 'eeeeeeee-0000-0000-0000-00000000000e') <> 'viewer' then
+    raise exception 'viewer: salt okuma davetiyle katılan üye salt okuma değil';
+  end if;
+end $$;
+\echo ok - viewer: davet rolü seçilir, kabul edilen üyelik davetin rolünü alır
+
+begin; :asE
+do $$
+declare n int;
+begin
+  if not exists (select 1 from transactions where id = 's1') or not exists (select 1 from workspaces where id = 'wsA-aile')
+     or not exists (select 1 from transaction_rules where id = 'kr1') then
+    raise exception 'viewer: salt okuma üyesi paylaşılan alanı göremiyor';
+  end if;
+  update transactions set amount = 0, "updatedAt" = '2099-01-01T00:00:00.000Z' where id = 's1';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'viewer: salt okuma üyesi satırı UPDATE edebildi'; end if;
+  delete from transactions where id = 's1';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'viewer: salt okuma üyesi satırı silebildi'; end if;
+end $$;
+-- İstemcinin itişi (upsert) — sessiz 0 satır değil, HATA
+do $$ begin
+  insert into transactions (id, user_id, type, amount, currency, date, "accountId", description, "isInstallment", "createdAt", "updatedAt", deleted_at, "workspaceId")
+  values ('s1', auth.uid(), 'expense', 0, 'TRY', '2026-10-05', 'a1', 'viewer', false, '2026-10-05', '2099-01-01T00:00:00.000Z', '2099-01-01T00:00:00Z', 'wsA-aile')
+  on conflict (id) do update set amount = excluded.amount, user_id = excluded.user_id,
+    "updatedAt" = excluded."updatedAt", deleted_at = excluded.deleted_at;
+  raise exception 'viewer: salt okuma üyesi upsert (tombstone) ile satırı ezebildi';
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  insert into transactions (id, user_id, type, amount, currency, date, "accountId", description, "isInstallment", "createdAt", "workspaceId")
+  values ('v1', auth.uid(), 'expense', 1, 'TRY', '2026-10-07', 'a1', 'viewer ekledi', false, '2026-10-07', 'wsA-aile');
+  raise exception 'viewer: salt okuma üyesi alana işlem ekleyebildi';
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  insert into transaction_rules (id, user_id, pattern, "matchKind", "sortOrder", "isActive", "workspaceId")
+  values ('vr1', auth.uid(), 'x', 'contains', 1, true, 'wsA-aile');
+  raise exception 'viewer: salt okuma üyesi alana kural (0025) ekleyebildi';
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  insert into budgets (id, user_id, "categoryId", amount, period, rollover, "alertThreshold", "workspaceId")
+  values ('vb1', auth.uid(), '__total__', 1000, 'total', false, 80, 'wsA-aile');
+  raise exception 'viewer: salt okuma üyesi alana bütçe ekleyebildi';
+exception when insufficient_privilege then null;
+end $$;
+-- Kendi kişisel alanına yazmak serbest
+insert into workspaces (id, user_id, name, "isDefault", "createdAt") values ('wsE-genel', auth.uid(), 'Genel', true, '2026-01-01');
+insert into transactions (id, user_id, type, amount, currency, date, "accountId", description, "isInstallment", "createdAt", "workspaceId")
+values ('e1', auth.uid(), 'expense', 3, 'TRY', '2026-10-07', 'e-hesap', 'kendi alanım', false, '2026-10-07', 'wsE-genel');
+commit;
+do $$ begin
+  if (select amount from transactions where id = 's1') <> 45 or (select deleted_at from transactions where id = 's1') is not null then
+    raise exception 'viewer: salt okuma üyesinin isteği satırı değiştirdi';
+  end if;
+  if exists (select 1 from transactions where id = 'v1') or exists (select 1 from transaction_rules where id = 'vr1')
+     or exists (select 1 from budgets where id = 'vb1') then
+    raise exception 'viewer: reddedilen satır yine de yazıldı';
+  end if;
+  if not exists (select 1 from transactions where id = 'e1') then
+    raise exception 'viewer: salt okuma üyesi kendi alanına yazamadı';
+  end if;
+end $$;
+\echo ok - viewer: paylaşılan alanı okur; ekleyemez, düzenleyemez, silemez, upsert edemez; kendi alanına yazar
+
+-- Kapsam şemadan türetilir: set_workspace_owner taşıyan HER tabloda 3 kilit.
+-- (run.sh / sync-rules.sh 0021 ve 0025'i 0028'den SONRA yeniden çalıştırır —
+-- 0025 transaction_rules politikalarını tamamen silip yeniden kurar; olay
+-- tetikleyicisi kilidi geri getirmiş olmalı.)
+do $$
+declare missing text;
+begin
+  select string_agg(c.relname || ':' || k, ',') into missing
+    from pg_trigger g join pg_class c on c.oid = g.tgrelid
+    cross join unnest(array['_viewer_no_insert', '_viewer_no_update', '_viewer_no_delete']) k
+   where c.relnamespace = 'public'::regnamespace and g.tgname = 'set_workspace_owner'
+     and not exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname
+                      and p.policyname = c.relname || k and p.permissive = 'RESTRICTIVE');
+  if missing is not null then raise exception 'viewer: salt okuma kilidi eksik: %', missing; end if;
+  if (select count(*) from pg_trigger where tgname = 'set_workspace_owner') < 12 then
+    raise exception 'viewer: beklenenden az paylaşılan tablo';
+  end if;
+end $$;
+-- Gelecekteki paylaşılan tablo: set_workspace_owner kurulunca kilit kendiliğinden gelir
+create table public._viewer_probe (id text primary key, user_id uuid, "workspaceId" text);
+create trigger set_workspace_owner before insert or update on public._viewer_probe
+  for each row execute function public.set_workspace_owner();
+do $$ begin
+  if (select count(*) from pg_policies where tablename = '_viewer_probe' and policyname like '%\_viewer\_no\_%') <> 3 then
+    raise exception 'viewer: yeni paylaşılan tabloya salt okuma kilidi kendiliğinden kurulmadı';
+  end if;
+end $$;
+drop table public._viewer_probe;
+\echo ok - viewer: kilit paylaşılan her tabloda (0025 yeniden çalıştırılsa ve yeni tablo eklense de)
+
+-- Rol değişimi: yalnız sahip, yalnız editör ↔ salt okuma
+begin; :asB
+do $$ begin
+  perform public.set_workspace_member_role('wsA-aile', 'eeeeeeee-0000-0000-0000-00000000000e', 'editor');
+  raise exception 'viewer: editör başka üyenin rolünü değiştirebildi';
+exception when insufficient_privilege then null;
+end $$;
+commit;
+begin; :asE
+do $$ begin
+  perform public.set_workspace_member_role('wsA-aile', 'eeeeeeee-0000-0000-0000-00000000000e', 'editor');
+  raise exception 'viewer: salt okuma üyesi kendini editör yapabildi';
+exception when insufficient_privilege then null;
+end $$;
+commit;
+begin; :asA
+do $$ begin
+  perform public.set_workspace_member_role('wsA-aile', 'aaaaaaaa-0000-0000-0000-00000000000a', 'viewer');
+  raise exception 'viewer: sahip kendi rolünü düşürebildi';
+exception when invalid_parameter_value then null;
+end $$;
+do $$ begin perform public.set_workspace_member_role('wsA-aile', 'eeeeeeee-0000-0000-0000-00000000000e', 'editor'); end $$;
+commit;
+begin; :asE
+update transactions set amount = 46, "updatedAt" = '2026-10-08T10:00:00.000Z' where id = 's1';
+commit;
+do $$ begin
+  if (select amount from transactions where id = 's1') <> 46 then raise exception 'viewer: editöre yükseltilen üye yazamadı'; end if;
+end $$;
+begin; :asA
+do $$ begin perform public.set_workspace_member_role('wsA-aile', 'eeeeeeee-0000-0000-0000-00000000000e', 'viewer'); end $$;
+commit;
+begin; :asE
+do $$ begin
+  insert into transactions (id, user_id, type, amount, currency, date, "accountId", description, "isInstallment", "createdAt", "updatedAt", "workspaceId")
+  values ('s1', auth.uid(), 'expense', 0, 'TRY', '2026-10-05', 'a1', 'geri düştü', false, '2026-10-05', '2099-01-01T00:00:00.000Z', 'wsA-aile')
+  on conflict (id) do update set amount = excluded.amount, user_id = excluded.user_id, "updatedAt" = excluded."updatedAt";
+  raise exception 'viewer: salt okumaya düşürülen üye hâlâ yazabiliyor';
+exception when insufficient_privilege then null;
+end $$;
+commit;
+do $$ begin
+  if (select amount from transactions where id = 's1') <> 46 then raise exception 'viewer: düşürülen üyenin yazması satırı değiştirdi'; end if;
+end $$;
+\echo ok - viewer: sahip rolü değiştirir (editör/salt okuma); editör ve üye değiştiremez
+
+-- Var olan editör salt okuma davetini açarsa rolü davetinkine çekilir
+-- (0021'in eski accept_workspace_invite'ı da olsa — apply_invite_role)
+begin; :asA
+select public.create_workspace_invite('wsA-aile', 'viewer') as token_v2 \gset
+commit;
+begin; :asB
+select public.accept_workspace_invite(:'token_v2') \gset
+commit;
+do $$ begin
+  if (select role from workspace_members where workspace_id = 'wsA-aile' and user_id = 'bbbbbbbb-0000-0000-0000-00000000000b') <> 'viewer' then
+    raise exception 'viewer: salt okuma davetini açan editörün rolü değişmedi';
+  end if;
+end $$;
+-- Eski istemcinin tek argümanlı daveti editör üretir
+begin; :asA
+select public.create_workspace_invite('wsA-aile') as token_ed \gset
+commit;
+do $$ begin
+  if (select role from workspace_invites where accepted_at is null order by created_at desc limit 1) <> 'editor' then
+    raise exception 'viewer: tek argümanlı davet editör üretmiyor';
+  end if;
+end $$;
+\echo ok - viewer: davet rolü kabulde uygulanır; tek argümanlı (eski) davet editördür

@@ -8,7 +8,11 @@ import { isLive } from './tombstone'
 import { sanitizeIdRefs } from './sanitize'
 import { useSyncStatusStore } from '@/store/sync-status.store'
 import type { OutboxEntry } from '@/types'
-import { getActiveWorkspaceId, getMemberWorkspaceIds, setMemberWorkspaceIds, rowInActiveWorkspace } from '@/lib/workspace-context'
+import {
+  getActiveWorkspaceId, getMemberWorkspaceIds, setMemberWorkspaceIds, rowInActiveWorkspace,
+  getReadOnlyWorkspaceIds, setReadOnlyWorkspaceIds,
+} from '@/lib/workspace-context'
+import { blockedWorkspace, ReadOnlyWorkspaceError } from '@/lib/workspace-permissions'
 
 /* ────────────────────────────────────────────────────────────────────────
    Sync Engine — P0 remediation for offline data-loss (C1 / C2 / C6)
@@ -168,6 +172,34 @@ function nullifyPatch(patch: Record<string, unknown>): Record<string, unknown> {
   return out
 }
 
+/* ── Salt okuma kilidi (0028) ─────────────────────────────────────────────
+   TEK MERKEZ: aşağıdaki yerel yazma primitive'lerinin (localUpsert,
+   localBulkUpsert, localPatch, localPatchMany, localBatch; softDelete* bunların
+   üzerinden) her biri, dokunduğu satırın alanı salt okuma ise yazmayı Dexie
+   transaction'ı İÇİNDE reddeder: transaction geri alınır, ne yerel tablo ne
+   outbox değişir — sunucunun zaten reddedeceği yazma kuyruğa hiç girmez.
+   Kontrol edilen alanlar: yeni satırın alanı, satırın ÖNCEKİ alanı ve yamada
+   "workspaceId" varsa hedef alan (salt okuma alanından/alanına taşıma da
+   yazmadır). `workspaces` tablosu muaf: alan satırını zaten yalnız sahibi
+   düzenler (0021), üye için kural sunucuda.
+   Kullanıcı bildirimi burada verilir; çağıran store hatayı yakalamasa da
+   bildirim görünür, hata kaydına (error_logs) düşmez. Asıl kilit sunucuda
+   (0028 RESTRICTIVE politikaları) — bu katman yalnız kullanıcı deneyimi ve
+   outbox hijyeni içindir. */
+function assertWritable(table: SyncTable, touched: Array<string | null | undefined>): void {
+  if (table === 'workspaces') return
+  const blocked = blockedWorkspace(touched, getReadOnlyWorkspaceIds())
+  if (blocked === null) return
+  const err = new ReadOnlyWorkspaceError(blocked)
+  useSyncStatusStore.getState().notify(err.message)
+  throw err
+}
+
+type WsRow = { workspaceId?: string | null } | undefined
+const wsOf = (r: unknown): string | null | undefined => (r as WsRow)?.workspaceId
+const patchWs = (patch: Record<string, unknown>): string | null | undefined =>
+  'workspaceId' in patch ? (patch.workspaceId as string | null | undefined) : undefined
+
 /* ── Enqueue (must run inside an active Dexie rw transaction) ───────────── */
 
 // Resolve the current session uid to tag onto an outbox entry. MUST be called
@@ -207,6 +239,7 @@ export async function localUpsert<T extends { id: string }>(table: SyncTable, en
   await db.transaction('rw', t, db._outbox, async () => {
     const prev = await t.get(entity.id) as { updatedAt?: unknown } | undefined
     const stamped = stampTime(stampWorkspace(table, entity), stampAfter(prev?.updatedAt, ts))
+    assertWritable(table, [wsOf(stamped), wsOf(prev)])
     await t.put(stamped)
     await putOutbox(table, stamped, ownerId)
   })
@@ -223,7 +256,9 @@ export async function localBulkUpsert<T extends { id: string }>(table: SyncTable
     const stamped = []
     for (const e of entities) {
       const prev = await t.get(e.id) as { updatedAt?: unknown } | undefined
-      stamped.push(stampTime(stampWorkspace(table, e), stampAfter(prev?.updatedAt, ts)))
+      const row = stampTime(stampWorkspace(table, e), stampAfter(prev?.updatedAt, ts))
+      assertWritable(table, [wsOf(row), wsOf(prev)])
+      stamped.push(row)
     }
     await t.bulkPut(stamped)
     for (const e of stamped) await putOutbox(table, e, ownerId)
@@ -239,6 +274,7 @@ export async function localPatch(table: SyncTable, id: string, patch: Record<str
   const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
     const prev = await t.get(id) as { updatedAt?: unknown } | undefined
+    assertWritable(table, [wsOf(prev), patchWs(norm)])
     await t.update(id, stampTime(norm, stampAfter(prev?.updatedAt, ts)))
     const full = await t.get(id)
     if (full) await putOutbox(table, full, ownerId)
@@ -256,6 +292,7 @@ export async function localPatchMany(table: SyncTable, ids: string[], patch: Rec
   await db.transaction('rw', t, db._outbox, async () => {
     // Satır başına damga (her satırın son damgası farklı olabilir)
     const before = await t.where('id').anyOf(ids).toArray() as Array<{ id: string; updatedAt?: unknown }>
+    if (before.length) assertWritable(table, [...before.map(wsOf), patchWs(norm)])
     for (const r of before) await t.update(r.id, stampTime(norm, stampAfter(r.updatedAt, ts)))
     const rows = await t.where('id').anyOf(ids).toArray()
     for (const r of rows) await putOutbox(table, r, ownerId)
@@ -294,6 +331,23 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
   const ownerId = await currentOwnerId()   // capture before the tx (see currentOwnerId)
   const ts = now()
   await db.transaction('rw', [...involved], async () => {
+    // Salt okuma kilidi (0028) HİÇBİR yazmadan önce, tüm işlemler için: tek
+    // bir işlem bile salt okuma alanına dokunuyorsa toplu işlemin tamamı
+    // reddedilir (ör. alanlar arası transferin karşı bacağı). Küme boşsa —
+    // paylaşımsız kullanıcıların tamamı — ek okuma yapılmaz.
+    if (getReadOnlyWorkspaceIds().length > 0) {
+      for (const op of ops) {
+        const t = DEXIE[op.table]
+        if (op.kind === 'upsert') {
+          assertWritable(op.table, [wsOf(stampWorkspace(op.table, op.entity)), wsOf(await t.get(op.entity.id))])
+        } else if (op.kind === 'patch') {
+          assertWritable(op.table, [wsOf(await t.get(op.id)), patchWs(op.patch)])
+        } else if (op.ids.length) {
+          const before = await t.where('id').anyOf(op.ids).toArray()
+          assertWritable(op.table, [...before.map(wsOf), patchWs(op.patch)])
+        }
+      }
+    }
     for (const op of ops) {
       const t = DEXIE[op.table]
       if (op.kind === 'upsert') {
@@ -553,6 +607,7 @@ export async function guardUserSwitch(): Promise<void> {
     // "artık sizinle paylaşılmıyor" bildirimi gösterir; çevrimdışıysa çekiş
     // filtresi de eski kullanıcının alanlarını sorar.
     setMemberWorkspaceIds([])
+    setReadOnlyWorkspaceIds([])
   }
 
   try { localStorage.setItem(LAST_UID_KEY, uid) } catch { /* storage kapalı */ }
@@ -594,6 +649,31 @@ export async function purgeWorkspacesLocal(workspaceIds: string[]): Promise<numb
     if (stale.length) await db._outbox.bulkDelete(stale.map(e => e.id))
   })
   return removed
+}
+
+/* ── Salt okumaya düşen alanın bekleyen yazmaları (0028) ─────────────────
+   Editörken çevrimdışı yapılmış ama rol salt okumaya çekildikten sonra hâlâ
+   kuyrukta duran yazmalar sunucuda kalıcı olarak reddedilir (42501) ve
+   dead-letter'da senkron uyarısı olarak takılı kalırdı. Bunlar düşürülür;
+   yerel satırları da silinir ki sıradaki çekiş bulut sürümünü geri getirsin
+   (bulutta hiç olmayan yerel ekleme de böylece kaybolur — o alana yazma
+   yetkisi yok). Yalnız üyelik listesi buluttan EKSİKSİZ okunduğunda çağrılır
+   (workspace.store syncSharing). Düşürülen yazma sayısını döner. */
+export async function dropReadOnlyPending(workspaceIds: string[]): Promise<number> {
+  if (!workspaceIds.length) return 0
+  const ids = new Set(workspaceIds)
+  const pending = (await db._outbox.toArray()).filter(e =>
+    e.table !== 'workspaces' && ids.has(String((e.snapshot as { workspaceId?: string }).workspaceId)))
+  if (pending.length === 0) return 0
+  const tables = [...new Set(pending.map(e => e.table))].filter(isSyncTable)
+  await db.transaction('rw', [...tables.map(t => DEXIE[t]), db._outbox], async () => {
+    for (const e of pending) {
+      if (isSyncTable(e.table)) await DEXIE[e.table].delete(e.entityId)
+      await db._outbox.delete(e.id)
+    }
+  })
+  void refreshSyncStatus()
+  return pending.length
 }
 
 /* ── Reconciling pull (C2) + pagination (C6) ───────────────────────────── */
@@ -761,7 +841,11 @@ export async function reconcilingPull<T>(table: SyncTable): Promise<T[]> {
       if (lr && isLocalNewer(table, row as unknown as Record<string, unknown>, lr, fetchStartedAt)) continue
       await t.put(row as unknown as { id: string })
     }
+    const readOnly = table === 'workspaces' ? [] : getReadOnlyWorkspaceIds()
     for (const lr of localRows) {
+      // Salt okuma alanının (0028) satırı buluta itilemez — sunucu reddeder ve
+      // kuyruk tıkanırdı. Bu satırlar yalnız buluttan gelir; yoksa kuyruğa alınmaz.
+      if (blockedWorkspace([lr.workspaceId], readOnly) !== null) continue
       // Çekiş sürerken push'u biten satır bulutta artık var; bu kümede yok diye kuyruğa alınmaz
       if (!cloudIds.has(lr.id) && !pending.has(lr.id) && (ackedAt.get(`${table}:${lr.id}`) ?? 0) < fetchStartedAt) {
         await putOutbox(table, lr, ownerId)              // push failed/never ran — retry it

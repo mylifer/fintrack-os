@@ -83,3 +83,35 @@ export function setMemberWorkspaceIds(ids: string[]): void {
   if (typeof window === 'undefined') return
   try { localStorage.setItem(MEMBER_KEY, JSON.stringify(memberWorkspaceIds)) } catch { /* storage kapalı */ }
 }
+
+/* ── Salt okuma alanları (0028) ───────────────────────────────────────────
+   "viewer" rolüyle üyesi olduğum alanlar. Yerel yazma katmanı (sync/engine)
+   bu kümedeki alana dokunan her yazmayı outbox'a girmeden reddeder. Üyelik
+   listesiyle aynı desen: çevrimdışı açılışta da bilinsin diye localStorage'da,
+   çıkışta clearLocalData ile silinir. Sunucu 0028'siz ise küme boş kalır
+   (rol yok → herkes editör, eskisi gibi). */
+
+const READONLY_KEY = 'fintrack.readOnlyWorkspaceIds'
+let readOnlyWorkspaceIds: string[] | null = null
+
+export function getReadOnlyWorkspaceIds(): string[] {
+  if (readOnlyWorkspaceIds) return readOnlyWorkspaceIds
+  if (typeof window === 'undefined') return []
+  try {
+    const parsed = JSON.parse(localStorage.getItem(READONLY_KEY) ?? '[]')
+    readOnlyWorkspaceIds = Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    readOnlyWorkspaceIds = []
+  }
+  return readOnlyWorkspaceIds
+}
+
+export function setReadOnlyWorkspaceIds(ids: string[]): void {
+  readOnlyWorkspaceIds = [...new Set(ids)].sort()
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem(READONLY_KEY, JSON.stringify(readOnlyWorkspaceIds)) } catch { /* storage kapalı */ }
+}
+
+export function isWorkspaceReadOnly(id: string | null | undefined): boolean {
+  return !!id && getReadOnlyWorkspaceIds().includes(id)
+}

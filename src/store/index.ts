@@ -22,7 +22,7 @@ export { useNotificationsStore } from './notifications.store'
 
 export { useSettingsStore } from './settings.store'
 
-export { useWorkspaceStore } from './workspace.store'
+export { useWorkspaceStore, selectActiveReadOnly } from './workspace.store'
 
 export { usePaymentsStore } from './payments.store'
 

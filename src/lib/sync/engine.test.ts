@@ -148,9 +148,9 @@ vi.mock('@/store/sync-status.store', () => ({
 const {
   localUpsert, localPatch, localPatchMany, localBulkUpsert, localBatch,
   softDelete, flushOutbox, reconcilingPull, pendingCount, retryDeadLetters,
-  MAX_SYNC_ATTEMPTS, lastPullWasAuthoritative, purgeWorkspacesLocal, stampAfter,
+  MAX_SYNC_ATTEMPTS, lastPullWasAuthoritative, purgeWorkspacesLocal, stampAfter, dropReadOnlyPending,
 } = await import('./engine')
-const { setMemberWorkspaceIds } = await import('@/lib/workspace-context')
+const { setMemberWorkspaceIds, setReadOnlyWorkspaceIds, setActiveWorkspaceId } = await import('@/lib/workspace-context')
 
 const outbox = tables._outbox
 const txTable = tables.transactions
@@ -169,6 +169,8 @@ beforeEach(() => {
   upsertImpl = async () => ({ error: null })
   selectImpl = async () => ({ data: [], error: null })
   setMemberWorkspaceIds([])
+  setReadOnlyWorkspaceIds([])
+  setActiveWorkspaceId(null)
 })
 
 /* ── Yerel mutasyon primitive'leri ──────────────────────────────────────── */
@@ -260,6 +262,83 @@ describe('localUpsert / localPatch — varlık + outbox aynı anda', () => {
 
   it('var olmayan kaydı patch\'lemek kuyruğa girdi eklemez', async () => {
     await localPatch('transactions', 'yok', { amount: 1 })
+    expect(await pendingCount()).toBe(0)
+  })
+})
+
+/* ── Salt okuma kilidi (0028) ───────────────────────────────────────────── */
+
+describe('salt okuma alanı — yazma yerel katmanda reddedilir', () => {
+  const RO = 'ws-ro'
+
+  it('salt okuma alanına yeni kayıt: hata, bildirim; ne tablo ne outbox değişir', async () => {
+    setReadOnlyWorkspaceIds([RO])
+    setActiveWorkspaceId(RO)
+    await expect(localUpsert('transactions', tx('t1'))).rejects.toMatchObject({ name: 'ReadOnlyWorkspaceError' })
+    expect(await txTable.get('t1')).toBeUndefined()
+    expect(await pendingCount()).toBe(0)
+    expect(notifications.some(n => /salt okuma/.test(n))).toBe(true)
+  })
+
+  it('salt okuma alanındaki satırı düzenleme/silme reddedilir (localPatch, softDelete, localPatchMany)', async () => {
+    await txTable.put(tx('t1', { workspaceId: RO }))
+    await txTable.put(tx('t2', { workspaceId: RO }))
+    setReadOnlyWorkspaceIds([RO])
+    await expect(localPatch('transactions', 't1', { amount: 1 })).rejects.toThrow(/salt okuma/)
+    await expect(softDelete('transactions', 't1')).rejects.toThrow(/salt okuma/)
+    await expect(localPatchMany('transactions', ['t1', 't2'], { deleted_at: 'x' })).rejects.toThrow(/salt okuma/)
+    expect((await txTable.get('t1'))!.amount).toBe(250)
+    expect((await txTable.get('t1'))!.deleted_at).toBeUndefined()
+    expect(await pendingCount()).toBe(0)
+  })
+
+  it('kendi alanından salt okuma alanına taşıma da yazmadır', async () => {
+    await txTable.put(tx('t1', { workspaceId: 'ws-me' }))
+    setReadOnlyWorkspaceIds([RO])
+    await expect(localPatch('transactions', 't1', { workspaceId: RO })).rejects.toThrow(/salt okuma/)
+    await expect(localUpsert('transactions', tx('t1', { workspaceId: RO }))).rejects.toThrow(/salt okuma/)
+    expect((await txTable.get('t1'))!.workspaceId).toBe('ws-me')
+  })
+
+  it('localBatch: tek işlem salt okuma alanına dokunsa TAMAMI reddedilir (önce doğrulanır)', async () => {
+    await txTable.put(tx('t-ro', { workspaceId: RO }))
+    setReadOnlyWorkspaceIds([RO])
+    await expect(localBatch([
+      { kind: 'upsert', table: 'transactions', entity: tx('t-me', { workspaceId: 'ws-me' }) },
+      { kind: 'patch', table: 'transactions', id: 't-ro', patch: { amount: 1 } },
+    ])).rejects.toThrow(/salt okuma/)
+    expect(await txTable.get('t-me')).toBeUndefined()
+    expect(await pendingCount()).toBe(0)
+  })
+
+  it('kendi alanlarına ve eski (workspaceId\'siz) satırlara yazma serbest', async () => {
+    setReadOnlyWorkspaceIds([RO])
+    setActiveWorkspaceId('ws-me')
+    await localUpsert('transactions', tx('t1'))
+    await localBulkUpsert('transactions', [tx('t2', { workspaceId: null })])
+    await localBatch([{ kind: 'patch', table: 'transactions', id: 't1', patch: { amount: 5 } }])
+    expect(await pendingCount()).toBe(2)
+  })
+
+  it('workspaces tablosu kilitten muaf (alan satırı kuralı sunucuda, 0021)', async () => {
+    setReadOnlyWorkspaceIds([RO])
+    await localUpsert('workspaces', { id: RO, name: 'Aile', isDefault: false, createdAt: '2026-01-01' })
+    expect(await pendingCount()).toBe(1)
+  })
+
+  it('dropReadOnlyPending salt okumaya düşen alanın bekleyen yazmalarını ve yerel satırlarını düşürür', async () => {
+    await localUpsert('transactions', tx('t-ro', { workspaceId: RO }))
+    await localUpsert('transactions', tx('t-me', { workspaceId: 'ws-me' }))
+    expect(await dropReadOnlyPending([RO])).toBe(1)
+    expect(await txTable.get('t-ro')).toBeUndefined()
+    expect((await outbox.toArray()).map(e => e.id)).toEqual(['transactions:t-me'])
+  })
+
+  it('çekiş, salt okuma alanının bulutta olmayan yerel satırını buluta GERİ İTMEZ', async () => {
+    await txTable.put(tx('t-ro', { workspaceId: RO }))
+    setReadOnlyWorkspaceIds([RO])
+    setMemberWorkspaceIds([RO])
+    await reconcilingPull('transactions')
     expect(await pendingCount()).toBe(0)
   })
 })
