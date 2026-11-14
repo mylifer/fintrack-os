@@ -611,6 +611,20 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     ]
   }
   const keep: RowOption = { key: 'keep', label: 'Sistemdeki kayıt kalsın', actions: [] }
+  /** Yeni alıcı önerilen satırda adı benzeyen kayıtlı alıcılar: "“X” ile gir".
+   *  Kategori, kural vermediyse alıcının geçmişinden gelir. */
+  const similarOptions = (draft: DraftTx, l: StatementLine): RowOption[] =>
+    rules.similar(l.description).map(p => ({
+      key: `create-sim:${p.id}`,
+      label: `“${p.name}” ile gir`,
+      actions: [{ type: 'create', draft: {
+        ...draft, newRecipient: undefined, recipientId: p.id,
+        categoryId: draft.categoryId ?? recipientCategory(p.id, 'expense', live as Transaction[], input.categories as Category[]),
+      } }],
+    }))
+  const similarNote = (opts: RowOption[]) => opts.length
+    ? ` Benzer kayıtlı alıcı${opts.length > 1 ? 'lar' : ''}: ${opts.map(o => o.label.replace(/ ile gir$/, '')).join(', ')} — aynı yerse onu seç.`
+    : ''
 
   // 3a) Taksitli iptal / taksitli iade kümeleri (alım hesabın açılışından sonra)
   {
@@ -898,14 +912,16 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
           })
           continue
         }
+        const sims = isNew ? similarOptions(draft, l) : []
         rows.push({
           ...base, ...rb, status: isNew ? 'review' : 'new', kind: 'installment-new', title,
           newRecipient: isNew,
-          issue: isNew ? 'Yeni alıcı · yeni taksitli alım' : undefined,
+          issue: isNew ? (sims.length ? 'Yeni alıcı mı? · yeni taksitli alım' : 'Yeni alıcı · yeni taksitli alım') : undefined,
           reason: `Yeni taksitli alım: ${inst.count} taksit oluşturulur (toplam ${fmtTr(inst.total)} ₺; bankanın bölüşümüyle ilk taksit ${fmtTr(amounts[0])} ₺, diğerleri ${fmtTr(amounts[1] ?? amounts[0])} ₺). ` +
-            (isNew ? `Bu işyeri daha önce hiç geçmemiş; önerilen yeni alıcı “${prettyMerchant(l.description)}”.` : ruleReason(l, rule)),
+            (isNew ? `Bu işyeri daha önce hiç geçmemiş; önerilen yeni alıcı “${prettyMerchant(l.description)}”.${similarNote(sims)}` : ruleReason(l, rule)),
           options: isNew
             ? [{ key: 'create-new', label: 'Yeni alıcıyla gir', actions: [{ type: 'create', draft: { ...draft, newRecipient: prettyMerchant(l.description), description: draft.description } }] },
+               ...sims,
                { key: 'create', label: 'Alıcısız gir', actions: [{ type: 'create', draft }] }, skip,
                // Sonda: kayıtlı kararlar seçenek sırasıyla tutulur, eski indeksler kaymasın
                { key: 'create-existing', label: 'Var olan alıcıyla gir', actions: [{ type: 'create', draft: { ...draft, needsRecipient: true } }] }]
@@ -1130,13 +1146,15 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     }
     if (!rule?.recipientId) {
       const suggested = prettyMerchant(l.description)
+      const sims = similarOptions({ ...draft, description: suggested }, l)
       rows.push({
         ...base, ...rb, status: 'review', kind: 'unknown', title: suggested, newRecipient: true,
         recipientName: suggested,
-        issue: 'Yeni alıcı',
-        reason: `Bu işyeri daha önce hiç geçmemiş. Önerilen yeni alıcı: “${suggested}”${rb.categoryId ? `, kategori ${catPath(rb.categoryId)}${rule?.categoryFrom === 'bank' ? ` (bankanın “${l.bankCategory}” etiketinden)` : ''}` : '; kategori seçmen gerekiyor'}. Onaylarsan bir dahaki ekstrede kendiliğinden tanınır.`,
+        issue: sims.length ? 'Yeni alıcı mı?' : 'Yeni alıcı',
+        reason: `Bu işyeri daha önce hiç geçmemiş. Önerilen yeni alıcı: “${suggested}”${rb.categoryId ? `, kategori ${catPath(rb.categoryId)}${rule?.categoryFrom === 'bank' ? ` (bankanın “${l.bankCategory}” etiketinden)` : ''}` : '; kategori seçmen gerekiyor'}.${similarNote(sims)} Onaylarsan bir dahaki ekstrede kendiliğinden tanınır.`,
         options: [
           { key: 'create-new', label: 'Yeni alıcıyla gir', actions: [{ type: 'create', draft: { ...draft, newRecipient: suggested, description: suggested } }] },
+          ...sims,
           { key: 'create', label: 'Alıcısız gir', actions: [{ type: 'create', draft: { ...draft, description: suggested } }] },
           skip,
           // Sonda: kayıtlı kararlar seçenek sırasıyla tutulur, eski indeksler kaymasın

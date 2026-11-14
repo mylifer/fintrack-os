@@ -376,6 +376,28 @@ describe('akıllı alıcı ve kategori eşleştirme', () => {
     expect(r.title).toBe('iTC')   // ürün açıklaması şubeye taşınmaz
   })
 
+  it('yeni alıcı önerilen satırda benzer kayıtlı alıcılar da seçenek olur', () => {
+    const uni: Person = { id: 'p-uni', name: 'Universal Veteriner', role: 'recipient', createdAt: '' }
+    const hist = [tx({ id: 'h1', amount: 900, date: '2026-08-01', recipientId: 'p-uni', categoryId: 'c-pet', description: 'Aşı' })]
+    const p = plan([line({ description: 'VET HAST UNİVERSAL FATİH', amount: 450 })], hist, { people: [...more, uni], categories: cats })
+    const r = p.rows[0]
+    expect([r.status, r.kind, r.issue]).toEqual(['review', 'unknown', 'Yeni alıcı mı?'])
+    expect(r.options.map(o => o.key)).toEqual(['create-new', 'create-sim:p-uni', 'create', 'skip', 'create-existing'])
+    expect(r.options[1].label).toBe('“Universal Veteriner” ile gir')
+    expect(r.reason).toContain('Universal Veteriner')
+    const ok = commit(p, hist, { [r.key]: 1 })
+    expect(ok.problems).toEqual([])
+    expect(ok.createdPeople).toEqual([])
+    expect(created(ok.ops)[0]).toMatchObject({ recipientId: 'p-uni', categoryId: 'c-pet' })
+  })
+
+  it('3 harfli alıcı adı işyerinin ilk kelimesiyle birebir tutar', () => {
+    const bim: Person = { id: 'p-bim', name: 'BİM', role: 'recipient', createdAt: '' }
+    const p = plan([line({ description: 'BIM BIRLESIK MAGAZALAR A.S.', amount: 210 }), line({ description: 'ABIMS DUKKAN', amount: 50, date: '2026-10-11' })], [], { people: [...more, bim], categories: cats })
+    expect(p.rows[0].recipientId).toBe('p-bim')
+    expect(p.rows[1].recipientId).toBeUndefined()
+  })
+
   it('emin olunamayan benzerlik sorulur: önerilen alıcı, yeni alıcı, girme, başka alıcı', () => {
     const p = p2([line({ description: 'HEPSİPAY-HEP*HEPSİBURADA', amount: 325.12 })], [])
     const r = p.rows[0]

@@ -7,7 +7,7 @@ import { IconFileTypePdf, IconTrash } from '@tabler/icons-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAccountStore, useWorkspaceStore } from '@/store'
-import { useStatementDraftsStore } from '@/store/statement-drafts.store'
+import { isCommitted, useStatementDraftsStore } from '@/store/statement-drafts.store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
@@ -30,7 +30,7 @@ export function StatementDrafts() {
   // Başka cihazda başlanan ya da bitirilen ekstreler için bulutla eşitle
   useEffect(() => { const s = useStatementDraftsStore.getState(); s.load(); void s.sync() }, [])
 
-  const drafts = allDrafts.filter(d => !workspaceId || rowInWorkspace(d, workspaceId))
+  const drafts = allDrafts.filter(d => !isCommitted(d) && (!workspaceId || rowInWorkspace(d, workspaceId)))
 
   if (!drafts.length) {
     return (
@@ -48,7 +48,7 @@ export function StatementDrafts() {
     <div className="max-w-3xl mx-auto w-full flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
         Onaylanmamış ekstreler. Açtığında satırlar o anki kayıtlarınla yeniden karşılaştırılır; verdiğin kararlar korunur.
-        Taslaklar yalnız bu cihazda saklanır.
+        Onayladığın ekstreler <Link href="/ekstre-yukle/yuklenenler" className="text-primary underline-offset-2 hover:underline">Yüklenen Ekstreler</Link>&apos;de.
       </p>
       {drafts.map(d => {
         const st = d.statement

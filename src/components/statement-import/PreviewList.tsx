@@ -141,10 +141,19 @@ export function PreviewList(props: ListProps) {
     if (noParty(r)) return null
     const edit = edits[r.key]
     const pickedExisting = edit?.recipientId !== undefined
+    // Seçili kararın gireceği kayıt ("“X” ile gir" seçildiyse alıcı X olur)
+    const si = selectedOption(r, choices)
+    const creates = si !== null ? r.options[si]?.actions.filter(a => a.type === 'create') ?? [] : []
+    const draft = creates.length === 1 && creates[0].type === 'create' ? creates[0].draft : undefined
     const person: Person | undefined = pickedExisting
       ? (edit.recipientId ? personById.get(edit.recipientId) : undefined)
-      : (r.recipientId ? personById.get(r.recipientId) : undefined)
-    const newName = !pickedExisting && r.newRecipient ? (edit?.newRecipient ?? r.recipientName) : undefined
+      : draft
+        ? (!draft.newRecipient && draft.recipientId ? personById.get(draft.recipientId) : undefined)
+        : (r.recipientId ? personById.get(r.recipientId) : undefined)
+    const newName = pickedExisting ? undefined
+      : edit?.newRecipient !== undefined ? edit.newRecipient
+      : draft ? draft.newRecipient
+      : r.newRecipient ? r.recipientName : undefined
     if (person) return <span className="inline-flex items-center gap-1.5 min-w-0"><PersonAvatar person={person} size="xs" /><span className="truncate">{person.name}</span></span>
     if (newName) {
       return (

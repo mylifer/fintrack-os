@@ -181,7 +181,7 @@ export function SidebarRefined() {
                   <div key={item.href} className={subWrap}>
                     <Link href={item.href} className={subItemCls(subActive, true)}>
                       <span className="flex-1">{item.label}</span>
-                      {draftCount > 0 && (
+                      {item.badge === 'drafts' && draftCount > 0 && (
                         <span title="Onaylanmamış ekstre" className="text-[10.5px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-500 leading-none flex-shrink-0">{draftCount}</span>
                       )}
                     </Link>

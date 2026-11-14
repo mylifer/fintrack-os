@@ -23,6 +23,8 @@ interface Props {
   placeholder?: string
   /** Aramada sonuç yoksa "yeni ekle" satırı gösterir; yeni kişinin id'sini döndürmeli. */
   onCreate?: (name: string) => Promise<string | null>
+  /** Aramada benzer sonuçlar olsa da (adı birebir aynı olan yoksa) "… ekle" satırı gösterilir. */
+  createAlongsideResults?: boolean
 }
 
 // react-remove-scroll in Dialog calls preventDefault() on wheel events for
@@ -33,7 +35,7 @@ function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
   el.scrollTop += e.deltaY
 }
 
-export function PersonSelect({ people, value, onChange, placeholder, onCreate }: Props) {
+export function PersonSelect({ people, value, onChange, placeholder, onCreate, createAlongsideResults }: Props) {
   const [open,     setOpen]     = useState(false)
   const [query,    setQuery]    = useState('')
   const [creating, setCreating] = useState(false)
@@ -47,6 +49,12 @@ export function PersonSelect({ people, value, onChange, placeholder, onCreate }:
     if (!tokens.length) return people
     return people.filter(p => matchesTokens(p.name, tokens))
   }, [query, people])
+
+  const exactMatch = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase('tr')
+    return !!q && people.some(p => p.name.trim().toLocaleLowerCase('tr') === q)
+  }, [query, people])
+  const offerCreateBelow = !!createAlongsideResults && !!onCreate && !!query.trim() && results.length > 0 && !exactMatch
 
   function select(id: string | undefined) {
     onChange(id); setOpen(false); setQuery('')
@@ -157,6 +165,19 @@ export function PersonSelect({ people, value, onChange, placeholder, onCreate }:
                   <span className="flex-1 truncate">{p.name}</span>
                 </div>
               ))
+            )}
+            {offerCreateBelow && (
+              <button
+                type="button"
+                disabled={creating}
+                onClick={createFromQuery}
+                className={cn(ITEM_DEF, 'mt-1 border-t border-border/60 rounded-none pt-2 text-primary disabled:opacity-50')}
+              >
+                <PlusIcon className="size-3.5 shrink-0" />
+                <span className="flex-1 truncate text-left">
+                  {creating ? 'Ekleniyor...' : <>&ldquo;{query.trim()}&rdquo; adıyla yeni ekle</>}
+                </span>
+              </button>
             )}
           </div>
         </Popover.Content>

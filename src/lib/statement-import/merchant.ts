@@ -162,6 +162,17 @@ function ruleFromHistory(txs: readonly Tx[], people: ReadonlyMap<string, Person>
 export interface RuleBook {
   /** `bankCategory`: bankanın satıra yazdığı kategori ("Market", "Yeme / İçme") */
   ruleFor(description: string, bankCategory?: string | null): MerchantRule | undefined
+  /** Yeni alıcı önerilecek işyeri için adı benzeyen kayıtlı alıcılar (en benzeri
+   *  önce): kullanıcı kopya alıcı açmadan önce bunları seçebilsin. */
+  similar(description: string, limit?: number): Person[]
+}
+
+/** Bu puanın üstündeki alıcılar "benzer alıcı" olarak seçenek listesine girer. */
+const SIMILAR = 0.5
+
+/** 3 harfli alıcı adı ("BİM", "ŞOK") yalnız işyeri metninin ilk kelimesiyle birebir tutar. */
+function shortNameMatch(key: string, description: string): boolean {
+  return key.length === 3 && merchantCore(description).tokens[0] === key
 }
 
 /** Kural kitabı. `extra`: bu ekstrede eşleşen (henüz merchant'ı yazılmamış)
@@ -187,7 +198,7 @@ export function buildRuleBook(opts: {
   const recipients = opts.people
     .filter(p => p.role === 'recipient' && !p.isArchived && !p.deleted_at)
     .map(p => ({ p, key: alnum(p.name) }))
-    .filter(r => r.key.length >= 4)
+    .filter(r => r.key.length >= 3)
     .sort((a, b) => b.key.length - a.key.length)
 
   // Marka → o markanın geçmiş harcamaları ("ikea" → IKEA-KARTAL, IKEA-ÜMRANİYE …)
@@ -246,7 +257,7 @@ export function buildRuleBook(opts: {
       // 2) Alıcı adı işyeri metninde (kesik/bitişik yazıma toleranslı)
       let best: { p: Person; score: number } | undefined
       for (const r of recipients) {
-        const score = nameInText(r.p.name, description) ? 1 : nameScore(r.p.name, description)
+        const score = nameInText(r.p.name, description) || shortNameMatch(r.key, description) ? 1 : nameScore(r.p.name, description)
         if (score >= MAYBE && (!best || score > best.score || (score === best.score && r.key.length > alnum(best.p.name).length))) best = { p: r.p, score }
       }
       if (best && best.score >= SURE) return withCategory(recipientRule(best.p, 'sure'), description, bankLabel)
@@ -275,6 +286,23 @@ export function buildRuleBook(opts: {
       const fb = fallbackCategory(description, bankLabel)
       if (fb) return { ...fb, categorySure: false, count: 0, source: fb.categoryFrom, confidence: 'sure' }
       return undefined
+    },
+    similar(description, limit = 3) {
+      const brand = brandOf(description)
+      const scored: { p: Person; score: number }[] = []
+      for (const r of recipients) {
+        let score = nameInText(r.p.name, description) || shortNameMatch(r.key, description) ? 1 : nameScore(r.p.name, description)
+        // Ad markayla başlıyor ama metinde başka kelimeler var ("Migros Jet" ~ "MIGROS 5M")
+        if (score < SIMILAR && brand && brand.length >= 4 && brandOf(r.p.name) === brand) score = SIMILAR
+        if (score >= SIMILAR) scored.push({ p: r.p, score })
+      }
+      // Aynı markanın geçmişindeki alıcılar da aday ("IKEA-KARTAL" → IKEA alımlarının alıcısı)
+      const fam = brand ? byBrand.get(brand) : undefined
+      for (const t of fam?.txs ?? []) {
+        const p = t.recipientId ? peopleById.get(t.recipientId) : undefined
+        if (p && p.role === 'recipient' && !p.isArchived && !p.deleted_at && !scored.some(x => x.p.id === p.id)) scored.push({ p, score: 0.6 })
+      }
+      return scored.sort((a, b) => b.score - a.score || a.p.name.localeCompare(b.p.name, 'tr')).slice(0, limit).map(x => x.p)
     },
   }
 }
