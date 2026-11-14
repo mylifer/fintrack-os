@@ -69,7 +69,7 @@ vi.mock('@/store/workspace.store', () => ({
 const { useTransactionStore } = await import('@/store/transactions.store')
 const { useDebtStore } = await import('@/store/debts.store')
 const { useUndoStore } = await import('@/store/undo.store')
-const { deleteDebtWithTransactions } = await import('./debt-actions')
+const { debtDeletionPlan, deleteDebtWithTransactions } = await import('./debt-actions')
 
 function debt(p: Partial<Debt> = {}): Debt {
   return {
@@ -223,5 +223,34 @@ describe('deleteDebtWithTransactions — alanlar arası borç ödemesi', () => {
     batches.length = 0
     await useUndoStore.getState().toasts.at(-1)!.undo()
     expect(batches[0].find(o => o.table === 'debts' && o.id === 'diger')).toMatchObject({ patch: { paidAmount: 2_000, paidInstallments: 1 } })
+  })
+})
+
+describe('debtDeletionPlan — onay penceresi ile silme aynı kümeyi görür', () => {
+  const out = () => tx({ id: 'kaynak-gider', workspaceId: 'ws-a', accountId: 'kaynak', amount: 1_500, workspaceTransferId: 'L' })
+  const inc = () => tx({ id: 'hedef-giris', type: 'income', accountId: 'ara', amount: 1_500, workspaceTransferId: 'L' })
+  const pay = () => tx({ id: 'hedef-odeme', type: 'transfer', accountId: 'ara', amount: 1_500, debtId: 'borc', workspaceTransferId: 'L' })
+
+  it('başka alandaki karşı bacağı sayar ve ayrıca bildirir', async () => {
+    seed([principal(), inc(), pay(), other()])
+    dexieTransactions.push(out())
+    const plan = await debtDeletionPlan(debt())
+    expect(plan.transactions.map(t => t.id).sort()).toEqual(['anapara', 'hedef-giris', 'hedef-odeme', 'kaynak-gider'])
+    expect(plan.otherWorkspaceCount).toBe(1)
+  })
+
+  it('pencerede gösterilen küme silinen kümeyle birebir aynı', async () => {
+    seed([principal(), pay1(), inc(), pay()])
+    dexieTransactions.push(out())
+    const plan = await debtDeletionPlan(debt())
+    await deleteDebtWithTransactions(debt())
+    const tomb = batches[0].find(o => o.kind === 'patchMany')!
+    expect([...tomb.ids!].sort()).toEqual(plan.transactions.map(t => t.id).sort())
+  })
+
+  it('tüm bağlı işlemler aktif alandaysa başka alan sayısı 0', async () => {
+    seed([principal(), pay1()])
+    expect(await debtDeletionPlan(debt())).toMatchObject({ otherWorkspaceCount: 0 })
+    expect((await debtDeletionPlan(debt())).transactions).toHaveLength(2)
   })
 })

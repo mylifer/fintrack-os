@@ -19,8 +19,8 @@ import { parseCurrencyInput } from '@/lib/utils/currency'
 import { toBaseTry, fromBaseTry } from '@/lib/utils/fx'
 import type { Account, Debt, DebtType, DebtDirection, DebtWithRemaining, Transaction } from '@/types'
 import { enrichDebt, DEBT_COLLECTION_ICON } from '@/lib/utils/calculations'
-import { debtPrincipalDescription, findDebtPrincipalTx, debtLinkedTransactions } from '@/lib/utils/debt-links'
-import { deleteDebtWithTransactions } from '@/lib/debt-actions'
+import { debtPrincipalDescription, findDebtPrincipalTx } from '@/lib/utils/debt-links'
+import { debtDeletionPlan, deleteDebtWithTransactions, type DebtDeletionPlan } from '@/lib/debt-actions'
 import { useShallow } from 'zustand/react/shallow'
 
 const PencilIcon = () => (
@@ -74,13 +74,20 @@ function TxDeleteDialog({ tx, onDelete }: { tx: Transaction; onDelete: () => voi
 // Borç silme onayı — işlem silmeyle aynı desen. Eskiden çöp kutusu tek tıkla
 // siliyordu (yalnız 6 sn'lik geri al); borç Net Varlık'tan düştüğü için
 // kazara silme sayfadaki toplamları sessizce değiştiriyordu.
-function DebtDeleteDialog({ debt, linkedCount, onDelete }: {
+function DebtDeleteDialog({ debt, onDelete }: {
   debt: Debt
-  linkedCount: number
   onDelete: () => void
 }) {
+  // Sayı, silmenin kullandığı debtDeletionPlan'dan gelir (başka alandaki
+  // transfer karşı bacakları dahil) — pencere ile silinen küme ayrışamaz.
+  // Hesaplanana kadar "Sil" kapalı: kullanıcı uyarıyı görmeden onaylamasın.
+  const [plan, setPlan] = useState<DebtDeletionPlan | null>(null)
+  const linkedCount = plan?.transactions.length ?? 0
   return (
-    <AlertDialog.Root>
+    <AlertDialog.Root onOpenChange={open => {
+      setPlan(null)
+      if (open) void debtDeletionPlan(debt).then(setPlan)
+    }}>
       <AlertDialog.Trigger asChild>
         <button
           className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
@@ -104,8 +111,9 @@ function DebtDeleteDialog({ debt, linkedCount, onDelete }: {
           </AlertDialog.Description>
           {linkedCount > 0 && (
             <div role="alert" className="mb-5 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-foreground">
-              Bu borca bağlı <span className="font-semibold">{linkedCount} işlem</span> de silinecek (anapara ve ödemeler),
-              hesap bakiyeleri buna göre değişecek. Emin misiniz?
+              Bu borca bağlı <span className="font-semibold">{linkedCount} işlem</span> de silinecek (anapara ve ödemeler).
+              {plan!.otherWorkspaceCount > 0 && <> Bunlardan {plan!.otherWorkspaceCount} tanesi başka çalışma alanında.</>}
+              {' '}Hesap bakiyeleri buna göre değişecek. Emin misiniz?
             </div>
           )}
           <div className="flex justify-end gap-2">
@@ -113,7 +121,7 @@ function DebtDeleteDialog({ debt, linkedCount, onDelete }: {
               <button className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-accent transition-colors">İptal</button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
-              <button onClick={onDelete} className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors">Sil</button>
+              <button onClick={onDelete} disabled={!plan} className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50 transition-colors">Sil</button>
             </AlertDialog.Action>
           </div>
         </AlertDialog.Content>
@@ -540,7 +548,6 @@ export default function DebtsPage() {
             </button>
             <DebtDeleteDialog
               debt={debt}
-              linkedCount={debtLinkedTransactions(debt, transactions).length}
               onDelete={() => { void deleteDebtWithTransactions(debt) }}
             />
           </div>

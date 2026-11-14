@@ -46,10 +46,28 @@ function byNewest(a: Transaction, b: Transaction): number {
   return b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)
 }
 
-export async function deleteDebtWithTransactions(debt: Debt): Promise<void> {
-  const linked = debtLinkedTransactions(debt, useTransactionStore.getState().transactions.filter(isLive))
+export interface DebtDeletionPlan {
+  /** Silinecek TÜM işlemler: bağlı satırlar + transfer karşı bacakları. */
+  transactions: Transaction[]
+  /** Bunlardan aktif çalışma alanında (bellekte) OLMAYANLAR. */
+  otherWorkspaceCount: number
+}
+
+/** Silme ile onay penceresinin ORTAK kaynağı — pencerede gösterilen sayı ile
+ *  gerçekte silinen küme ayrışamasın. */
+export async function debtDeletionPlan(debt: Debt): Promise<DebtDeletionPlan> {
+  const inMemory = useTransactionStore.getState().transactions.filter(isLive)
+  const linked = debtLinkedTransactions(debt, inMemory)
   const peers = await findTransferPeers(linked)
-  const all = [...linked, ...peers]
+  const memIds = new Set(inMemory.map(t => t.id))
+  return {
+    transactions: [...linked, ...peers],
+    otherWorkspaceCount: peers.filter(p => !memIds.has(p.id)).length,
+  }
+}
+
+export async function deleteDebtWithTransactions(debt: Debt): Promise<void> {
+  const { transactions: all } = await debtDeletionPlan(debt)
   const ids = all.map(t => t.id)
 
   // Başka borçlara ait ödemeler (yalnız karşı bacaklarda olabilir)
@@ -87,9 +105,4 @@ export async function deleteDebtWithTransactions(debt: Debt): Promise<void> {
     useTransactionStore.setState({ transactions: next })
     useAccountStore.getState().recomputeBalances(next)
   })
-}
-
-/** Silme penceresinde gösterilecek bağlı işlem sayısı. */
-export function linkedTransactionCount(debt: Debt): number {
-  return debtLinkedTransactions(debt, useTransactionStore.getState().transactions).length
 }
