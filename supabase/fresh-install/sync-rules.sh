@@ -7,7 +7,8 @@
 #   PGHOST=localhost PGUSER=postgres PGPASSWORD=… supabase/fresh-install/sync-rules.sh
 #
 # Kurulum sırası run.sh ile AYNI (şema, 0*.sql glob'u, politikaları yeniden
-# kuran 0013/0015/0021). Migration listesi bilerek sabit kodlanmaz: yeni bir
+# kuran 0013/0015/0021, ardından davet fonksiyonunu genişleten 0025).
+# Migration listesi bilerek sabit kodlanmaz: yeni bir
 # migration eklendiğinde bu betik onu da kurar.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -23,7 +24,8 @@ run() {
 run supabase/fresh-install/supabase-stub.sql
 run supabase_schema.sql
 for f in supabase/migrations/0*.sql; do run "$f"; done
-for f in supabase/migrations/0013_*.sql supabase/migrations/0015_*.sql supabase/migrations/0021_*.sql; do run "$f"; done
+for f in supabase/migrations/0013_*.sql supabase/migrations/0015_*.sql supabase/migrations/0021_*.sql \
+         supabase/migrations/0025_*.sql; do run "$f"; done
 
 echo "→ supabase/fresh-install/sync-rules.sql"
 out=$(PGOPTIONS='--client-min-messages=error' psql -q -X -v ON_ERROR_STOP=1 -At -d "$DB" \

@@ -331,6 +331,44 @@ do $$ begin
 end $$;
 \echo ok - taşıma: editör satırı başka sahibin alanına taşıyamaz (sahiplik devri yok)
 
+-- Aynı kural işlem kurallarında (0025) ve "workspaceId" taşıyan HER tabloda:
+-- 0026 kapsamı sabit listeden değil şemadan türetir
+begin; :asB
+insert into transaction_rules (id, user_id, pattern, "matchKind", "sortOrder", "isActive", "createdAt", "updatedAt", "workspaceId")
+  values ('kr1', auth.uid(), 'migros', 'contains', 1, true, '2026-10-05', '2026-10-05T10:00:00.000Z', 'wsA-aile');
+commit;
+begin; :asB
+do $$ begin
+  update transaction_rules set "workspaceId" = 'wsC-ortak', "updatedAt" = '2026-10-05T11:00:00.000Z' where id = 'kr1';
+  raise exception 'R1: editör A''nın kuralını C''nin alanına taşıyabildi';
+exception when insufficient_privilege then null;
+end $$;
+commit;
+do $$ begin
+  if (select user_id from transaction_rules where id = 'kr1') <> 'aaaaaaaa-0000-0000-0000-00000000000a'
+     or (select "workspaceId" from transaction_rules where id = 'kr1') <> 'wsA-aile' then
+    raise exception 'R1: kural taşıması reddedildi ama satır değişti (ya da sahiplik alan sahibine geçmedi)';
+  end if;
+  if exists (
+    select 1 from information_schema.columns c
+     where c.table_schema = 'public' and c.column_name = 'workspaceId'
+       and exists (select 1 from information_schema.columns u where u.table_schema = 'public' and u.table_name = c.table_name and u.column_name = 'user_id')
+       and not exists (select 1 from information_schema.triggers t where t.event_object_schema = 'public'
+                        and t.event_object_table = c.table_name and t.trigger_name = 'workspace_move_guard')
+  ) then
+    raise exception 'R1: workspaceId taşıyan bir tabloda workspace_move_guard yok';
+  end if;
+end $$;
+-- Gelecekteki tablo: oluşturulunca tetikleyici kendiliğinden gelir (event trigger)
+create table public._move_guard_probe (id text primary key, user_id uuid, "workspaceId" text);
+do $$ begin
+  if not exists (select 1 from information_schema.triggers where event_object_table = '_move_guard_probe' and trigger_name = 'workspace_move_guard') then
+    raise exception 'R1: yeni tabloya workspace_move_guard kendiliğinden kurulmadı';
+  end if;
+end $$;
+drop table public._move_guard_probe;
+\echo ok - taşıma: kurallar (0025) ve workspaceId taşıyan her tablo — yenileri dahil — korunuyor
+
 -- Meşru taşımalar bozulmadı: sahip kendi alanları arasında; editör AYNI
 -- sahibin iki paylaşılan alanı arasında
 begin; :asA
