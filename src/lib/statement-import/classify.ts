@@ -4,6 +4,7 @@ import { toMajor, toMinor } from '@/lib/utils/money'
 import type { Account, Category, Person, Transaction } from '@/types'
 import type { ParsedStatement, StatementLine } from './statement'
 import { buildRuleBook, merchantKey, merchantLabel, prettyMerchant, type MerchantRule } from './merchant'
+import { brandOf, MAYBE, merchantCore, nameScore, sameCore } from './merchant-match'
 
 /* ── Ekstre satırlarını sistemle karşılaştırma ve karar önerisi ──────────────
    SAF modül: store/DB bilmez. Girdi ayrıştırılmış ekstre + hesabın işlemleri;
@@ -985,8 +986,36 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       // Bağlanabilecek alımlar: bu karttaki, iadeden önceki, iadeden küçük olmayan giderler
       const pool = accTx.filter(t => t.accountId === acc && t.type === 'expense' && t.amount > 0 && !t.refundOfId &&
         dayNum(t.date) <= ld && ld - dayNum(t.date) <= 365 && minor(t.amount) >= refundMinor)
-      const sameShop = (t: Transaction) => (!!t.merchant && merchantKey(t.merchant) === key) || (!!rule?.recipientId && t.recipientId === rule.recipientId)
-      const origins = pool.filter(t => ld - dayNum(t.date) <= 180 && sameShop(t))
+      // Benzerlik (0..1): bankanın işyeri adı (birebir, bankadan bankaya yazım farkı,
+      // aynı marka) ya da alıcının adı iadenin metnine ne kadar benziyor. Alıcı
+      // eşleştirmesiyle aynı ölçü (merchant-match.ts): "YEMEKPAY /YEMEKSEPE" ile
+      // "YEMEKSEPETIPAY/YEMEKSEPISTANBUL" aynı işyeri; elle girilmiş, işyeri adı
+      // olmayan "Yemeksepeti" alıcılı kayıt da aday olur.
+      const brandL = brandOf(l.description)
+      const coreL = merchantCore(l.description).joined
+      const textSim = (text?: string | null) => {
+        if (!text) return 0
+        if (merchantKey(text) === key) return 1
+        if (sameCore(text, l.description)) return 0.95
+        const b = brandOf(text)
+        if (b && brandL && b === brandL) return 0.9
+        // Biri ötekinin kesik hali: "yemeksepe" ~ "yemeksep" (bankalar adı farklı yerden keser)
+        const c = merchantCore(text).joined
+        return c.length >= 6 && coreL.length >= 6 && (c.startsWith(coreL) || coreL.startsWith(c)) ? 0.85 : 0
+      }
+      const nameSim = (pid?: string | null) => {
+        if (!pid) return 0
+        if (rule?.recipientId === pid) return 1
+        const n = peopleById.get(pid)?.name
+        return n ? nameScore(n, l.description) : 0
+      }
+      const simOf = new Map<string, number>()
+      const simTx = (t: Transaction) => {
+        const v = Math.max(textSim(t.merchant), nameSim(t.recipientId), Math.min(0.85, nameScore(t.description, l.description)))
+        simOf.set(t.id, v)
+        return v
+      }
+      const origins = pool.filter(t => ld - dayNum(t.date) <= 180 && simTx(t) >= MAYBE)
       const isExact = (t: Transaction) => minor(t.amount) === refundMinor
       const cand = (t: Transaction): RefundCandidate => ({
         txId: t.id, title: t.description, date: t.date, amount: t.amount,
@@ -1005,21 +1034,27 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       // o kayıt, değilse bu onayla girilecek kaydın kimliği bağlanır.
       const knownIds = new Set(origins.map(t => t.id))
       const fromLines: RefundCandidate[] = []
+      const otherLines: RefundCandidate[] = []
       for (const p of lines) {
         if (p === l || p.kind !== 'purchase' || p.installment || p.amount === null || minor(p.amount) < refundMinor) continue
         const pd = dayNum(dateOf(p))
         if (pd > ld || ld - pd > 180) continue
         const pr = rules.ruleFor(p.description, p.bankCategory)
-        if (merchantKey(p.description) !== key && !(rule?.recipientId && pr?.recipientId === rule.recipientId)) continue
+        const sim = Math.max(textSim(p.description), nameSim(pr?.recipientId))
         const m = matchOf.get(p.index)
         if (m) {
           const t = byId.get(m.txIds[0])
-          if (t && t.type === 'expense' && !knownIds.has(t.id)) { knownIds.add(t.id); fromLines.push(cand(t)) }
+          if (t && t.type === 'expense' && !knownIds.has(t.id)) {
+            knownIds.add(t.id)
+            simOf.set(t.id, Math.max(sim, simOf.get(t.id) ?? 0))
+            ;(sim >= MAYBE ? fromLines : otherLines).push(cand(t))
+          }
           continue
         }
         const txId = txIdFromSeed(seedOf.get(p.index)!)
+        simOf.set(txId, sim)
         const pTitle = pr?.description ?? (pr?.recipientId ? peopleById.get(pr.recipientId)?.name : undefined) ?? prettyMerchant(p.description)
-        fromLines.push({
+        ;(sim >= MAYBE ? fromLines : otherLines).push({
           txId, title: pTitle, date: dateOf(p), amount: p.amount, fromStatement: true,
           who: pr?.recipientId ? peopleById.get(pr.recipientId)?.name : undefined, exact: minor(p.amount) === refundMinor,
           patch: {
@@ -1031,7 +1066,12 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       // Sıra: tutarı tutan önce, sonra iadeye en yakın tarih
       const near = (c: RefundCandidate) => Math.abs(ld - dayNum(c.date))
       const candidates = [...origins.map(cand), ...fromLines].sort((a, b) => (Number(b.exact) - Number(a.exact)) || (near(a) - near(b)))
-      const more = pool.filter(t => !knownIds.has(t.id)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 80).map(cand)
+      // "Diğer…": bu karttaki öteki alımlar ve bu ekstredeki öteki alımlar; benzerliği
+      // yüksek olan önce (0,1'lik basamaklarla), sonra iadeye en yakın tarih
+      const simC = (c: RefundCandidate) => Math.floor((simOf.get(c.txId) ?? 0) * 10)
+      const more = [...pool.filter(t => !knownIds.has(t.id)).map(t => { if (!simOf.has(t.id)) simTx(t); return cand(t) }), ...otherLines]
+        .sort((a, b) => (simC(b) - simC(a)) || (near(a) - near(b)))
+        .slice(0, 80)
       const exactCand = candidates.find(c => c.exact)
 
       const standalone = draftFor(l, rule, { description: `[İade] ${title}`, tags: [...(rule?.tags ?? []), refundTag] })
