@@ -215,6 +215,82 @@ describe('iade, net sıfır, ters kontrol', () => {
     expect(made).toMatchObject({ amount: -335, refundOfId: 'o', description: '[İade] Kedi kumu', tags: ['Ev', 'İade'] })
   })
 
+  describe('geç işlenen iade (elle girilmiş, onay bekliyor)', () => {
+    const refundLine = () => line({ description: 'TRENDYOL IADE', amount: -219.9, date: '2026-10-20' })
+    const pendingRefund = (date: string) => tx({ id: 'r1', amount: -219.9, date, approvalStatus: 'pending', description: '[İade] Trendyol', tags: ['İade'] })
+    const patchOps = (ops: BatchOp[]) => ops.filter(o => o.kind === 'patch' && o.table === 'transactions') as unknown as { id: string; patch: Record<string, unknown> }[]
+
+    it('12 gün önce girilmiş iade → olası mükerrer; "atla" önerilir, onaylanınca kayıt onaylanır, yeni kayıt oluşmaz', () => {
+      const t = pendingRefund('2026-10-08')
+      const p = plan([refundLine()], [t])
+      const r = p.rows.find(x => x.lines.includes(0))!
+      expect([r.status, r.kind, r.issue, r.match?.txIds]).toEqual(['review', 'possible-dup', 'Olası mükerrer iade', ['r1']])
+      expect(r.options[r.recommended!].key).toBe('keep')
+      expect(r.reason).toContain('12 gün')
+      expect(r.reason).toContain('onay bekliyor')
+      expect(r.sideEffects).toEqual([])
+      const c = commit(p, [t], { [r.key]: r.recommended! })
+      expect(created(c.ops)).toEqual([])
+      expect(r.options[0].label).toBe('Aynı kayıt (tarihi 20 Eki olsun)')
+      expect(r.reason).toContain('20 Eki olarak düzeltilir')
+      // Onay, işyeri ve tarih tek yamada; geri alma tarihi ve onayı eski haline döndürür
+      expect(patchOps(c.ops).filter(o => o.id === 'r1')).toHaveLength(1)
+      expect(patchOps(c.ops).find(o => o.id === 'r1')?.patch).toEqual({
+        approvalStatus: 'approved', approvedAt: '2026-11-01T10:00:00.000Z', merchant: 'TRENDYOL IADE', date: '2026-10-20',
+      })
+      expect(patchOps(c.undo).find(o => o.id === 'r1')?.patch).toMatchObject({ approvalStatus: 'pending', date: '2026-10-08', merchant: null })
+      expect(c.problems).toEqual([])
+    })
+
+    it('"aynı kayıt" seçildikten sonra ekstre yeniden yüklenirse satır doğrudan "zaten var" olur', () => {
+      const t = pendingRefund('2026-10-08')
+      const p = plan([refundLine()], [t])
+      const r = p.rows.find(x => x.lines.includes(0))!
+      const c = commit(p, [t], { [r.key]: r.recommended! })
+      const after = { ...t, ...patchOps(c.ops).find(o => o.id === 'r1')!.patch } as Transaction
+      expect([after.approvalStatus, after.date, after.merchant]).toEqual(['approved', '2026-10-20', 'TRENDYOL IADE'])
+      const again = plan([refundLine()], [after])
+      const r2 = again.rows.find(x => x.lines.includes(0))!
+      expect([r2.status, r2.kind, r2.match?.txIds]).toEqual(['exists', 'refund', ['r1']])
+      expect(created(commit(again, [after]).ops)).toEqual([])
+    })
+
+    it('"yine de gir": yeni iade oluşur, bekleyen kayıt onaylanmaz', () => {
+      const t = pendingRefund('2026-10-08')
+      const p = plan([refundLine()], [t])
+      const r = p.rows.find(x => x.lines.includes(0))!
+      const c = commit(p, [t], { [r.key]: r.options.findIndex(o => o.key === 'standalone') }, { [r.key]: { categoryId: 'c-ev' } })
+      expect(c.problems).toEqual([])
+      const made = created(c.ops)
+      expect(made).toHaveLength(1)
+      expect(made[0]).toMatchObject({ type: 'expense', amount: -219.9 })
+      expect(patchOps(c.ops).filter(o => o.id === 'r1')).toEqual([])
+    })
+
+    it('±4 gün içindeki iade eskisi gibi doğrudan "zaten var" olur ve onaylanır', () => {
+      const t = pendingRefund('2026-10-17')
+      const r = plan([refundLine()], [t]).rows.find(x => x.lines.includes(0))!
+      expect([r.status, r.kind, r.match?.txIds]).toEqual(['exists', 'refund', ['r1']])
+      expect(r.sideEffects).toEqual([{ type: 'patch', txId: 'r1', patch: { approvalStatus: 'approved', merchant: 'TRENDYOL IADE' } }])
+    })
+
+    it('önceden "girme" denmiş satırda "aynı kayıt" seçeneği onay ve tarih eylemini korur, anahtar tekrarlanmaz', () => {
+      const t = pendingRefund('2026-10-08')
+      const first = plan([refundLine()], [t]).rows.find(x => x.lines.includes(0))!
+      const r = plan([refundLine()], [t], { skipped: new Set([first.stableKey]) }).rows.find(x => x.lines.includes(0))!
+      expect(r.options.map(o => o.key)).toEqual(['keep', 'standalone'])
+      expect(r.options[0].actions).toEqual(first.options[0].actions)
+      expect(r.options[0].actions).toEqual([{ type: 'patch', txId: 'r1', patch: { approvalStatus: 'approved', merchant: 'TRENDYOL IADE', date: '2026-10-20' } }])
+    })
+
+    it('30 günden uzak aynı tutarlı iade eşleşmez', () => {
+      const t = pendingRefund('2026-09-15')
+      const r = plan([refundLine()], [t]).rows.find(x => x.lines.includes(0))!
+      expect(r.kind).toBe('refund')
+      expect(r.match).toBeUndefined()
+    })
+  })
+
   it('ekstrede olmayan, bonusla ödenmiş kayıt silinmek üzere önerilir', () => {
     const t = tx({ id: 'eth', amount: 490, date: '2026-10-23', description: 'Ethem Et' })
     const p = plan([line({ description: 'BONUS BEDAVA ALIŞVERİŞ', amount: null, bonus: -490, date: '2026-10-23' })], [t])
