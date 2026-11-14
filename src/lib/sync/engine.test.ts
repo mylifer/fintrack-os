@@ -149,6 +149,7 @@ const {
   localUpsert, localPatch, localPatchMany, localBulkUpsert, localBatch,
   softDelete, flushOutbox, reconcilingPull, pendingCount, retryDeadLetters,
   MAX_SYNC_ATTEMPTS, lastPullWasAuthoritative, purgeWorkspacesLocal, stampAfter, dropReadOnlyPending,
+  runBackgroundWrites,
 } = await import('./engine')
 const { setMemberWorkspaceIds, setReadOnlyWorkspaceIds, setActiveWorkspaceId } = await import('@/lib/workspace-context')
 
@@ -318,6 +319,21 @@ describe('salt okuma alanı — yazma yerel katmanda reddedilir', () => {
     await localBulkUpsert('transactions', [tx('t2', { workspaceId: null })])
     await localBatch([{ kind: 'patch', table: 'transactions', id: 't1', patch: { amount: 5 } }])
     expect(await pendingCount()).toBe(2)
+  })
+
+  it('arka plan bakım yazması (yükleme) salt okuma alanında hata/bildirim OLMADAN atlanır', async () => {
+    await txTable.put(tx('t-ro', { workspaceId: RO }))
+    setReadOnlyWorkspaceIds([RO])
+    await runBackgroundWrites(async () => {
+      await localPatch('transactions', 't-ro', { amount: 1 })
+      await localBatch([{ kind: 'patch', table: 'transactions', id: 't-ro', patch: { amount: 2 } }])
+      await localUpsert('transactions', tx('t-me', { workspaceId: 'ws-me' }))   // kendi alanı: yazılır
+    })
+    expect((await txTable.get('t-ro'))!.amount).toBe(250)
+    expect((await outbox.toArray()).map(e => e.id)).toEqual(['transactions:t-me'])
+    expect(notifications).toEqual([])
+    // Arka plan bitince kullanıcı yazması yine reddedilir
+    await expect(localPatch('transactions', 't-ro', { amount: 1 })).rejects.toThrow(/salt okuma/)
   })
 
   it('workspaces tablosu kilitten muaf (alan satırı kuralı sunucuda, 0021)', async () => {

@@ -185,11 +185,29 @@ function nullifyPatch(patch: Record<string, unknown>): Record<string, unknown> {
    Kullanıcı bildirimi burada verilir; çağıran store hatayı yakalamasa da
    bildirim görünür, hata kaydına (error_logs) düşmez. Asıl kilit sunucuda
    (0028 RESTRICTIVE politikaları) — bu katman yalnız kullanıcı deneyimi ve
-   outbox hijyeni içindir. */
-function assertWritable(table: SyncTable, touched: Array<string | null | undefined>): void {
-  if (table === 'workspaces') return
+   outbox hijyeni içindir.
+
+   ARKA PLAN YAZMALARI: store yüklemelerindeki kendiliğinden bakım geçişleri
+   (simge/renk göçü, ad anlık görüntüsü, varsayılan kategoriler, defter
+   onarımı…) kullanıcı eylemi değildir. runBackgroundWrites içinde salt okuma
+   alanına dokunan yazma hata/bildirim OLMADAN atlanır — yoksa salt okuma
+   alanını açan üyenin yüklemesi (Promise.all) yarıda kesilirdi. Sonuç
+   yine aynı: hiçbir şey yazılmaz. */
+let backgroundDepth = 0
+
+/** fn'deki salt okuma alanına yazmaları sessizce atlar (bkz. yukarısı). */
+export async function runBackgroundWrites<T>(fn: () => Promise<T>): Promise<T> {
+  backgroundDepth++
+  try { return await fn() } finally { backgroundDepth-- }
+}
+
+/** true: yazma serbest. false: arka planda, salt okuma alanı — sessizce atla.
+ *  Kullanıcı yazmasında salt okuma alanı → bildirim + ReadOnlyWorkspaceError. */
+function assertWritable(table: SyncTable, touched: Array<string | null | undefined>): boolean {
+  if (table === 'workspaces') return true
   const blocked = blockedWorkspace(touched, getReadOnlyWorkspaceIds())
-  if (blocked === null) return
+  if (blocked === null) return true
+  if (backgroundDepth > 0) return false
   const err = new ReadOnlyWorkspaceError(blocked)
   useSyncStatusStore.getState().notify(err.message)
   throw err
@@ -239,7 +257,7 @@ export async function localUpsert<T extends { id: string }>(table: SyncTable, en
   await db.transaction('rw', t, db._outbox, async () => {
     const prev = await t.get(entity.id) as { updatedAt?: unknown } | undefined
     const stamped = stampTime(stampWorkspace(table, entity), stampAfter(prev?.updatedAt, ts))
-    assertWritable(table, [wsOf(stamped), wsOf(prev)])
+    if (!assertWritable(table, [wsOf(stamped), wsOf(prev)])) return
     await t.put(stamped)
     await putOutbox(table, stamped, ownerId)
   })
@@ -257,7 +275,7 @@ export async function localBulkUpsert<T extends { id: string }>(table: SyncTable
     for (const e of entities) {
       const prev = await t.get(e.id) as { updatedAt?: unknown } | undefined
       const row = stampTime(stampWorkspace(table, e), stampAfter(prev?.updatedAt, ts))
-      assertWritable(table, [wsOf(row), wsOf(prev)])
+      if (!assertWritable(table, [wsOf(row), wsOf(prev)])) return
       stamped.push(row)
     }
     await t.bulkPut(stamped)
@@ -274,7 +292,7 @@ export async function localPatch(table: SyncTable, id: string, patch: Record<str
   const ownerId = await currentOwnerId()
   await db.transaction('rw', t, db._outbox, async () => {
     const prev = await t.get(id) as { updatedAt?: unknown } | undefined
-    assertWritable(table, [wsOf(prev), patchWs(norm)])
+    if (!assertWritable(table, [wsOf(prev), patchWs(norm)])) return
     await t.update(id, stampTime(norm, stampAfter(prev?.updatedAt, ts)))
     const full = await t.get(id)
     if (full) await putOutbox(table, full, ownerId)
@@ -292,7 +310,7 @@ export async function localPatchMany(table: SyncTable, ids: string[], patch: Rec
   await db.transaction('rw', t, db._outbox, async () => {
     // Satır başına damga (her satırın son damgası farklı olabilir)
     const before = await t.where('id').anyOf(ids).toArray() as Array<{ id: string; updatedAt?: unknown }>
-    if (before.length) assertWritable(table, [...before.map(wsOf), patchWs(norm)])
+    if (before.length && !assertWritable(table, [...before.map(wsOf), patchWs(norm)])) return
     for (const r of before) await t.update(r.id, stampTime(norm, stampAfter(r.updatedAt, ts)))
     const rows = await t.where('id').anyOf(ids).toArray()
     for (const r of rows) await putOutbox(table, r, ownerId)
@@ -338,14 +356,16 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
     if (getReadOnlyWorkspaceIds().length > 0) {
       for (const op of ops) {
         const t = DEXIE[op.table]
+        let ok = true
         if (op.kind === 'upsert') {
-          assertWritable(op.table, [wsOf(stampWorkspace(op.table, op.entity)), wsOf(await t.get(op.entity.id))])
+          ok = assertWritable(op.table, [wsOf(stampWorkspace(op.table, op.entity)), wsOf(await t.get(op.entity.id))])
         } else if (op.kind === 'patch') {
-          assertWritable(op.table, [wsOf(await t.get(op.id)), patchWs(op.patch)])
+          ok = assertWritable(op.table, [wsOf(await t.get(op.id)), patchWs(op.patch)])
         } else if (op.ids.length) {
           const before = await t.where('id').anyOf(op.ids).toArray()
-          assertWritable(op.table, [...before.map(wsOf), patchWs(op.patch)])
+          ok = assertWritable(op.table, [...before.map(wsOf), patchWs(op.patch)])
         }
+        if (!ok) return   // arka plan: toplu işlemin tamamı sessizce atlanır
       }
     }
     for (const op of ops) {

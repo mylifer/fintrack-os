@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
-import { useBudgetStore, useTransactionStore, useCategoryStore, useUIStore } from '@/store'
+import { useBudgetStore, useTransactionStore, useCategoryStore, useUIStore, useWorkspaceStore, selectActiveReadOnly } from '@/store'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,10 @@ import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { RolloverField } from '@/components/budgets/RolloverField'
+import { TotalBudgetCard } from '@/components/budgets/TotalBudgetCard'
+import { ReadOnlyBadge } from '@/components/settings/ReadOnlyBadge'
+import { useSyncStatusStore } from '@/store/sync-status.store'
+import { READ_ONLY_MESSAGE } from '@/lib/workspace-permissions'
 import { formatCurrency, parseCurrencyInput } from '@/lib/utils/currency'
 import { formatMonthYear, prevMonth, nextMonth } from '@/lib/utils/date'
 import { getBudgetCategoryIds, enrichBudget, resolveBudgetCategories } from '@/lib/utils/calculations'
@@ -40,10 +44,12 @@ function BudgetCard({
   b,
   onEdit,
   onDelete,
+  readOnly,
 }: {
   b: BudgetWithSpent
   onEdit: (b: Budget) => void
   onDelete: (id: string) => void
+  readOnly: boolean
 }) {
   const categories = useCategoryStore(s => s.categories)
   const { cats, label, archived } = resolveBudgetCategories(b, categories)
@@ -75,20 +81,24 @@ function BudgetCard({
               {b.status === 'exceeded' ? 'Aşıldı' : 'Uyarı'}
             </Badge>
           )}
-          <button
-            onClick={() => onEdit(b)}
-            className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            title="Düzenle"
-          >
-            <PencilIcon />
-          </button>
-          <button
-            onClick={() => onDelete(b.id)}
-            className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-            title="Sil"
-          >
-            <TrashIcon />
-          </button>
+          {!readOnly && (
+            <>
+              <button
+                onClick={() => onEdit(b)}
+                className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                title="Düzenle"
+              >
+                <PencilIcon />
+              </button>
+              <button
+                onClick={() => onDelete(b.id)}
+                className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                title="Sil"
+              >
+                <TrashIcon />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -144,6 +154,9 @@ export default function BudgetsPage() {
   const { budgets: rawBudgets, add, update, remove } = useBudgetStore(
     useShallow(s => ({ budgets: s.budgets, add: s.add, update: s.update, remove: s.remove }))
   )
+  // Salt okuma alanı (0028): düzenleme düğmeleri gizlenir — yalnız ipucu;
+  // kilit yerel yazma katmanında ve sunucuda.
+  const readOnly = useWorkspaceStore(selectActiveReadOnly)
 
   // collapseInstallments: taksitli alışverişler Raporlar/İstatistikler ile aynı
   // "satın alma ayına toplu yaz" kuralıyla sayılır (bkz. installments.ts) — aksi
@@ -169,6 +182,7 @@ export default function BudgetsPage() {
   const [loading, setLoading]               = useState(false)
 
   function startAdd() {
+    if (readOnly) { useSyncStatusStore.getState().notify(READ_ONLY_MESSAGE); return }
     setEditingBudget(undefined)
     setSelectedCatIds([])
     setCatSearch('')
@@ -274,16 +288,18 @@ export default function BudgetsPage() {
           onClick={() => setPeriod(nextMonth(selectedPeriod))}
           className="text-muted-foreground hover:text-foreground text-sm transition-colors"
         >→</button>
+        {readOnly && <span className="ml-auto"><ReadOnlyBadge /></span>}
       </div>
 
       {/* Grid */}
-      <div className="p-6">
+      <div className="p-6 flex flex-col gap-4">
+        <TotalBudgetCard ledger={reportTxs} period={selectedPeriod} budgets={rawBudgets} readOnly={readOnly} />
         {budgets.length === 0 ? (
           <EmptyState
             icon="◎"
             title="Bu ay bütçe tanımlı değil"
-            description="Harcama kategorilerinize limit belirleyin."
-            action={<Button size="sm" onClick={startAdd}>Bütçe Ekle</Button>}
+            description={readOnly ? 'Bu alan sizinle salt okuma olarak paylaşılıyor.' : 'Harcama kategorilerinize limit belirleyin.'}
+            action={readOnly ? undefined : <Button size="sm" onClick={startAdd}>Bütçe Ekle</Button>}
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -293,6 +309,7 @@ export default function BudgetsPage() {
                 b={b}
                 onEdit={startEdit}
                 onDelete={remove}
+                readOnly={readOnly}
               />
             ))}
           </div>

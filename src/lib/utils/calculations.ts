@@ -1,4 +1,4 @@
-import type { Account, Transaction, Budget, BudgetWithSpent, Category, Debt, DebtWithRemaining, MonthYear, PriceData } from '@/types'
+import type { Account, Transaction, Budget, BudgetStatus, BudgetWithSpent, Category, Debt, DebtWithRemaining, MonthYear, PriceData } from '@/types'
 import { isInRange, monthRange, yearRange, today } from './date'
 import { isReconciliation } from './reconciliation'
 import { toMinor, toMajor, sumBy, subMoney } from './money'
@@ -162,6 +162,9 @@ export function resolveBudgetCategories(
   budget: Budget,
   liveCategories: Category[],
 ): { cats: Category[]; label: string; archived: boolean } {
+  // Toplam aylık limit bir kategoriye bağlı değildir (bildirim paneli de bu
+  // etiketi kullanır)
+  if (isTotalBudget(budget)) return { cats: [], label: TOTAL_BUDGET_LABEL, archived: false }
   const ids = getBudgetCategoryIds(budget)
   const cats = ids
     .map(id => liveCategories.find(c => c.id === id))
@@ -262,12 +265,110 @@ export function enrichBudget(
   const limit = toMajor(toMinor(budget.amount) + toMinor(carryover))
   const remaining = Math.max(0, subMoney(limit, spent))
   const percentUsed = limit > 0 ? (spent / limit) * 100 : 0
-  const status =
-    percentUsed >= 100 ? 'exceeded'
-    : percentUsed >= budget.alertThreshold ? 'warning'
-    : 'ok'
+  const status = budgetStatusOf(percentUsed, budget.alertThreshold)
 
   return { ...budget, spent, carryover, limit, remaining, percentUsed, status }
+}
+
+/** Kategori ve toplam bütçenin ORTAK durum eşiği: %100 aşıldı, uyarı eşiği uyarı. */
+export function budgetStatusOf(percentUsed: number, alertThreshold: number): BudgetStatus {
+  return percentUsed >= 100 ? 'exceeded'
+    : percentUsed >= alertThreshold ? 'warning'
+    : 'ok'
+}
+
+/* ── Toplam aylık bütçe ───────────────────────────────────────────────────
+   Çalışma alanı başına isteğe bağlı TEK "toplam aylık harcama limiti".
+   SAKLAMA: yeni tablo/sütun yok — budgets tablosunda özel bir satır:
+   period = 'total', categoryId = TOTAL_BUDGET_CATEGORY, kimlik alandan
+   türetilir (totalBudgetId) ki iki cihaz aynı anda limit koyduğunda iki satır
+   değil aynı satır oluşsun (keep_newer_row, 0016). Böylece eşitleme, yedek,
+   paylaşım (editör düzenler, salt okuma göremez yazamaz) ve çalışma alanı
+   bölümlemesi kategori bütçeleriyle AYNI yoldan, migration'sız çalışır.
+   Kategori bütçesi yüzeyleri period === 'monthly' süzer; bu satırı görmezler.
+
+   HARCAMA TANIMI yeni değildir: calcMonthlyFlow(...).expense — Raporlar'ın
+   ve dashboard'un aylık gideriyle aynı akış kuralı (isFlowTx: onay bekleyen /
+   gelecek tarihli / mutabakat / yatırım ve borç anaparası / alanlar arası
+   transfer hariç; transferler zaten gider değil). Çağıran, Bütçeler sayfası
+   gibi collapseInstallments uygulanmış defteri verir (taksit satın alma
+   ayına toplu). İade gelir kaydıdır; gideri azaltmaz — kategori bütçeleriyle
+   aynı. */
+
+export const TOTAL_BUDGET_CATEGORY = '__total__'
+export const TOTAL_BUDGET_LABEL = 'Toplam aylık bütçe'
+export const TOTAL_BUDGET_ID_PREFIX = 'total-budget-'
+
+export function isTotalBudget(b: Pick<Budget, 'period'>): boolean {
+  return b.period === 'total'
+}
+
+export function totalBudgetId(workspaceId: string): string {
+  return `${TOTAL_BUDGET_ID_PREFIX}${workspaceId}`
+}
+
+export function isTotalBudgetId(id: string): boolean {
+  return id.startsWith(TOTAL_BUDGET_ID_PREFIX)
+}
+
+/** Toplam limit için BudgetWithSpent (bildirim paneli bütçe uyarısıyla aynı biçim).
+ *  Devir yok: toplam limit her ay sabittir. */
+export function enrichTotalBudget(total: Budget, ledger: Transaction[], my: MonthYear): BudgetWithSpent {
+  const spent = calcMonthlyFlow(ledger, my).expense
+  const limit = total.amount
+  const remaining = Math.max(0, subMoney(limit, spent))
+  const percentUsed = limit > 0 ? (spent / limit) * 100 : 0
+  return {
+    ...total, spent, carryover: 0, limit, remaining, percentUsed,
+    status: budgetStatusOf(percentUsed, total.alertThreshold),
+  }
+}
+
+export interface TotalBudgetSummary {
+  spent: number
+  limit: number
+  remaining: number
+  /** Aşım tutarı (aşılmadıysa 0) */
+  overBy: number
+  percentUsed: number
+  status: BudgetStatus
+  /** Ayın kalan günü (bugün dahil). Geçmiş ay 0, gelecek ay ayın tamamı. */
+  daysLeft: number
+  /** Kalan / kalan gün — "günde ortalama ne harcayabilirim". Gün yoksa 0. */
+  dailyRemaining: number
+  /** Aylık kategori bütçelerinin limit toplamı (devir hariç) */
+  categoryBudgetsTotal: number
+  /** Kategori bütçeleri toplamı toplam limitten büyük mü (plan tutarsız) */
+  categoryBudgetsExceedLimit: boolean
+}
+
+export function summarizeTotalBudget(
+  total: Budget,
+  ledger: Transaction[],
+  my: MonthYear,
+  budgets: Budget[],
+  asOf: string = today(),
+): TotalBudgetSummary {
+  const e = enrichTotalBudget(total, ledger, my)
+  const { from, to } = monthRange(my)
+  const day = asOf.slice(0, 10)
+  const daysInMonth = Number(to.slice(8, 10))
+  const daysLeft = day > to ? 0
+    : day < from ? daysInMonth
+    : daysInMonth - Number(day.slice(8, 10)) + 1
+  const categoryBudgetsTotal = sumBy(budgets.filter(b => b.period === 'monthly' && !b.deleted_at), b => b.amount)
+  return {
+    spent: e.spent,
+    limit: e.limit,
+    remaining: e.remaining,
+    overBy: Math.max(0, subMoney(e.spent, e.limit)),
+    percentUsed: e.percentUsed,
+    status: e.status,
+    daysLeft,
+    dailyRemaining: daysLeft > 0 ? toMajor(Math.floor(toMinor(e.remaining) / daysLeft)) : 0,
+    categoryBudgetsTotal,
+    categoryBudgetsExceedLimit: toMinor(categoryBudgetsTotal) > toMinor(e.limit),
+  }
 }
 
 // Yatırım anapara (özsermaye) hareketi — fon/varlık ALIMI ("… Alımı") ve

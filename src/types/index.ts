@@ -184,7 +184,11 @@ export interface Category {
 
 // ─── Budget ────────────────────────────────────────────────────────────────
 
-export type BudgetPeriod = 'monthly' | 'quarterly' | 'yearly'
+// 'total': çalışma alanının TEK "toplam aylık harcama limiti" satırı — kategori
+// bütçesi değildir (categoryId = TOTAL_BUDGET_CATEGORY sabiti). Kategori bütçesi
+// yüzeyleri hep period === 'monthly' süzdüğü için bu satır onlara karışmaz.
+// Ayrıntı: lib/utils/calculations.ts → isTotalBudget.
+export type BudgetPeriod = 'monthly' | 'quarterly' | 'yearly' | 'total'
 export type BudgetStatus = 'ok' | 'warning' | 'exceeded'
 
 export interface Budget {

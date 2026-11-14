@@ -1,5 +1,4 @@
 import { test as base, expect, type Page } from '@playwright/test'
-import { writeFileSync } from 'node:fs'
 
 /* Ortak yardımcılar. `test` fikstürü her testte konsol hatalarını ve hata
    sınırını ("Bir şeyler ters gitti") izler; test sonunda ikisi de boş olmalı. */
@@ -51,13 +50,20 @@ export async function createAccount(page: Page, name: string, opts: { type?: str
   return dlg
 }
 
-/** CSV'yi yazar ve Ayarlar → İçe aktar'dan önizleyerek içe aktarır. */
-export async function importCsv(page: Page, testInfo: { outputPath: (n: string) => string }, csv: string, rows: number) {
-  const file = testInfo.outputPath('import.csv')
-  writeFileSync(file, csv, 'utf8')
+/** Dosyayı diske yazmadan seçtirir. testInfo.outputPath test başlığından
+ *  türetilir ("dökümden içe aktarma → …"); Türkçe karakterli/→ içeren yoldan
+ *  verilen dosyada sistem Chrome'u (PW_CHANNEL=chrome) change olayını hiç
+ *  tetiklemiyordu — içe aktarma penceresi yükleme adımında kalıyordu. */
+export function memFile(name: string, content: string, mimeType = 'text/csv') {
+  return { name, mimeType, buffer: Buffer.from(content, 'utf8') }
+}
+
+/** CSV'yi Ayarlar → İçe aktar'dan önizleyerek içe aktarır. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- imza korunur (çağıran spec'ler testInfo geçiyor)
+export async function importCsv(page: Page, _testInfo: { outputPath: (n: string) => string }, csv: string, rows: number) {
   await page.goto('/settings')
   await page.getByRole('button', { name: /Dosya Yükle/ }).click()
-  await page.locator('input[type=file][accept*=".xlsx"]').setInputFiles(file)
+  await page.locator('input[type=file][accept*=".xlsx"]').setInputFiles(memFile('import.csv', csv))
   await page.getByRole('button', { name: /Önizle/ }).click()
   await page.getByRole('dialog').getByRole('button', { name: new RegExp(`${rows} İşlemi İçe Aktar`) }).click()
   await expect(page.getByText(new RegExp(`${rows} işlem`)).first()).toBeVisible()

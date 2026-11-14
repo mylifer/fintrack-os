@@ -5,12 +5,21 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/Input'
 import { useWorkspaceStore } from '@/store'
-import { createInviteLink, listMembers, removeMember, revokePendingInvites, type Membership } from '@/lib/sharing'
+import {
+  createInviteLink, listMembers, removeMember, revokePendingInvites, setMemberRole,
+  type AssignableRole, type Membership,
+} from '@/lib/sharing'
+import { ROLE_LABELS } from '@/lib/workspace-permissions'
+import { ReadOnlyBadge } from './ReadOnlyBadge'
 import type { Workspace } from '@/types'
 
 /* Aile paylaşımı (0021): varsayılan olmayan bir alanı eşinizle paylaşın —
    eşiniz kendi hesabıyla davet bağlantısını açar, ikiniz de aynı hesapları,
-   işlemleri ve bütçeleri görür ve düzenlersiniz. */
+   işlemleri ve bütçeleri görürsünüz. Rol davette seçilir (0028): düzenleyebilir
+   ya da salt okuma; sahip sonradan değiştirebilir. */
+
+const ROLE_OPTIONS: AssignableRole[] = ['editor', 'viewer']
+
 
 export function SharingSettings() {
   const workspaces = useWorkspaceStore(s => s.workspaces)
@@ -19,6 +28,7 @@ export function SharingSettings() {
   const add        = useWorkspaceStore(s => s.add)
 
   const member = workspaces.filter(w => sharing.member.includes(w.id))
+  const readOnly = sharing.readOnly
   const own    = workspaces.filter(w => !w.isDefault && !sharing.member.includes(w.id))
 
   const [newName, setNewName] = useState('Aile')
@@ -51,7 +61,8 @@ export function SharingSettings() {
         <Title />
         <p className="text-xs text-muted-foreground mb-4">
           Bir çalışma alanını eşinizle paylaşın: davet bağlantısını kendi hesabıyla açtığında ikiniz de o alandaki
-          hesapları, işlemleri, bütçeleri görür ve düzenlersiniz. Varsayılan &quot;Genel&quot; alan paylaşılamaz —
+          hesapları, işlemleri, bütçeleri görürsünüz. Davette rol seçin: <strong>düzenleyebilir</strong> ya da
+          yalnız görebilen <strong>salt okuma</strong>. Varsayılan &quot;Genel&quot; alan paylaşılamaz —
           aile için ayrı bir alan kullanın.
         </p>
 
@@ -71,7 +82,7 @@ export function SharingSettings() {
         {member.length > 0 && (
           <div className="mt-5 pt-4 border-t border-border flex flex-col gap-2">
             <div className="text-xs font-medium text-muted-foreground">Sizinle paylaşılan</div>
-            {member.map(ws => <MemberWorkspace key={ws.id} ws={ws} />)}
+            {member.map(ws => <MemberWorkspace key={ws.id} ws={ws} readOnly={readOnly.includes(ws.id)} />)}
           </div>
         )}
       </CardContent>
@@ -89,6 +100,7 @@ function OwnedWorkspace({ ws, shared, onChanged }: { ws: Workspace; shared: bool
   const [copied, setCopied]   = useState(false)
   const [busy, setBusy]       = useState<string | null>(null)
   const [error, setError]     = useState('')
+  const [inviteRole, setInviteRole] = useState<AssignableRole>('editor')
 
   const refresh = useCallback(async () => {
     try { setMembers(await listMembers(ws.id)) } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
@@ -108,7 +120,7 @@ function OwnedWorkspace({ ws, shared, onChanged }: { ws: Workspace; shared: bool
   async function invite() {
     setBusy('invite'); setError(''); setCopied(false)
     try {
-      setLink(await createInviteLink(ws.id, window.location.origin))
+      setLink(await createInviteLink(ws.id, window.location.origin, inviteRole))
       if (!shared) await onChanged()   // ilk davet sahip üyeliğini açar
       await refresh()
     } catch (err) {
@@ -143,6 +155,14 @@ function OwnedWorkspace({ ws, shared, onChanged }: { ws: Workspace; shared: bool
     finally { setBusy(null) }
   }
 
+  async function changeRole(m: Membership, role: AssignableRole) {
+    if (role === m.role) return
+    setBusy(m.user_id); setError('')
+    try { await setMemberRole(ws.id, m.user_id, role); await refresh() }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { setBusy(null) }
+  }
+
   const others = (members ?? []).filter(m => m.role !== 'owner')
 
   return (
@@ -150,6 +170,15 @@ function OwnedWorkspace({ ws, shared, onChanged }: { ws: Workspace; shared: bool
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold flex-1 min-w-0 truncate">{ws.name}</span>
         {shared && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">Paylaşılıyor</span>}
+        <select
+          aria-label="Davet edilen kişinin yetkisi"
+          value={inviteRole}
+          onChange={e => setInviteRole(e.target.value as AssignableRole)}
+          disabled={!!busy}
+          className="h-8 rounded-lg border border-border bg-background px-2 text-xs"
+        >
+          {ROLE_OPTIONS.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+        </select>
         <Button size="sm" variant="secondary" className="rounded-lg h-8 px-3" loading={busy === 'invite'} onClick={invite}>
           Davet bağlantısı oluştur
         </Button>
@@ -166,7 +195,8 @@ function OwnedWorkspace({ ws, shared, onChanged }: { ws: Workspace; shared: bool
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Tek kullanımlık, 7 gün geçerli; yeni bağlantı oluşturunca öncekiler geçersiz olur. Bağlantıyı yalnız eşinize gönderin — açan kişi bu alanın tüm verisini görür.
+            Tek kullanımlık, 7 gün geçerli; yeni bağlantı oluşturunca öncekiler geçersiz olur. Bağlantıyı yalnız eşinize gönderin — açan kişi bu alanın tüm verisini görür
+            ({inviteRole === 'viewer' ? 'salt okuma: değiştiremez' : 'düzenleyebilir'}).
             Eşiniz önce kendi FinTrack hesabını açmalı.
           </p>
         </div>
@@ -178,6 +208,15 @@ function OwnedWorkspace({ ws, shared, onChanged }: { ws: Workspace; shared: bool
             <li key={m.user_id} className="flex items-center gap-2 text-sm">
               <span aria-hidden>👤</span>
               <span className="flex-1 min-w-0 truncate">{m.email ?? 'Üye'}</span>
+              <select
+                aria-label={`${m.email ?? 'Üye'} yetkisi`}
+                value={m.role}
+                disabled={!!busy}
+                onChange={e => changeRole(m, e.target.value as AssignableRole)}
+                className="h-7 rounded-md border border-border bg-background px-1.5 text-xs disabled:opacity-50"
+              >
+                {ROLE_OPTIONS.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+              </select>
               <button type="button" disabled={!!busy} onClick={() => remove(m)}
                 className="text-xs text-muted-foreground hover:text-destructive disabled:opacity-50">
                 {busy === m.user_id ? 'Çıkarılıyor…' : 'Çıkar'}
@@ -191,7 +230,7 @@ function OwnedWorkspace({ ws, shared, onChanged }: { ws: Workspace; shared: bool
   )
 }
 
-function MemberWorkspace({ ws }: { ws: Workspace }) {
+function MemberWorkspace({ ws, readOnly }: { ws: Workspace; readOnly: boolean }) {
   const leave = useWorkspaceStore(s => s.leave)
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState('')
@@ -207,6 +246,7 @@ function MemberWorkspace({ ws }: { ws: Workspace }) {
     <div className="flex items-center gap-2">
       <span aria-hidden>👥</span>
       <span className="text-sm flex-1 min-w-0 truncate">{ws.name}</span>
+      {readOnly && <ReadOnlyBadge />}
       <Button size="sm" variant="secondary" className="rounded-lg h-8 px-3" loading={busy} onClick={onLeave}>Ayrıl</Button>
       {error && <p className="text-xs text-destructive w-full">{error}</p>}
     </div>

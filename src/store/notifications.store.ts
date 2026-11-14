@@ -15,7 +15,7 @@ import { useCategoryStore } from './categories.store'
 import { recurringOccurrences } from '@/lib/utils/recurrence'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { today, currentMonthYear } from '@/lib/utils/date'
-import { awaitsApproval } from '@/lib/utils/calculations'
+import { awaitsApproval, enrichTotalBudget, isTotalBudget } from '@/lib/utils/calculations'
 import { depositTerms, projectDeposit } from '@/lib/utils/deposit'
 import { assignCardPayments, buildSchedule, buildTargets, monthOf, type PaymentRow } from '@/lib/payments/schedule'
 
@@ -27,8 +27,9 @@ import { assignCardPayments, buildSchedule, buildTargets, monthOf, type PaymentR
        (lib/payments/schedule.ts — sayfadaki "Gecikmiş/Bugün" ile aynı satırlar),
      • yaklaşan (7 gün) pending işlemler + tekrarlayanlar + ödemeler (salt bilgi),
      • vadesi dolan (aksiyon: faizi işle) ve 7 gün içinde dolacak vadeli mevduat,
-     • bu ay uyarı eşiğini geçen ya da aşılan bütçeler (salt bilgi — rozete
-       sayılmaz: ay boyunca kapatılamaz, sayaç hep dolu kalırdı. Onun yerine
+     • bu ay uyarı eşiğini geçen ya da aşılan bütçeler, toplam aylık limit
+       dahil (aynı 'budget-alert' türü; etiketi resolveBudgetCategories verir)
+       (salt bilgi — rozete sayılmaz: ay boyunca kapatılamaz, sayaç hep dolu kalırdı. Onun yerine
        zil, GÖRÜLMEMİŞ bir bütçe uyarısında nokta gösterir; bkz. budgetAlertKey).
    Ödeme bildirimi, tekrarlayanlar gibi onay ANINDA işlem üretir; önceden taslak
    işlem YAZILMAZ. Kullanıcı transferi elle girerse ay tespitle ödendi olur ve
@@ -149,7 +150,15 @@ export function getNotifications(): AppNotification[] {
   // Bütçeler — Bütçeler sayfasıyla AYNI taban (taksitler satın alma ayına
   // toplu yazılır), yoksa sayfa "ok" derken bildirim "aşıldı" diyebilirdi.
   const month = currentMonthYear()
-  for (const budget of useBudgetStore.getState().getMonthBudgets(month, collapseInstallments(transactions))) {
+  const ledger = collapseInstallments(transactions)
+  // Toplam aylık limit (bkz. calculations.ts → isTotalBudget) — aynı defter,
+  // aynı eşik kuralı; panel onu kategori bütçesi uyarısıyla aynı satırda gösterir.
+  const total = useBudgetStore.getState().budgets.find(isTotalBudget)
+  if (total) {
+    const budget = enrichTotalBudget(total, ledger, month)
+    if (budget.status !== 'ok') out.push({ kind: 'budget-alert', budget, month })
+  }
+  for (const budget of useBudgetStore.getState().getMonthBudgets(month, ledger)) {
     if (budget.status !== 'ok') out.push({ kind: 'budget-alert', budget, month })
   }
 

@@ -4,7 +4,7 @@ export { useTransactionStore } from './transactions.store'
 
 export { useCategoryStore } from './categories.store'
 
-export { useBudgetStore } from './budgets.store'
+export { useBudgetStore, selectTotalBudget } from './budgets.store'
 
 export { useDebtStore } from './debts.store'
 
