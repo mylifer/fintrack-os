@@ -538,3 +538,28 @@ describe('iade adayları: aynı ekstredeki alımlar', () => {
     expect(bad.problems.map(x => x.message)).toEqual(['Bağlanan alım bu onayda girilmiyor; önce o alımı girin ya da başka bir alım seçin'])
   })
 })
+
+describe('iade adayları: benzerlik', () => {
+  const refund = () => line({ description: 'YEMEKPAY /YEMEKSEPE', amount: -73.26, date: '2026-10-25' })
+
+  it('farklı yazılmış işyeri adı ve elle girilmiş (işyeri adı olmayan) alıcılı kayıt aday olur', () => {
+    const hist = [
+      tx({ id: 'y1', amount: 300, date: '2026-10-10', merchant: 'YEMEKSEPETIPAY/YEMEKSEPISTANBUL', categoryId: 'c-food', description: 'Dilay Ocakbaşı' }),
+      tx({ id: 'y2', amount: 150, date: '2026-10-20', recipientId: 'p-ys', categoryId: 'c-food', description: 'Komagene' }),
+      tx({ id: 'x1', amount: 900, date: '2026-10-24', merchant: 'IKEA-KARTAL', categoryId: 'c-ev', description: 'Raf' }),
+    ]
+    const r = plan([refund()], hist).rows.find(x => x.kind === 'refund')!
+    expect(r.refundLink!.candidates.map(c => c.txId)).toEqual(['y2', 'y1'])   // en yakın tarih önce
+    expect(r.refundLink!.more.map(c => c.txId)).toEqual(['x1'])
+  })
+
+  it('"Diğer…" listesinde benzer olan, tarihi daha yakın olsa da alakasızın önüne geçer', () => {
+    const hist = [
+      tx({ id: 'u1', amount: 500, date: '2026-10-24', merchant: 'SHELL ACIBADEM', categoryId: 'c-ev', description: 'Benzin' }),
+      tx({ id: 's1', amount: 200, date: '2026-04-01', merchant: 'YEMEKSEPETIPAY/YEMEKSEPISTANBUL', categoryId: 'c-food', description: 'Eski sipariş' }),
+    ]
+    const r = plan([refund()], hist).rows.find(x => x.kind === 'refund')!
+    expect(r.refundLink!.candidates).toEqual([])      // 180 günden eski: aday değil
+    expect(r.refundLink!.more.map(c => c.txId)).toEqual(['s1', 'u1'])
+  })
+})
