@@ -59,7 +59,6 @@ export function memFile(name: string, content: string, mimeType = 'text/csv') {
 }
 
 /** CSV'yi Ayarlar → İçe aktar'dan önizleyerek içe aktarır. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- imza korunur (çağıran spec'ler testInfo geçiyor)
 export async function importCsv(page: Page, _testInfo: { outputPath: (n: string) => string }, csv: string, rows: number) {
   await page.goto('/settings')
   await page.getByRole('button', { name: /Dosya Yükle/ }).click()

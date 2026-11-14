@@ -18,7 +18,11 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import { readPdfPages } from '@/lib/statement-import/pdf-text'
 import { readImageText } from '@/lib/statement-import/ocr'
-import { parseScreenshot, parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
+import { parseScreenshot, parseStatement, UnrecognizedStatementError, type ParsedStatement } from '@/lib/statement-import/statement'
+import { buildMappedStatement, gridToTable, guessMapping, pdfToTable, tableSignature, type ColumnMapping, type StatementTable } from '@/lib/statement-import/column-map'
+import { forgetMapping, loadMapping, rememberMapping } from '@/lib/statement-import/mapping-memory'
+import { decodeCsvBytes, parseCsvRecords } from '@/lib/utils/csv'
+import { isLegacyXls, isZip, readXlsxRows } from '@/lib/utils/xlsx'
 import { useRulesStore } from '@/store/rules.store'
 import { buildImportPlan, type ImportPlan, type PlanRow, type RowOption } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
@@ -27,8 +31,9 @@ import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-imp
 import type { BatchOp } from '@/lib/sync/engine'
 import { PreviewList, STATUS_META } from './PreviewList'
 import { RowModal } from './RowModal'
+import { ColumnMapper } from './ColumnMapper'
 
-type Step = 'upload' | 'reading' | 'preview' | 'saving' | 'done'
+type Step = 'upload' | 'reading' | 'mapping' | 'preview' | 'saving' | 'done'
 
 interface DoneState {
   calendar: number
@@ -101,6 +106,11 @@ export function StatementImport() {
   const [closedSections, setClosedSections] = useState<Record<string, boolean>>({ exists: true, info: true })
   const [highlightKey, setHighlightKey] = useState<string | null>(null)
   const [showTodo, setShowTodo]     = useState(false)
+  // Tanınmayan ekstre: elle sütun eşleme (column-map.ts)
+  const [table, setTable]           = useState<StatementTable | null>(null)
+  const [mapping, setMapping]       = useState<ColumnMapping | null>(null)
+  const [mapLabel, setMapLabel]     = useState('')
+  const [remembered, setRemembered] = useState<string | null>(null)
   const payPlans       = usePaymentsStore(s => s.plans)
   const payOccurrences = usePaymentsStore(s => s.occurrences)
 
@@ -166,48 +176,99 @@ export function StatementImport() {
     setNotice('')
     const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf'
     const isImage = /^image\/(png|jpeg|webp)$/.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name)
-    if (!isPdf && !isImage) {
-      setError('PDF ekstre ya da ekran görüntüsü (PNG/JPG) yükleyin. Garanti\'nin Excel dökümünde faiz ve ücret satırları olmadığı için PDF kullanılıyor.')
+    const isSheet = /\.(csv|txt|xlsx?)$/i.test(file.name) || file.type === 'text/csv' || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    if (!isPdf && !isImage && !isSheet) {
+      setError('PDF ekstre, ekran görüntüsü (PNG/JPG) ya da CSV/Excel (.xlsx) döküm yükleyin.')
       return
     }
     setStep('reading')
     try {
-      // Mükerrer kontrolü en güncel kayıtlarla yapılsın: önce buluttan çek
-      await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load(), syncDrafts()])
-      const st = isPdf
-        ? parseStatement(await readPdfPages(await file.arrayBuffer()))
-        : parseScreenshot(await readImageText(file))
-      const best = bestAccount(st, makePlan)
-      // Bu alanın taslağı; yoksa eski (alansız) kimlikle kaydedilmiş ve bu alana ait olan
-      const drafts = useStatementDraftsStore.getState()
-      const legacy = drafts.get(draftIdFor(st))
-      const own = drafts.get(draftIdFor(st, workspaceId))
-      const prev = own ?? (legacy && (!workspaceId || rowInWorkspace(legacy, workspaceId)) ? legacy : undefined)
-      const id = prev?.id ?? draftIdFor(st, workspaceId)
-      const prevAccount = prev && useAccountStore.getState().accounts.some(a => a.id === prev.accountId) ? prev.accountId : null
-      setStatement(st)
-      setFileName(file.name)
-      setDraftId(id)
-      setDraftWs(workspaceId)
-      setAccountId(prevAccount ?? best?.id ?? '')
-      setSuggested(best && best.matched > 0 ? { id: best.id, matched: best.matched } : null)
-      // Ekstre yeniden okununca satırlar değişmiş olabilir (okuyucu düzeltmesi):
-      // kararlar satır sırasıyla değil, satırın kalıcı kimliğiyle taşınır
-      const oldPlan = prevAccount ? makePlan(prev!.statement, prevAccount) : null
-      const newPlan = prevAccount ? makePlan(st, prevAccount) : null
-      setChoices(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.choices) : {})
-      setEdits(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.edits) : {})
-      if (prevAccount) setNotice('Bu ekstre daha önce yüklenip yarım bırakılmış; verdiğin kararlar geri getirildi.')
-      setStep('preview')
+      if (isSheet) {
+        const bytes = await file.arrayBuffer()
+        if (isLegacyXls(bytes)) throw new Error('Eski Excel (.xls) biçimi okunamıyor. Dosyayı Excel\'de .xlsx ya da CSV olarak kaydedin.')
+        openMapping(gridToTable(isZip(bytes) ? readXlsxRows(bytes) : parseCsvRecords(decodeCsvBytes(bytes))), file.name)
+        return
+      }
+      let st: ParsedStatement
+      if (isPdf) {
+        const pages = await readPdfPages(await file.arrayBuffer())
+        try {
+          st = parseStatement(pages)
+        } catch (err) {
+          // Tanınmayan biçim: tablo çıkarılabiliyorsa sütun eşleme adımı açılır
+          const t = err instanceof UnrecognizedStatementError ? pdfToTable(pages) : null
+          if (!t) throw err
+          openMapping(t, file.name)
+          return
+        }
+      } else {
+        st = parseScreenshot(await readImageText(file))
+      }
+      await openStatement(st, file.name)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dosya okunamadı.')
       setStep('upload')
     }
   }
 
+  /** Eşleme adımı: bu imzayla daha önce kaydedilen eşleme varsa o, yoksa tahmin */
+  function openMapping(t: StatementTable, name: string) {
+    const prev = loadMapping(tableSignature(t))
+    const ok = prev && [prev.mapping.date, prev.mapping.description, prev.mapping.amount, prev.mapping.debit, prev.mapping.credit, prev.mapping.balance].every(i => i < t.headers.length)
+    setTable(t)
+    setMapping(ok ? prev.mapping : guessMapping(t))
+    setMapLabel(ok ? prev.label : '')
+    setRemembered(ok ? prev.label : null)
+    setFileName(name)
+    setStep('mapping')
+  }
+
+  async function confirmMapping() {
+    if (!table || !mapping) return
+    setError('')
+    try {
+      const st = buildMappedStatement(table, mapping, mapLabel)
+      rememberMapping(st.mapped!.signature, mapping, mapLabel.trim())
+      setStep('reading')
+      await openStatement(st, fileName)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Eşleme uygulanamadı.')
+      setStep('mapping')
+    }
+  }
+
+  /** Ayrıştırılmış ekstreyi (banka ayrıştırıcısı ya da elle eşleme) önizlemeye açar */
+  async function openStatement(st: ParsedStatement, name: string) {
+    // Mükerrer kontrolü en güncel kayıtlarla yapılsın: önce buluttan çek
+    await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load(), syncDrafts()])
+    const best = bestAccount(st, makePlan)
+    // Bu alanın taslağı; yoksa eski (alansız) kimlikle kaydedilmiş ve bu alana ait olan
+    const drafts = useStatementDraftsStore.getState()
+    const legacy = drafts.get(draftIdFor(st))
+    const own = drafts.get(draftIdFor(st, workspaceId))
+    const prev = own ?? (legacy && (!workspaceId || rowInWorkspace(legacy, workspaceId)) ? legacy : undefined)
+    const id = prev?.id ?? draftIdFor(st, workspaceId)
+    const prevAccount = prev && useAccountStore.getState().accounts.some(a => a.id === prev.accountId) ? prev.accountId : null
+    setStatement(st)
+    setFileName(name)
+    setDraftId(id)
+    setDraftWs(workspaceId)
+    setAccountId(prevAccount ?? best?.id ?? '')
+    setSuggested(best && best.matched > 0 ? { id: best.id, matched: best.matched } : null)
+    // Ekstre yeniden okununca satırlar değişmiş olabilir (okuyucu düzeltmesi):
+    // kararlar satır sırasıyla değil, satırın kalıcı kimliğiyle taşınır
+    const oldPlan = prevAccount ? makePlan(prev!.statement, prevAccount) : null
+    const newPlan = prevAccount ? makePlan(st, prevAccount) : null
+    setChoices(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.choices) : {})
+    setEdits(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.edits) : {})
+    if (prevAccount) setNotice('Bu ekstre daha önce yüklenip yarım bırakılmış; verdiğin kararlar geri getirildi.')
+    setStep('preview')
+  }
+
   function reset() {
     setStep('upload'); setStatement(null); setFileName(''); setAccountId(''); setChoices({}); setEdits({})
     setError(''); setNotice(''); setDone(null); setOpenKey(null); setOfflineOk(false); setDraftId(null); setDraftWs(undefined)
+    setTable(null); setMapping(null); setMapLabel(''); setRemembered(null)
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -360,10 +421,10 @@ export function StatementImport() {
   if (step === 'upload' || step === 'reading') {
     return (
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-4">
-        <input ref={fileRef} type="file" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp" className="hidden"
+        <input ref={fileRef} type="file" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,.csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
           onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void readFile(f) }} />
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Kredi kartı ekstresini ya da vadesiz hesap dökümünü (PDF) yükleyin. Her satır sistemdeki kayıtlarınızla karşılaştırılır; neyin yeni, neyin zaten
+          Kredi kartı ekstresini ya da vadesiz hesap dökümünü (PDF, CSV ya da Excel) yükleyin. Her satır sistemdeki kayıtlarınızla karşılaştırılır; neyin yeni, neyin zaten
           girilmiş olduğunu ve karar gereken satırları tek ekranda görürsünüz. Onaylamadan hiçbir şey kaydedilmez.
         </p>
         <div
@@ -389,6 +450,7 @@ export function StatementImport() {
         <div className="rounded-xl bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
           <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA, QNB, Burgan (ON), Yapı Kredi, Odeabank ve Kuveyt Türk kredi kartı ekstresi;
           Garanti BBVA, QNB ve Odeabank dönem içi işlemler (PDF); Kuveyt Türk &quot;Dönem İçi Harcamalar&quot; ekran görüntüsü; Odeabank vadesiz hesap dökümü.
+          Tanınmayan PDF ve CSV/Excel dökümlerinde sütunları bir kez eşlersiniz; aynı bankanın sonraki ekstresinde eşleme hatırlanır.
           Dosya yalnız bu tarayıcıda okunur, hiçbir sunucuya gönderilmez. Diğer bankalar örnekleri geldikçe eklenecek.
         </div>
         {draftCount > 0 && step === 'upload' && (
@@ -400,6 +462,24 @@ export function StatementImport() {
         {notice && <div className="text-xs font-medium px-4 py-2.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400">{notice}</div>}
         {error && <div className="text-xs text-destructive font-medium px-4 py-2.5 bg-destructive/10 rounded-xl">{error}</div>}
       </div>
+    )
+  }
+
+  if (step === 'mapping' && table && mapping) {
+    return (
+      <ColumnMapper
+        table={table}
+        mapping={mapping}
+        onChange={setMapping}
+        label={mapLabel}
+        onLabel={setMapLabel}
+        fileName={fileName}
+        remembered={remembered}
+        onForget={() => { forgetMapping(tableSignature(table)); setRemembered(null); setMapping(guessMapping(table)) }}
+        onConfirm={() => void confirmMapping()}
+        onCancel={reset}
+        error={error}
+      />
     )
   }
 
@@ -435,11 +515,13 @@ export function StatementImport() {
   const problems = (preview?.problems ?? []).filter(p => p.message !== 'Karar verilmedi')
   const effect = preview ? commitEffect(preview.ops, accountId, existing) : 0
   const s = statement.summary
+  // Elle eşlenen vadesiz dökümde bakiye sütunu yoksa bakiye bilinmez: kıyas gösterilmez
+  const accountInfo = statement.account && (!statement.mapped || statement.mapped.hasBalance) ? statement.account : null
   // Vadesiz hesap: sistemdeki bakiye (dönem sonu) ve onaydan sonraki hali, bankayla fark
-  const balance = statement.account && account && account.type !== 'credit_card' ? (() => {
-    const before = systemBalance(account, transactions, statement.account!.periodEnd)
+  const balance = accountInfo && account && account.type !== 'credit_card' ? (() => {
+    const before = systemBalance(account, transactions, accountInfo.periodEnd)
     const after = Math.round((before - effect) * 100) / 100
-    return { before, after, diff: Math.round((statement.account!.closingBalance - after) * 100) / 100 }
+    return { before, after, diff: Math.round((accountInfo.closingBalance - after) * 100) / 100 }
   })() : null
   const calChanges = calendar?.changes ?? []
   const calValue = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(v, 'd MMM yyyy') : v ?? '—')
@@ -521,13 +603,18 @@ export function StatementImport() {
       {/* Başlık + hesap */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight">{statement.bankLabel} {statement.type === 'checking' ? 'vadesiz hesap dökümü' : statement.provisional ? 'kredi kartı · dönem içi işlemler' : 'kredi kartı ekstresi'}</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{statement.bankLabel} {statement.mapped ? (statement.type === 'checking' ? '· hesap dökümü' : '· kart işlemleri') : statement.type === 'checking' ? 'vadesiz hesap dökümü' : statement.provisional ? 'kredi kartı · dönem içi işlemler' : 'kredi kartı ekstresi'}</h2>
           <div className="text-sm text-muted-foreground mt-0.5 tabular-nums">
             {plan ? formatDate(plan.periodStart, 'd MMM') : statement.account ? formatDate(statement.account.periodStart, 'd MMM') : '…'} – {formatDate(statement.statementDate, 'd MMM yyyy')}
             {statement.dueDate && <> · son ödeme {formatDate(statement.dueDate, 'd MMM')}</>} · <span className="break-all">{fileName}</span>
           </div>
         </div>
+        <div className="flex gap-2">
+        {table && mapping && step === 'preview' && (
+          <Button variant="outline" size="sm" onClick={() => { setError(''); setStep('mapping') }} className="rounded-lg">Eşlemeyi düzenle</Button>
+        )}
         <Button variant="outline" size="sm" onClick={reset} className="rounded-lg" title="Kararların kaybolmaz; ekstre Yarım Kalanlar'da saklanır">Kapat</Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -553,16 +640,18 @@ export function StatementImport() {
       <section className="rounded-xl border border-border bg-card px-4 py-3.5 flex flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-4">
           {statement.check.ok
-            ? statement.provisional
+            ? statement.mapped
+              ? <span className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground"><IconCircleCheck className="size-4 self-center" />{statement.lines.length} işlem okundu · sütunlar elle eşlendi, toplam kontrolü yapılamaz</span>
+              : statement.provisional
               ? <span className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground"><IconCircleCheck className="size-4 self-center" />{statement.lines.length} işlem okundu · ekstre henüz kesilmedi, toplam kontrolü yapılamaz</span>
               : <span className="flex items-center gap-1.5 text-sm font-semibold text-green-600"><IconCircleCheck className="size-4 self-center" />{statement.type === 'checking' ? 'Döküm eksiksiz okundu, bakiyeler birebir tuttu' : 'Ekstre bankayla birebir tuttu'}</span>
             : <span className="flex items-center gap-1.5 text-sm font-semibold text-destructive"><IconAlertTriangle className="size-4 self-center" />Ekstre okunamadı</span>}
           {s && <span className="text-lg font-semibold tabular-nums">{formatCurrency(s.debt)}</span>}
-          {statement.account && <span className="text-lg font-semibold tabular-nums">{formatCurrency(statement.account.closingBalance)}</span>}
+          {accountInfo && <span className="text-lg font-semibold tabular-nums">{formatCurrency(accountInfo.closingBalance)}</span>}
         </div>
-        {statement.account && (
+        {accountInfo && (
           <div className="text-xs text-muted-foreground tabular-nums">
-            Dönem başı bakiye {formatCurrency(statement.account.openingBalance)} · {statement.lines.length} hareket · dönem sonu bakiye {formatCurrency(statement.account.closingBalance)}
+            Dönem başı bakiye {formatCurrency(accountInfo.openingBalance)} · {statement.lines.length} hareket · dönem sonu bakiye {formatCurrency(accountInfo.closingBalance)}
           </div>
         )}
         {s && (

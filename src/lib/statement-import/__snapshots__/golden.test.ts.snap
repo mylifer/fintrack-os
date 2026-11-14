@@ -1,0 +1,146 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`altın çıktı: Kuveyt Türk ekran görüntüsü (OCR) > kuveyt-period > özet 1`] = `
+{
+  "bank": "kuveyt",
+  "byKind": {
+    "payment": [
+      2,
+      -1350,
+    ],
+    "purchase": [
+      2,
+      11250,
+    ],
+  },
+  "cards": [
+    "1234",
+  ],
+  "check": {
+    "computed": 11250,
+    "expected": 11250,
+    "ok": true,
+  },
+  "count": 4,
+  "dueDate": null,
+  "first": "0 | 2026-11-02 | payment | -249.07 | bonus=— | taksit=— | döviz=— | Kredi Kartı Borç Ödeme |",
+  "last": "3 | 2026-11-08 | purchase | 3750.00 | bonus=— | taksit=— | döviz=— | VET HAST UNIVERSAL FATİH |",
+  "provisional": true,
+  "statementDate": "2026-11-08",
+  "total": 9900,
+  "type": "credit_card",
+}
+`;
+
+exports[`altın çıktı: Kuveyt Türk ekran görüntüsü (OCR) > kuveyt-period 1`] = `
+[
+  "0 | 2026-11-02 | payment | -249.07 | bonus=— | taksit=— | döviz=— | Kredi Kartı Borç Ödeme |",
+  "1 | 2026-11-02 | payment | -1100.93 | bonus=— | taksit=— | döviz=— | Kredi Kartı Borç Ödeme |",
+  "2 | 2026-11-06 | purchase | 7500.00 | bonus=— | taksit=— | döviz=— | VET HAST UNİVERSAL FATİH |",
+  "3 | 2026-11-08 | purchase | 3750.00 | bonus=— | taksit=— | döviz=— | VET HAST UNIVERSAL FATİH |",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > burgan-card 1`] = `
+[
+  "0 | — | carry | 10000.00 | bonus=— | taksit=— | döviz=— | Önceki dönem bakiyesi |",
+  "1 | 2026-09-07 | purchase | 310.00 | bonus=— | taksit=— | döviz=— | ORNEK BAKKAL ISTANBUL TR |",
+  "2 | 2026-09-08 | refund | -62.10 | bonus=— | taksit=— | döviz=— | ON Kredi Kartı Elektrikli Araç Şarj Kampanyası kaz |",
+  "3 | 2026-09-09 | purchase | 1500.00 | bonus=— | taksit=— | döviz=— | ORNEK KUAFOR ISTANBUL TR |",
+  "4 | 2026-09-17 | payment | -10000.00 | bonus=— | taksit=— | döviz=— | KREDI KARTI BORC ODEME |",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > garanti-card 1`] = `
+[
+  "0 | — | carry | 5000.00 | bonus=— | taksit=— | döviz=— | ÖNCEKİ DÖNEMDEN DEVİR EDİLEN TUTAR |",
+  "1 | — | fee | 100.00 | bonus=— | taksit=— | döviz=— | DÖNEM FAİZİ |",
+  "2 | 2026-10-09 | payment | -5000.00 | bonus=— | taksit=— | döviz=— | ÖDEMENİZ İÇİN TEŞEKKÜR EDERİZ |",
+  "3 | 2026-10-22 | bonus | — | bonus=-615.00 | taksit=— | döviz=— | BONUS BEDAVA ALIŞVERİŞ |",
+  "4 | 2026-10-02 | bonus | — | bonus=350.00 | taksit=— | döviz=— | GİYİM BONUS KAMPANYASI |",
+  "5 | 2026-10-25 | purchase | 644.00 | bonus=0.32 | taksit=— | döviz=— | IYZICO *AMAZON.COM.T |",
+  "6 | 2026-10-24 | refund | -335.00 | bonus=-0.17 | taksit=— | döviz=— | IYZICO *AMAZON.COM.T |",
+  "7 | 2026-09-11 | purchase | 366.63 | bonus=— | taksit=2/3@1099.91 | döviz=— | ÖZDİLEKTEYİM MAĞAZA |",
+  "8 | 2026-10-21 | purchase | 535.50 | bonus=1.45 | taksit=1/3@1606.50 | döviz=— | IYZICO/RUSTANDRICH.COM.TR |",
+  "9 | 2026-10-04 | purchase | 556.72 | bonus=— | taksit=— | döviz=11.00 USD | STARTER (TIMELY) |",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > garanti-period 1`] = `
+[
+  "0 | 2026-11-02 | purchase | 1328.85 | bonus=6.22 | taksit=1/3@3986.55 | döviz=— | IYZICO *AMAZON.COM.T | etiket=Market",
+  "1 | 2026-11-03 | bonus | — | bonus=285.00 | taksit=— | döviz=— | TRENDYOLGO YEMEK | etiket=Market",
+  "2 | 2026-11-05 | bonus | — | bonus=-285.45 | taksit=— | döviz=— | HEPSİPAY-HEP*HEPSİBURADA | etiket=Market",
+  "3 | 2026-11-06 | payment | -76650.35 | bonus=— | taksit=— | döviz=— | BonusFlaş Ödeme | etiket=Market",
+  "4 | 2026-11-06 | purchase | 22.25 | bonus=0.01 | taksit=— | döviz=— | MİGROS- ETHEMEFENDİ MİGRO | etiket=Market",
+  "5 | 2026-11-07 | purchase | 500.00 | bonus=— | taksit=— | döviz=— | HGS YÜKLEME | etiket=Market",
+  "6 | 2026-11-28 | purchase | 1649.00 | bonus=— | taksit=3/6@9894.00 | döviz=— | BEYMEN PERAKENDE VE TEKST | etiket=Market",
+  "7 | 2026-11-28 | refund | -1649.00 | bonus=— | taksit=3/6@-9894.00 | döviz=— | BEYMEN PERAKENDE VE TEKST | etiket=Market",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > kuveyt-card 1`] = `
+[
+  "0 | — | carry | 1350.00 | bonus=— | taksit=— | döviz=— | Önceki dönem bakiyesi |",
+  "1 | 2026-10-13 | purchase | 1350.00 | bonus=— | taksit=3/5@6750.00 | döviz=— | ÖZEL DURU VETERİNERL |",
+  "2 | 2026-10-05 | payment | -1350.00 | bonus=— | taksit=— | döviz=— | Kredi Kartı Borç Ödeme |",
+  "3 | 2026-10-10 | purchase | 250.00 | bonus=2.50 | taksit=— | döviz=— | MİGROS ERENKÖY |",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > odeabank-account 1`] = `
+[
+  "0 | 2026-11-01 | credit | -211667.06 | bonus=— | taksit=— | döviz=— | Banka: 0046 SN: 8361718 MİDAS MENKUL DEĞERLER ANONİM ŞTİ. Açk: Midas | saat=19:00 bakiye=211667.06",
+  "1 | 2026-11-02 | debit | 3612.76 | bonus=— | taksit=— | döviz=— | Banka: 0062 SN: 600000000000000001 Ayşe yılmaz Açk: 3612.76 TRY Gönd. | saat=10:46 bakiye=208054.30",
+  "2 | 2026-11-03 | credit | -185.48 | bonus=— | taksit=— | döviz=— | %36,00 Oksijen Devam Faizi - Faizi % | saat=02:43 bakiye=208239.78",
+  "3 | 2026-11-03 | debit | 32.46 | bonus=— | taksit=— | döviz=— | Oksijen Devam Faizi - Gelir Vergisi Stopaj Kesintisi | saat=02:43 bakiye=208207.32",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > odeabank-card 1`] = `
+[
+  "0 | — | carry | 500.00 | bonus=— | taksit=— | döviz=— | Önceki dönem bakiyesi |",
+  "1 | 2026-09-04 | payment | -500.00 | bonus=— | taksit=— | döviz=— | Ödemeniz için tesekkür ederiz. |",
+  "2 | 2026-08-27 | purchase | 162.72 | bonus=— | taksit=1/2@325.44 | döviz=— | NAZLIM ECZANESI |",
+  "3 | 2026-08-27 | purchase | 130.00 | bonus=0.03 | taksit=— | döviz=— | SHELL ACIBADEM |",
+  "4 | 2026-09-02 | purchase | 1350.00 | bonus=— | taksit=— | döviz=— | NOMUPA /S SPORT PLUS |",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > odeabank-period 1`] = `
+[
+  "0 | 2026-11-02 | purchase | 249.00 | bonus=— | taksit=— | döviz=— | NOMUPA /S SPORT PLUS |",
+  "1 | 2026-11-03 | purchase | 3902.14 | bonus=— | taksit=— | döviz=— | PARATIKA/FIBASIGORTA |",
+  "2 | 2026-11-04 | payment | -4313.85 | bonus=— | taksit=— | döviz=— | KART BORC ODEMESI |",
+  "3 | 2026-11-05 | purchase | 2700.00 | bonus=— | taksit=— | döviz=— | MASAL KOKOREC |",
+  "4 | 2026-11-05 | payment | -41197.68 | bonus=— | taksit=— | döviz=— | KART BORC ODEMESI |",
+  "5 | 2026-11-12 | purchase | 1423.60 | bonus=— | taksit=— | döviz=— | YEMEKSEPETIPAY /Yemeks |",
+  "6 | 2026-11-12 | refund | -212.95 | bonus=— | taksit=— | döviz=— | YEMEKSEPETIPAY /Yemeks |",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > qnb-card 1`] = `
+[
+  "0 | — | carry | 24.21 | bonus=— | taksit=— | döviz=— | Önceki dönem bakiyesi |",
+  "1 | 2026-09-14 | payment | -24.21 | bonus=— | taksit=— | döviz=— | Ödeme - Tesekkür Ederiz - |",
+  "2 | 2026-09-19 | purchase | 1350.00 | bonus=— | taksit=— | döviz=— | TAM - ÖDEME /STARBUCKS |",
+  "3 | 2026-09-24 | refund | -37.45 | bonus=— | taksit=— | döviz=— | YEMEKPAY /YEMEKSEPE 337.05 alşv ind |",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > qnb-period 1`] = `
+[
+  "0 | 2026-10-05 | refund | -46.00 | bonus=— | taksit=— | döviz=— | YEMEKPAY /YEMEKSEPE 414.00 alşv ind |",
+  "1 | 2026-10-13 | payment | -3278.05 | bonus=— | taksit=— | döviz=— | Ödeme - Tesekkür Ederiz - |",
+  "2 | 2026-10-24 | purchase | 467.00 | bonus=— | taksit=— | döviz=— | BITAKSI 34 TR |",
+]
+`;
+
+exports[`altın çıktı: PDF ekstreleri > yapikredi-card 1`] = `
+[
+  "0 | — | carry | 1000.00 | bonus=— | taksit=— | döviz=— | Önceki dönem bakiyesi |",
+  "1 | 2026-09-28 | payment | -1000.00 | bonus=— | taksit=— | döviz=— | ÖDEME-İNTERNET BANKACILIĞI |",
+  "2 | 2026-09-29 | purchase | 1200.00 | bonus=— | taksit=6/6@7200.00 | döviz=— | ORNEK GIYIM ISTANBUL TR |",
+  "3 | 2026-10-06 | purchase | 800.00 | bonus=— | taksit=2/5@4000.00 | döviz=— | ORNEK MAGAZA |",
+]
+`;
