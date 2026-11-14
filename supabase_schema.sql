@@ -21,7 +21,7 @@
 --
 -- ⚠️ BU DOSYA TEK BAŞINA YETERLİ DEĞİLDİR.
 -- Sıfırdan bir proje kuruyorsanız (felaket kurtarma, test ortamı) bunu
--- çalıştırdıktan SONRA supabase/migrations/0001..0023'ü sırayla uygulayın.
+-- çalıştırdıktan SONRA supabase/migrations/0001..0024'ü sırayla uygulayın.
 -- Doğru sıra ve kontroller: supabase/fresh-install/run.sh (CI'da her PR'da
 -- boş bir Postgres'te çalışır — bu zincir kırılırsa ya da bir tablonun
 -- izni unutulursa PR kırmızı olur).
