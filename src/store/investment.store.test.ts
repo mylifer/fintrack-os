@@ -102,3 +102,67 @@ describe('bağlı defter satırı — hesabın para birimi', () => {
     expect(upserts).toHaveLength(0)
   })
 })
+
+/* Denetim #7 — satışın maliyet bazı SATIŞ TARİHİNDEKİ ortalama maliyettir.
+   Eskiden computeHoldings(...) ile BUGÜNKÜ ortalama kullanılıyordu; tamamen
+   satılmış varlıkta holding olmadığından maliyet 0 çıkıyordu. */
+describe('geriye tarihli satış — as-of maliyet bazı (#7)', () => {
+  const inv = (o: Partial<InvestmentTransaction>): InvestmentTransaction => ({
+    id: crypto.randomUUID(), type: 'buy', asset: 'GOLD_GRAM', quantity: 100, pricePerUnit: 2000,
+    date: '2026-01-10', createdAt: '2026-01-10T10:00:00.000Z', ...o,
+  } as InvestmentTransaction)
+
+  it('Şubat tarihli satış Mart alımının maliyetini görmez', async () => {
+    setBaseRates(RATES as never)
+    const { useInvestmentStore } = await import('./investment.store')
+    useInvestmentStore.setState({ transactions: [
+      inv({ pricePerUnit: 2000, date: '2026-01-10', createdAt: '2026-01-10T10:00:00.000Z' }),
+      inv({ pricePerUnit: 4000, date: '2026-03-10', createdAt: '2026-03-10T10:00:00.000Z' }),
+    ] })
+    // Bugünkü ortalama 3.000; Şubat'taki 2.000
+    await useInvestmentStore.getState().addTransaction(inv({
+      type: 'sell', quantity: 50, pricePerUnit: 3000, targetAccountId: 'try-acc',
+      date: '2026-02-10', createdAt: '2026-04-01T10:00:00.000Z',
+    }))
+    expect(added.map(t => [t.type, t.amount])).toEqual([
+      ['income', 100_000],   // anapara: 50 × 2.000
+      ['income', 50_000],    // kâr: 150.000 − 100.000
+    ])
+  })
+
+  it('bugün tamamen satılmış varlığa geriye tarihli satış maliyetsiz kalmaz', async () => {
+    setBaseRates(RATES as never)
+    const { useInvestmentStore } = await import('./investment.store')
+    useInvestmentStore.setState({ transactions: [
+      inv({ quantity: 100, pricePerUnit: 100, date: '2026-01-10', createdAt: '2026-01-10T10:00:00.000Z' }),
+      inv({ type: 'sell', quantity: 100, pricePerUnit: 150, date: '2026-06-10', createdAt: '2026-06-10T10:00:00.000Z' }),
+    ] })
+    await useInvestmentStore.getState().addTransaction(inv({
+      type: 'sell', quantity: 10, pricePerUnit: 1000, targetAccountId: 'try-acc',
+      date: '2026-05-10', createdAt: '2026-07-01T10:00:00.000Z',
+    }))
+    expect(added.map(t => [t.type, t.amount])).toEqual([
+      ['income', 1_000],     // anapara: 10 × 100 (Mayıs ortalaması)
+      ['income', 9_000],     // kâr — eskiden 10.000'in tamamı maliyetsiz yazılıyordu
+    ])
+  })
+
+  it('düzenlemede satış tarihi geriye çekilince maliyet yeni tarihe göre', async () => {
+    setBaseRates(RATES as never)
+    const { useInvestmentStore } = await import('./investment.store')
+    const sell = inv({
+      id: 'sell-edit', type: 'sell', quantity: 50, pricePerUnit: 3000, targetAccountId: 'try-acc',
+      date: '2026-04-10', createdAt: '2026-04-10T10:00:00.000Z',
+    })
+    useInvestmentStore.setState({ transactions: [
+      inv({ pricePerUnit: 2000, date: '2026-01-10', createdAt: '2026-01-10T10:00:00.000Z' }),
+      inv({ pricePerUnit: 4000, date: '2026-03-10', createdAt: '2026-03-10T10:00:00.000Z' }),
+      sell,
+    ] })
+    await useInvestmentStore.getState().updateTransaction('sell-edit', { date: '2026-02-10' })
+    expect(added.map(t => [t.type, t.amount])).toEqual([
+      ['income', 100_000],
+      ['income', 50_000],
+    ])
+  })
+})
