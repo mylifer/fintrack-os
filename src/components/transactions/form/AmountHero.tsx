@@ -61,7 +61,7 @@ export function AmountHero({
           "text-2xl font-semibold leading-none transition-colors duration-200",
           amountStr ? "text-muted-foreground/50" : "text-muted-foreground/25",
         )}>
-           a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode)}=>{getCurrencySymbol(currency)}=> a.id === form.accountId)?.currency ?? 'TRY') as CurrencyCode)}
+          {getCurrencySymbol(currency)}
         </span>
 
         {/* Number + custom smooth caret */}

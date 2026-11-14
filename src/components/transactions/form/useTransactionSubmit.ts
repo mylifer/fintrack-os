@@ -10,7 +10,7 @@ import { primarySplitCategoryId, type DraftSplit } from '@/lib/utils/categorySpl
 import type { Transaction, TransactionType, CurrencyCode, RecurringTransaction, Category, CategorySplit, Account, Debt } from '@/types'
 import {
   rememberAddedDate, toAmountStr, validateTransactionForm,
-  type Tab, type TxForm, type RecForm, type SessionRow,
+  type Tab, type TxForm, type RecForm,
 } from './form-model'
 import type { TransactionFormState } from './useTransactionFormState'
 

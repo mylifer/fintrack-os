@@ -24,7 +24,7 @@ export function useAutoCategory({
   autoCategory: string | null
   setAutoCategory: TransactionFormState['setAutoCategory']
 }) {
-  const rules = useRulesStore(s => s.rules)
+  const rules      = useRulesStore(s => s.rules)
 
   // ── Otomatik kategori (lib/auto-category) ──────────────────────────────
   // Önce açıklamadaki anahtar kelime kuralı, yoksa alıcının en sık kategorisi.
