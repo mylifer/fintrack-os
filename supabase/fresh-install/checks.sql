@@ -20,8 +20,8 @@ begin
     if not has_table_privilege('authenticated', r.oid, 'insert') then
       raise exception 'authenticated rolünün izni yok (GRANT eksik): public.%', r.relname;
     end if;
-    -- error_logs bilerek yalnız ekleme alır; diğerleri okunabilmeli
-    if r.relname <> 'error_logs' and not has_table_privilege('authenticated', r.oid, 'select') then
+    -- error_logs da okunabilir (0027: yalnız kendi satırları, politika aşağıda sınanır)
+    if not has_table_privilege('authenticated', r.oid, 'select') then
       raise exception 'authenticated okuyamıyor (GRANT eksik): public.%', r.relname;
     end if;
     if has_table_privilege('anon', r.oid, 'select') or has_table_privilege('anon', r.oid, 'insert') then
@@ -51,6 +51,9 @@ insert into transactions (id, user_id, type, amount, "amountTry", currency, date
   values ('t1', auth.uid(), 'expense', -50, -50, 'TRY', '2026-10-01', 'a1', 'İade', false, '2026-10-01',
           '2026-10-01T00:00:00.000Z', 'ws-aile', '[{"categoryId":"c","amount":-50}]', '["x"]', 'approved');
 insert into error_logs (kind, message, path, user_agent, release) values ('error', 'test', '/x', 'ua', 'local');
+do $$ begin
+  if (select count(*) from error_logs) <> 1 then raise exception 'kullanıcı kendi hata kaydını okuyamıyor (0027)'; end if;
+end $$;
 select public.create_workspace_invite('ws-aile') as token \gset
 commit;
 
@@ -63,6 +66,9 @@ do $$ begin
   if (select count(*) from transactions) <> 0 then raise exception 'eş katılmadan sahibin verisini görüyor'; end if;
 end $$;
 select public.accept_workspace_invite(:'token');
+do $$ begin
+  if (select count(*) from error_logs) <> 0 then raise exception 'başkasının hata kaydı görünüyor (paylaşılan alanda bile)'; end if;
+end $$;
 do $$ begin
   if (select count(*) from transactions) <> 1 then raise exception 'eş katıldıktan sonra paylaşılan veriyi görmüyor'; end if;
 end $$;

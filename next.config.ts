@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Baseline security headers for a finance app. The Content-Security-Policy is
   // NOT set here: it is per-request and nonce-based, generated in src/proxy.ts
-  // (currently shipped as Content-Security-Policy-Report-Only). COOP is static,
+  // (ENFORCED as Content-Security-Policy, violations reported to /api/csp-report). COOP is static,
   // so it lives here alongside the other baseline headers.
   async headers() {
     return [

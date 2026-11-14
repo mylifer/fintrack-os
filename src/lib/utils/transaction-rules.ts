@@ -148,6 +148,45 @@ export function mergeTags(current: readonly string[] | null | undefined, add: re
   return dedupeTags([...(current ?? []), ...add])
 }
 
+/* ── Form: kural önerisinin yeniden değerlendirilmesi ────────────────────────
+   İşlem formunda açıklama ya da tutar değişince eşleşen kural değişebilir
+   (tutar koşullu kural). Önceki kuraldan GELMİŞ etiket/alıcı yenisiyle
+   değiştirilir; kullanıcının seçtiği alıcıya ve kendi girdiği etiketlere
+   dokunulmaz (kural etiketiyle aynı adı taşıyan elle girilmiş etiket ayırt
+   edilemez — kural etiketi sayılır). Kategori formun kendi "otomatik"
+   işaretiyle yürür (bkz. TransactionFormModal withAutoCategory). */
+
+export interface RuleExtrasState {
+  tags: readonly string[]
+  recipientId: string | null | undefined
+}
+
+/** Önceki kural sonucundan yenisine geçişte yazılacak etiket/alıcı (yalnız değişenler). */
+export function swapRuleExtras(
+  cur: RuleExtrasState,
+  prev: Pick<RuleOutcome, 'tags' | 'recipientId'> | undefined,
+  next: Pick<RuleOutcome, 'tags' | 'recipientId'> | undefined,
+): { tags?: string[]; recipientId?: string | null } {
+  const out: { tags?: string[]; recipientId?: string | null } = {}
+  const prevTags = new Set((prev?.tags ?? []).map(tagKey))
+  const kept = cur.tags.filter(t => !prevTags.has(tagKey(t)))
+  const tags = dedupeTags([...kept, ...(next?.tags ?? [])])
+  if (tags.length !== cur.tags.length || tags.some((t, i) => t !== cur.tags[i])) out.tags = tags
+  const curR = cur.recipientId ?? null
+  const fromRule = !!curR && curR === prev?.recipientId
+  if (!curR || fromRule) {
+    const r = next?.recipientId ?? (fromRule ? null : curR)
+    if (r !== curR) out.recipientId = r
+  }
+  return out
+}
+
+/** Eşleşen kural değişti mi (kimlik ya da var/yok)? Tutar her tuşta değişir;
+ *  form yalnız bu durumda öneriyi yeniden uygular. */
+export function ruleChanged(prev: { rule: { id: string } } | undefined, next: { rule: { id: string } } | undefined): boolean {
+  return (prev?.rule.id ?? null) !== (next?.rule.id ?? null)
+}
+
 /* ── Doğrulama ─────────────────────────────────────────────────────────────── */
 
 export type RuleDraft = Pick<TransactionRule, 'pattern' | 'matchKind'> &

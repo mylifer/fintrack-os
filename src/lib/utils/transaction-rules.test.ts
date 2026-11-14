@@ -3,7 +3,7 @@ import type { Category, Person, Transaction, TransactionRule } from '@/types'
 import {
   textMatches, ruleMatches, findMatchingRule, matchRule, ruleOutcome, sortRules,
   validateRule, mergeTags, transactionsMatchingRule, ruleChangeFor, previewRuleOnHistory,
-  normalizeRulePattern, suggestPatternFrom,
+  normalizeRulePattern, suggestPatternFrom, swapRuleExtras, ruleChanged,
 } from './transaction-rules'
 
 const rule = (over: Partial<TransactionRule> = {}): TransactionRule => ({
@@ -222,5 +222,38 @@ describe('yardımcılar', () => {
     expect(suggestPatternFrom('IKEA KARTAL (2/6)')).toBe('IKEA KARTAL')
     expect(suggestPatternFrom('YEMEKSEPETI 4423156789 ISTANBUL')).toBe('YEMEKSEPETI')
     expect(suggestPatternFrom('Kira')).toBe('Kira')
+  })
+})
+
+describe('form: tutar/açıklama değişince kural önerisinin yeniden uygulanması', () => {
+  const kucuk = rule({ id: 'kucuk', pattern: 'migros', maxAmount: 100, categoryId: 'c-market', tags: ['ufak'], recipientId: 'p-migros', sortOrder: 1 })
+  const genel = rule({ id: 'genel', pattern: 'migros', categoryId: 'c-yemek', tags: ['market'], sortOrder: 2 })
+  const subject = (amount?: number) => ({ description: 'MIGROS', type: 'expense' as const, amount })
+
+  it('tutar girilince tutar koşullu kural devreye girer, eşleşen kural değişir', () => {
+    const before = matchRule([kucuk, genel], subject(undefined), categories, people)
+    const after = matchRule([kucuk, genel], subject(80), categories, people)
+    expect(before?.rule.id).toBe('genel')
+    expect(after?.rule.id).toBe('kucuk')
+    expect(ruleChanged(before, after)).toBe(true)
+    expect(ruleChanged(after, matchRule([kucuk, genel], subject(90), categories, people))).toBe(false)
+    expect(ruleChanged(undefined, undefined)).toBe(false)
+  })
+
+  it('önceki kuralın etiketi/alıcısı yenisininkiyle değişir; elle girilenler korunur', () => {
+    const prev = matchRule([kucuk, genel], subject(undefined), categories, people)
+    const next = matchRule([kucuk, genel], subject(80), categories, people)
+    expect(swapRuleExtras({ tags: ['market', 'elle'], recipientId: null }, prev, next))
+      .toEqual({ tags: ['elle', 'ufak'], recipientId: 'p-migros' })
+    // Tutar yeniden büyüyünce kuraldan gelen alıcı geri alınır
+    expect(swapRuleExtras({ tags: ['elle', 'ufak'], recipientId: 'p-migros' }, next, prev))
+      .toEqual({ tags: ['elle', 'market'], recipientId: null })
+  })
+
+  it('kullanıcının seçtiği alıcıya dokunulmaz; değişiklik yoksa boş', () => {
+    const next = matchRule([kucuk], subject(80), categories, people)
+    expect(swapRuleExtras({ tags: [], recipientId: 'p-arsiv' }, undefined, next)).toEqual({ tags: ['ufak'] })
+    expect(swapRuleExtras({ tags: ['ufak'], recipientId: 'p-migros' }, next, next)).toEqual({})
+    expect(swapRuleExtras({ tags: ['x'], recipientId: undefined }, undefined, undefined)).toEqual({})
   })
 })

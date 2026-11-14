@@ -539,6 +539,8 @@ export async function clearAllData(): Promise<void> {
   // Ödeme takibi kayıtları hesaplara/borçlara bağlı — onlar silinince yetim kalmasın.
   await db.paymentPlans.clear()
   await db.paymentOccurrences.clear()
+  // İşlem kuralları (transaction_rules) bilerek SİLİNMEZ — kategoriler gibi ayardır;
+  // silinmiş hesaba koşullu kural artık tutmaz, silinmiş alıcı eylemi atlanır (ruleOutcome).
   // Birikim hedefleri hesaplara bağlanabilir — hesaplar silinince yetim kalmasın.
   await db.savingsGoals.clear()
   await db._outbox.clear() // discard pending mutations — this is an explicit wipe

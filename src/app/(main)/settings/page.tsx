@@ -14,6 +14,7 @@ import { PrivacySettings } from '@/components/settings/PrivacySettings'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
 import { InvestmentsViewSettings } from '@/components/settings/InvestmentsViewSettings'
 import { FundTaxSettings } from '@/components/settings/FundTaxSettings'
+import { ErrorLogsCard } from '@/components/settings/ErrorLogsCard'
 import { loadDemoData, clearAllData } from '@/lib/seed'
 import { scanDemoData, removeDemoData, type DemoScan } from '@/lib/demo-cleanup'
 import { SelectField } from '@/components/ui/Select'
@@ -229,6 +230,9 @@ export default function SettingsPage() {
         {/* Çalışma Alanları */}
         <WorkspaceManager />
         <SharingSettings />
+
+        {/* Hata kayıtları — son 30 gün, kullanıcının kendi kayıtları (0027) */}
+        <ErrorLogsCard />
 
         {/* Demo & Reset */}
         <Card>

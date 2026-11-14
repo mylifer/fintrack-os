@@ -36,7 +36,7 @@ import { CategoryCascadeSelect } from '@/components/categories/CategoryCascadeSe
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { suggestCategoryIcon } from '@/lib/category-icon-suggest'
 import { keywordCategory, recipientCategory } from '@/lib/auto-category'
-import { matchRule } from '@/lib/utils/transaction-rules'
+import { matchRule, ruleChanged, swapRuleExtras } from '@/lib/utils/transaction-rules'
 import { useRulesStore } from '@/store/rules.store'
 import { TagInput } from '@/components/transactions/TagInput'
 import { ReceiptField } from '@/components/transactions/ReceiptField'
@@ -1221,52 +1221,53 @@ export function TransactionFormModal() {
   // Kullanıcının işlem kuralları (lib/utils/transaction-rules) hepsinden ÖNCE
   // gelir; ilk eşleşen kural kazanır. Tutar/hesap koşulu formun o anki
   // değerleriyle denenir (tutar henüz girilmemişse tutar koşullu kural tutmaz).
-  function ruleFor(description: string) {
+  function ruleFor(description: string, amountRaw = amountStr) {
     if (tab === 'transfer') return undefined
-    const amount = parseCurrencyInput(amountStr)
+    const amount = parseCurrencyInput(amountRaw)
     return matchRule(rules, {
       description, type: tab, accountId: form.accountId, amount: amount > 0 ? amount : undefined,
     }, categories, allPeople)
   }
 
-  function autoPick(description: string, recipientId: string | null | undefined): string | undefined {
+  function autoPick(description: string, recipientId: string | null | undefined, amountRaw = amountStr): string | undefined {
     if (tab === 'transfer') return undefined
-    return ruleFor(description)?.categoryId
+    return ruleFor(description, amountRaw)?.categoryId
       ?? keywordCategory(description, tab, categories)
       ?? (recipientId ? recipientCategory(recipientId, tab, transactions, categories) : undefined)
   }
 
-  // Kuralın etiket ve alıcı eylemleri (yalnız yeni kayıtta). Önceki açıklamanın
-  // kuralından gelmiş olanlar yenisiyle değişir; kullanıcının seçtiği alıcıya ve
-  // girdiği etiketlere dokunulmaz (etiketler yalnız EKLENİR).
-  function withRuleExtras(p: Partial<ReturnType<typeof newForm>>): Partial<ReturnType<typeof newForm>> {
-    if (tab === 'transfer' || isEdit || isRecurring || !('description' in p)) return p
+  // Kuralın etiket ve alıcı eylemleri (yalnız yeni kayıtta). Önceki kuraldan
+  // gelmiş olanlar yenisiyle değişir; kullanıcının seçtiği alıcıya ve girdiği
+  // etiketlere dokunulmaz (bkz. swapRuleExtras).
+  function withRuleExtras(p: Partial<ReturnType<typeof newForm>>, amountRaw: string): Partial<ReturnType<typeof newForm>> {
+    if (tab === 'transfer' || isEdit || isRecurring) return p
+    if (!('description' in p) && amountRaw === amountStr) return p
     const prev = ruleFor(form.description)
-    const next = ruleFor(p.description ?? '')
-    const out = { ...p }
-    const prevTags = new Set((prev?.tags ?? []).map(tagKey))
-    const kept = form.tags.filter(t => !prevTags.has(tagKey(t)))
-    const tagsNext = dedupeTags([...kept, ...(next?.tags ?? [])])
-    if (tagsNext.join('\u0000') !== form.tags.join('\u0000')) out.tags = tagsNext
-    const curR = form.recipientId ?? null
-    if (!curR || curR === prev?.recipientId) {
-      const r = next?.recipientId ?? (curR && curR === prev?.recipientId ? null : curR)
-      if (r !== curR) out.recipientId = r
-    }
-    return out
+    const next = ruleFor(p.description ?? form.description, amountRaw)
+    return { ...p, ...swapRuleExtras(form, prev, next) }
   }
 
-  function withAutoCategory(p0: Partial<ReturnType<typeof newForm>>): Partial<ReturnType<typeof newForm>> {
-    const p = withRuleExtras(p0)
+  /** `amountRaw`: tutar alanı değişiyorsa YENİ değeri (state henüz güncellenmedi). */
+  function withAutoCategory(p0: Partial<ReturnType<typeof newForm>>, amountRaw = amountStr): Partial<ReturnType<typeof newForm>> {
+    const p = withRuleExtras(p0, amountRaw)
     if (tab === 'transfer' || splits) return p
     const current = form.categoryId ?? ''
     if (current && current !== autoCategory) return p
     const pick = autoPick(
       p.description ?? form.description,
       'recipientId' in p ? p.recipientId : form.recipientId,
+      amountRaw,
     )
     setAutoCategory(pick ?? null)
     return { ...p, categoryId: pick ?? '' }
+  }
+
+  // Tutar değişince tutar koşullu kural tutmaya başlayabilir ya da bırakabilir:
+  // eşleşen kural değiştiyse öneri yeniden uygulanır (elle seçilene dokunulmaz).
+  function rerunRulesForAmount(raw: string) {
+    if (tab === 'transfer' || !form.description.trim()) return
+    if (!ruleChanged(ruleFor(form.description), ruleFor(form.description, raw))) return
+    patch(withAutoCategory({}, raw))
   }
 
   // ── Bölme yardımcıları ──────────────────────────────────────────────────
@@ -1579,6 +1580,7 @@ export function TransactionFormModal() {
               if (firstComma !== -1) {
                 raw = raw.slice(0, firstComma + 1) + raw.slice(firstComma + 1).replace(/,/g, '')
               }
+              rerunRulesForAmount(raw)
               setAmountStr(raw)
               setManualAmounts(null)
               // Elle girilen paylar aynen kalır, farkı otomatik pay yutar;
