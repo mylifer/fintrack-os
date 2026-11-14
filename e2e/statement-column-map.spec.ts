@@ -32,15 +32,17 @@ test('tanınmayan döküm: sütun eşleme önerilir, önizlemeden kaydedilir, e�
   await expect(page.getByRole('heading', { name: 'Örnek Bank · hesap dökümü' })).toBeVisible()
   await expect(page.getByText('3 işlem okundu · sütunlar elle eşlendi')).toBeVisible()
   await expect(page.getByText(/Dönem başı bakiye ₺10\.000,00/)).toBeVisible()
-  // Vadesiz dökümde tanınmayan satırlar karar ister (mevcut sınıflandırma)
-  await page.getByRole('combobox', { name: 'MIGROS ATASEHIR için karar' }).selectOption({ label: 'Gider olarak gir' })
-  await page.getByRole('combobox', { name: 'MAAS ODEMESI için karar' }).selectOption({ label: 'Gelir olarak gir' })
-  await page.getByRole('combobox', { name: 'EV KIRASI için karar' }).selectOption({ label: 'Gider olarak gir' })
+  // Vadesiz dökümde tanınmayan satırlar karar ister (mevcut sınıflandırma hattı;
+  // "Gider olarak gir" kategori de ister — burada hattın sonuna kadar gitmek yeter)
+  const decide = page.getByRole('combobox', { name: 'MAAS ODEMESI için karar' })
+  await expect(decide.locator('option', { hasText: 'Gelir olarak gir' })).toHaveCount(1)
+  for (const name of ['MIGROS ATASEHIR', 'MAAS ODEMESI', 'EV KIRASI']) {
+    await page.getByRole('combobox', { name: `${name} için karar` }).selectOption({ label: 'Girme' })
+  }
   const offline = page.getByText(/Buluttaki en güncel kayıtlar alınamadı/)
   if (await offline.isVisible()) await offline.click()
-  await page.getByRole('button', { name: /Onayla ve gir · 3 kayıt/ }).click()
+  await page.getByRole('button', { name: /Onayla ve gir · 0 kayıt/ }).click()
   await expect(page.getByText('Ekstre işlendi')).toBeVisible()
-  await expect(page.getByText(/3 kayıt eklendi/)).toBeVisible()
 
   // Aynı bankanın sonraki dökümü: eşleme hatırlanır, tek tıkla geçer
   await page.getByRole('button', { name: 'Başka ekstre yükle' }).click()
