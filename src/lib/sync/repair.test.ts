@@ -324,11 +324,10 @@ describe('repairStuckCategories — kenar durumlar', () => {
     expect((await tables.categories.toArray()).filter(c => c.name === 'Market')).toHaveLength(2)
   })
 
-  // BİLİNEN HATA (#R2): referans taşıma yalnız `categoryId`'ye bakıyor
-  // (repair.ts:82). Bölünmüş işlemin `categorySplits[].categoryId` payları
-  // yabancı kimlikte kalır; yabancı satır yerelden silinince pay "bilinmeyen
-  // kategori"ye düşer ve kategori bazlı toplamlardan (expandByCategory) kaybolur.
-  it.fails('BİLİNEN HATA #R2: bölünmüş işlemin categorySplits payları da taşınmalı', async () => {
+  // #R2 (düzeltildi): referans taşıma eskiden yalnız `categoryId`'ye bakıyordu;
+  // bölünmüş işlemin payları yabancı kimlikte kalıyor, yabancı satır yerelden
+  // silinince pay kategori toplamlarından kayboluyordu.
+  it('#R2: bölünmüş işlemin categorySplits payları da taşınır ve buluta gider', async () => {
     await seed('categories', cat('c-yabanci', { name: 'Market' }), cat('c-benim', { name: 'Market' }), cat('c-ev', { name: 'Ev' }))
     await seed('transactions', tx('t1', {
       amount: 300, categoryId: 'c-ev',
@@ -338,17 +337,33 @@ describe('repairStuckCategories — kenar durumlar', () => {
 
     await repairStuckCategories()
 
-    const splits = (await tables.transactions.get('t1'))!.categorySplits as { categoryId: string }[]
-    expect(splits.map(s => s.categoryId)).toEqual(['c-ev', 'c-benim'])
+    const row = (await tables.transactions.get('t1'))!
+    const splits = row.categorySplits as { categoryId: string; amount: number }[]
+    expect(splits).toEqual([{ categoryId: 'c-ev', amount: 200 }, { categoryId: 'c-benim', amount: 100 }])
+    expect(row.categoryId).toBe('c-ev')                       // takılı olmayan ana kategori aynen kalır
+    expect(snap('transactions:t1')!.categorySplits).toEqual(splits)
   })
 
-  // BİLİNEN HATA (#R3): remap hedefi isim+scope ile seçiliyor, çalışma alanı
-  // KIYASLANMIYOR (repair.ts:60). Kategoriler alan başınadır
-  // (categories.store → rowInActiveWorkspace). Paylaşılan alandaki takılı
-  // kategori (ör. üyelik düşerken kuyruğa girmiş), kullanıcının KİŞİSEL
-  // alanındaki aynı isimli kategoriye bağlanır: paylaşılan alandaki işlemler
-  // o alanda görünmeyen bir kategoriye işaret eder ve bu hâliyle buluta itilir.
-  it.fails('BİLİNEN HATA #R3: remap hedefi aynı çalışma alanından seçilmeli (paylaşılan alan)', async () => {
+  it('#R2: aynı işlemde categoryId ve birden çok pay farklı takılı kimlikler taşıyabilir', async () => {
+    await seed('categories', cat('y-market', { name: 'Market' }), cat('y-kafe', { name: 'Kafe' }), cat('c-market', { name: 'Market' }))
+    await seed('transactions', tx('t1', {
+      categoryId: 'y-market',
+      categorySplits: [{ categoryId: 'y-market', amount: 150 }, { categoryId: 'y-kafe', amount: 100 }],
+    }))
+    await stuckEntry('categories', cat('y-market', { name: 'Market' }))
+    await stuckEntry('categories', cat('y-kafe', { name: 'Kafe' }))
+
+    expect(await repairStuckCategories()).toEqual({ remapped: 1, rekeyed: 1, cleared: 0 })
+    const kafe = (await tables.categories.toArray()).find(c => c.name === 'Kafe')!
+    const row = (await tables.transactions.get('t1'))!
+    expect(row.categoryId).toBe('c-market')
+    expect((row.categorySplits as { categoryId: string }[]).map(s => s.categoryId)).toEqual(['c-market', kafe.id])
+  })
+
+  // #R3 (düzeltildi): remap hedefi eskiden yalnız isim+scope ile seçiliyordu;
+  // paylaşılan alandaki takılı kategori kişisel alandaki aynı isimli
+  // kategoriye bağlanıyordu (kategoriler alan başınadır).
+  it('#R3: remap hedefi aynı çalışma alanından seçilir (paylaşılan alan)', async () => {
     await seed('categories',
       cat('c-paylasilan', { name: 'Market', workspaceId: 'ws-aile' }),   // alan sahibinin satırı
       cat('c-kisisel',    { name: 'Market', workspaceId: 'ws-benim' }),
@@ -361,6 +376,27 @@ describe('repairStuckCategories — kenar durumlar', () => {
     const yeni = (await tables.transactions.get('t-aile'))!.categoryId as string
     expect(yeni).not.toBe('c-kisisel')
     expect((await tables.categories.get(yeni))!.workspaceId).toBe('ws-aile')
+  })
+
+  it('#R3: aynı alanda aynı isimli kategori varsa ona remap edilir', async () => {
+    await seed('categories',
+      cat('c-paylasilan', { name: 'Market', workspaceId: 'ws-aile' }),
+      cat('c-kisisel',    { name: 'Market', workspaceId: 'ws-benim' }),
+      cat('c-aile',       { name: 'market', workspaceId: 'ws-aile' }),
+    )
+    await seed('transactions', tx('t-aile', { categoryId: 'c-paylasilan', workspaceId: 'ws-aile' }))
+    await stuckEntry('categories', cat('c-paylasilan', { workspaceId: 'ws-aile' }))
+
+    expect((await repairStuckCategories()).remapped).toBe(1)
+    expect((await tables.transactions.get('t-aile'))!.categoryId).toBe('c-aile')
+  })
+
+  it('#R3: workspaceId\'siz eski kategori, alanı olan kategoriye bağlanmaz (rekey)', async () => {
+    const eski = cat('c-eski', { workspaceId: undefined })
+    delete eski.workspaceId
+    await seed('categories', eski, cat('c-alanli', { workspaceId: 'ws-genel' }))
+    await stuckEntry('categories', eski)
+    expect(await repairStuckCategories()).toEqual({ remapped: 0, rekeyed: 1, cleared: 0 })
   })
 
   it('paylaşılan alandaki takılı kategori rekey edilince klon AYNI alanda kalır (başka alana sızmaz)', async () => {
@@ -487,15 +523,12 @@ describe('repairInvalidAccountRefs', () => {
     expect((await tables.transactions.get('t1'))!).toMatchObject({ type: 'income', accountId: 'a2' })
   })
 
-  // BİLİNEN HATA (#R4): hasInvalidAccountRef (repair.ts:129) lastError'a
-  // BAKMIYOR; "Onar" düğmesi BAŞKA bir hata için (ör. takılı kategori)
-  // görünse bile hesap referansı boş olan HER bekleyen işlem girdisi işlenir.
-  // sanitize.ts push sınırında '' → null yaptığı ve kolon null kabul ettiği
-  // için böyle satırlar bulutta VAR olabilir. Hedefi olmayan böyle bir satırın
-  // bekleyen silmesi (tombstone) "dropped" yolunda kuyruktan atılır ve satır
-  // yerelden silinir → sonraki reconcilingPull buluttaki CANLI satırı geri
-  // getirir: kullanıcının sildiği işlem dirilir.
-  it.fails('BİLİNEN HATA #R4: hiç hata almamış bekleyen silme (tombstone) onarımda kaybolmamalı', async () => {
+  // #R4 (düzeltildi): onarım eskiden lastError'a bakmıyordu; "Onar" düğmesi
+  // başka bir hata için görünse bile boş hesap referanslı HER bekleyen girdiyi
+  // işliyordu. sanitize.ts '' → null yaptığı için böyle satırlar bulutta var
+  // olabilir; bekleyen silmeleri kuyruktan atılınca satır sonraki çekişte
+  // diriliyordu.
+  it('#R4: hiç hata almamış bekleyen silme (tombstone) onarımda kaybolmaz', async () => {
     await seed('transactions', tx('t1', { accountId: null }))
     await localUpsert('transactions', { ...(await tables.transactions.get('t1'))!, deleted_at: '2026-11-14T08:59:00.000Z' })
     expect(outboxEntry('transactions:t1')!.lastError).toBe(null)    // hiç push edilmemiş, hata yok
@@ -503,5 +536,31 @@ describe('repairInvalidAccountRefs', () => {
     await repairInvalidAccountRefs()
 
     expect(snap('transactions:t1')?.deleted_at).toBe('2026-11-14T08:59:00.000Z')
+    expect(tables.transactions.rows.has('t1')).toBe(true)
+  })
+
+  it('#R4: geçici (ağ) hatası almış girdi onarım kapsamında değil', async () => {
+    const bozuk = tx('t1', { type: 'transfer', accountId: '', toAccountId: 'a2' })
+    await seed('transactions', bozuk)
+    await stuckEntry('transactions', bozuk, 'TypeError: fetch failed')
+    expect(await repairInvalidAccountRefs()).toEqual({ fixed: 0, redated: 0, dropped: 0, cleared: 0 })
+    expect((await tables.transactions.get('t1'))!.type).toBe('transfer')
+  })
+
+  it('#R4: not-null hatası da onarılabilir sayılır (sanitize sonrası hâli)', async () => {
+    const bozuk = tx('t1', { type: 'transfer', accountId: '', toAccountId: 'a2' })
+    await seed('transactions', bozuk)
+    await stuckEntry('transactions', bozuk, 'null value in column "accountId" violates not-null constraint')
+    expect((await repairInvalidAccountRefs()).fixed).toBe(1)
+  })
+
+  it('#R4: hedefsiz TAKILI silme bile korunur — buluttaki kopyası bilinemez (korumacı)', async () => {
+    const olu = tx('t1', { accountId: '', deleted_at: '2026-11-10T00:00:00.000Z' })
+    await seed('transactions', olu)
+    await stuckEntry('transactions', olu, UUID_ERR)
+
+    expect(await repairInvalidAccountRefs()).toEqual({ fixed: 0, redated: 0, dropped: 0, cleared: 0 })
+    expect(tables.transactions.rows.has('t1')).toBe(true)
+    expect(outboxEntry('transactions:t1')).toBeDefined()
   })
 })

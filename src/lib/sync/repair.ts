@@ -57,7 +57,14 @@ export async function repairStuckCategories(): Promise<RepairResult> {
     const row = byId.get(e.entityId)
     if (!row || !isLive(row)) continue // satır yok ya da zaten silinmiş — aşağıda yalnızca temizlenir
 
-    const target = targets.find(c => norm(c.name) === norm(row.name) && c.scope === row.scope)
+    // Kategoriler çalışma alanı başınadır (categories.store → rowInActiveWorkspace):
+    // hedef AYNI alandan seçilmeli. Aksi halde paylaşılan alandaki işlemler
+    // kişisel alandaki (o alanda görünmeyen) bir kategoriye bağlanırdı.
+    // workspaceId'siz eski satır yalnız yine workspaceId'siz satırla eşleşir;
+    // emin olunamayan durumda rekey (kopya) güvenli yoldur.
+    const target = targets.find(c =>
+      norm(c.name) === norm(row.name) && c.scope === row.scope &&
+      (c.workspaceId ?? null) === (row.workspaceId ?? null))
     if (target) {
       idMap.set(row.id, target.id)
       result.remapped++
@@ -78,13 +85,29 @@ export async function repairStuckCategories(): Promise<RepairResult> {
     ops.push({ kind: 'upsert', table: 'categories', entity: clone })
   }
 
+  // İşlemler satır başına yamalanır: bir işlem hem categoryId'de hem
+  // categorySplits paylarında (birden çok) takılı kimlik taşıyabilir.
+  // Paylar taşınmazsa yabancı satır yerelden silinince pay "bilinmeyen
+  // kategori"ye düşer ve kategori toplamlarından kaybolurdu.
+  const remapId = (id: string | undefined) => (id && idMap.has(id) ? idMap.get(id)! : id)
+  const affectedTx = await db.transactions
+    .filter(t => (!!t.categoryId && idMap.has(t.categoryId)) ||
+                 (t.categorySplits ?? []).some(s => idMap.has(s.categoryId)))
+    .toArray()
+  for (const t of affectedTx as Transaction[]) {
+    const patch: Record<string, unknown> = {}
+    if (t.categoryId && idMap.has(t.categoryId)) patch.categoryId = remapId(t.categoryId)
+    if ((t.categorySplits ?? []).some(s => idMap.has(s.categoryId))) {
+      patch.categorySplits = t.categorySplits!.map(s => ({ ...s, categoryId: remapId(s.categoryId)! }))
+    }
+    ops.push({ kind: 'patch', table: 'transactions', id: t.id, patch })
+  }
+
   for (const [oldId, newId] of idMap) {
-    const txIds = (await db.transactions.filter(t => t.categoryId === oldId).toArray()).map(t => t.id)
     const bdIds = (await db.budgets.filter(b => b.categoryId === oldId).toArray()).map(b => b.id)
     const rcIds = (await db.recurringTransactions.filter(r => r.categoryId === oldId).toArray()).map(r => r.id)
     const chIds = (await db.categories.filter(c => c.parentId === oldId && !stuckIds.has(c.id)).toArray()).map(c => c.id)
 
-    if (txIds.length) ops.push({ kind: 'patchMany', table: 'transactions',            ids: txIds, patch: { categoryId: newId } })
     if (bdIds.length) ops.push({ kind: 'patchMany', table: 'budgets',                 ids: bdIds, patch: { categoryId: newId } })
     if (rcIds.length) ops.push({ kind: 'patchMany', table: 'recurring_transactions',  ids: rcIds, patch: { categoryId: newId } })
     if (chIds.length) ops.push({ kind: 'patchMany', table: 'categories',              ids: chIds, patch: { parentId: newId } })
@@ -126,10 +149,20 @@ export interface AccountRefRepairResult {
   cleared: number  // satır zaten yoktu; yalnızca kuyruk temizlendi
 }
 
+// Yalnız GERÇEKTEN bu hatayla reddedilmiş girdiler onarılır. Boş referanslı
+// bir satır her zaman takılı değildir: sanitize.ts push sınırında '' → null
+// yapar ve kolon null kabul ediyorsa satır buluta gider. "Onar" düğmesi başka
+// bir hata (ör. takılı kategori) için görünürken hiç başarısız olmamış bir
+// girdiye — özellikle bekleyen bir silmeye — dokunmak veri kaybıdır.
+// Hata kalıpları SyncStatusBanner'daki `repairable` ile aynı.
+const ACCOUNT_REF_ERRORS = ['invalid input syntax for type uuid', 'violates not-null constraint']
+
 function hasInvalidAccountRef(e: OutboxEntry): boolean {
   if (e.table !== 'transactions') return false
   const acc = e.snapshot.accountId
-  return acc === '' || acc === null || acc === undefined
+  if (!(acc === '' || acc === null || acc === undefined)) return false
+  const err = e.lastError ?? ''
+  return ACCOUNT_REF_ERRORS.some(m => err.includes(m))
 }
 
 export async function repairInvalidAccountRefs(): Promise<AccountRefRepairResult> {
@@ -176,6 +209,11 @@ export async function repairInvalidAccountRefs(): Promise<AccountRefRepairResult
       // sıfırlar → aynı girdi artık geçerli payload ile gider.
       await localUpsert('transactions', fixedRow)
       result.fixed++
+    } else if (row.deleted_at) {
+      // Bekleyen bir SİLME: satırın bulutta canlı bir kopyası olup olmadığını
+      // bilemeyiz. Kuyruktan atmak silmeyi kaybettirir (sonraki çekiş satırı
+      // diriltir) — korumacı davranılır, girdi ve satır olduğu gibi kalır.
+      continue
     } else {
       await db.transactions.delete(row.id)
       await db._outbox.delete(e.id)

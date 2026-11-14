@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -200,6 +201,24 @@ export default function SettingsPage() {
 
         {/* Görünüm — Yatırımlar sayfası düzeni */}
         <InvestmentsViewSettings />
+
+        {/* İşlem Kuralları — yönetim ekranı Kategoriler altında */}
+        <Card>
+          <CardContent>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-medium tracking-wide uppercase text-muted-foreground mb-2">İşlem Kuralları</div>
+                <div className="text-xs text-muted-foreground">
+                  Açıklamaya (ve isteğe bağlı hesap/tutara) göre işlemlere otomatik kategori, etiket ve alıcı önerir —
+                  işlem formunda ve ekstre içe aktarmada.
+                </div>
+              </div>
+              <Button size="sm" variant="secondary" asChild className="flex-shrink-0 rounded-xl px-4 h-9">
+                <Link href="/categories/rules">Kuralları yönet</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* ── TEFAS fon stopajı ───────────────────────────────── */}
         <FundTaxSettings />

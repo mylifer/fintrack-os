@@ -1,4 +1,4 @@
-import { test, expect, openApp } from './helpers'
+import { test, expect, openApp, createAccount, importCsv, trDate } from './helpers'
 
 /* Mobil "Diğer" menüsü ve genel arama (komut paleti). Telefon genişliğinde
    kenar çubuğu gizli; alt menüdeki "Diğer" tüm sayfalara ulaştırmalı. */
@@ -75,4 +75,23 @@ test('masaüstü: Ctrl+K, ok tuşları ve kenar çubuğu girişi', async ({ page
   await expect(palette).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(palette).toBeHidden()
+})
+
+test('işlem araması düzenleme penceresini açar', async ({ page }, testInfo) => {
+  await openApp(page)
+  const dlg = await createAccount(page, 'E2E Arama Banka')
+  await dlg.getByRole('button', { name: 'Kaydet' }).click()
+  await expect(page.getByText('E2E Arama Banka').first()).toBeVisible()
+  await importCsv(page, testInfo, ['TARİH;AÇIKLAMA;TUTAR', `${trDate(new Date())};KAHVECI ZEYNEP;-123,45`].join('\n'), 1)
+
+  await page.keyboard.press('Control+k')
+  const palette = page.getByRole('dialog', { name: 'Genel arama' })
+  await palette.getByRole('combobox').fill('kahveci')
+  const opt = palette.getByRole('option', { name: /KAHVECI ZEYNEP/i })
+  await expect(opt).toBeVisible()
+  await palette.getByRole('combobox').press('Enter')
+  await expect(palette).toBeHidden()
+  // Düzenleme penceresi açılır (TransactionFormModal)
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('dialog').locator('input[value*="KAHVECI" i], textarea').first()).toBeVisible()
 })

@@ -242,6 +242,10 @@ export function CategoryBoard() {
               ))}
             </div>
 
+            {/* İşlem kuralları (kenar çubuğunda ayrı öğe yok — buradan açılır) */}
+            <Button size="sm" variant="secondary" asChild>
+              <Link href="/categories/rules" title="Açıklamaya göre otomatik kategori, etiket ve alıcı">Kurallar</Link>
+            </Button>
             <Button size="sm" onClick={() => setAdding(true)}>+ Yeni Kategori</Button>
           </div>
 
