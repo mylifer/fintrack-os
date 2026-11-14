@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { USER_ID_HEADER } from '@/lib/server/rate-limit'
 
 // Oturumsuz erişilir; oturumu tam (gerekiyorsa aal2) olan kullanıcı buradan
 // /dashboard'a yönlendirilir.
@@ -33,31 +34,44 @@ function supabaseOrigin(): string {
   }
 }
 
-// Build the nonce-based CSP for this request. Shipped as
-// Content-Security-Policy-Report-Only (see below) so it can never break the
-// running app — flipping to enforce is a one-line header-name change.
+// İhlal raporlarının düştüğü aynı-origin uç (src/app/api/csp-report). Oturum
+// GEREKTİRMEZ: /login gibi oturumsuz sayfalardaki ihlaller de raporlanmalı,
+// Reporting API ise raporu çerezsiz gönderebilir.
+const CSP_REPORT_PATH = '/api/csp-report'
+
+// Build the nonce-based CSP for this request. ENFORCED (Content-Security-Policy)
+// since 2026-11 — güvenlik denetimi H1/F6. Her yönerge Playwright'ta üretim
+// derlemesiyle sınandı (dashboard, transactions, investments, reports,
+// settings, ekstre-yukle, categories + PDF/OCR worker'ları + service worker).
 function buildCsp(nonce: string): string {
   const isDev = process.env.NODE_ENV === 'development'
   const supa = supabaseOrigin()
 
   const directives = [
     `default-src 'self'`,
-    // The inline theme script (layout.tsx) and Next.js framework scripts carry
-    // this nonce. vitals.vercel-insights.com is the @vercel/speed-insights
-    // loader. NOTE for flip-to-enforce: speed-insights also injects a small
-    // INLINE bootstrap script that has no nonce; when enforcing, either add
-    // 'strict-dynamic' (so nonce'd loaders can spawn it) or a hash for it.
+    // Nonce + 'strict-dynamic': Next.js framework/sayfa script'leri ve tema
+    // script'i (layout.tsx) proxy'nin nonce'unu taşır; 'strict-dynamic' bu
+    // güvenilir script'lerin DOM API'siyle eklediği script'lere güveni aktarır
+    // — @vercel/speed-insights loader'ı (<script src> createElement ile, nonce'suz)
+    // ve Turbopack'in dinamik chunk yüklemeleri bu yolla çalışır. CSP3
+    // tarayıcıları 'strict-dynamic' varken 'self' ve host listesini YOK SAYAR;
+    // onlar yalnız CSP2 tarayıcılar için geri dönüş. Parser'ın eklediği
+    // (HTML'e enjekte edilmiş) nonce'suz script her durumda engellenir.
     // 'unsafe-eval' is only added in dev because React uses eval() for enhanced
     // error stacks; it is not needed (and not added) in production.
-    `script-src 'self' 'nonce-${nonce}' https://vitals.vercel-insights.com${isDev ? " 'unsafe-eval'" : ''}`,
-    // 'unsafe-inline' is required for Tailwind / inline style attributes.
-    // NOTE for flip-to-enforce: this is the weak point of the policy — styles
-    // are not nonce-guarded. Kept as-is because a nonce'd style-src would break
-    // Tailwind's inline styles.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://vitals.vercel-insights.com${isDev ? " 'unsafe-eval'" : ''}`,
+    // 'unsafe-inline' is required for Tailwind / inline style attributes (React
+    // style={{}} ve Radix'in konumlama stilleri). Bilinçli ödünç: stiller nonce
+    // korumasında değil; script ve bağlantı yönergeleri sıkı kaldığı sürece
+    // stil enjeksiyonu veri sızdıramaz (connect-src/img-src dar).
     `style-src 'self' 'unsafe-inline'`,
     // data:/blob: for generated images; api.iconify.design for online icons;
-    // www.google.com/s2/favicons for recipient brand logos (PersonAvatar).
-    `img-src 'self' data: blob: https://api.iconify.design https://www.google.com`,
+    // www.google.com/s2/favicons for brand logos — Google bu adresi
+    // tN.gstatic.com/faviconV2'ye YÖNLENDİRİR ve CSP yönlendirme hedefini de
+    // denetler, bu yüzden *.gstatic.com şart. Kullanıcının hesap ikonu olarak
+    // yapıştırdığı başka bir alan adındaki URL bilinçli olarak ENGELLENİR
+    // (denetim F6: yedek dosyasıyla dış beacon yükletme).
+    `img-src 'self' data: blob: https://api.iconify.design https://www.google.com https://*.gstatic.com`,
     // Browser calls: same-origin API, Supabase (direct), speed-insights vitals,
     // and Iconify's icon API. The price CDNs are server-side only, so they are
     // intentionally NOT listed here — EXCEPT truncgil: the Kapalıçarşı gold quote
@@ -65,11 +79,21 @@ function buildCsp(nonce: string): string {
     // intermittently (see lib/turkish-gold.ts).
     // wss: Supabase Realtime (canlı senkron, sync/realtime.ts) aynı host'a WebSocket açar.
     `connect-src 'self'${supa ? ` ${supa} ${supa.replace(/^https:/, 'wss:')}` : ''} https://vitals.vercel-insights.com https://api.iconify.design https://finans.truncgil.com`,
+    // Worker'lar: pdf.js (/_next/static/... .mjs), tesseract (/ocr/worker.min.js,
+    // workerBlobURL:false) ve service worker (/sw.js) hepsi aynı origin'den.
+    // Açıkça yazılır: yoksa script-src'a düşer ve 'strict-dynamic' altında
+    // 'self' yok sayıldığı için worker'lar engellenir.
+    `worker-src 'self'`,
+    `manifest-src 'self'`,
     `font-src 'self' data:`,
     `object-src 'none'`,
     `base-uri 'self'`,
     `frame-ancestors 'none'`,
     `form-action 'self'`,
+    // report-to (Reporting API) destekleyen tarayıcıda report-uri yok sayılır;
+    // report-uri Firefox/Safari için.
+    `report-uri ${CSP_REPORT_PATH}`,
+    `report-to csp-endpoint`,
   ]
 
   return directives.join('; ')
@@ -86,13 +110,26 @@ export async function proxy(request: NextRequest) {
   //  - the internal `Content-Security-Policy` request header lets Next.js parse
   //    the `'nonce-...'` value and auto-apply it to framework scripts / <Script
   //    nonce>. This request header is NOT sent to the browser; only the
-  //    report-only response header below is. Cloning from `request` at call
+  //    enforced response header (withCsp below) is. Cloning from `request` at call
   //    time preserves any cookies Supabase refreshes in setAll().
+  //  - USER_ID_HEADER: getUser() ile doğrulanmış kullanıcı kimliği; /api/*
+  //    istek sınırlayıcısı (lib/server/rate-limit) anahtar olarak kullanır.
+  //    İstemciden gelen aynı adlı başlık HER ZAMAN silinir — rota yalnız
+  //    proxy'nin yazdığı değeri görür.
+  let uid: string | null = null
   const withNonceHeaders = (req: NextRequest) => {
     const h = new Headers(req.headers)
     h.set('x-nonce', nonce)
     h.set('Content-Security-Policy', csp)
+    h.delete(USER_ID_HEADER)
+    if (uid) h.set(USER_ID_HEADER, uid)
     return h
+  }
+
+  // CSP ihlal raporu: oturum ve Supabase çağrısı gerektirmez (oturumsuz
+  // sayfaların raporları da gelmeli). Rota kendi boyut + istek sınırını uygular.
+  if (request.nextUrl.pathname === CSP_REPORT_PATH) {
+    return NextResponse.next({ request: { headers: withNonceHeaders(request) } })
   }
 
   let response = NextResponse.next({ request: { headers: withNonceHeaders(request) } })
@@ -116,14 +153,22 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
+  if (user) {
+    // Kimlik artık biliniyor: iletim isteğini kullanıcı başlığıyla yeniden kur,
+    // setAll()'ın yanıta yazdığı yenilenmiş oturum çerezlerini taşı.
+    uid = user.id
+    const prev = response
+    response = NextResponse.next({ request: { headers: withNonceHeaders(request) } })
+    prev.cookies.getAll().forEach(c => response.cookies.set(c))
+  }
+
   const { pathname } = request.nextUrl
 
-  // Attach the report-only CSP to any response leaving the proxy. Report-only
-  // (Content-Security-Policy-Report-Only) is a deliberate safe rollout: the
-  // browser evaluates + reports violations but enforces nothing. To ENFORCE,
-  // change the header name to 'Content-Security-Policy' (one line).
+  // Attach the ENFORCED CSP to any response leaving the proxy, plus the
+  // Reporting API endpoint that the policy's `report-to csp-endpoint` names.
   const withCsp = <T extends NextResponse>(res: T): T => {
-    res.headers.set('Content-Security-Policy-Report-Only', csp)
+    res.headers.set('Content-Security-Policy', csp)
+    res.headers.set('Reporting-Endpoints', `csp-endpoint="${CSP_REPORT_PATH}"`)
     return res
   }
 

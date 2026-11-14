@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { fetchTefasSeries, type TefasSeries } from '@/lib/server/tefas-api'
 import { BoundedCache } from '@/lib/server/bounded-cache'
 import type { TefasFundPrice } from '@/types'
+import { rateLimit } from '@/lib/server/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +48,9 @@ function toFundPrice(series: TefasSeries): TefasFundPrice {
 // → { funds: { AFA: TefasFundPrice, YAC: null }, updatedAt }
 // Bilinmeyen/bulunamayan kod null döner — modal "fon bulunamadı" gösterir.
 export async function GET(request: NextRequest) {
+  const limited = rateLimit(request, 'tefas')
+  if (limited) return limited
+
   const raw = request.nextUrl.searchParams.get('codes') ?? ''
   const requested = [...new Set(raw.split(',').map(c => c.trim().toUpperCase()).filter(Boolean))]
 

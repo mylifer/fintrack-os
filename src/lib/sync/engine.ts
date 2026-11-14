@@ -44,6 +44,7 @@ export type SyncTable =
   | 'payment_plans'
   | 'payment_occurrences'
   | 'savings_goals'
+  | 'transaction_rules'
 
 // Minimal row shape every synced table shares. `workspaces` itself has no
 // workspaceId (it IS the partition axis for the other 8 tables).
@@ -83,6 +84,7 @@ const DEXIE: Record<SyncTable, EntityTable<Row, 'id'>> = {
   payment_plans:           db.paymentPlans as unknown as EntityTable<Row, 'id'>,
   payment_occurrences:     db.paymentOccurrences as unknown as EntityTable<Row, 'id'>,
   savings_goals:           db.savingsGoals as unknown as EntityTable<Row, 'id'>,
+  transaction_rules:       db.transactionRules as unknown as EntityTable<Row, 'id'>,
 }
 
 export function isSyncTable(name: string): name is SyncTable {
@@ -334,6 +336,20 @@ function isMissingUpdatedAtColumn(error: { code?: string; message: string }): bo
   return error.code === 'PGRST204' && error.message.includes('updatedAt')
 }
 
+// Bulutta henüz HİÇ olmayan tablolar (migration'ı uygulanmamış yeni tablo, ör.
+// transaction_rules / 0025). Kod migration'dan önce yayına girerse yazma
+// "tablo yok" alır: bu bir veri hatası değil, sunucu eksiği. Girdi deneme
+// sayacı ARTMADAN kuyrukta kalır (dead-letter'a düşüp senkron uyarısı
+// çıkarmaz, diğer tabloların akışını da durdurmaz); tablo bu oturum için
+// işaretlenir ve sonraki açılışta yeniden denenir. Veri yerelde çalışmaya
+// devam eder. PGRST205 = PostgREST şema önbelleğinde tablo yok; 42P01 =
+// Postgres "relation does not exist".
+const tablesMissingInCloud = new Set<string>()
+
+function isMissingTable(error: { code?: string; message: string }): boolean {
+  return error.code === 'PGRST205' || error.code === '42P01'
+}
+
 /** Son ACK zamanı (`table:id` → ms). Çekiş sürerken push'u biten satır, o
  *  çekişin bulut kümesinde yoktur ama kuyruktan da çıkmıştır; reconcilingPull
  *  bunu "bulutta yok" sanıp yanlış uyarı vermesin diye tutulur. */
@@ -379,6 +395,8 @@ export async function flushOutbox(): Promise<void> {
         // and block the whole outbox. Past MAX_ATTEMPTS we keep the row durable
         // (for inspection/manual fix) but stop auto-retrying it.
         if (e.attempts >= MAX_ATTEMPTS) continue
+        // Tablosu bulutta olmayan girdi bu oturumda tekrar denenmez
+        if (tablesMissingInCloud.has(e.table)) continue
 
         // Boş string kimlik referansları ('' → null) push sınırında temizlenir:
         // '' geçerli bir uuid değildir ve satırı kalıcı olarak dead-letter'a
@@ -406,6 +424,14 @@ export async function flushOutbox(): Promise<void> {
         // Bkz. engine.test.ts — "push sırasında düzenleme".
         // Legacy girdilerde `seq` yoktur; ikisi de undefined → eşit sayılır ve
         // eski (koşulsuz silme) davranışı korunur — yükseltmede kayıp olmaz.
+        if (error && isMissingTable(error)) {
+          if (!tablesMissingInCloud.has(e.table)) {
+            console.warn(`[sync:missing-table] ${e.table} bulutta yok (migration uygulanmamış) — yazmalar yerelde bekliyor`)
+          }
+          tablesMissingInCloud.add(e.table)
+          continue
+        }
+
         const current = await db._outbox.get(e.id)
         const stale = current !== undefined && (current as OutboxRow).seq !== (e as OutboxRow).seq
 
@@ -456,7 +482,9 @@ export async function pendingCount(): Promise<number> {
 /** Publish outbox health to the UI store (SyncStatusBanner). Best-effort. */
 async function refreshSyncStatus(): Promise<void> {
   try {
-    const entries = await db._outbox.toArray()
+    // Tablosu bulutta olmayan (migration bekleyen) girdiler sayılmaz: veri
+    // yerelde güvende, kullanıcının yapabileceği bir şey yok — bant çıkmasın.
+    const entries = (await db._outbox.toArray()).filter(e => !tablesMissingInCloud.has(e.table))
     const stuck = entries.filter(e => e.attempts >= MAX_ATTEMPTS)
     useSyncStatusStore.getState().report({
       pending: entries.length,
@@ -600,7 +628,10 @@ async function fetchAllRows(
     if (lastId !== null) query = query.gt('id', lastId)
     const { data, error } = await query.order('id', { ascending: true }).limit(PAGE)
     if (error) {
-      console.error(`[sync:pull:${table}]`, error)
+      // Tablo bulutta yok (migration bekliyor): çekiş eksik sayılır, yerel
+      // satırlar aynen kullanılır; yazmalar da kuyrukta sayaçsız bekler.
+      if (isMissingTable(error)) tablesMissingInCloud.add(table)
+      else console.error(`[sync:pull:${table}]`, error)
       return { rows: acc, complete: false }
     }
     const batch = (data ?? []) as Record<string, unknown>[]

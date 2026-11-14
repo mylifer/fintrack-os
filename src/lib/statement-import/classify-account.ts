@@ -3,6 +3,7 @@ import { toMajor, toMinor } from '@/lib/utils/money'
 import type { Account, Category, Transaction } from '@/types'
 import type { StatementLine } from './statement'
 import { merchantKey, nameInText } from './merchant'
+import { applyUserRulesToRows } from './user-rules'
 import { txIdFromSeed, type Action, type DraftTx, type ImportPlan, type PlanInput, type PlanRow, type RowKind, type RowOption } from './classify'
 
 /* ── Vadesiz hesap dökümünü sistemle karşılaştırma ───────────────────────────
@@ -591,8 +592,12 @@ export function buildAccountPlan(input: PlanInput): ImportPlan {
     })
   }
 
-  // Sabit anahtar ve önceki "girme / kalsın" kararları
-  const finalRows: PlanRow[] = rows.map(r => {
+  // Kullanıcı kuralları (öğrenilmiş öneriden önce — bkz. user-rules.ts),
+  // sabit anahtar ve önceki "girme / kalsın" kararları
+  const ruledRows = input.rules?.length
+    ? applyUserRulesToRows(rows, { rules: input.rules, accountId: A, categories: input.categories, people: input.people })
+    : rows
+  const finalRows: PlanRow[] = ruledRows.map(r => {
     const stableKey = r.lines.length ? r.lines.map(i => seedByIdx.get(i)!).join('+') : `sys:${r.match?.txIds[0] ?? r.key}`
     const row: PlanRow = { ...r, stableKey }
     if (input.skipped?.has(stableKey) && (r.status === 'review' || r.status === 'new')) {

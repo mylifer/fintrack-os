@@ -14,6 +14,7 @@ import { useUIStore } from '@/store'
 import { AppLockGate } from '@/components/layout/AppLockGate'
 import { PrivacyProvider } from '@/components/layout/PrivacyToggle'
 import { PrintSupport } from '@/components/layout/PrintSupport'
+import { CommandPalette } from '@/components/layout/command-palette/CommandPalette'
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   // Atomic selectors — avoid re-rendering the layout on unrelated UI changes
@@ -47,6 +48,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <UndoToaster />
         <SyncStatusBanner />
         <PrintSupport />
+        <CommandPalette />
       </div>
       </PrivacyProvider>
       </AppLockGate>

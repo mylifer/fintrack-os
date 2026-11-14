@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { rateLimit } from '@/lib/server/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -142,7 +143,10 @@ function goldGram(goldUsdPerOz: number, usdTry: number): number {
   return (goldUsdPerOz / 31.1035) * usdTry
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const limited = rateLimit(request, 'prices')
+  if (limited) return limited
+
   const [cur, prev, gold, tr] = await Promise.all([
     currentRates(), prevRates(), fetchGoldUsd(), fetchTurkishGold(),
   ])

@@ -3,6 +3,7 @@ import { BoundedCache } from '@/lib/server/bounded-cache'
 import { fetchMarketQuote, fetchUsdTry, type YahooChart } from '@/lib/server/yahoo'
 import { parseMarketAsset } from '@/lib/market'
 import type { TefasFundPrice } from '@/types'
+import { rateLimit } from '@/lib/server/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +28,9 @@ function usdTry(): Promise<YahooChart | null> {
 // → { quotes: { 'BIST:THYAO': TefasFundPrice, 'CRYPTO:XYZ': null } }
 // Geçersiz ya da bulunamayan varlık null döner; geçerli olanlar etkilenmez.
 export async function GET(request: NextRequest) {
+  const limited = rateLimit(request, 'market')
+  if (limited) return limited
+
   const raw = request.nextUrl.searchParams.get('assets') ?? ''
   const requested = [...new Set(raw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean))]
   if (!requested.length) return NextResponse.json({ error: 'Geçersiz varlık' }, { status: 400 })

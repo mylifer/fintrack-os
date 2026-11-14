@@ -1,9 +1,10 @@
 import { foldText, recipientCategory } from '@/lib/auto-category'
 import { deterministicUuid } from '@/lib/utils/id'
 import { toMajor, toMinor } from '@/lib/utils/money'
-import type { Account, Category, Person, Transaction } from '@/types'
+import type { Account, Category, Person, Transaction, TransactionRule } from '@/types'
 import type { ParsedStatement, StatementLine } from './statement'
 import { buildRuleBook, merchantKey, merchantLabel, prettyMerchant, type MerchantRule } from './merchant'
+import { applyUserRulesToRows } from './user-rules'
 
 /* ── Ekstre satırlarını sistemle karşılaştırma ve karar önerisi ──────────────
    SAF modül: store/DB bilmez. Girdi ayrıştırılmış ekstre + hesabın işlemleri;
@@ -159,6 +160,8 @@ export interface PlanInput {
   todayStr: string
   /** Daha önce "girme" kararı verilmiş satırların stableKey'leri (bu cihazda) */
   skipped?: ReadonlySet<string>
+  /** Kullanıcının işlem kuralları (0025): öğrenilmiş öneriden ÖNCE uygulanır — bkz. user-rules.ts */
+  rules?: readonly TransactionRule[]
 }
 
 // ── Yardımcılar ──────────────────────────────────────────────────────────────
@@ -1138,12 +1141,15 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     })
   }
 
-  // ── 5) Sabit anahtar, önceki "girme" kararları, ters kontrol ipuçları ──
-  const finalRows: PlanRow[] = rows.map(r => {
+  // ── 5) Kullanıcı kuralları, sabit anahtar, önceki "girme" kararları, ters kontrol ipuçları ──
+  const ruledRows = input.rules?.length
+    ? applyUserRulesToRows(rows, { rules: input.rules, accountId: acc, categories: input.categories, people: input.people })
+    : rows
+  const finalRows: PlanRow[] = ruledRows.map(r => {
     const stableKey = r.lines.length ? r.lines.map(i => seedOf.get(i) ?? `i${i}`).join('+') : `orphan:${r.match?.txIds[0] ?? r.key}`
     const row: PlanRow = { ...r, stableKey }
     if (r.kind === 'orphan') {
-      const twin = rows.find(x => x !== r && (x.status === 'new' || x.status === 'review') && x.kind !== 'orphan' && x.amount !== null &&
+      const twin = ruledRows.find(x => x !== r && (x.status === 'new' || x.status === 'review') && x.kind !== 'orphan' && x.amount !== null &&
         x.recipientId && x.recipientId === r.recipientId && dayDiff(x.date, r.date) <= 1)
       if (twin) row.reason += ` Aynı gün aynı alıcıdan ekstrede ${fmtTr(twin.amount!)} ₺ var (“${twin.raw}”); tutar yanlış girilmiş olabilir.`
     }

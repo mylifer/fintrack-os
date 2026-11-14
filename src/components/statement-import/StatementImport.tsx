@@ -19,6 +19,7 @@ import { formatDate, today } from '@/lib/utils/date'
 import { readPdfPages } from '@/lib/statement-import/pdf-text'
 import { readImageText } from '@/lib/statement-import/ocr'
 import { parseScreenshot, parseStatement, type ParsedStatement } from '@/lib/statement-import/statement'
+import { useRulesStore } from '@/store/rules.store'
 import { buildImportPlan, type ImportPlan, type PlanRow, type RowOption } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
 import { buildCommit, commitEffect, optionForEdit, remapByStableKey, rowTitle, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
@@ -75,6 +76,7 @@ export function StatementImport() {
   const transactions = useTransactionStore(s => s.transactions)
   const people       = usePeopleStore(s => s.people)
   const categories   = useCategoryStore(s => s.categories)
+  const rules        = useRulesStore(s => s.rules)
 
   const fileRef = useRef<HTMLInputElement>(null)
   const [step, setStep]             = useState<Step>('upload')
@@ -120,16 +122,16 @@ export function StatementImport() {
     return (st.type === 'checking' ? buildAccountPlan : buildImportPlan)({
       statement: st, account: acc, accounts: useAccountStore.getState().accounts,
       transactions: txs, people: usePeopleStore.getState().people, categories: useCategoryStore.getState().categories,
-      todayStr: today(), skipped: loadSkipped(accId),
+      todayStr: today(), skipped: loadSkipped(accId), rules: useRulesStore.getState().rules,
     })
   }, [])
 
   // Plan, store'daki her değişiklikte (başka cihazdan gelen kayıt dahil) yeniden hesaplanır
   const plan = useMemo(() => {
     if (!statement || !accountId) return null
-    void transactions; void people; void categories; void accounts
+    void transactions; void people; void categories; void accounts; void rules
     return makePlan(statement, accountId)
-  }, [statement, accountId, transactions, people, categories, accounts, makePlan])
+  }, [statement, accountId, transactions, people, categories, accounts, rules, makePlan])
 
   const existing = useMemo(() => new Map(transactions.map(t => [t.id, t])), [transactions])
 

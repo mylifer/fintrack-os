@@ -491,6 +491,41 @@ export interface SavingsGoal {
   workspaceId?: string          // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
+// ─── İşlem Kuralı ───────────────────────────────────────────────────────────
+// Kullanıcı tanımlı otomatik sınıflandırma: "açıklama X içeriyorsa / X ile
+// başlıyorsa / X'e eşitse (+ isteğe bağlı hesap, tür ve tutar aralığı) →
+// kategori ata, etiket ekle, alıcı ata". Kurallar `sortOrder`a göre sıralıdır,
+// İLK eşleşen kazanır ve kategori anahtar kelimesi / alıcı geçmişi önerisinden
+// ÖNCE gelir. Eşleştirme: src/lib/utils/transaction-rules.ts. Supabase: 0025.
+
+export type RuleMatchKind = 'contains' | 'startsWith' | 'equals'
+
+export interface TransactionRule {
+  id: string
+  /** Aranan metin (kullanıcının yazdığı gibi saklanır; eşleştirme Türkçe
+   *  duyarlı ve büyük-küçük harf duyarsız — bkz. foldText) */
+  pattern: string
+  matchKind: RuleMatchKind
+  /** Yalnız bu hesabın işlemleri (yoksa tüm hesaplar) */
+  accountId?: string | null
+  /** Yalnız bu türdeki işlemler (yoksa gider ve gelir) */
+  txType?: 'expense' | 'income' | null
+  /** Tutar aralığı — işlemin kendi para birimindeki MUTLAK tutar, uçlar dahil */
+  minAmount?: number | null
+  maxAmount?: number | null
+  // ── Eylemler (en az biri) ──
+  categoryId?: string | null
+  tags?: string[] | null
+  recipientId?: string | null
+  /** Küçük önce gelir */
+  sortOrder: number
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  deleted_at?: string | null    // Tombstone (C3)
+  workspaceId?: string          // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
+}
+
 // ─── Sync outbox (C1 — durable offline writes) ──────────────────────────────
 
 /** A pending mutation awaiting push to Supabase. One entry per (table, entity):

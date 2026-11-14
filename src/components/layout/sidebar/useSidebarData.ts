@@ -1,22 +1,20 @@
 'use client'
 
-import { rowInWorkspace } from '@/lib/workspace-context'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { clearLocalData } from '@/lib/auth'
 import { retryDeadLetters, pendingCount } from '@/lib/sync/engine'
 import {
-  useAccountStore, useInvestmentStore, useRecurringStore,
-  useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore, usePaymentsStore, useWorkspaceStore,
+  useAccountStore, useInvestmentStore,
+  useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore,
 } from '@/store'
-import { useStatementDraftsStore } from '@/store/statement-drafts.store'
-import { assignCardPayments, buildSchedule, buildTargets, monthOf } from '@/lib/payments/schedule'
 import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
-import { today, currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
+import { currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
 import { useCountUp } from '@/lib/hooks/useCountUp'
+import { useNavBadges } from './useNavBadges'
 
 /* Her iki kenar çubuğu varyantının ortak beyni: veri, açılır menü durumu ve
    çıkış akışı burada; varyant dosyaları yalnızca görünümden sorumlu. Aynı anda
@@ -25,7 +23,6 @@ export function useSidebarData() {
   const pathname = usePathname()
 
   const accounts    = useAccountStore(useShallow(s => s.accounts.filter(a => !a.isArchived)))
-  const allAccounts = useAccountStore(s => s.accounts)
   const prices      = useInvestmentStore(s => s.prices)
   const fundPrices  = useInvestmentStore(s => s.fundPrices)
   const investTxs   = useInvestmentStore(s => s.transactions)
@@ -35,36 +32,8 @@ export function useSidebarData() {
   )
   const transactions = useTransactionStore(useShallow(s => s.transactions))
   const debts        = useDebtStore(useShallow(s => s.debts))
-  // Sayaç selector İÇİNDE hesaplanır: getDue fonksiyonunu seçmek (sabit referans)
-  // tekrarlayanlar değişince yeniden render tetiklemiyor, rozet eskiyordu.
-  const dueCount     = useRecurringStore(s => s.getDue(today()).length)
-
-  // Yarım kalan ekstreler (bu cihazdaki taslaklar, aktif çalışma alanı)
-  const activeWorkspace = useWorkspaceStore(s => s.activeId)
-  const draftCount = useStatementDraftsStore(s => s.drafts.filter(d => !activeWorkspace || rowInWorkspace(d, activeWorkspace)).length)
-  useEffect(() => { useStatementDraftsStore.getState().load() }, [])
-
-  // Ödeme Takibi rozeti: gecikmiş ya da son günü bugün olan kart/borç ödemesi.
-  // Sayfadaki "Gecikmiş" ile aynı kaynak (buildSchedule), takip başlangıcından
-  // bugünün ayına kadar.
-  const paymentPlans       = usePaymentsStore(s => s.plans)
-  const paymentOccurrences = usePaymentsStore(s => s.occurrences)
-  const paymentAlertCount  = useMemo(() => {
-    const todayStr = today()
-    const current = monthOf(todayStr)
-    const targets = buildTargets({ accounts, debts, plans: paymentPlans })
-    if (targets.length === 0) return 0
-    const from = targets.reduce((m, t) => (t.startMonth < m ? t.startMonth : m), current)
-    // cardPayments TÜM hesaplardan (arşivli kartlar dahil) — bildirim merkezi ve
-    // sayfayla aynı eşleme. Verilmezse "tek aktif kart" kuralı arşivli kartın
-    // adını taşıyan ödemeyi aktif karta yazıp rozeti sayfadan ayırabiliyordu.
-    return buildSchedule({
-      targets, occurrences: paymentOccurrences, transactions, from, to: current, todayStr,
-      cardPayments: assignCardPayments(allAccounts, transactions),
-    })
-      .filter(r => r.timing === 'overdue' || r.timing === 'today')
-      .length
-  }, [accounts, allAccounts, debts, paymentPlans, paymentOccurrences, transactions])
+  // Rozet sayıları (tekrarlayan, ödeme, taslak) mobil "Diğer" sayfasıyla ortak.
+  const { dueCount, paymentAlertCount, draftCount } = useNavBadges()
 
   // "Net Varlık" şeridi borçtan arındırılmıştır — dashboard kartıyla aynı değer.
   const debtBurden      = calcDebtBurden(debts)

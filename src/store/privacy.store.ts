@@ -27,7 +27,12 @@ export const usePrivacyStore = create<PrivacyState>()(
     set => ({
       hideAmounts: false,
       setHideAmounts: v => set({ hideAmounts: v }),
-      onlineLogos: true,
+      // Varsayılan KAPALI (mahremiyet önce, güvenlik denetimi F2). Yalnız
+      // kayıtlı tercihi OLMAYAN cihazları etkiler: persist, localStorage'daki
+      // değeri bu varsayılanın üzerine yazar — açık tercih korunur. (Daha önce
+      // başka bir ayar değiştirilmişse eski varsayılan `true` da kayda geçmiştir;
+      // açık tercihten ayırt edilemediği için o da korunur.)
+      onlineLogos: false,
       setOnlineLogos: v => set({ onlineLogos: v }),
     }),
     {

@@ -64,3 +64,31 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ]
+
+/** Ayarlar kenar çubuğunda alt şeritte durur; mobil "Diğer" sayfası ve komut
+ *  paleti de onu listelesin diye burada tanımlı (tek kaynak). */
+export const SETTINGS_ITEM: NavItem = { href: '/settings', label: 'Ayarlar', icon: IC.settings }
+
+/** Mobil alt menüde doğrudan duran sayfalar; kalanlar "Diğer" sayfasında. */
+export const MOBILE_PRIMARY_HREFS = ['/dashboard', '/transactions', '/accounts', '/reports'] as const
+
+/** Grup başlığıyla birlikte düz liste (Ayarlar sonda) — arama/palet için. */
+export const ALL_NAV_ITEMS: (NavItem & { group: string })[] = [
+  ...NAV_GROUPS.flatMap(g => g.items.map(i => ({ ...i, group: g.title }))),
+  { ...SETTINGS_ITEM, group: 'Sistem' },
+]
+
+/** Aktif sayfa eşleşmesi: tam yol ya da alt yol (detay sayfaları). */
+export function isNavActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(href + '/')
+}
+
+/** Yola en özgül eşleşen öğenin href'i ("/ekstre-yukle/taslaklar" açıkken
+ *  üst öğe "/ekstre-yukle" değil, alt öğe aktif sayılır). */
+export function activeNavHref(pathname: string): string | null {
+  let best: string | null = null
+  for (const { href } of ALL_NAV_ITEMS) {
+    if (isNavActive(pathname, href) && (!best || href.length > best.length)) best = href
+  }
+  return best
+}

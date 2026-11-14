@@ -70,6 +70,16 @@ jobs:
           PGUSER: postgres
           PGPASSWORD: postgres
 
+      # Eşitleme kuralları gerçek Postgres'te: keep_newer_row (0016), tombstone,
+      # hesaplar arası RLS, paylaşılan çalışma alanı (0021), restore_user_backup
+      # gidiş-dönüşü (0009). Ayrı geçici veritabanı kurar.
+      - name: Eşitleme kuralları (iki cihaz / iki hesap senaryoları)
+        run: supabase/fresh-install/sync-rules.sh
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
+
   # Uçtan uca testler (e2e/): uygulama AUTH_BYPASS=1 ile `next dev` üzerinde
   # girişsiz açılır, her test kendi tarayıcı bağlamında (IndexedDB) çalışır.
   # Supabase değişkenleri sahte — buluta hiç yazılmaz.

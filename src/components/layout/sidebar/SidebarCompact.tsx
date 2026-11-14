@@ -11,6 +11,7 @@ import { formatCompact, formatWhole } from '@/lib/utils/currency'
 import { Icon, Chevron, IC } from './icons'
 import { NAV_GROUPS } from './nav'
 import { useSidebarData } from './useSidebarData'
+import { SearchTrigger } from '@/components/layout/command-palette/SearchTrigger'
 
 /* ── Varyant: KOMPAKT (varsayılan) ────────────────────────────────────────
    28px satırlar, hap yok, kılcal grup ayraçları. Amaç: hesaplar açıkken bile
@@ -56,6 +57,11 @@ export function SidebarCompact() {
         <div className="flex-1 min-w-0">
           <WorkspaceSwitcher dense />
         </div>
+      </div>
+
+      {/* ── Genel arama (Ctrl+K) ── */}
+      <div className="flex-shrink-0 px-3 pt-2">
+        <SearchTrigger dense />
       </div>
 
       {/* ── Nav — tam genişlikte satırlar (sol ray kenara dayansın diye px yok) ── */}

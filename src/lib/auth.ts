@@ -112,6 +112,7 @@ export async function clearLocalData(): Promise<void> {
     db.paymentPlans.clear(),
     db.paymentOccurrences.clear(),
     db.savingsGoals.clear(),
+    db.transactionRules.clear(),
     db._outbox.clear(), // drop pending mutations on a full local reset
   ])
 }
