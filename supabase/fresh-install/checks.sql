@@ -99,7 +99,38 @@ do $$ begin
 end $$;
 commit;
 
--- 5. Girişsiz erişim reddedilir
+-- 5. Yarım kalan ekstre taslakları kişiseldir (0024)
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+insert into statement_drafts (id, "workspaceId", data, "updatedAt")
+  values ('d1', 'ws-aile', '{"fileName":"x.pdf"}', '2026-11-14T00:00:00.000Z')
+  on conflict (user_id, id) do update set data = excluded.data, "updatedAt" = excluded."updatedAt";
+update statement_drafts set data = null, deleted_at = now() where id = 'd1';
+do $$ begin
+  if (select count(*) from statement_drafts where id = 'd1' and deleted_at is not null) <> 1 then
+    raise exception 'taslak sahibi kendi taslağını yazıp silemiyor';
+  end if;
+end $$;
+commit;
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+do $$ begin
+  if (select count(*) from statement_drafts) <> 0 then raise exception 'başkasının taslağı görünüyor (paylaşılan alanda bile)'; end if;
+end $$;
+update statement_drafts set data = '{}' where id = 'd1';
+-- Aynı ekstre id'si başka kullanıcıda ayrı satırdır (birincil anahtar user_id + id)
+insert into statement_drafts (id, data) values ('d1', '{"fileName":"y.pdf"}');
+commit;
+do $$ begin
+  if (select count(*) from statement_drafts where id = 'd1') <> 2 then raise exception 'taslak kimliği kullanıcılar arasında çakışıyor'; end if;
+  if (select data from statement_drafts where id = 'd1' and user_id = '11111111-1111-1111-1111-111111111111') is not null then
+    raise exception 'başka kullanıcı taslağı değiştirebildi';
+  end if;
+end $$;
+
+-- 6. Girişsiz erişim reddedilir
 begin;
 set local role anon;
 do $$ begin

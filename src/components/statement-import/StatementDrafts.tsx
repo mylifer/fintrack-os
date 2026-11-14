@@ -27,7 +27,8 @@ export function StatementDrafts() {
   const allDrafts   = useStatementDraftsStore(s => s.drafts)
   const remove      = useStatementDraftsStore(s => s.remove)
   const [confirm, setConfirm] = useState<string | null>(null)
-  useEffect(() => { useStatementDraftsStore.getState().load() }, [])
+  // Başka cihazda başlanan ya da bitirilen ekstreler için bulutla eşitle
+  useEffect(() => { const s = useStatementDraftsStore.getState(); s.load(); void s.sync() }, [])
 
   const drafts = allDrafts.filter(d => !workspaceId || rowInWorkspace(d, workspaceId))
 

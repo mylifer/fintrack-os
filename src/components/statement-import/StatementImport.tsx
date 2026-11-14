@@ -49,6 +49,11 @@ const planSignature = (p: ImportPlan) => p.rows.map(r => `${r.stableKey}:${r.sta
 const accountFits = (a: { type: string; isArchived?: boolean }, st: ParsedStatement | null) =>
   !a.isArchived && (!st || st.type === 'credit_card' ? a.type === 'credit_card' : a.type !== 'credit_card')
 
+/** Buluttaki taslakları çek (başka cihazda başlanan ekstre); ağ yavaşsa beklemeden devam */
+function syncDrafts(): Promise<unknown> {
+  return Promise.race([useStatementDraftsStore.getState().sync(), new Promise(r => setTimeout(r, 4000))])
+}
+
 /** Çalışma alanının adı (bildirimlerde) */
 function wsName(id: string | null | undefined): string {
   const ws = useWorkspaceStore.getState().workspaces
@@ -166,7 +171,7 @@ export function StatementImport() {
     setStep('reading')
     try {
       // Mükerrer kontrolü en güncel kayıtlarla yapılsın: önce buluttan çek
-      await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load()])
+      await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load(), syncDrafts()])
       const st = isPdf
         ? parseStatement(await readPdfPages(await file.arrayBuffer()))
         : parseScreenshot(await readImageText(file))
@@ -210,7 +215,7 @@ export function StatementImport() {
     // yapılır. (State güncellemeleri bu beklemeden SONRA: efektten çağrılıyor.)
     // Hesaplar da beklenir: sayfa doğrudan taslak bağlantısıyla açılınca hesaplar
     // henüz yüklenmemiş olur; o zaman taslağın hesabı ve kararları düşüyordu
-    await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load(), useAccountStore.getState().load()])
+    await Promise.all([useTransactionStore.getState().load(), usePeopleStore.getState().load(), useAccountStore.getState().load(), syncDrafts()])
     const d = useStatementDraftsStore.getState().get(id)
     setNotice('')
     if (!d) { setError('Bu taslak bulunamadı (silinmiş ya da başka bir cihazda kalmış olabilir).'); return }
