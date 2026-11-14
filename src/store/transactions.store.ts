@@ -637,6 +637,19 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         }
       }
     }
+    // Onay kapısı YALNIZ ileri tarihli kayıtlar içindir (withApproval): tarihi
+    // gelmemiş kayıt gününde onay ister. Bekleyen bir kaydın tarihi bugüne ya da
+    // geçmişe çekilirse kayıt artık "gelecek" değildir — damga düşer ve satır
+    // doğrudan işlenir. Damga eskiden takılı kalıyordu: yanlışlıkla ileri
+    // tarihle girilip hemen düzeltilen kayıt bakiyeye hiç girmeden bildirimde
+    // sonsuza dek onay bekliyordu. Çağıran damgayı açıkça yönettiyse karışılmaz.
+    if (typeof patch.date === 'string' && !('approvalStatus' in patch)) {
+      const cur = get().transactions.find(t => t.id === id)
+      if (cur?.approvalStatus === 'pending' && patch.date.slice(0, 10) <= today()) {
+        updated.approvalStatus = 'approved'
+        updated.approvedAt     = now
+      }
+    }
     // Dexie/Supabase'e `undefined` yazmak alanı ATLAR (eski snapshot kalırdı) →
     // temizleme niyetini açık `null` ile gönder.
     const persisted: Record<string, unknown> = { ...updated }
@@ -687,6 +700,15 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       if (addTags.length) {
         fwd.tags = [...new Set([...(t.tags ?? []), ...addTags])]
         rev.tags = t.tags ? [...t.tags] : null
+      }
+      // update() ile aynı kural: tarihi bugüne/geçmişe çekilen bekleyen satırın
+      // onay damgası düşer (geri alınabilir — eski damga rev'e snapshot'lanır).
+      if (typeof fwd.date === 'string' && !('approvalStatus' in patch) &&
+          t.approvalStatus === 'pending' && (fwd.date as string).slice(0, 10) <= today()) {
+        fwd.approvalStatus = 'approved'
+        fwd.approvedAt     = now
+        rev.approvalStatus = t.approvalStatus
+        rev.approvedAt     = t.approvedAt ?? null
       }
       forward.push({ kind: 'patch', table: 'transactions', id, patch: fwd })
       undoOps.push({ kind: 'patch', table: 'transactions', id, patch: rev })
