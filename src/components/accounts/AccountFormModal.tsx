@@ -15,6 +15,7 @@ import { DEFAULT_DEPOSIT_TAX, projectDeposit } from '@/lib/utils/deposit'
 import { today } from '@/lib/utils/date'
 import { addDays, format, parseISO } from 'date-fns'
 import type { Account, AccountType, CurrencyCode } from '@/types'
+import { accountFormPatch } from './account-form-patch'
 
 interface AccountFormModalProps {
   open: boolean
@@ -45,6 +46,12 @@ const DEPOSIT_TERMS = [32, 92, 181, 365]
 const COLORS = ['#111110','#1A5CA3','#1E7A3E','#B83232','#D4A853','#7B3F9B','#C4732A','#6B6B67']
 
 const CONFIRM_WORD = 'Onaylıyorum'
+
+interface FormValues {
+  name: string; type: AccountType; currency: CurrencyCode; initialBalStr: string; color: string
+  icon: string; limitStr: string; stmtDay: number; dueDayStr: string; minPctStr: string
+  depRateStr: string; depTaxStr: string; depStart: string; depEnd: string
+}
 
 export function AccountFormModal({ open, onClose, account, onDeleted }: AccountFormModalProps) {
   const add               = useAccountStore(s => s.add)
@@ -88,6 +95,9 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
   const [errors, setErrors]         = useState<Record<string, string>>({})
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [confirmText, setConfirmText]         = useState('')
+  // Açılış değerleri (ilk render'da yukarıdaki state'lerin ilk hâli); kaydetmede
+  // kullanıcının neyi değiştirdiğini bulmak için kıyas tabanı.
+  const [opening] = useState<FormValues>(() => ({ name, type, currency, initialBalStr, color, icon, limitStr, stmtDay, dueDayStr, minPctStr, depRateStr, depTaxStr, depStart, depEnd }))
 
   const isCreditCard = type === 'credit_card'
   const isSavings    = type === 'savings'
@@ -140,6 +150,47 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
     setDepEnd(format(addDays(parseISO(start), days), 'yyyy-MM-dd'))
   }
 
+  // Formun alan değerlerinden yazılacak hesap kaydı. Hem kaydetme anındaki hem
+  // açılıştaki değerlerle kurulur; ikisinin farkı düzenleme yamasıdır.
+  function buildData(v: FormValues): Account {
+    const vCredit  = v.type === 'credit_card'
+    const vSavings = v.type === 'savings'
+    const vInitBal = vCredit ? -Math.abs(parseCurrencyInput(v.initialBalStr)) : parseCurrencyInput(v.initialBalStr)
+    const vDepRate = parseCurrencyInput(v.depRateStr)
+    const vDepTax  = v.depTaxStr.trim() ? parseCurrencyInput(v.depTaxStr) : DEFAULT_DEPOSIT_TAX
+    const vDepUsed = vSavings && !!(v.depRateStr.trim() || v.depStart || v.depEnd)
+    const vGap     = account?.dueGapDays ?? bankRuleFor(v.name).gapDays
+    return {
+      id:           account?.id ?? crypto.randomUUID(),
+      name:         v.name.trim(),
+      type:         v.type,
+      currency:     v.currency,
+      balance:      vInitBal + txEffect,
+      initialBalance: vInitBal,
+      color:        v.color,
+      icon:         v.icon || undefined,
+      isArchived:   false,
+      createdAt:    account?.createdAt ?? new Date().toISOString(),
+      ...(vCredit && {
+        creditLimit:  parseCurrencyInput(v.limitStr),
+        statementDay: v.stmtDay,
+        dueDay:       account?.dueDay ?? 10,
+        minPayPct:    parseCurrencyInput(v.minPctStr) || undefined,
+        // Son ödeme günü kesim + fark ise her ay kesimden hesaplanır (ay uzunluğu,
+        // tatil); elle başka bir gün girildiyse o gün sabit kalır (0023)
+        dueGapDays:   v.dueDayStr === String(nominalDueDay(v.stmtDay, vGap)) ? vGap : null,
+      }),
+      // Vade sütunları (0018) yalnız koşul girildiğinde ya da eskisi silinirken
+      // yazılır — hiç vade kullanmayan hesap bu sütunlara hiç dokunmaz.
+      ...((vDepUsed || hadDeposit) && {
+        depositRate:   vDepUsed ? vDepRate : null,
+        depositStart:  vDepUsed ? v.depStart : null,
+        depositEnd:    vDepUsed ? v.depEnd : null,
+        depositTaxPct: vDepUsed ? vDepTax : null,
+      }),
+    }
+  }
+
   async function handleSubmit() {
     const e: Record<string, string> = {}
     if (!name.trim()) e.name = 'Ad girin'
@@ -150,40 +201,11 @@ export function AccountFormModal({ open, onClose, account, onDeleted }: AccountF
 
     setLoading(true)
     try {
-    const initialBalance = initialBalNum
-    const balance        = computedBalance
+    const data = buildData({ name, type, currency, initialBalStr, color, icon, limitStr, stmtDay, dueDayStr, minPctStr, depRateStr, depTaxStr, depStart, depEnd })
 
-    const data: Account = {
-      id:           account?.id ?? crypto.randomUUID(),
-      name:         name.trim(),
-      type,
-      currency,
-      balance,
-      initialBalance,
-      color,
-      icon:         icon || undefined,
-      isArchived:   false,
-      createdAt:    account?.createdAt ?? new Date().toISOString(),
-      ...(isCreditCard && {
-        creditLimit:  parseCurrencyInput(limitStr),
-        statementDay: stmtDay,
-        dueDay:       account?.dueDay ?? 10,
-        minPayPct:    parseCurrencyInput(minPctStr) || undefined,
-        // Son ödeme günü kesim + fark ise her ay kesimden hesaplanır (ay uzunluğu,
-        // tatil); elle başka bir gün girildiyse o gün sabit kalır (0023)
-        dueGapDays:   dueDayStr === String(nominalDueDay(stmtDay, cardGap)) ? cardGap : null,
-      }),
-      // Vade sütunları (0018) yalnız koşul girildiğinde ya da eskisi silinirken
-      // yazılır — hiç vade kullanmayan hesap bu sütunlara hiç dokunmaz.
-      ...((depositUsed || hadDeposit) && {
-        depositRate:   depositUsed ? depRate : null,
-        depositStart:  depositUsed ? depStart : null,
-        depositEnd:    depositUsed ? depEnd : null,
-        depositTaxPct: depositUsed ? depTax : null,
-      }),
-    }
-
-    if (account) { await update(account.id, data) }
+    // Düzenlemede tam satır yazılmaz: açılış değerleriyle kıyaslanıp yalnız
+    // kullanıcının değiştirdiği alanlar güncel hesabın üzerine yamalanır.
+    if (account) { await update(account.id, accountFormPatch(buildData(opening), data)) }
     else         { await add(data) }
 
     // Son ödeme günü plana yazılır; değişmediyse (ya da plan yokken boş
