@@ -193,7 +193,6 @@ export function CategoryEditModal({ scope, category, parentId, onClose }: Props)
       onClose={onClose}
       title={isEdit ? 'Kategoriyi Düzenle' : 'Yeni Kategori'}
       size="sm"
-      dismissible={false}
     >
       <div className="flex flex-col gap-4">
         {error && <p className="text-xs font-medium text-destructive">{error}</p>}
