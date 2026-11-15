@@ -12,7 +12,8 @@ import { parseCurrencyInput } from '@/lib/utils/currency'
 import { cn } from '@/lib/utils'
 import type { Transaction, CurrencyCode, RecurringTransaction, Category } from '@/types'
 import { useShallow } from 'zustand/react/shallow'
-import { X } from 'lucide-react'
+import { X, Trash2 } from 'lucide-react'
+import { DeleteConfirmDialog } from '@/components/transactions/TransactionList'
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { suggestCategoryIcon } from '@/lib/category-icon-suggest'
 import { TagInput } from '@/components/transactions/TagInput'
@@ -57,6 +58,7 @@ export function TransactionFormModal() {
   const categories = useCategoryStore(s => s.categories)
   const addCategory = useCategoryStore(s => s.add)
   const transactions = useTransactionStore(s => s.transactions)
+  const removeTx     = useTransactionStore(s => s.remove)
   const allPeople    = usePeopleStore(s => s.people)
   const activeDebts  = useDebtStore(useShallow(s => s.debts.filter(d => !d.isSettled && d.direction === 'owe')))
   // Alacaklar (bana borçlu olunanlar) — gelir sekmesindeki "Alacak" modu.
@@ -564,6 +566,21 @@ export function TransactionFormModal() {
               />
               <span className="text-sm text-muted-foreground">Art arda ekle</span>
             </label>
+          ) : editingTx && !isPlannedEdit ? (
+            // Kayıtlı bir işlemi düzenlerken (ör. aramadan açıldığında) silme
+            // listeye dönmeden buradan yapılabilsin. Onay diyaloğu listedekiyle
+            // aynı: taksit grubu / yatırım bağlantısı uyarıları dahil.
+            <DeleteConfirmDialog
+              tx={editingTx}
+              onDelete={() => void removeTx(editingTx.id)}
+              onSettled={closeModal}
+              trigger={
+                <Button variant="ghost" disabled={loading} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                  <Trash2 className="h-4 w-4" />
+                  İşlemi sil
+                </Button>
+              }
+            />
           ) : <span />}
           <div className="flex gap-2 sm:ml-auto">
             {sessionEditId ? (
