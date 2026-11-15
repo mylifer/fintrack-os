@@ -29,6 +29,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard',    label: 'Ana Sayfa',   icon: IC.home },
       { href: '/accounts',     label: 'Hesaplar',    icon: IC.accounts, expand: 'accounts' },
       { href: '/transactions', label: 'İşlemler',    icon: IC.tx },
+      { href: '/transactions/recent', label: 'Son Eklenenler', icon: IC.tx, sub: true },
       { href: '/ekstre-yukle', label: 'Ekstre Yükle', icon: IC.upload },
       { href: '/ekstre-yukle/taslaklar', label: 'Yarım Kalanlar', icon: IC.upload, sub: true, badge: 'drafts' },
       { href: '/ekstre-yukle/yuklenenler', label: 'Yüklenenler', icon: IC.upload, sub: true },
