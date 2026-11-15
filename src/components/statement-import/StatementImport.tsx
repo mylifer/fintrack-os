@@ -385,7 +385,7 @@ export function StatementImport() {
       }
       // Kart Takvimi değişiklikleri kayıtlarla AYNI işlemde: ya hepsi ya hiçbiri
       const cal = applyCalendar ? calendarFor(statement, accountId) : null
-      await localBatch([...res.ops, ...(cal?.ops ?? [])])
+      await localBatch([...res.ops, ...(cal?.ops ?? [])], { source: 'import' })
       rememberSkipped(accountId, res.skippedKeys)
       // Onaylanan ekstre silinmez: "Yüklenen Ekstreler"de dönemiyle birlikte kalır
       const drafts = useStatementDraftsStore.getState()
@@ -421,7 +421,7 @@ export function StatementImport() {
     if (!done) return
     setUndoing(true)
     try {
-      await localBatch(done.undo)
+      await localBatch(done.undo, { source: 'undo' })
       forgetSkipped(done.accountId, done.skippedKeys)
       // Ekstre onaydan önceki haline döner (yarım kalan taslak olarak)
       if (done.draftId) useStatementDraftsStore.getState().restore(done.draftId, done.draftBefore)

@@ -530,6 +530,37 @@ export interface TransactionRule {
   workspaceId?: string          // Çalışma alanı bölümlemesi; yoksa varsayılan alana ait sayılır
 }
 
+// ─── İşlem Değişiklik Geçmişi (audit log) ───────────────────────────────────
+// `updatedAt` bir kaydın NE ZAMAN düzenlendiğini söylüyordu, NEYİN değiştiğini
+// söylemiyordu. Her işlem yazması bir geçmiş satırı bırakır: zaman, eylem,
+// hangi yoldan ve alan alan eski→yeni. Satırlar sync engine'in 5 yerel yazma
+// primitive'inde, ana yazmayla AYNI IndexedDB işleminde üretilir (diff mantığı
+// src/lib/sync/history.ts) ve aynı outbox'tan buluta gider. APPEND-ONLY.
+// Supabase: 0029. Okuma TALEP ÜZERİNE: src/store/transaction-history.store.ts.
+
+export type TxHistoryAction = 'create' | 'update' | 'delete' | 'restore'
+
+export type TxHistorySource =
+  | 'form' | 'import' | 'refund' | 'batch' | 'recurring' | 'approval' | 'undo' | 'app'
+
+export interface TransactionHistoryEntry {
+  id: string
+  /** Geçmişi tutulan işlemin id'si (işlem silinse de geçmiş satırı kalır) */
+  txId: string
+  /** Değişikliğin anı — ISO zaman damgası */
+  at: string
+  action: TxHistoryAction
+  source?: TxHistorySource | null
+  /** alan adı → [eski, yeni]; değerler JSON-güvenli */
+  changes?: Record<string, [unknown, unknown]> | null
+  /** Kısa cihaz etiketi ("Chrome · macOS"); tam user-agent YAZILMAZ */
+  device?: string | null
+  createdAt?: string
+  updatedAt?: string
+  workspaceId?: string | null
+  deleted_at?: string | null    // Tombstone (C3)
+}
+
 // ─── Sync outbox (C1 — durable offline writes) ──────────────────────────────
 
 /** A pending mutation awaiting push to Supabase. One entry per (table, entity):

@@ -76,6 +76,7 @@ const tables = {
   people: new FakeTable(), recurringTransactions: new FakeTable(), workspaces: new FakeTable(),
   paymentPlans: new FakeTable(), paymentOccurrences: new FakeTable(), savingsGoals: new FakeTable(),
   transactionRules: new FakeTable(),
+  transactionHistory: new FakeTable(),
   _outbox: new FakeTable(),
 }
 
@@ -154,6 +155,16 @@ const { setMemberWorkspaceIds, setReadOnlyWorkspaceIds, setActiveWorkspaceId } =
 
 const outbox = tables._outbox
 const txTable = tables.transactions
+const historyTable = tables.transactionHistory
+
+/* İşlem değişiklik geçmişi (audit log) aynı dayanıklı outbox'tan gider: bir
+   `transactions` yazması artık kuyruğa İKİ girdi bırakır (satırın kendisi +
+   geçmiş satırı). Aşağıdaki testlerin konusu işlem satırının kuyruk davranışı
+   olduğundan, sayımlar o tabloya göre yapılır. Geçmişin kendi testleri
+   dosyanın sonundaki "işlem geçmişi" bloğunda. */
+const entriesOf = async (table: string) => (await outbox.toArray()).filter(e => e.table === table)
+const pendingOf = async (table: string) => (await entriesOf(table)).length
+const pushesOf  = (table: string) => upsertCalls.filter(c => c.table === table)
 
 const tx = (id: string, over: Record<string, unknown> = {}) => ({
   id, type: 'expense', amount: 250, currency: 'TRY', date: '2026-03-01',
@@ -180,7 +191,7 @@ describe('localUpsert / localPatch — varlık + outbox aynı anda', () => {
     await localUpsert('transactions', tx('t1'))
     expect((await txTable.get('t1'))!.amount).toBe(250)
 
-    const entries = await outbox.toArray()
+    const entries = await entriesOf('transactions')
     expect(entries).toHaveLength(1)
     expect(entries[0].id).toBe('transactions:t1')
     expect(entries[0].entityId).toBe('t1')
@@ -193,7 +204,7 @@ describe('localUpsert / localPatch — varlık + outbox aynı anda', () => {
 
     await localPatch('transactions', 't1', { amount: 999 })
 
-    expect(await pendingCount()).toBe(1)
+    expect(await pendingOf('transactions')).toBe(1)
     const entry = (await outbox.get('transactions:t1'))!
     expect((entry.snapshot as Record<string, unknown>).amount).toBe(999)
     // İlk görülme sırası korunur (FK-güvenli flush sırası)
@@ -237,13 +248,13 @@ describe('localUpsert / localPatch — varlık + outbox aynı anda', () => {
 
   it('localBulkUpsert her varlık için girdi bırakır', async () => {
     await localBulkUpsert('transactions', [tx('t1'), tx('t2'), tx('t3')])
-    expect(await pendingCount()).toBe(3)
+    expect(await pendingOf('transactions')).toBe(3)
   })
 
   it('localPatchMany toplu tombstone\'u tek geçişte kuyruğa alır', async () => {
     await localBulkUpsert('transactions', [tx('t1'), tx('t2')])
     await localPatchMany('transactions', ['t1', 't2'], { deleted_at: '2026-03-05T00:00:00Z' })
-    const entries = await outbox.toArray()
+    const entries = await entriesOf('transactions')
     expect(entries.every(e => (e.snapshot as Record<string, unknown>).deleted_at === '2026-03-05T00:00:00Z')).toBe(true)
   })
 
@@ -317,7 +328,7 @@ describe('salt okuma alanı — yazma yerel katmanda reddedilir', () => {
     await localUpsert('transactions', tx('t1'))
     await localBulkUpsert('transactions', [tx('t2', { workspaceId: null })])
     await localBatch([{ kind: 'patch', table: 'transactions', id: 't1', patch: { amount: 5 } }])
-    expect(await pendingCount()).toBe(2)
+    expect(await pendingOf('transactions')).toBe(2)
   })
 
   it('açılış/yükleme sırasında da KULLANICI yazması sessizce atlanmaz — bildirilir', async () => {
@@ -338,9 +349,11 @@ describe('salt okuma alanı — yazma yerel katmanda reddedilir', () => {
   it('dropReadOnlyPending salt okumaya düşen alanın bekleyen yazmalarını ve yerel satırlarını düşürür', async () => {
     await localUpsert('transactions', tx('t-ro', { workspaceId: RO }))
     await localUpsert('transactions', tx('t-me', { workspaceId: 'ws-me' }))
-    expect(await dropReadOnlyPending([RO])).toBe(1)
+    // 2 girdi düşer: satırın kendisi + o satırın geçmiş satırı (ikisi de salt
+    // okuma alanına ait, ikisi de buluta itilemez).
+    expect(await dropReadOnlyPending([RO])).toBe(2)
     expect(await txTable.get('t-ro')).toBeUndefined()
-    expect((await outbox.toArray()).map(e => e.id)).toEqual(['transactions:t-me'])
+    expect((await entriesOf('transactions')).map(e => e.id)).toEqual(['transactions:t-me'])
   })
 
   it('çekiş, salt okuma alanının bulutta olmayan yerel satırını buluta GERİ İTMEZ', async () => {
@@ -379,7 +392,7 @@ describe('flushOutbox — ACK, hata ve kimlik koruması', () => {
     await flushOutbox()
 
     expect(upsertCalls).toHaveLength(0)
-    expect(await pendingCount()).toBe(1)
+    expect(await pendingOf('transactions')).toBe(1)
   })
 
   it('BAŞKA kullanıcının girdisini asla oynatmaz — düşürür (kiracılar arası sızıntı)', async () => {
@@ -396,8 +409,8 @@ describe('flushOutbox — ACK, hata ve kimlik koruması', () => {
     await outbox.update('transactions:t1', { attempts: MAX_SYNC_ATTEMPTS })
 
     await flushOutbox()
-    expect(upsertCalls).toHaveLength(0)
-    expect(await pendingCount()).toBe(1)          // dayanıklı kalır (inceleme için)
+    expect(pushesOf('transactions')).toHaveLength(0)
+    expect(await pendingOf('transactions')).toBe(1)   // dayanıklı kalır (inceleme için)
   })
 
   it('retryDeadLetters sayaçları sıfırlar ve yeniden dener', async () => {
@@ -405,7 +418,7 @@ describe('flushOutbox — ACK, hata ve kimlik koruması', () => {
     await outbox.update('transactions:t1', { attempts: MAX_SYNC_ATTEMPTS })
 
     await retryDeadLetters()
-    expect(upsertCalls).toHaveLength(1)
+    expect(pushesOf('transactions')).toHaveLength(1)
     expect(await pendingCount()).toBe(0)
   })
 
@@ -516,7 +529,7 @@ describe('reconcilingPull — yerel veriyi yok etmeden birleştirme', () => {
     await Promise.resolve()
     await localPatch('transactions', 't1', { amount: 999 })
     await flushOutbox()
-    expect(await pendingCount()).toBe(0)                  // ACK'lendi, girdi yok
+    expect(await pendingOf('transactions')).toBe(0)       // ACK'lendi, girdi yok
     release()
     const rows = await pulling
 
@@ -525,7 +538,8 @@ describe('reconcilingPull — yerel veriyi yok etmeden birleştirme', () => {
 
     await localPatch('transactions', 't1', { description: 'Market' })
     await flushOutbox()
-    expect(upsertCalls[upsertCalls.length - 1].payload.amount).toBe(999)
+    const txPushes = pushesOf('transactions')
+    expect(txPushes[txPushes.length - 1].payload.amount).toBe(999)
   })
 
   it('updatedAt damgası bulut satırından YENİ yerel satır ezilmez', async () => {
@@ -614,9 +628,10 @@ describe('push sırasında düzenleme — düzeltilen hata #2', () => {
     await editDuringPush(() => ({ error: null }))
 
     // Düzeltme öncesi: ACK, taze girdiyi silerdi ve 2500 buluta hiç gitmezdi.
-    expect(upsertCalls).toHaveLength(2)
-    expect(upsertCalls[0].payload.amount).toBe(250)
-    expect(upsertCalls[1].payload.amount).toBe(2500)
+    const txPushes = pushesOf('transactions')
+    expect(txPushes).toHaveLength(2)
+    expect(txPushes[0].payload.amount).toBe(250)
+    expect(txPushes[1].payload.amount).toBe(2500)
     expect(await pendingCount()).toBe(0)                 // ikinci push da ACK'lendi
     expect((await txTable.get('t1'))!.amount).toBe(2500)
   })
@@ -650,7 +665,7 @@ describe('push sırasında düzenleme — düzeltilen hata #2', () => {
     upsertImpl = async () => ({ error: { message: 'offline' } })
     await localUpsert('transactions', tx('t1', { amount: 2500 }))
     await flushOutbox()
-    expect(await pendingCount()).toBe(1)
+    expect(await pendingOf('transactions')).toBe(1)
 
     selectImpl = async () => ({ data: [tx('t1', { amount: 250 }) as Row], error: null })
     await reconcilingPull('transactions')
@@ -837,11 +852,12 @@ describe('paylaşılan alanlar (0021)', () => {
 
     const removed = await purgeWorkspacesLocal(['ws-aile'])
 
-    expect(removed).toBe(3)
+    // 4 satır: işlem + hesap + alan + o işlemin geçmiş satırı
+    expect(removed).toBe(4)
     expect([...txTable.rows.keys()]).toEqual(['t-benim'])
     expect([...tables.workspaces.rows.keys()]).toEqual(['ws-benim'])
     expect(tables.accounts.rows.size).toBe(0)
-    const pending = [...outbox.rows.values()].map(e => (e.snapshot as { id: string }).id)
+    const pending = (await entriesOf('transactions')).map(e => (e.snapshot as { id: string }).id)
     expect(pending).toEqual(['t-benim'])
   })
 })
@@ -859,5 +875,94 @@ describe('reconcilingPull — çekiş sürerken biten push', () => {
     expect(rows.map(r => r.id)).toEqual(['new1'])
     expect(await outbox.get('transactions:new1')).toBeUndefined()   // yeniden kuyruğa alınmadı
     expect(notifications).toHaveLength(0)
+  })
+})
+
+/* ── İşlem değişiklik geçmişi (audit log) ────────────────────────────────
+   Geçmiş satırı ana yazmayla AYNI primitive'de, AYNI Dexie işleminde doğar.
+   Burada motorun KARARLARI test edilir: hangi tablo geçmiş üretir, geçmiş
+   outbox'a girer mi, ana yazma reddedilince geçmiş de düşer mi.
+   Diff mantığının kendisi ayrı test edilir (bkz. history.test.ts). */
+
+describe('işlem geçmişi — merkezde yazılır', () => {
+  it('localPatch(transactions) bir geçmiş satırı yazar ve outbox\'a koyar', async () => {
+    await localUpsert('transactions', tx('t1'))
+    const afterCreate = await historyTable.toArray()
+    expect(afterCreate).toHaveLength(1)
+    expect(afterCreate[0].action).toBe('create')
+
+    await localPatch('transactions', 't1', { amount: 999 })
+
+    const rows = await historyTable.toArray()
+    expect(rows).toHaveLength(2)
+    const edit = rows.find(r => r.action === 'update')!
+    expect(edit.txId).toBe('t1')
+    expect(edit.changes).toMatchObject({ amount: [250, 999] })
+
+    // Outbox: her geçmiş satırı kendi girdisiyle buluta gider
+    const entries = await outbox.toArray()
+    const histEntries = entries.filter(e => e.table === 'transaction_history')
+    expect(histEntries).toHaveLength(2)
+    expect(entries.some(e => e.id === `transaction_history:${edit.id}`)).toBe(true)
+  })
+
+  it('geçmiş satırı gürültü üretmez: değişmeyen bir yama satır bırakmaz', async () => {
+    await localUpsert('transactions', tx('t1'))
+    await historyTable.clear()
+    await localPatch('transactions', 't1', { amount: 250 })   // aynı değer
+    expect(await historyTable.count()).toBe(0)
+  })
+
+  it('silme ve geri alma ayrı eylem olarak kaydedilir', async () => {
+    await localUpsert('transactions', tx('t1'))
+    await softDelete('transactions', 't1')
+    await localPatch('transactions', 't1', { deleted_at: null })
+    const actions = (await historyTable.toArray()).map(r => r.action)
+    expect(actions).toContain('delete')
+    expect(actions).toContain('restore')
+  })
+
+  it('BAŞKA bir tabloya yazma geçmiş üretmez', async () => {
+    await localUpsert('accounts', { id: 'a1', name: 'Vadesiz', initialBalance: 0 })
+    await localPatch('accounts', 'a1', { name: 'Vadesiz TL' })
+    await localUpsert('transaction_rules', { id: 'r1', pattern: 'x', matchKind: 'contains', sortOrder: 1, isActive: true })
+    expect(await historyTable.count()).toBe(0)
+  })
+
+  it('geçmiş tablosunun KENDİSİ geçmiş üretmez (sonsuz döngü koruması)', async () => {
+    await localUpsert('transaction_history', { id: 'h1', txId: 't1', at: 'now', action: 'update' })
+    // Yalnız yazılan satırın kendisi var; ona dair ikinci bir geçmiş satırı yok
+    expect(await historyTable.count()).toBe(1)
+    expect((await historyTable.get('h1'))!.txId).toBe('t1')
+  })
+
+  it('toplu yazmalarda satır başına bir geçmiş satırı düşer', async () => {
+    await localBulkUpsert('transactions', [tx('t1'), tx('t2'), tx('t3')])
+    expect(await historyTable.count()).toBe(3)
+
+    await historyTable.clear()
+    await localPatchMany('transactions', ['t1', 't2'], { deleted_at: '2026-10-16T20:56:00.000Z' })
+    const rows = await historyTable.toArray()
+    expect(rows).toHaveLength(2)
+    expect(rows.every(r => r.action === 'delete')).toBe(true)
+  })
+
+  it('localBatch kaynak etiketini (source) geçmiş satırına taşır', async () => {
+    await localUpsert('transactions', tx('t1'))
+    await historyTable.clear()
+    await localBatch([
+      { kind: 'patch', table: 'transactions', id: 't1', patch: { description: 'Ekstreden' } },
+    ], { source: 'import' })
+    const rows = await historyTable.toArray()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].source).toBe('import')
+  })
+
+  it('ana yazma reddedilirse (salt okuma alanı) geçmiş de YAZILMAZ', async () => {
+    await txTable.put(tx('t1', { workspaceId: 'ws-ro' }))
+    setReadOnlyWorkspaceIds(['ws-ro'])
+    await expect(localPatch('transactions', 't1', { amount: 1 })).rejects.toThrow(/salt okuma/)
+    expect(await historyTable.count()).toBe(0)
+    expect(await pendingCount()).toBe(0)
   })
 })

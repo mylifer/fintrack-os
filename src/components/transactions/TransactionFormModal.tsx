@@ -17,6 +17,7 @@ import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { suggestCategoryIcon } from '@/lib/category-icon-suggest'
 import { TagInput } from '@/components/transactions/TagInput'
 import { ReceiptField } from '@/components/transactions/ReceiptField'
+import { TransactionHistoryPanel } from '@/components/transactions/TransactionHistoryPanel'
 import { useTags } from '@/lib/hooks/useTags'
 import { dedupeTags } from '@/lib/utils/tags'
 import { isSubscriptionTag } from '@/lib/subscriptions/brands'
@@ -527,6 +528,15 @@ export function TransactionFormModal() {
                 tags={tags}
               />
             </Field>
+          )}
+
+          {/* Değişiklik geçmişi — yalnız KAYITLI bir işlem düzenlenirken.
+              Katlanabilir: açılmadan hiçbir şey okunmaz (talep üzerine). */}
+          {editingTx && !isPlannedEdit && !isRecurring && (
+            <TransactionHistoryPanel
+              txId={editingTx.id}
+              currency={editingTx.currency}
+            />
           )}
         </div>
 

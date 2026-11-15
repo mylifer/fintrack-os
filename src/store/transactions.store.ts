@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import type { Debt, Transaction, TransactionFilters } from '@/types'
+import type { Debt, Transaction, TransactionFilters, TxHistorySource } from '@/types'
 import { isInRange, today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
@@ -92,7 +92,9 @@ async function findTransferPeers(group: Transaction[]): Promise<Transaction[]> {
  *  işleminde (denetim #22). Eskiden her satır ve her borç ayrı yazılıyordu:
  *  araya giren bir sekme kapanışı taksit grubunun bir kısmını silinmiş, borcu
  *  yarı geri alınmış bırakabiliyordu. Borç tutarı TRY tabanlıdır (baseAmount). */
-async function setDeletedWithDebts(group: Transaction[], peers: Transaction[], deleted: boolean): Promise<void> {
+async function setDeletedWithDebts(
+  group: Transaction[], peers: Transaction[], deleted: boolean, source: TxHistorySource = 'form',
+): Promise<void> {
   // Karşı bacaklar da borç ödemesi taşıyabilir (alanlar arası borç ödemesi):
   // borç başka alandaysa bellekte yoktur → debtPaymentPatches Dexie'den okur.
   const patches = await debtPaymentPatches(
@@ -106,7 +108,7 @@ async function setDeletedWithDebts(group: Transaction[], peers: Transaction[], d
       patch: { deleted_at: deleted ? new Date().toISOString() : null },
     },
     ...[...patches].map(([id, patch]): BatchOp => ({ kind: 'patch', table: 'debts', id, patch })),
-  ])
+  ], { source })
   useDebtStore.getState().applyLocal(patches)
 }
 
@@ -146,13 +148,14 @@ interface TransactionState {
   loading: boolean
   ready: boolean
   load: () => Promise<void>
-  add: (tx: Transaction) => Promise<void>
+  add: (tx: Transaction, source?: TxHistorySource) => Promise<void>
   addCrossWorkspaceTransfer: (input: CrossWorkspaceTransferInput) => Promise<void>
   /** Üretilen satırların id'lerini taksit sırasıyla döndürür (ilk taksit başta). */
   addInstallmentGroup: (
     base: Omit<Transaction, 'id' | 'installIndex' | 'installGroupId' | 'createdAt' | 'updatedAt'>,
     count: number,
     amounts?: number[],
+    source?: TxHistorySource,
   ) => Promise<string[]>
   updateInstallmentGroup: (
     groupId: string,
@@ -168,14 +171,15 @@ interface TransactionState {
   /** Eski yuvarlamayla bölünmüş taksit gruplarını banka kuralına çevirir
    *  (kuruş kalanı 1. taksite). Tek undo ile geri alınır. Düzeltilen grup sayısını döner. */
   fixInstallmentRounding: () => Promise<number>
-  update: (id: string, patch: Partial<Transaction>) => Promise<void>
+  update: (id: string, patch: Partial<Transaction>, source?: TxHistorySource) => Promise<void>
   updateMany: (
     ids: string[],
     patch: Partial<Transaction>,
     opts?: { addTags?: string[] },
+    source?: TxHistorySource,
   ) => Promise<void>
   renameTag: (oldTag: string, newTag: string) => Promise<void>
-  remove: (id: string, opts?: RemoveOptions) => Promise<void>
+  remove: (id: string, opts?: RemoveOptions, source?: TxHistorySource) => Promise<void>
   removeMany: (ids: string[]) => Promise<void>
   getFiltered: (filters: TransactionFilters, transactions?: Transaction[]) => Transaction[]
 }
@@ -199,11 +203,11 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     }
   },
 
-  add: async (tx) => {
+  add: async (tx, source = 'form') => {
     // Base-currency snapshot (S2/S3) + onay kapısı + çoklu kategori değişmezi
     // + durable write (C1).
     const stamped = withSplits(withApproval(withBase(tx)))
-    await localUpsert('transactions', stamped)
+    await localUpsert('transactions', stamped, { source })
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
     const next = [stamped, ...get().transactions]
     next.sort(txSortComparator)
@@ -314,7 +318,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       { kind: 'upsert', table: 'transactions', entity: incoming },
       ...(payment ? [{ kind: 'upsert', table: 'transactions', entity: payment } as BatchOp] : []),
       ...[...debtPatches].map(([id, patch]): BatchOp => ({ kind: 'patch', table: 'debts', id, patch })),
-    ])
+    ], { source: 'form' })
     useDebtStore.getState().applyLocal(debtPatches)
 
     // Sadece AKTİF alana ait bacak belleğe alınır — karşı bacak o alan
@@ -325,7 +329,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     useAccountStore.getState().recomputeBalances(next)
   },
 
-  addInstallmentGroup: async (base, count, amounts) => {
+  addInstallmentGroup: async (base, count, amounts, source = 'form') => {
     const groupId = crypto.randomUUID()
     const now = new Date().toISOString()
     const txs: Transaction[] = []
@@ -345,7 +349,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         : undefined
       txs.push(withSplits(withBase({ ...base, amount: perInstallment[i], categorySplits: splits, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, approvalStatus: 'approved', approvedAt: now, createdAt: now, updatedAt: now })))
     }
-    await localBulkUpsert('transactions', txs)
+    await localBulkUpsert('transactions', txs, { source })
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
     const next = [...txs, ...get().transactions]
     next.sort(txSortComparator)
@@ -425,8 +429,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       }
     }
 
-    await localBatch(forward)
-    if (removedRows.length) await softDeleteMany('transactions', removedRows.map(t => t.id))
+    await localBatch(forward, { source: 'form' })
+    if (removedRows.length) await softDeleteMany('transactions', removedRows.map(t => t.id), { source: 'form' })
 
     // Local state: çıkarılanları filtrele, güncellenen/eklenen satırları uygula.
     const removedIds = new Set(removedRows.map(t => t.id))
@@ -441,9 +445,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // Undo: patch'leri geri al, yeni satırları tombstone et, çıkarılanları geri
     // getir — sonra yerel durumu orijinal gruba (`existing`) döndür.
     useUndoStore.getState().pushUndo('Taksitli işlem güncellendi', async () => {
-      await localBatch(undoOps)
-      if (createdIds.length) await softDeleteMany('transactions', createdIds)
-      for (const t of removedRows) await localPatch('transactions', t.id, { deleted_at: null })
+      await localBatch(undoOps, { source: 'undo' })
+      if (createdIds.length) await softDeleteMany('transactions', createdIds, { source: 'undo' })
+      for (const t of removedRows) await localPatch('transactions', t.id, { deleted_at: null }, { source: 'undo' })
       const reverted = get().transactions.filter(t => t.installGroupId !== groupId)
       reverted.push(...existing)
       reverted.sort(txSortComparator)
@@ -523,7 +527,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       }
     }
 
-    await localBatch(forward)
+    await localBatch(forward, { source: 'form' })
 
     const next = get().transactions.map(t => nextById.get(t.id) ?? t)
     for (const cid of createdIds) if (!next.some(t => t.id === cid)) next.push(nextById.get(cid)!)
@@ -532,8 +536,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     useAccountStore.getState().recomputeBalances(next)
 
     useUndoStore.getState().pushUndo('İşlem taksitlendirildi', async () => {
-      await localBatch([{ kind: 'patch', table: 'transactions', id: cur.id, patch: headUndo }])
-      if (createdIds.length) await softDeleteMany('transactions', createdIds)
+      await localBatch([{ kind: 'patch', table: 'transactions', id: cur.id, patch: headUndo }], { source: 'undo' })
+      if (createdIds.length) await softDeleteMany('transactions', createdIds, { source: 'undo' })
       const createdSet = new Set(createdIds)
       const reverted = get().transactions
         .filter(t => !createdSet.has(t.id))
@@ -578,13 +582,13 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       }
     }
 
-    await localBatch(forward)
+    await localBatch(forward, { source: 'app' })
     const next = get().transactions.map(t => nextById.get(t.id) ?? t)
     set({ transactions: next })
     useAccountStore.getState().recomputeBalances(next)
 
     useUndoStore.getState().pushUndo(`${fixes.length} taksitli işlemin kuruşları düzeltildi`, async () => {
-      await localBatch(undoOps)
+      await localBatch(undoOps, { source: 'undo' })
       const reverted = get().transactions.map(t => prevById.get(t.id) ?? t)
       set({ transactions: reverted })
       useAccountStore.getState().recomputeBalances(reverted)
@@ -592,7 +596,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     return fixes.length
   },
 
-  update: async (id, patch) => {
+  update: async (id, patch, source = 'form') => {
     const now = new Date().toISOString()
     const updated: Partial<Transaction> = { ...patch, updatedAt: now }
     // Re-snapshot amountTry whenever amount or currency changes (S2/S3).
@@ -655,7 +659,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const persisted: Record<string, unknown> = { ...updated }
     if (clearBase)   persisted.amountTry     = null
     if (clearSplits) persisted.categorySplits = null
-    await localPatch('transactions', id, persisted)
+    await localPatch('transactions', id, persisted, { source })
     // NOT: Borç paidAmount mutabakatı burada YAPILMAZ — düzenleme akışının tek
     // sahibi TransactionFormModal'dır (borç değişimi/kaldırma dahil tüm dalları
     // yönetir). Burada da ayarlamak çift sayıma yol açıyordu.
@@ -672,7 +676,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
   // verilirse etiketler satır-satır BİRLEŞTİRİLİR (mevcut etiketler korunur).
   // Tüm satırlar tek bir atomik localBatch içinde yazılır ve değişiklik geri
   // alınabilir (her satırın eski değerleri snapshot'lanır).
-  updateMany: async (ids, patch, opts) => {
+  updateMany: async (ids, patch, opts, source = 'batch') => {
     const now = new Date().toISOString()
     const before = get().transactions
     const txById = new Map(before.map(t => [t.id, t]))
@@ -714,7 +718,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       undoOps.push({ kind: 'patch', table: 'transactions', id, patch: rev })
     }
 
-    await localBatch(forward)
+    await localBatch(forward, { source })
 
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
     const fwdById = new Map(forward.map(o => [o.id, o.patch]))
@@ -724,7 +728,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
     const label = affected.length > 1 ? `${affected.length} işlem düzenlendi` : 'İşlem düzenlendi'
     useUndoStore.getState().pushUndo(label, async () => {
-      await localBatch(undoOps)
+      await localBatch(undoOps, { source: 'undo' })
       const revById = new Map(undoOps.map(o => [o.id, o.patch]))
       const reverted = get().transactions.map(t => revById.has(t.id) ? { ...t, ...revById.get(t.id) } : t)
       set({ transactions: reverted })
@@ -756,21 +760,21 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     }
     if (forward.length === 0) return
 
-    await localBatch(forward)
+    await localBatch(forward, { source: 'batch' })
 
     const fwdById = new Map(forward.map(o => [o.id, o.patch]))
     const next = get().transactions.map(t => fwdById.has(t.id) ? { ...t, ...fwdById.get(t.id) } : t)
     set({ transactions: next })
 
     useUndoStore.getState().pushUndo(`Etiket yeniden adlandırıldı (${forward.length} işlem)`, async () => {
-      await localBatch(undoOps)
+      await localBatch(undoOps, { source: 'undo' })
       const revById = new Map(undoOps.map(o => [o.id, o.patch]))
       const reverted = get().transactions.map(t => revById.has(t.id) ? { ...t, ...revById.get(t.id) } : t)
       set({ transactions: reverted })
     })
   },
 
-  remove: async (id, opts) => {
+  remove: async (id, opts, source = 'form') => {
     const all = get().transactions
     const tx = all.find(t => t.id === id)
     // Taksitli işlem: tek taksit yalnız silinmez — satın almanın TÜM taksitleri
@@ -788,7 +792,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // Soft delete (C3) via the durable outbox: syncs as an UPDATE and cannot
     // resurrect on the next reconciling pull. Bağlı borca katkı TRY tabanıyla
     // geri alınır ve paidInstallments de azalır (M3, M4) — atomik (#22).
-    await setDeletedWithDebts(group, peers, true)
+    await setDeletedWithDebts(group, peers, true, source)
 
     // Pure updater: compute next array, set it, THEN fire the cross-store effect.
     // Aktif alandaki karşı bacaklar (alanlar arası borç ödemesi) bellekte de
@@ -805,7 +809,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
         ? `Taksitli işlem silindi (${group.length} taksit)`
         : group.length > 1 ? 'Faiz ve stopajı silindi' : 'İşlem silindi'
       useUndoStore.getState().pushUndo(label, async () => {
-        await setDeletedWithDebts(group, peers, false)
+        await setDeletedWithDebts(group, peers, false, 'undo')
         const next = [...group, ...localPeers, ...get().transactions]
         next.sort(txSortComparator)
         set({ transactions: next })
@@ -840,7 +844,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // iki bacak birden seçilmişse (nadir) zaten grupta olan tekrar eklenmez.
     const peers = await findTransferPeers(group)
 
-    await setDeletedWithDebts(group, peers, true)
+    await setDeletedWithDebts(group, peers, true, 'batch')
 
     const { removed: localPeers, remaining } = dropRemoved(get().transactions, group, peers)
     set({ transactions: remaining })
@@ -848,7 +852,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
     const label = group.length > 1 ? `${group.length} işlem silindi` : 'İşlem silindi'
     useUndoStore.getState().pushUndo(label, async () => {
-      await setDeletedWithDebts(group, peers, false)
+      await setDeletedWithDebts(group, peers, false, 'undo')
       const next = [...group, ...localPeers, ...get().transactions]
       next.sort(txSortComparator)
       set({ transactions: next })
