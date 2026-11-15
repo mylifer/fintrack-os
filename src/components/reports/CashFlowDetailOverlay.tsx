@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { X, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
@@ -10,6 +10,7 @@ import { isInRange } from '@/lib/utils/date'
 import { isPrincipalMoveTx } from '@/lib/utils/calculations'
 import { baseAmount } from '@/lib/utils/fx'
 import { sumBy } from '@/lib/utils/money'
+import { shakeElement } from '@/lib/ui/shake'
 import type { Transaction } from '@/types'
 
 type TypeFilter = 'all' | 'income' | 'expense'
@@ -45,6 +46,7 @@ export function CashFlowDetailOverlay({ open, from, to, label, transactions, onC
   // close→ geri kaydır, 300ms sonra unmount et.
   const [render, setRender] = useState(open)
   const [show, setShow]     = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) {
@@ -63,10 +65,13 @@ export function CashFlowDetailOverlay({ open, from, to, label, transactions, onC
 
   useEffect(() => {
     if (!open) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    // Panel yalnız X ile kapanır; Esc yalnızca titretir (iç diyalog Esc'i hariç).
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !e.defaultPrevented) shakeElement(panelRef.current)
+    }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [open])
 
   // Aralık içindeki gelir+gider satırları (transfer hariç — nakit akışıyla aynı
   // kapsam). Yatırım anapara satırları (… Alımı/… Satışı) de hariç: nakit akışı
@@ -104,11 +109,12 @@ export function CashFlowDetailOverlay({ open, from, to, label, transactions, onC
       {/* Backdrop */}
       <div
         className={`absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${show ? 'opacity-100' : 'opacity-0'}`}
-        onClick={onClose}
+        onClick={() => shakeElement(panelRef.current)}
       />
 
       {/* Panel — sağdan kayar */}
       <div
+        ref={panelRef}
         className={`absolute right-0 top-0 h-full w-full max-w-md bg-card shadow-2xl flex flex-col border-l border-border transition-transform duration-300 ease-out ${show ? 'translate-x-0' : 'translate-x-full'}`}
         role="dialog"
         aria-modal="true"

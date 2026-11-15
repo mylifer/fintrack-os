@@ -4,6 +4,7 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 import { XIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { shakeElement } from "@/lib/ui/shake"
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -40,8 +41,19 @@ function DialogContent({
   children,
   showCloseButton = true,
   onCloseAutoFocus,
+  onInteractOutside,
+  onEscapeKeyDown,
+  ref,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & { showCloseButton?: boolean }) {
+  // Pencereler sistem genelinde YALNIZCA X (ya da kendi butonları) ile kapanır:
+  // dışına tıklamak / Esc kapatmaz, bunun yerine pencere hafifçe titrer.
+  const contentRef = React.useRef<HTMLDivElement | null>(null)
+  const setRefs = React.useCallback((el: HTMLDivElement | null) => {
+    contentRef.current = el
+    if (typeof ref === "function") ref(el)
+    else if (ref) ref.current = el
+  }, [ref])
   // Radix kapanışta odağı yalnız <Dialog.Trigger>'a döndürür; uygulamadaki
   // pencereler düz düğmelerle (state) açıldığından odak <body>'ye düşüyordu —
   // klavye/ekran okuyucu kullanıcısı sayfanın başına atılıyordu. Açılış anında
@@ -53,6 +65,20 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        ref={setRefs}
+        onInteractOutside={e => {
+          onInteractOutside?.(e)
+          if (e.defaultPrevented) return
+          e.preventDefault()
+          // Odak kayması (toast vb.) titretmez; yalnız dışarıya tıklama titretir.
+          if (e.type === "dismissableLayer.pointerDownOutside") shakeElement(contentRef.current)
+        }}
+        onEscapeKeyDown={e => {
+          onEscapeKeyDown?.(e)
+          if (e.defaultPrevented) return
+          e.preventDefault()
+          shakeElement(contentRef.current)
+        }}
         onCloseAutoFocus={e => {
           onCloseAutoFocus?.(e)
           if (e.defaultPrevented || !returnTo?.isConnected) return

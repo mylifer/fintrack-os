@@ -58,7 +58,6 @@ export function PersonEditModal({ config, person, onClose }: Props) {
       onClose={onClose}
       title={isEdit ? config.labels.editTitle : config.labels.addTitle}
       size="sm"
-      dismissible={false}
     >
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
