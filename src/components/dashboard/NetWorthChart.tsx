@@ -316,8 +316,13 @@ export function NetWorthChart() {
       if (prices) {
         for (const itx of investTxByDay.get(key) ?? []) {
           const value = itx.quantity * priceOf(itx.asset, i)
+          // Etiket bunun bir K/Z değil, portföy↔nakit yer değiştirmesi olduğunu
+          // söylemeli: satışta eksi satır, aynı gün nakde geçen satış bedelidir
+          // (gerçek zarar ayrı "Satış Zararı" satırında) — zarar sanılıyordu.
           if (value !== 0) items.push({
-            label:  `Portföy: ${itx.type === 'buy' ? '+' : '−'}${fmtQty(itx.quantity)} ${assetLabel(itx.asset)}`,
+            label:  itx.type === 'buy'
+              ? `Portföye giriş: ${fmtQty(itx.quantity)} ${assetLabel(itx.asset)} (alış bedeli)`
+              : `Portföyden çıkış: ${fmtQty(itx.quantity)} ${assetLabel(itx.asset)} (satış bedeli)`,
             amount: itx.type === 'buy' ? value : -value,
           })
         }
