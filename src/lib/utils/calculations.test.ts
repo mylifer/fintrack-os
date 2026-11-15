@@ -177,6 +177,8 @@ describe('yatırım anaparası akıştan hariç, gerçekleşen K/Z dahil', () =>
   it('isInvestmentPrincipalTx: yalnız icon\'lu "… Alımı"/"… Satışı" satırları', () => {
     expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: '10 AKB Alımı' }))).toBe(true)
     expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: '10 AKB Satışı' }))).toBe(true)
+    expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: '10 AKB Satışı (maliyet; satış bedeli ₺288.442,11)' }))).toBe(true)
+    expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: '10 AKB Satışı (x) ek' }))).toBe(false)
     // gerçekleşen kâr/zarar anapara DEĞİL — akışta kalmalı
     expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: 'AKB Satış Kârı' }))).toBe(false)
     expect(isInvestmentPrincipalTx(tx({ icon: 'F', description: 'AKB Satış Zararı' }))).toBe(false)
