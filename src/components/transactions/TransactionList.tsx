@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo, useRef, useState } from 'react'
+import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Wand2 } from 'lucide-react'
 import { suggestPatternFrom } from '@/lib/utils/transaction-rules'
@@ -93,10 +93,16 @@ export function DeleteConfirmDialog({
   tx,
   onDelete,
   compact,
+  trigger,
+  onSettled,
 }: {
   tx: Transaction
   onDelete: () => void
   compact?: boolean
+  /** Varsayılan çöp kutusu ikonunun yerine kullanılacak tetikleyici (ör. modal altındaki "İşlemi sil" butonu). */
+  trigger?: ReactNode
+  /** Silme onaylandıktan sonra (yatırım satışı dalı dahil) çağrılır — ör. açık modalı kapatmak için. */
+  onSettled?: () => void
 }) {
   const investTxs = useInvestmentStore(s => s.transactions)
   const removeInvestTx = useInvestmentStore(s => s.removeTransaction)
@@ -109,9 +115,11 @@ export function DeleteConfirmDialog({
   return (
     <AlertDialog.Root>
       <AlertDialog.Trigger asChild>
-        <button className={btnCls} title="Sil">
-          <TrashIcon size={compact ? 12 : 13} />
-        </button>
+        {trigger ?? (
+          <button className={btnCls} title="Sil">
+            <TrashIcon size={compact ? 12 : 13} />
+          </button>
+        )}
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
@@ -161,7 +169,7 @@ export function DeleteConfirmDialog({
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
               <button
-                onClick={() => investSell ? void removeInvestTx(investSell.id) : onDelete()}
+                onClick={() => { if (investSell) void removeInvestTx(investSell.id); else onDelete(); onSettled?.() }}
                 className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors"
               >
                 Sil
