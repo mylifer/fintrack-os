@@ -23,6 +23,7 @@ import { recipientEdit, type RowEdit } from '@/lib/statement-import/commit'
 import type { ParsedStatement } from '@/lib/statement-import/statement'
 import { STATUS_META } from './PreviewList'
 import { RefundLinkPicker } from './RefundLinkPicker'
+import { ManualTransferFields } from './ManualTransferFields'
 
 /* ── Ekstre satırının ayrıntısı ──────────────────────────────────────────────
    "İşlem Ekle" penceresiyle aynı düzen: ortada açılır, üstte tür sekmeleri
@@ -32,6 +33,8 @@ import { RefundLinkPicker } from './RefundLinkPicker'
 interface Props {
   row: PlanRow | null
   statement: ParsedStatement
+  /** Ekstrenin yüklendiği hesap */
+  accountId: string
   choice: number | null
   edit: RowEdit | undefined
   onChoose: (index: number) => void
@@ -56,7 +59,7 @@ function optionType(o: RowOption): TxType | null {
 
 const sectionLabel = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
 
-export function RowModal({ row, statement, choice, edit, onChoose, onEdit, onClose }: Props) {
+export function RowModal({ row, statement, accountId, choice, edit, onChoose, onEdit, onClose }: Props) {
   const people       = usePeopleStore(s => s.people)
   const categories   = useCategoryStore(s => s.categories)
   const addCategory  = useCategoryStore(s => s.add)
@@ -294,7 +297,13 @@ export function RowModal({ row, statement, choice, edit, onChoose, onEdit, onClo
             </div>
           )}
 
-          {draft?.type === 'transfer' && !draft.toAccountId && (
+          {draft?.type === 'transfer' && draft.manual && (
+            <div className="flex flex-col gap-4">
+              <Input label="Açıklama" value={description} onChange={e => onEdit({ description: e.target.value })} />
+              <ManualTransferFields draft={draft} edit={edit} accountId={accountId} onEdit={onEdit} />
+            </div>
+          )}
+          {draft?.type === 'transfer' && !draft.manual && !draft.toAccountId && (
             <SelectField
               label={statement.type === 'checking' ? 'Paranın geldiği hesap' : 'Ödemenin yapıldığı hesap'}
               value={edit?.fromAccountId ?? draft.fromAccountId ?? ''}
@@ -302,7 +311,7 @@ export function RowModal({ row, statement, choice, edit, onChoose, onEdit, onClo
               options={accounts.filter(a => !a.isArchived && a.type !== 'credit_card').map(a => ({ value: a.id, label: a.name }))}
             />
           )}
-          {draft?.type === 'transfer' && draft.toAccountId && (
+          {draft?.type === 'transfer' && !draft.manual && draft.toAccountId && (
             <SelectField
               label="Paranın gittiği hesap"
               value={edit?.toAccountId ?? draft.toAccountId}

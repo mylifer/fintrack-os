@@ -2,7 +2,7 @@ import { foldText } from '@/lib/auto-category'
 import { toMajor, toMinor } from '@/lib/utils/money'
 import type { BatchOp } from '@/lib/sync/engine'
 import type { Person, Transaction } from '@/types'
-import { txIdFromSeed, type Action, type DraftTx, type PlanRow } from './classify'
+import { txIdFromSeed, type Action, type CrossWsTarget, type DraftTx, type PlanRow, type TransferMode } from './classify'
 
 /* ── Onaylanan kararlardan tek seferlik yazım ────────────────────────────────
    SAF: kararlar + düzenlemeler → localBatch işlemleri ve geri alma işlemleri.
@@ -28,6 +28,10 @@ export interface RowEdit {
   /** Transferin karşı hesabı (gelen transferde kaynak, giden transferde hedef) */
   fromAccountId?: string
   toAccountId?: string
+  /** Elle giden transferin hedef türü ve hedefi (bkz. DraftTx.transferMode) */
+  transferMode?: TransferMode
+  debtId?: string
+  crossWs?: CrossWsTarget
 }
 
 export interface CommitInput {
@@ -43,6 +47,8 @@ export interface CommitInput {
   todayStr: string
   /** Yeni alıcı kimliği üretici (testte sabit) */
   newId?: () => string
+  /** Aktif çalışma alanı — alanlar arası transferin karşı bacağına yazılır */
+  workspaceId?: string | null
 }
 
 export interface CommitResult {
@@ -56,6 +62,10 @@ export interface CommitResult {
   skippedKeys: string[]
   /** Onaylanamaz: kategori seçilmemiş vb. */
   problems: { rowKey: string; message: string }[]
+  /** Borç ödemeleri (TL). Borç yamaları buradan ÇAĞIRANDA hesaplanır
+   *  (debtPaymentPatches — başka alanın borcu Dexie'den okunur) ve aynı
+   *  localBatch'e eklenir; saf modül borç durumunu bilmez. */
+  debtPayments: { debtId: string; amount: number }[]
 }
 
 /** Satır anahtarı → seçilen seçeneğin anahtarı (RowOption.key) */
@@ -129,6 +139,21 @@ export function optionForEdit(row: Pick<PlanRow, 'options'>, edit: RowEdit | und
 }
 
 function applyEdit(d: DraftTx, e: RowEdit | undefined): DraftTx {
+  // Elle transfer: hedef onay ekranında seçilir (hesap / borç / diğer alan)
+  if (d.manual && d.type === 'transfer') {
+    const out = { ...d }
+    if (e?.description !== undefined) out.description = e.description
+    if (!d.transferMode) {
+      out.fromAccountId = e?.fromAccountId
+      return out
+    }
+    const mode = e?.transferMode ?? d.transferMode
+    out.transferMode = mode
+    out.toAccountId = mode === 'account' ? e?.toAccountId : undefined
+    out.debtId      = mode === 'debt' ? e?.debtId : undefined
+    out.crossWs     = mode === 'workspace' ? e?.crossWs : undefined
+    return out
+  }
   if (!e || !d.editable) {
     if (d.fromAccountId && e?.fromAccountId) return { ...d, fromAccountId: e.fromAccountId }
     if (d.toAccountId && e?.toAccountId) return { ...d, toAccountId: e.toAccountId }
@@ -159,6 +184,7 @@ export function buildCommit(input: CommitInput): CommitResult {
   const patched = new Map<string, Partial<Transaction>>()
   const problems: CommitResult['problems'] = []
   const skippedKeys: string[] = []
+  const debtPayments: CommitResult['debtPayments'] = []
 
   // Aynı adlı yeni alıcı tek kişi olur; var olan alıcıyla aynı adsa o kullanılır
   const personByName = new Map<string, string>()
@@ -209,6 +235,46 @@ export function buildCommit(input: CommitInput): CommitResult {
       if (input.existing.has(tx.id) || createdTxIds.includes(tx.id)) return   // kimlikten: zaten var
       ops.push({ kind: 'upsert', table: 'transactions', entity: tx })
       createdTxIds.push(tx.id)
+    }
+    if (d.type === 'transfer' && d.transferMode === 'debt') {
+      if (!d.debtId) { problems.push({ rowKey, message: 'Ödenecek borç seçilmedi' }); return }
+      const amount = Math.abs(d.amount)
+      push({
+        id: txIdFromSeed(d.idSeed), type: 'transfer', amount, amountTry: amount, currency: 'TRY', date: d.date,
+        accountId, debtId: d.debtId, description: d.description, isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
+      })
+      debtPayments.push({ debtId: d.debtId, amount })
+      return
+    }
+    if (d.type === 'transfer' && d.transferMode === 'workspace') {
+      const t = d.crossWs
+      if (!t?.workspaceId) { problems.push({ rowKey, message: 'Hedef çalışma alanı seçilmedi' }); return }
+      if (t.payDebt && !t.debtId) { problems.push({ rowKey, message: 'Ödenecek borç seçilmedi' }); return }
+      if (!t.accountId) { problems.push({ rowKey, message: t.payDebt ? 'Ödemenin geçeceği hesap seçilmedi' : 'Hedef hesap seçilmedi' }); return }
+      // transactions.store addCrossWorkspaceTransfer ile AYNI biçim: kaynak
+      // alanda gider, hedef alanda gelir (+ borç ödemesi), ortak bağ kimliği.
+      // Hedef hesaplar TL (seçici yalnız TL hesap gösterir): kur dönüşümü yok.
+      const amount = Math.abs(d.amount)
+      const link = txIdFromSeed(d.idSeed, 'ws-link')
+      const outgoing: Transaction = {
+        id: txIdFromSeed(d.idSeed), type: 'expense', amount, amountTry: amount, currency: 'TRY', date: d.date,
+        accountId, icon: '⇄', description: d.description, isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+        workspaceTransferId: link, peerWorkspaceId: t.workspaceId,
+      }
+      push(outgoing)
+      const incoming: Transaction = {
+        ...outgoing, id: txIdFromSeed(d.idSeed, 'ws-in'), type: 'income', accountId: t.accountId,
+        workspaceId: t.workspaceId, peerWorkspaceId: input.workspaceId ?? undefined,
+      }
+      push(incoming)
+      if (t.payDebt && t.debtId) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { icon: _icon, ...fields } = incoming
+        push({ ...fields, id: txIdFromSeed(d.idSeed, 'ws-debt'), type: 'transfer', debtId: t.debtId })
+        debtPayments.push({ debtId: t.debtId, amount })
+      }
+      return
     }
     if (d.type === 'transfer') {
       const out = !!d.toAccountId
@@ -306,7 +372,7 @@ export function buildCommit(input: CommitInput): CommitResult {
   if (createdTxIds.length) undo.push({ kind: 'patchMany', table: 'transactions', ids: [...createdTxIds], patch: { deleted_at: nowIso } })
   if (createdPeople.length) undo.push({ kind: 'patchMany', table: 'people', ids: createdPeople.map(p => p.id), patch: { deleted_at: nowIso } })
 
-  return { ops, undo, createdTxIds, createdPeople, deletedTxIds: [...deleted], patchedTxIds: [...patched.keys()].filter(id => !deleted.has(id)), skippedKeys, problems }
+  return { ops, undo, createdTxIds, createdPeople, deletedTxIds: [...deleted], patchedTxIds: [...patched.keys()].filter(id => !deleted.has(id)), skippedKeys, problems, debtPayments }
 }
 
 /** Kayıt hesaptan para çıkarır mı (+) yoksa sokar mı (−); kart için + borç artar. */
