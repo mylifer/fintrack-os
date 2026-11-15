@@ -498,7 +498,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           <div className="flex rounded-xl overflow-hidden border border-border">
             <button
               onClick={() => setTxType('buy')}
-              className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${txType === 'buy' ? 'bg-green-600 text-white' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${txType === 'buy' ? 'bg-green-600 text-white dark:text-green-950' : 'text-muted-foreground hover:text-foreground'}`}
             >
               Al
             </button>
@@ -786,7 +786,7 @@ export function BuySellModal({ open, defaultType = 'buy', editingTx, onClose }: 
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className={`flex-1 h-10 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40 ${txType === 'buy' ? 'bg-green-600 hover:bg-green-600/80' : 'bg-destructive hover:bg-destructive/80'}`}
+            className={`flex-1 h-10 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40 ${txType === 'buy' ? 'bg-green-600 hover:bg-green-600/80 dark:text-green-950' : 'bg-destructive hover:bg-destructive/80'}`}
           >
             {saving ? '...' : isEdit ? 'Kaydet' : txType === 'buy' ? 'Al' : 'Sat'}
           </button>

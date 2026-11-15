@@ -50,7 +50,7 @@ function Row({ hue, label, value, extra }: { hue: string; label: string; value: 
 function Spark() {
   return (
     <svg width="14" height="5" viewBox="0 0 14 5" className="flex-shrink-0">
-      <path d="M0,4 L3,2.5 L6,3.5 L9,1 L14,0.5" fill="none" stroke="#16a34a" strokeWidth="1" strokeLinecap="round" />
+      <path d="M0,4 L3,2.5 L6,3.5 L9,1 L14,0.5" fill="none" stroke="var(--color-green-600, #16a34a)" strokeWidth="1" strokeLinecap="round" />
     </svg>
   )
 }

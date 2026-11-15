@@ -35,7 +35,7 @@ const UPPER_MAX = 100
 const LOWER_MIN = 0
 const LOWER_MAX = 45
 
-const PRICE_COLOR = '#16a34a'
+const PRICE_COLOR = 'var(--color-green-600, #16a34a)'
 
 const TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara']
 const TR_DAYS   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cts']
@@ -538,7 +538,7 @@ export function PriceHistoryChart({
                             <div style={{ fontSize: 14, fontWeight: 700, color: '#18181b', fontVariantNumeric: 'tabular-nums' }}>
                               {formatCompact(row.realValue)}
                               {dayVal !== null && dayVal !== 0 && (
-                                <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: dayVal >= 0 ? '#16a34a' : '#dc2626' }}>
+                                <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: dayVal >= 0 ? 'var(--color-green-600, #16a34a)' : '#dc2626' }}>
                                   {dayVal >= 0 ? '▲' : '▼'}{formatCompact(Math.abs(dayVal))}
                                   {dayValPct !== null && ` (%${Math.abs(dayValPct).toFixed(2)})`}
                                 </span>
@@ -552,7 +552,7 @@ export function PriceHistoryChart({
                             {rowPnl && (
                               <div style={{ fontSize: 9, color: '#71717a', fontVariantNumeric: 'tabular-nums', marginTop: 1 }}>
                                 Dönem K/Z:{' '}
-                                <span style={{ fontWeight: 700, color: rowPnl.pnl >= 0 ? '#16a34a' : '#dc2626' }}>
+                                <span style={{ fontWeight: 700, color: rowPnl.pnl >= 0 ? 'var(--color-green-600, #16a34a)' : '#dc2626' }}>
                                   {rowPnl.pnl >= 0 ? '+' : '−'}{formatCurrency(Math.abs(rowPnl.pnl))}
                                   {rowPnl.pct !== null && ` (%${Math.abs(rowPnl.pct).toFixed(2)})`}
                                 </span>
@@ -568,7 +568,7 @@ export function PriceHistoryChart({
                             <div style={{ fontSize: 12, fontWeight: 600, color: '#18181b', fontVariantNumeric: 'tabular-nums' }}>
                               ₺{fmtPrice(row.realRawPrice)}
                               {dayPct !== null && dayPct !== 0 && (
-                                <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: dayPct >= 0 ? '#16a34a' : '#dc2626' }}>
+                                <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: dayPct >= 0 ? 'var(--color-green-600, #16a34a)' : '#dc2626' }}>
                                   {dayPct >= 0 ? '▲' : '▼'}{Math.abs(dayPct).toFixed(2)}%
                                 </span>
                               )}

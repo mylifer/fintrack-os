@@ -27,7 +27,7 @@ export function Sparkline({ values, w = 68, h = 22 }: { values: number[]; w?: nu
   if (!d) return <span className="inline-block text-muted-foreground/50 text-[10px]">—</span>
 
   const up = values[values.length - 1] >= values[0]
-  const stroke = up ? '#16a34a' : '#dc2626'
+  const stroke = up ? 'var(--color-green-600, #16a34a)' : '#dc2626'
 
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden className="overflow-visible">

@@ -247,7 +247,7 @@ export function InvestmentBoard() {
           <div className="flex gap-2 ml-auto">
             <button
               onClick={openBuy}
-              className="px-3 h-9 rounded-xl bg-green-600 text-white text-xs font-semibold hover:bg-green-600/80 transition-colors"
+              className="px-3 h-9 rounded-xl bg-green-600 text-white dark:text-green-950 text-xs font-semibold hover:bg-green-600/80 transition-colors"
             >Al</button>
             <button
               onClick={openSell}

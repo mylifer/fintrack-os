@@ -249,7 +249,7 @@ export function ClassicView({
           <div className="flex gap-2">
             <button
               onClick={onBuy}
-              className="px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs font-semibold hover:bg-green-600/80 transition-colors"
+              className="px-3 py-1.5 rounded-xl bg-green-600 text-white dark:text-green-950 text-xs font-semibold hover:bg-green-600/80 transition-colors"
             >Al</button>
             <button
               onClick={onSell}
