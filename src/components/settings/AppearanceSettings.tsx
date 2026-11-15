@@ -40,6 +40,67 @@ function Preview({ variant }: { variant: SidebarVariant }) {
     )
   }
 
+  if (variant === 'floating') {
+    return (
+      <div className="w-[86px] flex-shrink-0 rounded-lg border border-border bg-muted p-1" aria-hidden>
+        <div className="rounded-md bg-card border border-border p-1 flex flex-col gap-1 shadow-sm">
+          <div className="rounded bg-primary/20 px-1 py-1 flex flex-col gap-0.5">{bar('14px')}<span className="h-1.5 w-[30px] rounded-full bg-foreground/50" /></div>
+          {[0, 1].map(i => <div key={i} className="h-2.5 flex items-center px-1">{bar(i ? '24px' : '30px')}</div>)}
+          <div className="h-2.5 flex items-center px-1 rounded-full bg-primary">{bar('26px', false)}</div>
+          {[0, 1].map(i => <div key={i} className="h-2.5 flex items-center px-1">{bar(i ? '20px' : '28px')}</div>)}
+        </div>
+      </div>
+    )
+  }
+
+  if (variant === 'contrast') {
+    return (
+      <div className="w-[86px] flex-shrink-0 rounded-lg border border-border bg-[#0b1214] overflow-hidden py-1.5 flex flex-col gap-1" aria-hidden>
+        <div className="px-1.5 flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-[3px] bg-primary shadow-[0_0_6px_var(--primary)]" /><span className="h-1 w-6 rounded-full bg-white/40" /></div>
+        <div className="px-1.5 pt-0.5 flex items-center"><span className="h-1 w-3 rounded-full bg-white/25" /><span className="flex-1" /><span className="text-[6px] text-white/40">⌄</span></div>
+        <div className="h-2.5 px-1.5 flex items-center"><span className="h-1 w-7 rounded-full bg-white/30" /></div>
+        <div className="h-2.5 px-1.5 flex items-center relative bg-gradient-to-r from-primary/30 to-transparent"><span className="absolute left-0 top-0.5 bottom-0.5 w-0.5 bg-primary" /><span className="h-1 w-7 rounded-full bg-white/80" /></div>
+        <div className="px-1.5 pt-0.5 flex items-center"><span className="h-1 w-3 rounded-full bg-white/25" /><span className="flex-1" /><span className="text-[6px] text-white/40">›</span></div>
+        <div className="px-1.5 pt-0.5 flex items-center"><span className="h-1 w-4 rounded-full bg-white/25" /><span className="flex-1" /><span className="text-[6px] text-white/40">›</span></div>
+      </div>
+    )
+  }
+
+  if (variant === 'rail') {
+    return (
+      <div className="w-[86px] flex-shrink-0 rounded-lg border border-border bg-background overflow-hidden flex" aria-hidden>
+        <div className="w-[18px] border-r border-border flex flex-col items-center gap-1 py-1.5">
+          <span className="w-2.5 h-2.5 rounded-[3px] bg-primary" />
+          {[0, 1, 2, 3, 4, 5].map(i => (
+            <span key={i} className={`w-2.5 h-2.5 rounded-[3px] ${i === 2 ? 'bg-primary/40' : 'bg-muted-foreground/25'}`} />
+          ))}
+        </div>
+        <div className="flex-1 p-1.5 flex flex-col gap-1">
+          {bar('40px', false)}{bar('52px')}{bar('46px')}
+          <div className="mt-0.5 h-5 rounded bg-muted" />
+        </div>
+      </div>
+    )
+  }
+
+  if (variant === 'dual') {
+    return (
+      <div className="w-[86px] flex-shrink-0 rounded-lg border border-border bg-background overflow-hidden flex" aria-hidden>
+        <div className="w-[20px] border-r border-border flex flex-col items-center gap-1.5 py-1.5">
+          <span className="w-2.5 h-2.5 rounded-[3px] bg-primary" />
+          {[0, 1, 2, 3].map(i => (
+            <span key={i} className={`w-3 h-3 rounded-[4px] ${i === 1 ? 'bg-primary/40' : 'bg-muted-foreground/25'}`} />
+          ))}
+        </div>
+        <div className="flex-1 bg-muted/60 p-1.5 flex flex-col gap-1">
+          <span className="h-1.5 w-[26px] rounded-full bg-foreground/60" />
+          <div className="h-3 flex items-center px-1 rounded bg-background ring-1 ring-border">{bar('30px', false)}</div>
+          {[0, 1, 2].map(i => <div key={i} className="h-3 flex items-center px-1">{bar(i === 1 ? '24px' : '32px')}</div>)}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="w-[86px] flex-shrink-0 rounded-lg border border-border bg-background overflow-hidden" aria-hidden>
       <div className="px-1.5 pt-2 pb-1 flex items-center gap-1">
@@ -75,7 +136,7 @@ export function AppearanceSettings() {
           Kenar çubuğu yalnızca geniş ekranlarda görünür; mobilde alt menü kullanılır.
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {SIDEBAR_VARIANTS.map(option => {
             const selected = variant === option.key
             return (
