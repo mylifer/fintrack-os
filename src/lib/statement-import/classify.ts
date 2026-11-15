@@ -24,7 +24,8 @@ import { brandOf, MAYBE, merchantCore, nameScore, sameCore } from './merchant-ma
         içe aktarıldı" olur. Taksit grubunun kimliği alım ayı + işyeri + taksit
         sayısı + toplamdan türetilir: sonraki ayın ekstresindeki 2. taksit,
         bu ay oluşturulan grubun 2. satırını kimliğiyle bulur.
-     2. Elle girilmiş kayıtlar: aynı hesap, aynı tutar, ±4 gün.
+     2. Elle girilmiş kayıtlar: aynı hesap, aynı tutar, ±4 gün. Daha uzakta aynı
+        tutarlı kayıt varsa "olası mükerrer" sorulur (tek çekim ±10, iade ±30 gün).
      3. Ters kontrol: dönem içinde sistemde olup ekstrede olmayan kayıtlar. */
 
 export type RowStatus = 'review' | 'new' | 'exists' | 'info'
@@ -171,6 +172,11 @@ const DAY = 86_400_000
 const dayNum = (iso: string) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / DAY
 const dayDiff = (a: string, b: string) => Math.abs(dayNum(a) - dayNum(b))
 const minor = toMinor
+/** Eşleşmeyen iade satırı için "olası mükerrer" penceresi (gün). Bankalar iadeyi
+ *  çoğu zaman günler, hatta haftalar sonra işler; elle girilmiş iade ±4 günlük
+ *  doğrudan eşleşmeyi kaçırır. Bu pencerede aynı tutarlı iade kaydı varsa satır
+ *  "yeni iade" önerilmez, karar sorulur (tek çekimde ±10 gün). */
+const REFUND_DUP_DAYS = 30
 
 function isoFromDays(n: number): string {
   const d = new Date(n * DAY)
@@ -965,6 +971,49 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       continue
     }
 
+    // Olası mükerrer iade: ±4 günde eşleşmemiş ama sistemde bu kartta aynı tutarlı
+    // bir iade kaydı var (elle, çoğu zaman ileri tarihli girilmiş; onay bekliyor
+    // olabilir). Yeni iade/gelir önerilmeden önce sorulur. İşyeri adı taşıyan onaylı
+    // kayıt zaten bir ekstre satırına bağlanmıştır (içe aktarılmış ya da eşleşip
+    // işyeri öğrenilmiş): her ay aynı tutarda gelen alacak (öğrenilmiş gelir) aday
+    // olmaz; onay bekleyen kayıt her zaman adaydır. Onay, işyeri öğrenimi ve tarih
+    // düzeltmesi yalnız "Aynı kayıt" seçilirse uygulanır (seçeneğin eylemleri;
+    // sideEffects seçimden bağımsız uygulanır) — "Yine de gir" bekleyen kaydı
+    // onaylamaz. Kaydın tarihi ekstredeki güne çekilir (classify-account.ts'deki
+    // "Aynı kayıt (tarihi … olsun)" gibi): ekstre yeniden yüklenirse satır ±4
+    // günlük doğrudan eşleşmeyle "zaten var" olur, yeni iade diye sorulmaz.
+    if (l.kind === 'refund') {
+      const amt = minor(l.amount!)
+      const ld = dateOf(l)
+      const dup = accTx
+        .filter(t => !used.has(t.id) && t.accountId === acc && dayDiff(t.date, ld) <= REFUND_DUP_DAYS &&
+          (t.approvalStatus === 'pending' || !t.merchant) &&
+          ((t.type === 'expense' && minor(t.amount) === amt) || (t.type === 'income' && !t.workspaceTransferId && minor(t.amount) === -amt)))
+        .sort((a, b) => (Number(b.approvalStatus === 'pending') - Number(a.approvalStatus === 'pending')) || (dayDiff(a.date, ld) - dayDiff(b.date, ld)))[0]
+      if (dup) {
+        used.add(dup.id)
+        const pending = dup.approvalStatus === 'pending'
+        const moveDate = dup.date !== ld
+        // Onay/işyeri yaması ile tarih tek yamada (commit aynı kaydın yamalarını zaten birleştirir)
+        const fx = sideEffectsFor([dup.id], l)[0]
+        const patch: Partial<Transaction> = { ...(fx?.type === 'patch' ? fx.patch : {}), ...(moveDate ? { date: ld } : {}) }
+        rows.push({
+          ...base, ...rb, status: 'review', kind: 'possible-dup', title: `[İade] ${title}`,
+          match: { txIds: [dup.id], text: describeTx(dup) },
+          issue: 'Olası mükerrer iade',
+          reason: `Sistemde ${dayDiff(dup.date, ld)} gün arayla aynı tutarda bir iade kaydı var (iadeler bankaya geç düşebilir). Aynı iade olabilir.` +
+            (moveDate ? ` Aynı iadeyse kaydın tarihi ekstredeki gibi ${fmtDay(ld)} olarak düzeltilir (yeni kayıt girilmez, sonraki yüklemelerde doğrudan eşleşir).` : '') +
+            (pending ? ` Kayıt onay bekliyor; aynı kayıt seçilirse onaylanır.` : ''),
+          options: [
+            { key: 'keep', label: moveDate ? `Aynı kayıt (tarihi ${fmtDay(ld)} olsun)` : 'Atla, zaten var', actions: Object.keys(patch).length ? [{ type: 'patch', txId: dup.id, patch }] : [] },
+            { key: 'standalone', label: 'Yine de gir (bağımsız iade)', actions: [{ type: 'create', draft: draftFor(l, rule, { description: `[İade] ${title}`, tags: [...(rule?.tags ?? []), refundTag] }) }] },
+          ],
+          recommended: 0, defaultOption: null, sideEffects: [],
+        })
+        continue
+      }
+    }
+
     let asIncome = l.kind === 'refund' ? incomeByKey.get(creditKey(l.description)) : undefined
     let learnedIncome = !!asIncome?.length
     // Öğrenilmemiş indirim satırı: bu kartta en sık girilen gelir biçimi önerilir (karar sorulur)
@@ -1215,7 +1264,9 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       return {
         ...row, status: 'exists', issue: undefined,
         reason: 'Bu satırı daha önceki bir yüklemede girmemeyi seçtin. ' + r.reason,
-        options: [{ key: 'keep', label: 'Girme (önceki kararın)', actions: [] }, ...r.options.filter(o => o.actions.length > 0)],
+        // "keep" seçeneği eylem taşıyabilir (olası mükerrer iade: bekleyen kaydı onaylar);
+        // eylemleri korunur, anahtar iki kez geçmez
+        options: [{ key: 'keep', label: 'Girme (önceki kararın)', actions: r.options.find(o => o.key === 'keep')?.actions ?? [] }, ...r.options.filter(o => o.actions.length > 0 && o.key !== 'keep')],
         recommended: 0, defaultOption: 0,
       }
     }

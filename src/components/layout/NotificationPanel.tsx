@@ -114,10 +114,11 @@ export function NotificationPanel({
     }
   }
 
+  // Geçmiş kaynağı: Onay (hem onayla hem reddet bu panelden gelir)
   const approveTx = (tx: Transaction) =>
-    run(`tx:${tx.id}`, () => updateTx(tx.id, { approvalStatus: 'approved', approvedAt: new Date().toISOString() }))
+    run(`tx:${tx.id}`, () => updateTx(tx.id, { approvalStatus: 'approved', approvedAt: new Date().toISOString() }, 'approval'))
   // Reddet = mevcut remove akışı: soft delete + Undo toast (geri alınabilir)
-  const rejectTx = (tx: Transaction) => run(`tx:${tx.id}`, () => removeTx(tx.id))
+  const rejectTx = (tx: Transaction) => run(`tx:${tx.id}`, () => removeTx(tx.id, undefined, 'approval'))
 
   /** "Vadesiz Hesap → Garanti Bonus" — hesap seçilmemişse yalnız hedef. */
   const paymentRoute = (row: PaymentRow) => {

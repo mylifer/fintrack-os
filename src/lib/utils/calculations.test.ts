@@ -252,6 +252,14 @@ describe('isPosted / excludeFuture (pending transactions)', () => {
     const inst = { approvalStatus: 'pending' as const, isInstallment: true, installGroupId: 'G' }
     expect(awaitsApproval(tx(inst))).toBe(false)
     expect(awaitsApproval(tx({ approvalStatus: 'pending' }))).toBe(true)
+    // Tarihi oluşturulma gününden ÖNCE olan bekleyen satır: damga bir tarih
+    // düzeltmesinden kalmış (ileri tarihle girilip geçmişe çekilmiş). Gerçek bir
+    // onay bekleyişi değil — veri yazılmadan kapıdan çıkar, bakiyeye girer.
+    expect(awaitsApproval(tx({ approvalStatus: 'pending', date: '2026-09-25', createdAt: '2026-10-16T17:55:34.870Z' }))).toBe(false)
+    // Gerçekten ileri tarihli kayıt (tarih >= oluşturulma): onay bekler
+    expect(awaitsApproval(tx({ approvalStatus: 'pending', date: '2027-01-12', createdAt: '2026-07-20T01:41:15.661Z' }))).toBe(true)
+    // createdAt yoksa kural uygulanmaz (eski satırlar)
+    expect(awaitsApproval({ approvalStatus: 'pending', date: '2026-09-25' })).toBe(true)
     expect(isPosted(tx({ ...inst, date: '2026-01-10' }), '2026-01-15')).toBe(true)
     expect(isPosted(tx({ ...inst, date: '2026-01-16' }), '2026-01-15')).toBe(false)   // tarih kuralı sürer
     // bayrağı düşmüş grup satırı da installGroupId ile tanınır

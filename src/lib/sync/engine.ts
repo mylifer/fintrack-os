@@ -7,7 +7,8 @@ import { getUserId, clearBrowserStorage } from '@/lib/auth'
 import { isLive } from './tombstone'
 import { sanitizeIdRefs } from './sanitize'
 import { useSyncStatusStore } from '@/store/sync-status.store'
-import type { OutboxEntry } from '@/types'
+import type { OutboxEntry, TxHistorySource } from '@/types'
+import { historyRowFor, deviceLabel } from './history'
 import {
   getActiveWorkspaceId, getMemberWorkspaceIds, setMemberWorkspaceIds, rowInActiveWorkspace,
   getReadOnlyWorkspaceIds, setReadOnlyWorkspaceIds,
@@ -49,6 +50,7 @@ export type SyncTable =
   | 'payment_occurrences'
   | 'savings_goals'
   | 'transaction_rules'
+  | 'transaction_history'
 
 // Minimal row shape every synced table shares. `workspaces` itself has no
 // workspaceId (it IS the partition axis for the other 8 tables).
@@ -89,6 +91,7 @@ const DEXIE: Record<SyncTable, EntityTable<Row, 'id'>> = {
   payment_occurrences:     db.paymentOccurrences as unknown as EntityTable<Row, 'id'>,
   savings_goals:           db.savingsGoals as unknown as EntityTable<Row, 'id'>,
   transaction_rules:       db.transactionRules as unknown as EntityTable<Row, 'id'>,
+  transaction_history:     db.transactionHistory as unknown as EntityTable<Row, 'id'>,
 }
 
 export function isSyncTable(name: string): name is SyncTable {
@@ -235,84 +238,157 @@ async function putOutbox(table: SyncTable, row: { id: string }, ownerId: string 
   await db._outbox.put(entry)
 }
 
+/* ── İşlem değişiklik geçmişi (audit log) ─────────────────────────────────
+   TEK MERKEZ: aşağıdaki 5 primitive'in her biri, YALNIZ `transactions`
+   tablosuna yazarken, kendi Dexie işleminin İÇİNDE bir geçmiş satırı üretip
+   `transactionHistory` tablosuna ve outbox'a koyar. Böylece hiçbir yazma yolu
+   (form, ekstre içe aktarma, iade, toplu düzenleme, tekrarlayan üretim, onay,
+   geri alma) geçmişi atlayamaz — ve bir yazma salt okuma kilidiyle (0028)
+   reddedilirse geçmiş satırı da yazılmaz (işlem geri alınır).
+
+   Diff mantığı SAF ve ayrı bir modülde: ./history.ts.
+
+   Üç kural:
+   • Geçmiş tablosunun KENDİSİ için geçmiş yazılmaz (sonsuz döngü koruması) —
+     erken dönüş `table !== 'transactions'`.
+   • Geçmiş yazımı ana yazmayı ASLA bozmaz: her şey try/catch içinde, hata
+     sessizce (console.error) atlanır — kullanıcının işlemi kaybolmasın.
+   • İşlemin İÇİNDE yalnız Dexie çağrısı yapılır; `getUserId()` gibi Dexie dışı
+     bir await zone'u sızdırır — `ownerId` zaten işlemden ÖNCE alınıyor.
+──────────────────────────────────────────────────────────────────────── */
+
+/** Yazma meta bilgisi — çağıran store/bileşen semantik kaynağı bilir ve
+ *  primitive'lere isteğe bağlı son parametre olarak geçirir. */
+export interface WriteMeta {
+  source?: TxHistorySource
+}
+
+// Cihaz etiketi oturum boyunca sabittir — her yazmada yeniden türetilmez.
+let deviceTag: string | null | undefined
+function device(): string | null {
+  if (deviceTag === undefined) deviceTag = deviceLabel() ?? null
+  return deviceTag
+}
+
+function historyId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `h-${Date.now()}-${String(Math.random()).slice(2)}`
+}
+
+type AnyRow = Record<string, unknown> | undefined
+
+/** MUST run inside the primitive's own Dexie rw transaction. */
+async function recordHistory(
+  table: SyncTable, txId: string, prev: AnyRow, next: AnyRow,
+  meta: WriteMeta | undefined, at: string, ownerId: string | null,
+): Promise<void> {
+  if (table !== 'transactions') return
+  try {
+    const row = historyRowFor(txId, prev, next, {
+      source:      meta?.source,
+      device:      device(),
+      workspaceId: (next?.workspaceId ?? prev?.workspaceId ?? null) as string | null,
+    }, at, historyId())
+    if (!row) return
+    await db.transactionHistory.put(row)
+    await putOutbox('transaction_history', row, ownerId)
+  } catch (err) {
+    // Geçmiş kaydı en iyi gayrettir: ana yazma hiçbir koşulda düşmez.
+    console.error('[sync:history]', err)
+  }
+}
+
 /* ── Local mutation primitives (entity + outbox, one transaction) ──────── */
 
 /** Insert-or-replace a full entity locally and enqueue it for push. */
-export async function localUpsert<T extends { id: string }>(table: SyncTable, entity: T): Promise<void> {
+export async function localUpsert<T extends { id: string }>(table: SyncTable, entity: T, meta?: WriteMeta): Promise<void> {
   const t = DEXIE[table]
   const ts = now()
   const ownerId = await currentOwnerId()   // capture before the tx (see currentOwnerId)
-  await db.transaction('rw', t, db._outbox, async () => {
-    const prev = await t.get(entity.id) as { updatedAt?: unknown } | undefined
+  await db.transaction('rw', t, db._outbox, db.transactionHistory, async () => {
+    const prev = await t.get(entity.id) as AnyRow
     const stamped = stampTime(stampWorkspace(table, entity), stampAfter(prev?.updatedAt, ts))
     if (!assertWritable(table, [wsOf(stamped), wsOf(prev)])) return
     await t.put(stamped)
     await putOutbox(table, stamped, ownerId)
+    await recordHistory(table, entity.id, prev, stamped as unknown as AnyRow, meta, ts, ownerId)
   })
   kickSync()
 }
 
 /** Insert-or-replace many entities in one transaction (installments, defaults). */
-export async function localBulkUpsert<T extends { id: string }>(table: SyncTable, entities: T[]): Promise<void> {
+export async function localBulkUpsert<T extends { id: string }>(table: SyncTable, entities: T[], meta?: WriteMeta): Promise<void> {
   if (entities.length === 0) return
   const t = DEXIE[table]
   const ts = now()
   const ownerId = await currentOwnerId()
-  await db.transaction('rw', t, db._outbox, async () => {
+  await db.transaction('rw', t, db._outbox, db.transactionHistory, async () => {
     const stamped = []
+    const prevs: AnyRow[] = []                    // satır başına bir geçmiş satırı için
     for (const e of entities) {
-      const prev = await t.get(e.id) as { updatedAt?: unknown } | undefined
+      const prev = await t.get(e.id) as AnyRow
       const row = stampTime(stampWorkspace(table, e), stampAfter(prev?.updatedAt, ts))
       if (!assertWritable(table, [wsOf(row), wsOf(prev)])) return
       stamped.push(row)
+      prevs.push(prev)
     }
     await t.bulkPut(stamped)
     for (const e of stamped) await putOutbox(table, e, ownerId)
+    for (let i = 0; i < stamped.length; i++) {
+      await recordHistory(table, stamped[i].id, prevs[i], stamped[i] as unknown as AnyRow, meta, ts, ownerId)
+    }
   })
   kickSync()
 }
 
 /** Apply a partial patch, then enqueue the resulting FULL row snapshot. */
-export async function localPatch(table: SyncTable, id: string, patch: Record<string, unknown>): Promise<void> {
+export async function localPatch(table: SyncTable, id: string, patch: Record<string, unknown>, meta?: WriteMeta): Promise<void> {
   const t = DEXIE[table]
   const norm = nullifyPatch(patch)
   const ts = now()
   const ownerId = await currentOwnerId()
-  await db.transaction('rw', t, db._outbox, async () => {
-    const prev = await t.get(id) as { updatedAt?: unknown } | undefined
+  await db.transaction('rw', t, db._outbox, db.transactionHistory, async () => {
+    const prev = await t.get(id) as AnyRow
     if (!assertWritable(table, [wsOf(prev), patchWs(norm)])) return
     await t.update(id, stampTime(norm, stampAfter(prev?.updatedAt, ts)))
     const full = await t.get(id)
     if (full) await putOutbox(table, full, ownerId)
+    if (full) await recordHistory(table, id, prev, full as unknown as AnyRow, meta, ts, ownerId)
   })
   kickSync()
 }
 
 /** Patch many rows (cascade soft-deletes), enqueuing each resulting snapshot. */
-export async function localPatchMany(table: SyncTable, ids: string[], patch: Record<string, unknown>): Promise<void> {
+export async function localPatchMany(table: SyncTable, ids: string[], patch: Record<string, unknown>, meta?: WriteMeta): Promise<void> {
   if (ids.length === 0) return
   const t = DEXIE[table]
   const norm = nullifyPatch(patch)
   const ts = now()
   const ownerId = await currentOwnerId()
-  await db.transaction('rw', t, db._outbox, async () => {
+  await db.transaction('rw', t, db._outbox, db.transactionHistory, async () => {
     // Satır başına damga (her satırın son damgası farklı olabilir)
     const before = await t.where('id').anyOf(ids).toArray() as Array<{ id: string; updatedAt?: unknown }>
     if (before.length && !assertWritable(table, [...before.map(wsOf), patchWs(norm)])) return
+    const prevById = new Map(before.map(r => [r.id, r as unknown as AnyRow]))
     for (const r of before) await t.update(r.id, stampTime(norm, stampAfter(r.updatedAt, ts)))
     const rows = await t.where('id').anyOf(ids).toArray()
     for (const r of rows) await putOutbox(table, r, ownerId)
+    // Satır başına bir geçmiş satırı
+    for (const r of rows) {
+      await recordHistory(table, r.id, prevById.get(r.id), r as unknown as AnyRow, meta, ts, ownerId)
+    }
   })
   kickSync()
 }
 
 /** Soft delete (tombstone) — durable via the outbox, syncs as an UPDATE. */
-export async function softDelete(table: SyncTable, id: string): Promise<void> {
-  await localPatch(table, id, { deleted_at: now() })
+export async function softDelete(table: SyncTable, id: string, meta?: WriteMeta): Promise<void> {
+  await localPatch(table, id, { deleted_at: now() }, meta)
 }
 
-export async function softDeleteMany(table: SyncTable, ids: string[]): Promise<void> {
-  await localPatchMany(table, ids, { deleted_at: now() })
+export async function softDeleteMany(table: SyncTable, ids: string[], meta?: WriteMeta): Promise<void> {
+  await localPatchMany(table, ids, { deleted_at: now() }, meta)
 }
 
 /* ── Atomic multi-table batch (C5) ─────────────────────────────────────────
@@ -328,10 +404,15 @@ export type BatchOp =
   | { kind: 'patch'; table: SyncTable; id: string; patch: Record<string, unknown> }
   | { kind: 'patchMany'; table: SyncTable; ids: string[]; patch: Record<string, unknown> }
 
-export async function localBatch(ops: BatchOp[]): Promise<void> {
+export async function localBatch(ops: BatchOp[], meta?: WriteMeta): Promise<void> {
   if (ops.length === 0) return
   // Dexie needs every table named up front; de-dupe the involved tables.
-  const involved = new Set<EntityTable<Row, 'id'>>([db._outbox as unknown as EntityTable<Row, 'id'>])
+  // transactionHistory HER ZAMAN listeye girer (basit tutulur; yalnız
+  // `transactions`a dokunan bir toplu işlemde yazılır — bkz. recordHistory).
+  const involved = new Set<EntityTable<Row, 'id'>>([
+    db._outbox as unknown as EntityTable<Row, 'id'>,
+    db.transactionHistory as unknown as EntityTable<Row, 'id'>,
+  ])
   for (const op of ops) involved.add(DEXIE[op.table])
 
   const ownerId = await currentOwnerId()   // capture before the tx (see currentOwnerId)
@@ -359,22 +440,29 @@ export async function localBatch(ops: BatchOp[]): Promise<void> {
     for (const op of ops) {
       const t = DEXIE[op.table]
       if (op.kind === 'upsert') {
-        const prev = await t.get(op.entity.id) as { updatedAt?: unknown } | undefined
+        const prev = await t.get(op.entity.id) as AnyRow
         const stamped = stampTime(stampWorkspace(op.table, op.entity), stampAfter(prev?.updatedAt, ts))
         await t.put(stamped)
         await putOutbox(op.table, stamped, ownerId)
+        await recordHistory(op.table, op.entity.id, prev, stamped as unknown as AnyRow, meta, ts, ownerId)
       } else if (op.kind === 'patch') {
-        const prev = await t.get(op.id) as { updatedAt?: unknown } | undefined
+        const prev = await t.get(op.id) as AnyRow
         await t.update(op.id, stampTime(nullifyPatch(op.patch), stampAfter(prev?.updatedAt, ts)))
         const full = await t.get(op.id)
         if (full) await putOutbox(op.table, full, ownerId)
+        if (full) await recordHistory(op.table, op.id, prev, full as unknown as AnyRow, meta, ts, ownerId)
       } else {
         if (op.ids.length === 0) continue
         const norm = nullifyPatch(op.patch)
         const before = await t.where('id').anyOf(op.ids).toArray() as Array<{ id: string; updatedAt?: unknown }>
+        const prevById = new Map(before.map(r => [r.id, r as unknown as AnyRow]))
         for (const r of before) await t.update(r.id, stampTime(norm, stampAfter(r.updatedAt, ts)))
         const rows = await t.where('id').anyOf(op.ids).toArray()
         for (const r of rows) await putOutbox(op.table, r, ownerId)
+        // Satır başına bir geçmiş satırı
+        for (const r of rows) {
+          await recordHistory(op.table, r.id, prevById.get(r.id), r as unknown as AnyRow, meta, ts, ownerId)
+        }
       }
     }
   })

@@ -83,6 +83,10 @@ export async function reloadTable(table: SyncTable): Promise<void> {
     case 'payment_occurrences':    await usePaymentsStore.getState().load(); break
     case 'savings_goals':          await useGoalsStore.getState().load(); break
     case 'transaction_rules':      await useRulesStore.getState().load(); break
+    // Geçmiş açılışta belleğe YÜKLENMEZ, talep üzerine okunur (kullanıcı bir
+    // kaydın geçmişini açınca — bkz. store/transaction-history.store.ts).
+    // Dolayısıyla canlı senkron bildirimi gelince yenilenecek bir store yok.
+    case 'transaction_history':    break
     case 'workspaces': {
       const before = useWorkspaceStore.getState().activeId
       await useWorkspaceStore.getState().load()

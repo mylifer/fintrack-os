@@ -41,7 +41,7 @@ export async function approveRecurring(r: RecurringTransaction, asOf: string = t
       approvedAt:     now,
       createdAt:      now,
       updatedAt:      now,
-    })
+    }, 'recurring')   // geçmiş kaynağı: Tekrarlayan
   }
   await useRecurringStore.getState().markGenerated(r.id, asOf)
 }

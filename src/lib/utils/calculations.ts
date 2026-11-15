@@ -11,14 +11,30 @@ import { expandByCategory } from './categorySplits'
 // gate: even a due/past date must NOT affect any balance until the user
 // approves it in the notification center. 'approved' = normal post rule.
 // This is the SINGLE source of truth for "does this row count toward balances".
-type ApprovalGated = Pick<Transaction, 'approvalStatus'> & Partial<Pick<Transaction, 'isInstallment' | 'installGroupId'>>
+type ApprovalGated = Pick<Transaction, 'approvalStatus'> &
+  Partial<Pick<Transaction, 'isInstallment' | 'installGroupId' | 'date' | 'createdAt'>>
+
+/* Damga YALNIZ ileri tarihli kayda vurulur (transactions.store withApproval):
+   oluşturulurken tarihi gelmemiş satır 'pending' doğar. Dolayısıyla "tarihi,
+   oluşturulduğu günden ÖNCE olan bekleyen satır" imkânsız bir durumdur — damga
+   ancak sonradan yapılan bir tarih düzeltmesinden kalmış olabilir (kayıt ileri
+   tarihle girilip hemen geçmişe çekilmiş). Böyle bir satır gerçekte bir onay
+   bekleyişi değildir: veri yazılmadan kapıdan çıkar, yoksa bakiyeye hiç
+   girmeden sonsuza dek bildirimde onay bekler. Eski 'pending' taksitlerle aynı
+   yaklaşım. Yeni satırlarda bu durum artık oluşmaz: update/updateMany tarih
+   geçmişe çekilince damgayı düşürür. */
+function stampFromEdit(t: ApprovalGated): boolean {
+  if (!t.date || !t.createdAt) return false
+  const created = t.createdAt.slice(0, 10)
+  return created.length === 10 && t.date.slice(0, 10) < created
+}
 
 // Satır onay kapısında mı bekliyor? Taksit satırları BEKLEMEZ: satın alma
 // taahhüdü ilk gün verilmiştir, taksitler günü gelince kendiliğinden işlenir.
 // Eski kayıtlarda 'pending' damgalı taksitler de bu kuralla veri yazılmadan
 // kapıdan çıkar. Taksit satırı `installGroupId` ile tanınır (bkz. calcAvailableCredit).
 export function awaitsApproval(t: ApprovalGated): boolean {
-  return t.approvalStatus === 'pending' && !t.isInstallment && !t.installGroupId
+  return t.approvalStatus === 'pending' && !t.isInstallment && !t.installGroupId && !stampFromEdit(t)
 }
 
 export function isPosted(

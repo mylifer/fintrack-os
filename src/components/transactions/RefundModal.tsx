@@ -110,7 +110,7 @@ export function RefundModal() {
         isInstallment:  false,
         createdAt:      now,
         updatedAt:      now,
-      })
+      }, 'refund')   // geçmiş kaynağı: İade (bkz. lib/sync/history.ts)
       closeModal()
     } catch (err) {
       console.error('[refund:submit]', err)

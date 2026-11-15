@@ -18,6 +18,7 @@ import { rescaleSplits } from '@/lib/utils/categorySplits'
 
 const patches: { id: string; patch: Record<string, unknown> }[] = []
 const upserts: Record<string, unknown>[] = []
+const batches: unknown[][] = []
 
 vi.mock('@/lib/db', () => ({
   db: { transactions: { toArray: async () => [] }, accounts: { get: async () => undefined } },
@@ -31,7 +32,7 @@ vi.mock('@/lib/sync/engine', () => ({
   localPatch: async (_t: string, id: string, patch: Record<string, unknown>) => { patches.push({ id, patch }) },
   softDelete: async () => {},
   softDeleteMany: async () => {},
-  localBatch: async () => {},
+  localBatch: async (ops: unknown[]) => { batches.push(ops) },
   reconcilingPull: async () => [],
 }))
 
@@ -259,5 +260,56 @@ describe('add() / update() — çoklu kategori değişmezi', () => {
     const next = patches[0].patch.categorySplits as { categoryId: string; amount: number }[]
     expect(next.map(s => s.amount)).toEqual([100, 300])
     expect(next[0].amount + next[1].amount).toBe(400)
+  })
+})
+
+/* ── Onay kapısı: tarih geçmişe çekilince damga düşer ──────────────────────
+   Onay kapısı yalnız İLERİ tarihli kayıtlar içindir (withApproval: ileri
+   tarihli yeni kayıt 'pending' doğar). Bekleyen kaydın tarihi bugüne/geçmişe
+   çekilince damga düşmüyordu: yanlışlıkla ileri tarih girilip saniyeler sonra
+   düzeltilen kayıt bakiyeye HİÇ girmeden bildirimde sonsuza dek onay
+   bekliyordu (gerçek vaka: elle girilen bir kart iadesi). */
+describe('onay damgası — tarih düzeltilince', () => {
+  const pending: Transaction = {
+    id: 'tx-p', type: 'expense', amount: -219.9, currency: 'TRY', date: '2099-10-25',
+    accountId: 'a', description: '[İade] Telefon Ekran Koruyucu', isInstallment: false,
+    approvalStatus: 'pending', createdAt: '2026-10-16', updatedAt: '2026-10-16',
+  }
+  beforeEach(() => { patches.length = 0; batches.length = 0 })
+
+  it('geçmişe çekilen bekleyen kayıt onaylanır', async () => {
+    seed(pending)
+    await useTransactionStore.getState().update('tx-p', { date: '2026-09-25' })
+    const p = patches.at(-1)!.patch
+    expect(p.approvalStatus).toBe('approved')
+    expect(typeof p.approvedAt).toBe('string')
+    expect(useTransactionStore.getState().transactions[0].approvalStatus).toBe('approved')
+  })
+
+  it('ileri tarihte kalırsa onay beklemeyi sürdürür', async () => {
+    seed(pending)
+    await useTransactionStore.getState().update('tx-p', { date: '2099-12-01' })
+    expect(patches.at(-1)!.patch).not.toHaveProperty('approvalStatus')
+    expect(useTransactionStore.getState().transactions[0].approvalStatus).toBe('pending')
+  })
+
+  it('bekleyen olmayan kayda dokunulmaz', async () => {
+    seed({ ...pending, approvalStatus: 'approved', date: '2026-01-05' })
+    await useTransactionStore.getState().update('tx-p', { date: '2026-01-06' })
+    expect(patches.at(-1)!.patch).not.toHaveProperty('approvalStatus')
+  })
+
+  it('çağıran damgayı açıkça yönetiyorsa karışılmaz', async () => {
+    seed(pending)
+    await useTransactionStore.getState().update('tx-p', { date: '2026-09-25', approvalStatus: 'pending' })
+    expect(patches.at(-1)!.patch.approvalStatus).toBe('pending')
+  })
+
+  it('toplu düzenlemede de düşer; geri alma eski damgayı geri koyar', async () => {
+    seed(pending)
+    await useTransactionStore.getState().updateMany(['tx-p'], { date: '2026-09-25' })
+    const forward = batches[0] as { patch: Record<string, unknown> }[]
+    expect(forward[0].patch.approvalStatus).toBe('approved')
+    expect(forward[0].patch.approvedAt).toBeTruthy()
   })
 })
