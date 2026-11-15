@@ -26,6 +26,10 @@ import { isLegacyXls, isZip, readXlsxRows } from '@/lib/utils/xlsx'
 import { useRulesStore } from '@/store/rules.store'
 import { buildImportPlan, type ImportPlan, type PlanRow, type RowOption } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
+import { withManualOptions } from '@/lib/statement-import/manual-options'
+import { db } from '@/lib/db'
+import { useDebtStore, debtPaymentPatches } from '@/store/debts.store'
+import type { Debt } from '@/types'
 import { buildCommit, commitEffect, optionForEdit, remapByStableKey, rowTitle, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
 import type { BatchOp } from '@/lib/sync/engine'
@@ -132,11 +136,11 @@ export function StatementImport() {
   const makePlan = useCallback((st: ParsedStatement, accId: string, txs = useTransactionStore.getState().transactions): ImportPlan | null => {
     const acc = useAccountStore.getState().accounts.find(a => a.id === accId)
     if (!acc) return null
-    return (st.type === 'checking' ? buildAccountPlan : buildImportPlan)({
+    return withManualOptions((st.type === 'checking' ? buildAccountPlan : buildImportPlan)({
       statement: st, account: acc, accounts: useAccountStore.getState().accounts,
       transactions: txs, people: usePeopleStore.getState().people, categories: useCategoryStore.getState().categories,
       todayStr: today(), skipped: loadSkipped(accId), rules: useRulesStore.getState().rules,
-    })
+    }))
   }, [])
 
   // Plan, store'daki her değişiklikte (başka cihazdan gelen kayıt dahil) yeniden hesaplanır
@@ -151,10 +155,10 @@ export function StatementImport() {
   const preview = useMemo(() => {
     if (!plan || !accountId) return null
     return buildCommit({
-      rows: plan.rows, choices, edits, accountId, existing, people,
+      rows: plan.rows, choices, edits, accountId, existing, people, workspaceId,
       nowIso: new Date().toISOString(), todayStr: today(), newId: () => 'preview',
     })
-  }, [plan, choices, edits, accountId, existing, people])
+  }, [plan, choices, edits, accountId, existing, people, workspaceId])
 
   // Ekstrenin kesim / son ödeme tarihleri → Kart Takvimi (hesap seçiliyse)
   const calendarFor = useCallback((st: ParsedStatement, accId: string): CalendarUpdate | null => {
@@ -376,7 +380,7 @@ export function StatementImport() {
       const txs = useTransactionStore.getState().transactions
       const res = buildCommit({
         rows: fresh.rows, choices, edits, accountId, existing: new Map(txs.map(t => [t.id, t])),
-        people: usePeopleStore.getState().people, nowIso: new Date().toISOString(), todayStr: today(),
+        people: usePeopleStore.getState().people, nowIso: new Date().toISOString(), todayStr: today(), workspaceId,
       })
       if (res.problems.length) {
         setError(`${res.problems.length} satırda eksik var: ${res.problems[0].message}.`)
@@ -385,7 +389,19 @@ export function StatementImport() {
       }
       // Kart Takvimi değişiklikleri kayıtlarla AYNI işlemde: ya hepsi ya hiçbiri
       const cal = applyCalendar ? calendarFor(statement, accountId) : null
-      await localBatch([...res.ops, ...(cal?.ops ?? [])], { source: 'import' })
+      // Borç ödemeleri (bu alandaki ya da başka alandaki borç): yamalar kayıtlarla
+      // aynı işlemde yazılır; geri alma borcun ÖNCEKİ değerlerini geri koyar.
+      const debtOps: BatchOp[] = []
+      const debtUndo: BatchOp[] = []
+      const debtPatches = await debtPaymentPatches(res.debtPayments, 1)
+      for (const [id, patch] of debtPatches) {
+        const prev = useDebtStore.getState().debts.find(d => d.id === id) ?? await db.debts.get(id) as Debt | undefined
+        if (!prev) continue
+        debtOps.push({ kind: 'patch', table: 'debts', id, patch })
+        debtUndo.push({ kind: 'patch', table: 'debts', id, patch: { paidAmount: prev.paidAmount, paidInstallments: prev.paidInstallments ?? 0, isSettled: prev.isSettled } })
+      }
+      await localBatch([...res.ops, ...debtOps, ...(cal?.ops ?? [])], { source: 'import' })
+      if (debtPatches.size) useDebtStore.getState().applyLocal(debtPatches)
       rememberSkipped(accountId, res.skippedKeys)
       // Onaylanan ekstre silinmez: "Yüklenen Ekstreler"de dönemiyle birlikte kalır
       const drafts = useStatementDraftsStore.getState()
@@ -406,7 +422,7 @@ export function StatementImport() {
       setDone({
         calendar: cal?.changes.length ?? 0,
         created: res.createdTxIds.length, people: res.createdPeople.length, deleted: res.deletedTxIds.length,
-        patched: res.patchedTxIds.length, undo: [...res.undo, ...(cal?.undo ?? [])], skippedKeys: res.skippedKeys, accountId, undone: false,
+        patched: res.patchedTxIds.length, undo: [...res.undo, ...debtUndo, ...(cal?.undo ?? [])], skippedKeys: res.skippedKeys, accountId, undone: false,
         draftId, draftBefore,
       })
       setStep('done')
@@ -426,7 +442,7 @@ export function StatementImport() {
       // Ekstre onaydan önceki haline döner (yarım kalan taslak olarak)
       if (done.draftId) useStatementDraftsStore.getState().restore(done.draftId, done.draftBefore)
       await Promise.all([
-        useTransactionStore.getState().load(), usePeopleStore.getState().load(),
+        useTransactionStore.getState().load(), usePeopleStore.getState().load(), useDebtStore.getState().load(),
         ...(done.calendar ? [useAccountStore.getState().load(), usePaymentsStore.getState().load()] : []),
       ])
       useAccountStore.getState().recomputeBalances(useTransactionStore.getState().transactions)
@@ -761,6 +777,7 @@ export function StatementImport() {
         key={openRow.key}
         row={openRow}
         statement={statement}
+        accountId={accountId}
         choice={openRow ? selectedOption(openRow, choices) : null}
         edit={openRow ? edits[openRow.key] : undefined}
         onChoose={i => openRow && choose(openRow.key, i)}

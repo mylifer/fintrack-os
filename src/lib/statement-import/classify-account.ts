@@ -517,7 +517,9 @@ export function buildAccountPlan(input: PlanInput): ImportPlan {
         draft(l, { type: 'transfer', otherAccountId: a.id, description: a.type === 'credit_card' ? 'Kredi Kartı Ödemesi' : 'Transfer' }, it.label)))
       rows.push({
         ...rowBase([l], 'transfer-out', it.label), status: 'review', issue: 'Kendi hesabına gönderim',
-        reason: `${it.label}: ${bankAccounts.length ? 'o bankadaki hesaplarınız' : 'kartlarınız'} önerildi. Seçtiğin hesap bir dahaki dökümde hatırlanır.`,
+        reason: cards.length
+          ? `${it.label}: ${bankAccounts.length ? 'o bankadaki hesaplarınız' : 'kartlarınız'} önerildi. Seçtiğin hesap bir dahaki dökümde hatırlanır.`
+          : `${it.label}: sistemde o bankada bir hesabınız ya da kartınız yok. Transfer ile hedefini (hesap, borç, diğer alan) seçebilir ya da gider olarak girebilirsin.`,
         options: [...opts, skip()], recommended: bankAccounts.length === 1 ? 0 : null, defaultOption: null, sideEffects: [],
       })
       continue

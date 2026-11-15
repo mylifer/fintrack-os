@@ -67,6 +67,29 @@ export interface DraftTx {
   needsRecipient?: boolean
   /** "İade, alıma bağla": bağlanacak alım seçilmeden kayıt yapılmaz */
   needsRefundOf?: boolean
+  /** Sınıflandırıcının değil kullanıcının kurduğu kayıt ("elle gir" seçenekleri,
+   *  bkz. manual-options.ts): transferin hedefi onay ekranında seçilir */
+  manual?: true
+  /** Giden elle transferin hedef türü: hesap (toAccountId), bu alandaki bir
+   *  borç (debtId) ya da başka çalışma alanı (crossWs) */
+  transferMode?: TransferMode
+  /** Giden transfer bu alandaki bir borcu öder (toAccountId yok; borçlar
+   *  sayfasındaki "Ödeme Yap" biçimi) */
+  debtId?: string
+  /** Giden transfer başka çalışma alanındaki bir hesaba gider; debtId verilirse
+   *  para o hesaptan aynı alandaki borca ödenir (addCrossWorkspaceTransfer biçimi) */
+  crossWs?: CrossWsTarget
+}
+
+export type TransferMode = 'account' | 'debt' | 'workspace'
+
+export interface CrossWsTarget {
+  workspaceId: string
+  /** Paranın gireceği (borç ödemesinde: ödemenin geçeceği) hedef alan hesabı */
+  accountId?: string
+  /** true: para hedef hesaptan o alandaki bir borca ödenir */
+  payDebt?: boolean
+  debtId?: string
 }
 
 /** İadenin bağlanabileceği bir alım (sistemdeki gider kaydı) */
@@ -228,7 +251,7 @@ export function lineSeed(accountId: string, line: StatementLine, statementDate: 
   return `stmt:${accountId}:${line.date ?? statementDate}|${minor(line.amount ?? 0)}|${merchantKey(line.description)}|${occurrence}`
 }
 
-export const txIdFromSeed = (seed: string, index?: number) => deterministicUuid(index === undefined ? seed : `${seed}:${index}`)
+export const txIdFromSeed = (seed: string, index?: number | string) => deterministicUuid(index === undefined ? seed : `${seed}:${index}`)
 
 const FEE_LABELS: Record<string, string> = {
   'donem faizi': 'Dönem Faizi',
