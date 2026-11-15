@@ -413,7 +413,8 @@ export function summarizeTotalBudget(
 // fonksiyonlarında (calcPeriodFlow/calcMonthlyFlow) yapılır, sumFlow'un kendisinde
 // değil — calcNetRaw da sumFlow'u paylaşır.
 export function isInvestmentPrincipalTx(t: Pick<Transaction, 'icon' | 'description'>): boolean {
-  return !!t.icon && (t.description.endsWith('Alımı') || t.description.endsWith('Satışı'))
+  // Satış satırı sonunda açıklayıcı parantez taşıyabilir: "… Satışı (maliyet; satış bedeli ₺…)"
+  return !!t.icon && (t.description.endsWith('Alımı') || /Satışı( \([^()]*\))?$/.test(t.description))
 }
 
 // Borç ANAPARASI — borç kurulurken paranın hesaba girişi ("… borç girişi") veya

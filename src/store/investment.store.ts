@@ -89,8 +89,17 @@ function buyDescription(asset: InvestmentAsset, qty: number): string {
   return `${fmtQty(qty)} ${assetLabel(asset)} Alımı`
 }
 
-function sellDescription(asset: InvestmentAsset, qty: number): string {
-  return `${fmtQty(qty)} ${assetLabel(asset)} Satışı`
+// Kalıcı açıklamaya yazılır — formatCurrency KULLANILMAZ (tutar gizleme
+// modunda maskeli metin döndürür, defterde kalıcı olarak "₺•••" kalırdı)
+const TRY_FMT = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' })
+
+/** Satış anapara satırının açıklaması. Maliyet bazı varsa satırın tutarı
+ *  MALİYETTİR (gerçek satış bedeli değil — fark ayrı Kâr/Zarar satırında);
+ *  okunurluk için gerçek satış bedeli parantez içinde eklenir. Parantezli
+ *  biçim isInvestmentPrincipalTx'te tanınır (… Satışı (…)). */
+function sellDescription(asset: InvestmentAsset, qty: number, proceeds?: number): string {
+  const base = `${fmtQty(qty)} ${assetLabel(asset)} Satışı`
+  return proceeds === undefined ? base : `${base} (maliyet; satış bedeli ${TRY_FMT.format(proceeds)})`
 }
 
 /* ── Linked-transaction helpers (module-level, use store.getState()) ── */
@@ -220,7 +229,7 @@ async function createSellLinkedTxs(
     date,
     accountId:     targetAccountId,
     icon:          assetIcon(asset),
-    description:   sellDescription(asset, quantity),
+    description:   sellDescription(asset, quantity, hasCost ? total : undefined),
     isInstallment: false,
     createdAt:     now,
     updatedAt:     now,
