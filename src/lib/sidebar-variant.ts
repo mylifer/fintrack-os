@@ -7,9 +7,9 @@
    Bu dosya sunucu bileşenlerinden de import edildiği için 'use client' YOK ve
    tarayıcıya özgü API kullanmaz. */
 
-export type SidebarVariant = 'compact' | 'refined' | 'dual'
+export type SidebarVariant = 'refined' | 'dual'
 
-const ALL: readonly SidebarVariant[] = ['compact', 'refined', 'dual']
+const ALL: readonly SidebarVariant[] = ['refined', 'dual']
 
 export const SIDEBAR_VARIANT_COOKIE = 'fintrack-sidebar'
 export const DEFAULT_SIDEBAR_VARIANT: SidebarVariant = 'dual'
@@ -24,11 +24,6 @@ export const SIDEBAR_VARIANTS: { key: SidebarVariant; label: string; hint: strin
     key: 'dual',
     label: 'Çift Panel',
     hint: 'Solda dört bölüm rayı, yanında yalnızca seçili bölümün sayfaları. Kısa ve odaklı listeler.',
-  },
-  {
-    key: 'compact',
-    label: 'Kompakt',
-    hint: 'Sık satırlar, kılcal ayraçlar, bakiyeler sağda hizalı. Her şey tek ekranda.',
   },
   {
     key: 'refined',

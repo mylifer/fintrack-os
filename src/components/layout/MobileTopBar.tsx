@@ -6,7 +6,7 @@ import { PrivacyToggle } from '@/components/layout/PrivacyToggle'
 /* Kenar çubuğu lg altında gizlendiği için çalışma alanı geçişi mobilde buradan
    gelir. Header her sayfada kullanılmadığından (Yatırımlar, detay sayfaları)
    layout seviyesinde durur. Sticky değil — kaydırınca çekilir, sayfanın sticky
-   Header'ı yerini alır. Görünüm Kompakt kenar çubuğunun üst şeridiyle aynı. */
+   Header'ı yerini alır. */
 export function MobileTopBar() {
   return (
     <div className="lg:hidden print:hidden h-11 flex-shrink-0 flex items-center gap-2 px-3 border-b border-border bg-background">

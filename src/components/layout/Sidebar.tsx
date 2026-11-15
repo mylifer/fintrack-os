@@ -1,7 +1,6 @@
 'use client'
 
 import { useSidebarVariant } from '@/components/layout/SidebarVariantProvider'
-import { SidebarCompact } from '@/components/layout/sidebar/SidebarCompact'
 import { SidebarRefined } from '@/components/layout/sidebar/SidebarRefined'
 import { SidebarDual } from '@/components/layout/sidebar/SidebarDual'
 
@@ -11,7 +10,6 @@ import { SidebarDual } from '@/components/layout/sidebar/SidebarDual'
 export function Sidebar() {
   const { variant } = useSidebarVariant()
   switch (variant) {
-    case 'compact': return <SidebarCompact />
     case 'refined': return <SidebarRefined />
     default:        return <SidebarDual />
   }
