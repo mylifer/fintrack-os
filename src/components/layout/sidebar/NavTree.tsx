@@ -10,10 +10,9 @@ import type { NavItem } from './nav'
 import { navBadge } from './useNavBadges'
 import type { useSidebarData } from './useSidebarData'
 
-/* ── Ortak öğe listesi ────────────────────────────────────────────────────
-   Yüzen Kart, Koyu Kontrast, Çift Panel ve İkon Rayı'nın (açık hâli) satır
-   mantığı aynı: açılır hesap/bütçe listeleri, girintili alt sayfalar,
-   rozetler. Varyantlar yalnızca sınıfları verir; davranış tek yerde. */
+/* ── Öğe listesi ──────────────────────────────────────────────────────────
+   Açılır hesap/bütçe listeleri, girintili alt sayfalar ve rozetler. Görünüm
+   yalnızca verilen sınıflardan gelir; davranış burada (Çift Panel kullanır). */
 
 export type SidebarData = ReturnType<typeof useSidebarData>
 
@@ -126,7 +125,7 @@ export function NavTree({ items, data, styles }: { items: NavItem[]; data: Sideb
 }
 
 /** Bir öğenin ve hemen ardından gelen alt sayfalarının rozet toplamı — alt
- *  sayfaların görünmediği dar görünümlerde (ikon rayı, bölüm rayı) kullanılır. */
+ *  sayfaların görünmediği bölüm rayında kullanılır. */
 export function rolledUpBadge(items: NavItem[], index: number, data: SidebarData) {
   const counts = { dueCount: data.dueCount, paymentAlertCount: data.paymentAlertCount, draftCount: data.draftCount }
   let count = 0

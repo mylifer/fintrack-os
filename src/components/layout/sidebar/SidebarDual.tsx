@@ -12,7 +12,7 @@ import { NAV_GROUPS, activeNavHref } from './nav'
 import { NavTree, defaultBadge, rolledUpBadge, type NavTreeStyles } from './NavTree'
 import { useSidebarData } from './useSidebarData'
 
-/* ── Varyant: ÇİFT PANEL ──────────────────────────────────────────────────
+/* ── Varyant: ÇİFT PANEL (varsayılan) ──────────────────────────────────────────────────
    Solda dört bölümlük dar bir ray (Genel · Analiz · Planlama · Kişiler),
    yanında yalnızca seçili bölümün sayfaları. Bölüm, açık sayfadan çıkarılır;
    raydan başka bir bölüme tıklamak yalnızca listeyi değiştirir (gezinmez) —

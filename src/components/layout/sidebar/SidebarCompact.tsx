@@ -13,7 +13,7 @@ import { NAV_GROUPS } from './nav'
 import { useSidebarData } from './useSidebarData'
 import { SearchTrigger } from '@/components/layout/command-palette/SearchTrigger'
 
-/* ── Varyant: KOMPAKT (varsayılan) ────────────────────────────────────────
+/* ── Varyant: KOMPAKT ────────────────────────────────────────
    28px satırlar, hap yok, kılcal grup ayraçları. Amaç: hesaplar açıkken bile
    navigasyonun tamamı tek ekranda kalsın. Aktif satır, panelin sol kenarına
    dayalı 2px turkuaz rayla işaretlenir — satırlar tam genişlikte olduğu için
