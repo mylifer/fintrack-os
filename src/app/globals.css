@@ -135,8 +135,17 @@
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
 
+  /* Pozitif/gelir yeşili — koyu temada "Nane". green-600 koyu zeminde bulanık
+     duruyordu; Tailwind'in yeşil skalası (400–700) burada tek tona eşlenir, böylece
+     text-/bg-green-* kullanan her yer kendiliğinden güncellenir. Dolgun yeşil
+     zeminli düğmelerde metin koyu olmalı (bkz. dark:text-green-950). */
+  --color-green-400: #6ee7b7;
+  --color-green-500: #6ee7b7;
+  --color-green-600: #6ee7b7;
+  --color-green-700: #6ee7b7;
+
   /* Nakit akışı gelir/gider — koyu temada parlak tonlar (koyu zemin kontrastı) */
-  --cf-income:  #34d399;
+  --cf-income:  #6ee7b7;
   --cf-expense: #fb7185;
 
   /* Toplu düzenleme (batch edit) seçim aksanı — koyu temada turkuaz + koyu soft */
