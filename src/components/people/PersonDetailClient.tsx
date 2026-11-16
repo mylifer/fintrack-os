@@ -7,6 +7,7 @@ import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
+import { useWorkspaceSwitchFallback } from '@/lib/hooks/useWorkspaceSwitchFallback'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { sumByType, isFlowTx } from '@/lib/utils/calculations'
@@ -65,7 +66,14 @@ export default function PersonDetailClient({ id, role, backHref, backLabel }: Pr
   )
   const { income: totalIncome, expense: totalExpense } = sumByType(flowTxs)
 
-  if (!peopleReady || !txsReady) return null
+  // Alan değişince bu kişi yeni alanda yoksa aynı adlı kişiye, yoksa listeye geç
+  const redirecting = useWorkspaceSwitchFallback(person, peopleReady, {
+    candidates: people.filter(p => p.role === role && !p.isArchived),
+    listHref:   backHref,
+    hrefFor:    p => `${backHref}/${p.id}`,
+  })
+
+  if (!peopleReady || !txsReady || redirecting) return null
   if (!person) return notFound()
 
   return (

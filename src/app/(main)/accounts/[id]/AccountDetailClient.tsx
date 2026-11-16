@@ -28,6 +28,7 @@ import { TxViewsShell } from '@/components/transactions/views/TxViewsShell'
 import { DEFAULT_TX_VIEW, type TxViewId } from '@/lib/tx-view'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
+import { useWorkspaceSwitchFallback } from '@/lib/hooks/useWorkspaceSwitchFallback'
 import type { Account, PersonRole, Transaction } from '@/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -184,7 +185,17 @@ export default function AccountDetailClient({
   const animIncome  = useCountUp(periodIncome)
   const animExpense = useCountUp(periodExpense)
 
-  if (!accountsReady || !txsReady) return null
+  // Alan değişince bu hesap yeni alanda yoksa: aynı adlı hesaba, yoksa (tercihen
+  // aynı türdeki) ilk aktif hesaba, o da yoksa Hesaplar'a geç — 404 yerine.
+  const redirecting = useWorkspaceSwitchFallback(account, accountsReady, {
+    candidates: accounts.filter(a => !a.isArchived),
+    listHref:   '/accounts',
+    hrefFor:    a => `/accounts/${a.id}`,
+    prefer:     (c, prev) => c.type === prev.type,
+    pickFirst:  true,
+  })
+
+  if (!accountsReady || !txsReady || redirecting) return null
   if (!account) return notFound()
 
   const usedPct = account.creditLimit && available !== null

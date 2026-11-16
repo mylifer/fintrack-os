@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
+import { useWorkspaceSwitchFallback } from '@/lib/hooks/useWorkspaceSwitchFallback'
 import { SelectField } from '@/components/ui/Select'
 import { formatCurrency } from '@/lib/utils/currency'
 import { compareCategoriesByName, categorySubtreeHeight } from '@/lib/utils/categories'
@@ -188,9 +189,18 @@ export default function CategoryDetailClient({ id }: Props) {
     setEditing(false)
   }
 
+  // Alan değişince bu kategori yeni alanda yoksa aynı adlı (aynı kapsamdaki)
+  // kategoriye, yoksa Kategoriler'e geç
+  const redirecting = useWorkspaceSwitchFallback(cat, ready, {
+    candidates: categories.filter(c => !c.isArchived),
+    listHref:   '/categories',
+    hrefFor:    c => `/categories/${c.id}`,
+    keyOf:      c => `${c.scope}:${c.name}`,
+  })
+
   /* ── Not found ── */
   // Store yüklenmeden "Kategori bulunamadı" gösterme (ilk render'da liste boş)
-  if (!ready && !cat) return null
+  if ((!ready && !cat) || redirecting) return null
   if (!cat) {
     return (
       <div className="flex flex-col h-full">
