@@ -1,6 +1,7 @@
-import type { Transaction } from '@/types'
+import type { CategorySplit, Transaction } from '@/types'
 import { toMinor, toMajor, splitMoney, splitInstallments } from './money'
 import { baseAmount } from './fx'
+import { rescaleSplits } from './categorySplits'
 
 /* ────────────────────────────────────────────────────────────────────────
    Taksit editöründe tekil değişiklik → ALTTAKİ taksitlerin yeniden bölüşümü
@@ -138,10 +139,12 @@ export function collapseInstallments(transactions: Transaction[]): Transaction[]
       amountMinor += toMinor(t.amount)
       baseMinor   += toMinor(baseAmount(t))
     }
+    const amount = toMajor(amountMinor)
     collapsed.set(groupId, {
       ...head,
-      amount:       toMajor(amountMinor),
+      amount,
       amountTry:    toMajor(baseMinor),
+      categorySplits: collapseSplits(head, rows, amountMinor),
       installTotal: head.installTotal ?? rows.length,
       installIndex: undefined,
     })
@@ -158,4 +161,37 @@ export function collapseInstallments(transactions: Transaction[]): Transaction[]
     out.push(collapsed.get(t.installGroupId)!)
   }
   return out
+}
+
+/* Kategori payları da grup toplamına taşınmalı: her taksit satırının payları
+   O TAKSİTİN tutarına göre ölçeklidir (addInstallmentGroup → rescaleSplits).
+   Baş satırın paylarını olduğu gibi devralmak, payların toplamını (~1 taksit)
+   indirgenmiş tutardan (tüm taksitler) koparıyordu; txCategorySlices amountTry'yi
+   pay/tutar oranıyla bölüp KALANI son paya yazdığı için son kategori neredeyse
+   tüm alışverişi üstleniyordu (ör. 2.199₺'lik mutfak payı 13.944₺ görünüyordu).
+   Paylar kategori bazında taksitler boyunca toplanır; tutmazsa (eksik/bozuk
+   pay) baş satırın oranlarıyla toplama ölçeklenir. */
+function collapseSplits(head: Transaction, rows: Transaction[], amountMinor: number): CategorySplit[] | undefined {
+  if (!head.categorySplits || head.categorySplits.length < 2) return head.categorySplits
+  const byCat = new Map<string, number>()
+  for (const s of head.categorySplits) byCat.set(s.categoryId, 0)
+  let ok = true
+  for (const t of rows) {
+    const parts = t.categorySplits?.length
+      ? t.categorySplits
+      : t.categoryId ? [{ categoryId: t.categoryId, amount: t.amount }] : []
+    if (parts.length === 0) { ok = false; break }
+    for (const s of parts) byCat.set(s.categoryId, (byCat.get(s.categoryId) ?? 0) + toMinor(s.amount))
+  }
+  if (ok) {
+    let sum = 0
+    for (const m of byCat.values()) sum += m
+    if (sum === amountMinor) {
+      const merged = [...byCat.entries()]
+        .filter(([, m]) => m !== 0)
+        .map(([categoryId, m]) => ({ categoryId, amount: toMajor(m) }))
+      return merged.length > 1 ? merged : undefined
+    }
+  }
+  return rescaleSplits(head.categorySplits, toMajor(amountMinor))
 }

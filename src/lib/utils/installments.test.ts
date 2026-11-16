@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { collapseInstallments, rebalanceInstallmentsBelow, findInstallmentRoundingFixes } from './installments'
-import { calcPeriodFlow, excludeFuture } from './calculations'
+import { calcPeriodFlow, excludeFuture, sumExpenseByKey } from './calculations'
 import type { Transaction } from '@/types'
 
 /* ── Factory ────────────────────────────────────────────────────────── */
@@ -44,6 +44,27 @@ function group(groupId = 'g-1', amounts = [4000, 4000, 4000]): Transaction[] {
 /* ── Tests ──────────────────────────────────────────────────────────── */
 
 describe('collapseInstallments', () => {
+  it('kategori paylarını taksitler boyunca toplar (pay toplamı = indirgenmiş tutar)', () => {
+    // 3 taksit: her satırın payları kendi taksit tutarına ölçekli (mutfak son pay).
+    const rows = [
+      tx({ amount: 1000.02, amountTry: 1000.02, isInstallment: true, installGroupId: 'g-s', installIndex: 1, installTotal: 3, categoryId: 'cat-pet',
+        categorySplits: [{ categoryId: 'cat-pet', amount: 800.02 }, { categoryId: 'cat-mutfak', amount: 200 }] }),
+      tx({ amount: 1000, amountTry: 1000, isInstallment: true, installGroupId: 'g-s', installIndex: 2, installTotal: 3, date: '2026-02-15', categoryId: 'cat-pet',
+        categorySplits: [{ categoryId: 'cat-pet', amount: 800 }, { categoryId: 'cat-mutfak', amount: 200 }] }),
+      tx({ amount: 1000, amountTry: 1000, isInstallment: true, installGroupId: 'g-s', installIndex: 3, installTotal: 3, date: '2026-03-15', categoryId: 'cat-pet',
+        categorySplits: [{ categoryId: 'cat-pet', amount: 800 }, { categoryId: 'cat-mutfak', amount: 200 }] }),
+    ]
+    const out = collapseInstallments(rows)
+    expect(out[0].amount).toBe(3000.02)
+    expect(out[0].categorySplits).toEqual([
+      { categoryId: 'cat-pet', amount: 2400.02 },
+      { categoryId: 'cat-mutfak', amount: 600 },
+    ])
+    const byCat = sumExpenseByKey(out, t => t.categoryId ?? '')
+    expect(byCat.get('cat-mutfak')).toBe(600)
+    expect(byCat.get('cat-pet')).toBe(2400.02)
+  })
+
   it('taksitli grubu satın alma ayına tek toplam gider olarak indirger', () => {
     const out = collapseInstallments(group())
     expect(out).toHaveLength(1)
