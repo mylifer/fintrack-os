@@ -136,6 +136,9 @@ export function TransactionFormModal() {
   // useCrossWorkspaceTransfer.
   const crossWorkspace = useCrossWorkspaceTransfer({ isEdit, isPlannedEdit, editingTx, setTab })
   const { crossWs, targetWorkspaceId, targetAccountId, crossWsDebt, targetDebtId, linkedEditable } = crossWorkspace
+  // Giriş bacağı düzenleniyor: "Hesap" paranın girdiği hedeftir ve kaynağın
+  // (diğer alan) ardından gösterilir.
+  const incomingLeg = tab === 'transfer' && crossWs && crossWorkspace.direction === 'in'
 
   const patch = (p: Partial<TxForm>) => setForm(f => ({ ...f, ...p }))
 
@@ -188,7 +191,7 @@ export function TransactionFormModal() {
     installments, manualAmounts, splits, accounts, categories, editingTx, editingRec, isPlannedEdit,
     isRecurring, isCollection, selectedReceivable, receivableRemaining, isInterest, taxRate,
     interestSplit, linkedTaxTx, convertibleTx, crossWs, targetWorkspaceId, targetAccountId,
-    crossWsDebt, targetDebtId, linkedEditable, canKeepOpen, keepOpen, sessionEditId, setSession, setSessionEditId,
+    crossWsDebt, targetDebtId, linkedEditable, crossWsDirection: crossWorkspace.direction, canKeepOpen, keepOpen, sessionEditId, setSession, setSessionEditId,
     resetForNext,
   })
 
@@ -344,7 +347,8 @@ export function TransactionFormModal() {
 
           {/* Account + Category/Target */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Hesap" error={errors.accountId}>
+            <div className={incomingLeg ? 'order-2' : undefined}>
+            <Field label={incomingLeg ? 'Hedef Hesap' : 'Hesap'} error={errors.accountId}>
               <AppSelect
                 value={form.accountId}
                 onChange={v => patch({ accountId: v })}
@@ -354,6 +358,7 @@ export function TransactionFormModal() {
                 onOpenChange={onSelectOpen}
               />
             </Field>
+            </div>
 
             {tab === 'transfer' && isRecurring ? (
               // Recurring transfers always target an account — no debt payments.

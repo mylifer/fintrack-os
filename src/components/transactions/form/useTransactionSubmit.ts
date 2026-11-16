@@ -1,4 +1,4 @@
-import { useAccountStore, useTransactionStore, usePeopleStore, useDebtStore, useRecurringStore } from '@/store'
+import { useAccountStore, useTransactionStore, usePeopleStore, useDebtStore, useRecurringStore, useWorkspaceStore } from '@/store'
 import { parseCurrencyInput } from '@/lib/utils/currency'
 import { splitInstallments } from '@/lib/utils/money'
 import { toBaseTry, baseAmount } from '@/lib/utils/fx'
@@ -21,7 +21,7 @@ export function useTransactionSubmit({
   installments, manualAmounts, splits, accounts, categories, editingTx, editingRec, isPlannedEdit,
   isRecurring, isCollection, selectedReceivable, receivableRemaining, isInterest, taxRate,
   interestSplit, linkedTaxTx, convertibleTx, crossWs, targetWorkspaceId, targetAccountId,
-  crossWsDebt, targetDebtId, linkedEditable, canKeepOpen, keepOpen, sessionEditId, setSession, setSessionEditId,
+  crossWsDebt, targetDebtId, linkedEditable, crossWsDirection, canKeepOpen, keepOpen, sessionEditId, setSession, setSessionEditId,
   resetForNext,
 }: {
   closeModal: () => void
@@ -55,6 +55,8 @@ export function useTransactionSubmit({
   targetDebtId: string
   /** Düzenlenen satır doğrulanmış alanlar arası transfer çıkış bacağı */
   linkedEditable: boolean
+  /** 'in': giriş bacağı düzenleniyor — karşı alan/hesap KAYNAKTIR */
+  crossWsDirection: 'out' | 'in'
   canKeepOpen: boolean
   keepOpen: boolean
   sessionEditId: string | null
@@ -141,7 +143,8 @@ export function useTransactionSubmit({
     if (!form.accountId)          e.accountId         = 'Hesap seçin'
     if (!targetWorkspaceId)       e.targetWorkspaceId = 'Çalışma alanı seçin'
     if (crossWsDebt && !targetDebtId) e.debtId        = 'Borç seçin'
-    if (!targetAccountId)         e.toAccountId       = crossWsDebt ? 'Ödemenin geçeceği hesabı seçin' : 'Hedef hesap seçin'
+    if (!targetAccountId)         e.toAccountId       = crossWsDirection === 'in' ? 'Kaynak hesap seçin'
+      : crossWsDebt ? 'Ödemenin geçeceği hesabı seçin' : 'Hedef hesap seçin'
     if (!form.date)               e.date              = 'Tarih seçin'
     if (!form.description.trim()) e.description       = 'Açıklama girin'
     setErrors(e)
@@ -149,16 +152,26 @@ export function useTransactionSubmit({
 
     setLoading(true)
     try {
-      const input = {
-        sourceAccountId:   form.accountId,
-        targetWorkspaceId,
-        targetAccountId,
+      const common = {
         amount,
         date:        form.date,
         description: form.description.trim(),
         notes:       form.notes || undefined,
         targetDebtId: crossWsDebt ? targetDebtId : undefined,
       }
+      // Giriş bacağı düzenlenirken yön terstir: karşı alan/hesap kaynak, formun
+      // hesabı (bu alan) hedeftir; tutar hedef hesabın para birimindedir.
+      const activeId = useWorkspaceStore.getState().activeId ?? ''
+      const input = editingTx && crossWsDirection === 'in'
+        ? {
+            ...common,
+            sourceWorkspaceId: targetWorkspaceId,
+            sourceAccountId:   targetAccountId,
+            targetWorkspaceId: activeId,
+            targetAccountId:   form.accountId,
+            amountIn:          'target' as const,
+          }
+        : { ...common, sourceAccountId: form.accountId, targetWorkspaceId, targetAccountId }
       if (editingTx) {
         // Düzenleme: aynı-alan transferini başka alana çevirir ya da var olan
         // alanlar arası transferin iki bacağını birlikte günceller.

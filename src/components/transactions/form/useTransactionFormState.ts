@@ -5,7 +5,7 @@ import { impliedTaxRate, interestTaxId } from '@/lib/utils/interest-tax'
 import { rescaleSplits, type DraftSplit } from '@/lib/utils/categorySplits'
 import type { Transaction, ModalPayload, RecurringTransaction } from '@/types'
 import {
-  buildInitialForm, isCrossWsOutgoingLeg, newRecurringForm, recallKeepOpen, toAmountStr,
+  buildInitialForm, crossWsLegDirection, newRecurringForm, recallKeepOpen, toAmountStr,
   type Tab, type SessionRow,
 } from './form-model'
 
@@ -24,7 +24,7 @@ export function useTransactionFormState({
   // open, so first-render values (editingTx / modalPayload) are the correct seed.
   const [tab, setTab]             = useState<Tab>(() =>
     editingRec ? editingRec.type as Tab
-      : isEdit && editingTx ? (isCrossWsOutgoingLeg(editingTx) ? 'transfer' : editingTx.type as Tab)
+      : isEdit && editingTx ? (crossWsLegDirection(editingTx) ? 'transfer' : editingTx.type as Tab)
       : 'expense')
   const [form, setForm]           = useState(() => {
     const f = buildInitialForm(isEdit, editingTx, editingRec, modalPayload)

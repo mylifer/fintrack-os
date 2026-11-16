@@ -87,10 +87,15 @@ export type RecForm = ReturnType<typeof newRecurringForm>
 // Build the initial form once (used as a lazy useState initializer). On edit it
 // hydrates from the transaction being edited; on add it seeds an empty form,
 // optionally pre-filling the account passed via the modal payload.
-/** Alanlar arası transferin ÇIKIŞ bacağı mı? Düzenlemede Transfer sekmesinde,
- *  "Diğer Alan" hedefiyle açılır (bkz. useCrossWorkspaceTransfer). */
-export function isCrossWsOutgoingLeg(tx: Pick<Transaction, 'workspaceTransferId' | 'type' | 'debtId'>): boolean {
-  return !!tx.workspaceTransferId && tx.type === 'expense' && !tx.debtId
+/** Alanlar arası transferin hangi bacağı: 'out' çıkış (gider, kaynak alan),
+ *  'in' giriş (gelir, hedef alan); bacak değilse null. İkisi de düzenlemede
+ *  Transfer sekmesinde açılır (bkz. useCrossWorkspaceTransfer). Borç ödemesi
+ *  bacağı (debtId'li transfer) sıradan borç ödemesi gibi düzenlenir. */
+export function crossWsLegDirection(
+  tx: Pick<Transaction, 'workspaceTransferId' | 'type' | 'debtId'>,
+): 'out' | 'in' | null {
+  if (!tx.workspaceTransferId || tx.debtId) return null
+  return tx.type === 'expense' ? 'out' : tx.type === 'income' ? 'in' : null
 }
 
 export function buildInitialForm(
