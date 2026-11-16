@@ -218,6 +218,22 @@ export function focusedSplitShare(tx: Transaction, categoryIds: ReadonlySet<stri
   return toMajor(acc)
 }
 
+/**
+ * Kategori odaklı listede satırın rozetinde gösterilecek kategori: bölünmüş
+ * işlemde verilen kategorilere düşen paylardan EN BÜYÜĞÜNÜN kategorisi
+ * (ör. Mutfak sayfasında "Pets +3" yerine "Mutfak +3"). Bölünmemiş işlemde ya
+ * da hiçbir pay eşleşmezse tx.categoryId.
+ */
+export function focusedCategoryId(tx: Transaction, categoryIds: ReadonlySet<string> | undefined): string | undefined {
+  if (!categoryIds || !isSplitTx(tx)) return tx.categoryId
+  let best: CategorySplit | undefined
+  for (const s of tx.categorySplits!) {
+    if (!categoryIds.has(s.categoryId)) continue
+    if (!best || Math.abs(toMinor(s.amount)) > Math.abs(toMinor(best.amount))) best = s
+  }
+  return best?.categoryId ?? tx.categoryId
+}
+
 /** İşlemin dokunduğu tüm kategori id'leri (bölünmemişse tek elemanlı). */
 export function txCategoryIds(tx: Transaction): string[] {
   if (tx.categorySplits?.length) return tx.categorySplits.map(s => s.categoryId)
