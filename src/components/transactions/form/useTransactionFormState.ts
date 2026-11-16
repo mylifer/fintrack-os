@@ -5,7 +5,7 @@ import { impliedTaxRate, interestTaxId } from '@/lib/utils/interest-tax'
 import { rescaleSplits, type DraftSplit } from '@/lib/utils/categorySplits'
 import type { Transaction, ModalPayload, RecurringTransaction } from '@/types'
 import {
-  buildInitialForm, newRecurringForm, recallKeepOpen, toAmountStr,
+  buildInitialForm, crossWsLegDirection, newRecurringForm, recallKeepOpen, toAmountStr,
   type Tab, type SessionRow,
 } from './form-model'
 
@@ -23,7 +23,9 @@ export function useTransactionFormState({
   // Lazy initializers run exactly once — the component is remounted (keyed) per
   // open, so first-render values (editingTx / modalPayload) are the correct seed.
   const [tab, setTab]             = useState<Tab>(() =>
-    editingRec ? editingRec.type as Tab : isEdit && editingTx ? editingTx.type as Tab : 'expense')
+    editingRec ? editingRec.type as Tab
+      : isEdit && editingTx ? (crossWsLegDirection(editingTx) ? 'transfer' : editingTx.type as Tab)
+      : 'expense')
   const [form, setForm]           = useState(() => {
     const f = buildInitialForm(isEdit, editingTx, editingRec, modalPayload)
     // Taksitli grup düzenleniyorsa tarih ilk taksitinki olsun (ilk-giriş görünümü).

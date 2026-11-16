@@ -23,18 +23,47 @@ export function TransferTargetField({
   crossWorkspace: CrossWorkspaceTransfer
 }) {
   const {
-    otherWorkspaces, crossWs, setCrossWs, targetWorkspaceId, setTargetWorkspaceId,
+    otherWorkspaces, editable, direction, crossWs, setCrossWs, targetWorkspaceId, setTargetWorkspaceId,
     targetAccounts, setTargetAccounts, targetAccountId, setTargetAccountId,
     crossWsDebt, setCrossWsDebt, targetDebts, setTargetDebts, targetDebtId, setTargetDebtId,
   } = crossWorkspace
+
+  // Giriş bacağı düzenleniyor: karşı alan KAYNAKTIR, bu alandaki hesap
+  // (formun "Hesap"ı) hedeftir. Yön değiştirilemez; bağı koparmak için
+  // sekme gider/gelir yapılır.
+  const incoming = crossWs && direction === 'in'
+
+  // Karşı alandaki hesap: 'out'ta hedef (borç bloğunun altında), 'in'de
+  // kaynak (alan seçiminin hemen altında).
+  const accountPicker = (
+    <>
+      {targetWorkspaceId && (
+        targetAccounts.length === 0 ? (
+          <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground select-none">
+            Bu alanda hesap bulunamadı
+          </div>
+        ) : (
+          <AppSelect
+            value={targetAccountId}
+            onChange={setTargetAccountId}
+            options={targetAccounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
+            placeholder={incoming ? "Kaynak hesap seçin..." : crossWsDebt ? "Ödemenin geçeceği hesap..." : "Hedef hesap seçin..."}
+            error={!!errors.toAccountId}
+            onOpenChange={onSelectOpen}
+          />
+        )
+      )}
+      {errors.toAccountId && <p className="text-xs text-destructive">{errors.toAccountId}</p>}
+    </>
+  )
 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
         <span className={cn("text-sm font-medium", (errors.toAccountId || errors.debtId || errors.targetWorkspaceId) && "text-destructive")}>
-          Hedef
+          {incoming ? 'Kaynak' : 'Hedef'}
         </span>
-        <div className="flex rounded border border-input overflow-hidden text-[11px]">
+        {!incoming && <div className="flex rounded border border-input overflow-hidden text-[11px]">
           <button
             type="button"
             onClick={() => { setCrossWs(false); patch({ isDebtPayment: false, debtId: undefined }) }}
@@ -60,7 +89,7 @@ export function TransferTargetField({
               Borç
             </button>
           )}
-          {!isEdit && !sessionEditId && otherWorkspaces.length > 0 && (
+          {(!isEdit || editable) && !sessionEditId && otherWorkspaces.length > 0 && (
             <button
               type="button"
               onClick={() => { setCrossWs(true); patch({ isDebtPayment: false, toAccountId: undefined }) }}
@@ -72,7 +101,7 @@ export function TransferTargetField({
               Diğer Alan
             </button>
           )}
-        </div>
+        </div>}
       </div>
       {crossWs ? (
         <div className="flex flex-col gap-2">
@@ -83,11 +112,12 @@ export function TransferTargetField({
               setTargetDebtId(''); setTargetDebts([])
             }}
             options={otherWorkspaces.map(w => ({ value: w.id, label: w.name }))}
-            placeholder="Çalışma alanı seçin..."
+            placeholder={incoming ? "Kaynak alan..." : "Çalışma alanı seçin..."}
             error={!!errors.targetWorkspaceId}
             onOpenChange={onSelectOpen}
           />
           {errors.targetWorkspaceId && <p className="text-xs text-destructive">{errors.targetWorkspaceId}</p>}
+          {incoming && accountPicker}
           {targetWorkspaceId && (
             <div className="flex self-start rounded border border-input overflow-hidden text-[11px]">
               <button
@@ -123,8 +153,11 @@ export function TransferTargetField({
                 onChange={v => {
                   setTargetDebtId(v)
                   const debt = targetDebts.find(d => d.id === v)
-                  // Borcun kendi ödeme hesabı bu alandaysa ara hesap olarak öner
-                  if (debt?.accountId && targetAccounts.some(a => a.id === debt.accountId)) {
+                  // Borcun kendi ödeme hesabı hedef alandaysa ara hesap olarak öner
+                  // ('in': hedef bu alan → formun hesabı; 'out': karşı alan hesabı)
+                  if (debt?.accountId && incoming && accountOptions.some(a => a.value === debt.accountId)) {
+                    patch({ accountId: debt.accountId })
+                  } else if (debt?.accountId && !incoming && targetAccounts.some(a => a.id === debt.accountId)) {
                     setTargetAccountId(debt.accountId)
                   }
                   if (debt && !form.description.trim()) patch({ description: `${debt.name} ödemesi` })
@@ -139,26 +172,12 @@ export function TransferTargetField({
           {crossWsDebt && errors.debtId && <p className="text-xs text-destructive">{errors.debtId}</p>}
           {targetWorkspaceId && crossWsDebt && targetDebts.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Ödeme, hedef alandaki aşağıdaki hesaptan geçer: para bu hesaba girer ve borca ödenir — hesabın bakiyesi değişmez.
+              {incoming
+                ? 'Ödeme, Hedef Hesap üzerinden geçer: para o hesaba girer ve borca ödenir — hesabın bakiyesi değişmez.'
+                : 'Ödeme, hedef alandaki aşağıdaki hesaptan geçer: para bu hesaba girer ve borca ödenir — hesabın bakiyesi değişmez.'}
             </p>
           )}
-          {targetWorkspaceId && (
-            targetAccounts.length === 0 ? (
-              <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground select-none">
-                Bu alanda hesap bulunamadı
-              </div>
-            ) : (
-              <AppSelect
-                value={targetAccountId}
-                onChange={setTargetAccountId}
-                options={targetAccounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
-                placeholder={crossWsDebt ? "Ödemenin geçeceği hesap..." : "Hedef hesap seçin..."}
-                error={!!errors.toAccountId}
-                onOpenChange={onSelectOpen}
-              />
-            )
-          )}
-          {errors.toAccountId && <p className="text-xs text-destructive">{errors.toAccountId}</p>}
+          {!incoming && accountPicker}
         </div>
       ) : form.isDebtPayment ? (
         <>

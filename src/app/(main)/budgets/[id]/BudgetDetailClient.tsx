@@ -8,6 +8,7 @@ import { CategoryIcon }    from '@/components/categories/CategoryIcon'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
+import { useWorkspaceSwitchFallback } from '@/lib/hooks/useWorkspaceSwitchFallback'
 import { Modal }           from '@/components/ui/Modal'
 import { Button }          from '@/components/ui/button'
 import { CurrencyInput }   from '@/components/ui/CurrencyInput'
@@ -202,9 +203,18 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     })
   }, [budget, reportTxs, activeCatIds, allTime, from, to, search])
 
+  // Alan değişince bu bütçe yeni alanda yoksa aynı kategorinin bütçesine,
+  // yoksa Bütçeler'e geç
+  const redirecting = useWorkspaceSwitchFallback(budget, ready, {
+    candidates: allBudgets,
+    listHref:   '/budgets',
+    hrefFor:    b => `/budgets/${b.id}`,
+    keyOf:      b => categories.find(c => c.id === b.categoryId)?.name ?? b.categoryName,
+  })
+
   // ── Conditional returns (after all hooks) ─────────────────────────────────
   // İlk render'da store henüz yüklenmemişken "Bütçe bulunamadı" yanıp sönmesin
-  if (!ready && !budget) return null
+  if ((!ready && !budget) || redirecting) return null
 
   if (!budget) {
     return (
