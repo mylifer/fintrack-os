@@ -3,13 +3,14 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { IconArrowLeft, IconFileTypePdf, IconSearch, IconTrash } from '@tabler/icons-react'
+import { IconArrowBackUp, IconArrowLeft, IconFileTypePdf, IconSearch, IconTrash } from '@tabler/icons-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
+import { findLinkedInvestSell } from '@/components/transactions/TransactionList'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
-import { useAccountStore, usePeopleStore, useTransactionStore, useWorkspaceStore } from '@/store'
+import { useAccountStore, useInvestmentStore, usePeopleStore, useTransactionStore, useWorkspaceStore } from '@/store'
 import { isCommitted, statementKind, useStatementDraftsStore, type StatementDraft, type StatementKind } from '@/store/statement-drafts.store'
 import { rowInWorkspace } from '@/lib/workspace-context'
 import { foldText } from '@/lib/auto-category'
@@ -25,7 +26,12 @@ import type { Transaction } from '@/types'
    işlemler listelenir; satıra tıklayınca işlem düzenleme penceresi açılır,
    birden çok satır seçilip toplu düzenlenebilir. "Satırlar ve kararlar" ekstreyi
    ilk yüklendiği haliyle, her satıra verilen kararla ("Girme" dahil) açar;
-   değiştirilen kararlar yalnız o satırlara uygulanır (lib/statement-import/history.ts). */
+   değiştirilen kararlar yalnız o satırlara uygulanır (lib/statement-import/history.ts).
+   "Geri al": ekstreden girilen ve hâlâ duran kayıtlar toplu silmeyle (taksit,
+   borç, transfer karşı bacağı dahil) silinir; ekstre kararlarıyla yarım kalan
+   taslağa döner — yanlış hesaba yüklenen ekstre hesabı değiştirilip yeniden
+   onaylanabilir. Mevcut kayıtlara yapılan yamalar (onay, karşı taraf adı) ve
+   Kart Takvimi değişiklikleri onay anında saklanmadığı için geri alınmaz. */
 
 /** Dönem önceki kesimin ertesi günü başlar (özet ekranıyla aynı) */
 const nextDay = (iso: string) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + 1)).toISOString().slice(0, 10)
@@ -92,7 +98,41 @@ export function KindTabs({ base, kind, counts }: { base: string; kind: Statement
 function StatementIndex({ list: all, kind, missing }: { list: StatementDraft[]; kind: StatementKind; missing: boolean }) {
   const accounts = useAccountStore(s => s.accounts)
   const remove   = useStatementDraftsStore(s => s.remove)
-  const [confirm, setConfirm] = useState<string | null>(null)
+  const uncommit = useStatementDraftsStore(s => s.uncommit)
+  const transactions = useTransactionStore(s => s.transactions)
+  const removeMany   = useTransactionStore(s => s.removeMany)
+  const investTxs    = useInvestmentStore(s => s.transactions)
+  const [confirm, setConfirm] = useState<{ id: string; kind: 'remove' | 'undo' } | null>(null)
+  const [undoing, setUndoing] = useState<string | null>(null)
+  const [undoNotice, setUndoNotice] = useState<{ id: string; text: string; reopen: boolean } | null>(null)
+  const liveIds = useMemo(() => new Set(transactions.filter(t => !t.deleted_at).map(t => t.id)), [transactions])
+
+  /** Ekstreden girilen, hâlâ duran kayıtları sil; ekstreyi taslağa döndür */
+  async function undoStatement(d: StatementDraft) {
+    setUndoing(d.id)
+    try {
+      // Başka cihazda silinen/düzenlenen kayıtlar da hesaba katılsın
+      await useTransactionStore.getState().load()
+      const own = new Set(d.createdTxIds ?? [])
+      const live = useTransactionStore.getState().transactions.filter(t => !t.deleted_at && own.has(t.id))
+      // Yatırım satışına bağlı kayıt özel temizlik ister (toplu silmeyle aynı kural)
+      const deletable = live.filter(t => !findLinkedInvestSell(t, investTxs))
+      if (deletable.length) await removeMany(deletable.map(t => t.id))
+      const left = live.length - deletable.length
+      if (left) {
+        setUndoNotice({ id: d.id, reopen: false, text: `${deletable.length} kayıt silindi. ${left} kayıt yatırım satışına bağlı olduğu için silinmedi; ekstreyi açıp bunları tek tek sil, sonra tekrar geri al.` })
+        return
+      }
+      uncommit(d.id)
+      setUndoNotice({ id: d.id, reopen: true, text: `“${statementTitle(d)}” geri alındı: ${deletable.length} kayıt silindi, ekstre yarım kalan taslaklara döndü.` })
+    } catch (err) {
+      console.error('[statement-history:undo]', err)
+      setUndoNotice({ id: d.id, reopen: false, text: 'Geri alınamadı; hiçbir şey değişmemiş olabilir. Tekrar deneyin.' })
+    } finally {
+      setUndoing(null)
+      setConfirm(null)
+    }
+  }
   const [accountFilter, setAccountFilter] = useState('')
   const counts = {
     statement: all.filter(d => statementKind(d.statement) === 'statement').length,
@@ -105,9 +145,17 @@ function StatementIndex({ list: all, kind, missing }: { list: StatementDraft[]; 
     .filter((a): a is NonNullable<typeof a> => !!a)
   const shown = accountFilter ? list.filter(d => d.accountId === accountFilter) : list
 
+  const undoBanner = undoNotice && (
+    <div role="status" className="text-xs font-medium px-4 py-2.5 rounded-xl bg-muted text-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span className="flex-1 min-w-0">{undoNotice.text}</span>
+      {undoNotice.reopen && <Link href={`/ekstre-yukle?taslak=${undoNotice.id}`} className="text-primary font-medium whitespace-nowrap">Hesabı seçip yeniden yükle →</Link>}
+    </div>
+  )
+
   if (!all.length) {
     return (
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-3">
+        {undoBanner}
         {missing && <div className="text-xs font-medium px-4 py-2.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400">Bu ekstre bulunamadı (listeden kaldırılmış ya da başka bir çalışma alanına ait olabilir).</div>}
         <div className="rounded-xl border border-border bg-card">
           <EmptyState
@@ -124,6 +172,7 @@ function StatementIndex({ list: all, kind, missing }: { list: StatementDraft[]; 
     <div className="max-w-3xl mx-auto w-full flex flex-col gap-3">
       {missing && <div className="text-xs font-medium px-4 py-2.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400">Bu ekstre bulunamadı (listeden kaldırılmış ya da başka bir çalışma alanına ait olabilir).</div>}
       <KindTabs base="/ekstre-yukle/yuklenenler" kind={kind} counts={counts} />
+      {undoBanner}
       <p className="text-sm text-muted-foreground">
         {kind === 'period'
           ? 'Onayladığın dönem içi işlem listeleri (ekstresi henüz kesilmemiş harcamalar). Ekstreler ayrı sekmede.'
@@ -151,6 +200,7 @@ function StatementIndex({ list: all, kind, missing }: { list: StatementDraft[]; 
         const account = accounts.find(a => a.id === d.accountId)
         const { start, end } = statementRange(d)
         const created = d.createdTxIds?.length ?? 0
+        const stillLive = (d.createdTxIds ?? []).filter(id => liveIds.has(id)).length
         return (
           <div key={d.id} className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
             <Link href={`/ekstre-yukle/yuklenenler?ekstre=${d.id}`} className="flex items-start gap-3 group">
@@ -170,19 +220,34 @@ function StatementIndex({ list: all, kind, missing }: { list: StatementDraft[]; 
               <Link href={`/ekstre-yukle/yuklenenler?ekstre=${d.id}`} className={buttonVariants({ size: 'sm', className: 'rounded-lg' })}>İşlemleri aç</Link>
               <Link href={`/ekstre-yukle?taslak=${d.id}`} className={buttonVariants({ size: 'sm', variant: 'outline', className: 'rounded-lg' })} title="Ekstre ilk yüklediğin haliyle, verdiğin kararlarla (“Girme” dediklerin dahil) açılır">Satırlar ve kararlar</Link>
               <span className="flex-1" />
-              {confirm === d.id
-                ? (
-                  <>
-                    <span className="text-xs text-muted-foreground">Listeden kaldırılsın mı? İşlemlerine dokunulmaz.</span>
-                    <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => setConfirm(null)}>Vazgeç</Button>
-                    <Button size="sm" variant="danger" className="rounded-lg" onClick={() => { remove(d.id); setConfirm(null) }}>Kaldır</Button>
-                  </>
-                )
-                : (
-                  <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setConfirm(d.id)} aria-label="Listeden kaldır">
+              {confirm?.id === d.id && confirm.kind === 'undo' && (
+                <div className="w-full flex flex-wrap items-center gap-2 rounded-lg bg-destructive/5 px-3 py-2">
+                  <span className="text-xs text-muted-foreground flex-1 min-w-[12rem]">
+                    {stillLive
+                      ? <>Bu ekstreden girilen <span className="font-semibold text-foreground tabular-nums">{stillLive}</span> kayıt silinecek; ekstre kararlarıyla yarım kalan taslağa döner, hesabı değiştirip yeniden onaylayabilirsin. Mevcut kayıtlarda yaptığı güncellemeler (onay, karşı taraf adı) ve Kart Takvimi değişiklikleri geri alınmaz.</>
+                      : 'Bu ekstreden girilen kayıtların hepsi zaten silinmiş. Ekstre yarım kalan taslağa döner.'}
+                  </span>
+                  <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => setConfirm(null)} disabled={undoing === d.id}>Vazgeç</Button>
+                  <Button size="sm" variant="danger" className="rounded-lg" onClick={() => void undoStatement(d)} loading={undoing === d.id}>Geri al</Button>
+                </div>
+              )}
+              {confirm?.id === d.id && confirm.kind === 'remove' && (
+                <>
+                  <span className="text-xs text-muted-foreground">Listeden kaldırılsın mı? İşlemlerine dokunulmaz.</span>
+                  <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => setConfirm(null)}>Vazgeç</Button>
+                  <Button size="sm" variant="danger" className="rounded-lg" onClick={() => { remove(d.id); setConfirm(null) }}>Kaldır</Button>
+                </>
+              )}
+              {confirm?.id !== d.id && (
+                <>
+                  <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setConfirm({ id: d.id, kind: 'undo' })} title="Ekstreden girilen kayıtları sil, ekstreyi taslağa döndür (ör. yanlış hesaba yüklendiyse)">
+                    <IconArrowBackUp className="size-4" />Geri al
+                  </Button>
+                  <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setConfirm({ id: d.id, kind: 'remove' })} aria-label="Listeden kaldır">
                     <IconTrash className="size-4" />Kaldır
                   </Button>
-                )}
+                </>
+              )}
             </div>
           </div>
         )

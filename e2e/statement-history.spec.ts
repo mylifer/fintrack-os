@@ -74,3 +74,58 @@ test('yeni alıcının adı düzeltilir; onaylanan ekstre Yüklenenler’de aç�
   await page.goto('/ekstre-yukle/taslaklar')
   await expect(page.getByText('Yarım kalan ekstre yok')).toBeVisible()
 })
+
+test('yüklenen ekstre listeden geri alınır: kayıtları silinir, taslağa döner', async ({ page }) => {
+  await openApp(page)
+  const dlg = await createAccount(page, 'E2E Yanlış Hesap')
+  await dlg.getByRole('button', { name: 'Kaydet' }).click()
+  await expect(dlg).toHaveCount(0)
+
+  const d = addDays(new Date(), -2)
+  await page.goto('/ekstre-yukle')
+  await page.locator('input[type=file][accept*="application/pdf"]').setInputFiles(memFile('geri-al.csv', csv([
+    [d, 'GERI ALINACAK MARKET', '120,00', '', '880,00'],
+    [d, 'GERI ALINACAK KAFE', '80,00', '', '800,00'],
+  ])))
+  const mapper = page.getByTestId('column-mapper')
+  await mapper.getByLabel('Ad (isteğe bağlı)').fill('Geri Bank')
+  await mapper.getByRole('button', { name: /Devam et · 2 işlem/ }).click()
+  await expect(page.getByRole('heading', { name: 'Geri Bank · hesap dökümü' })).toBeVisible()
+  for (const line of ['GERI ALINACAK MARKET', 'GERI ALINACAK KAFE']) {
+    await page.getByRole('button', { name: `${line} ayrıntısı`, exact: true }).click()
+    const row = page.getByRole('dialog')
+    await row.getByRole('radio', { name: 'Gider olarak gir' }).check()
+    await row.getByRole('combobox').filter({ hasText: 'Seçin' }).click()
+    const cat = `Gider ${line.split(' ').pop()}`
+    await page.getByPlaceholder('Kategori ara...').fill(cat)
+    await page.getByRole('button', { name: new RegExp(`“${cat}” kategorisini ekle`) }).click()
+    await row.getByRole('button', { name: 'Tamam' }).click()
+    await expect(row).toHaveCount(0)
+  }
+  const offline = page.getByText(/Buluttaki en güncel kayıtlar alınamadı/)
+  if (await offline.isVisible()) await offline.click()
+  await page.getByRole('button', { name: /Onayla ve gir · 2 kayıt/ }).click()
+  await expect(page.getByText('Ekstre işlendi')).toBeVisible()
+
+  await page.goto('/ekstre-yukle/yuklenenler')
+  await expect(page.getByText(/2 satır · 2 kayıt girildi/)).toBeVisible()
+  await page.getByRole('button', { name: 'Geri al', exact: true }).click()
+  await expect(page.getByText(/Bu ekstreden girilen 2 kayıt silinecek/)).toBeVisible()
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/history-undo-confirm.png` })
+  await page.getByRole('button', { name: 'Geri al', exact: true }).click()
+  await expect(page.getByText(/geri alındı: 2 kayıt silindi/)).toBeVisible()
+  await expect(page.getByRole('link', { name: /Hesabı seçip yeniden yükle/ })).toBeVisible()
+  await expect(page.getByText(/2 satır · 2 kayıt girildi/)).toHaveCount(0)
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/history-undo-done.png` })
+
+  // Kayıtlar silindi
+  await page.goto('/transactions')
+  await expect(page.getByRole('heading').first()).toBeVisible()
+  await expect(page.getByText('GERI ALINACAK MARKET')).toHaveCount(0)
+
+  // Ekstre yarım kalan taslak olarak döndü; açılınca hesap seçilip yeniden onaylanabilir
+  await page.goto('/ekstre-yukle/taslaklar')
+  await expect(page.getByText(/Geri Bank/).first()).toBeVisible()
+  await page.goto('/ekstre-yukle/yuklenenler')
+  await expect(page.getByText('Yüklenmiş ekstre yok')).toBeVisible()
+})

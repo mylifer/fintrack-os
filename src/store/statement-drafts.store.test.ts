@@ -80,4 +80,25 @@ describe('yüklenen ekstreler', () => {
     expect(s().get('d1')).toBeUndefined()
     vi.unstubAllGlobals()
   })
+
+  it('yüklenen ekstre listeden geri alınınca kararlarıyla yarım kalan taslağa döner', async () => {
+    vi.resetModules()
+    const mem = new Map<string, string>()
+    vi.stubGlobal('window', {})
+    vi.stubGlobal('localStorage', { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v) } })
+    const { useStatementDraftsStore, isCommitted } = await import('./statement-drafts.store')
+    const s = () => useStatementDraftsStore.getState()
+    s().save({ id: 'd2', workspaceId: null, fileName: 'b.pdf', statement: st(), accountId: 'acc', choices: { L1: 'skip' }, edits: {}, progress: { review: 0, pending: 0, create: 1 } })
+    s().markCommitted('d2', ['t1'])
+    s().uncommit('d2')
+    const d = s().get('d2')!
+    expect(isCommitted(d)).toBe(false)
+    expect(d.createdTxIds).toBeUndefined()
+    expect(d.choices).toEqual({ L1: 'skip' })
+    expect(d.accountId).toBe('acc')
+    // Olmayan ekstre: sessizce geçilir
+    s().uncommit('yok')
+    expect(s().get('yok')).toBeUndefined()
+    vi.unstubAllGlobals()
+  })
 })
