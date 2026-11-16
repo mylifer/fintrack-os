@@ -31,6 +31,13 @@ export const STATUS_META: Record<'error' | RowStatus, { label: string; dot: stri
   info:   { label: 'Kayda girmez',   dot: 'bg-sky-500',           hint: 'Bonus, hesap içi aktarım ve takip dışı hareketler' },
 }
 
+/** Yüklenmiş (onaylanmış) ekstrede bölümler olmuş olanı anlatır */
+const COMMITTED_META: Partial<Record<RowStatus, { label: string; hint: string }>> = {
+  review: { label: 'Karar verilenler', hint: 'Bu satırlarda verdiğin kararlar; değiştirip kaydedebilirsin' },
+  new:    { label: 'Otomatik girilenler', hint: 'Karar gerekmeden girilenler (sonradan “Girme” dediklerin dahil)' },
+  exists: { label: 'Zaten sistemdeydi', hint: 'Yüklediğin gün sistemde vardı' },
+}
+
 const ORDER: RowStatus[] = ['review', 'new', 'exists', 'info']
 
 const SUBGROUPS: Partial<Record<RowStatus, [string, (r: PlanRow) => boolean][]>> = {
@@ -105,6 +112,8 @@ interface ListProps {
   onToggleSection: (s: RowStatus, open?: boolean) => void
   /** Kısa süre vurgulanan satır (ilerleme listesinden gelindi) */
   highlightKey: string | null
+  /** Yüklenmiş ekstre: liste ilk yüklemedeki haliyle, verilen kararlarla */
+  committed?: boolean
 }
 
 export function PreviewList(props: ListProps) {
@@ -127,7 +136,12 @@ export function PreviewList(props: ListProps) {
 
   const byStatus = (s: RowStatus) => rows.filter(r => r.status === s)
   const pendingReview = rows.filter(r => r.status === 'review' && chosenIndex(r, choices) === null).length
-  const recommendable = rows.filter(r => r.status === 'review' && chosenIndex(r, choices) === null && r.recommended !== null).length
+  const recommendable = props.committed ? 0 : rows.filter(r => r.status === 'review' && chosenIndex(r, choices) === null && r.recommended !== null).length
+  const meta = (s: RowStatus) => ({ ...STATUS_META[s], ...(props.committed ? COMMITTED_META[s] : undefined) })
+  // Yüklenmiş ekstrede "Girme" denen satırlar (karar ya da otomatik satırda)
+  const skippedCount = props.committed
+    ? rows.filter(r => (r.status === 'review' || r.status === 'new') && r.options[selectedOption(r, choices) ?? -1]?.actions.length === 0).length
+    : 0
 
   function jump(s: RowStatus) {
     props.onToggleSection(s, true)
@@ -280,10 +294,10 @@ export function PreviewList(props: ListProps) {
   }
 
   const pills: [RowStatus, string, number][] = [
-    ['review', 'Kontrol et', pendingReview],
-    ['new', 'Girilecek', byStatus('new').length],
-    ['exists', 'Zaten sistemde', byStatus('exists').length],
-    ['info', 'Kayda girmez', byStatus('info').length],
+    ['review', meta('review').label, props.committed ? byStatus('review').length : pendingReview],
+    ['new', meta('new').label, byStatus('new').length],
+    ['exists', meta('exists').label, byStatus('exists').length],
+    ['info', meta('info').label, byStatus('info').length],
   ]
 
   return (
@@ -296,6 +310,11 @@ export function PreviewList(props: ListProps) {
             <span className="text-sm font-semibold text-foreground tabular-nums">{s === 'review' && n === 0 ? '✓' : n}</span>{label}
           </button>
         ))}
+        {skippedCount > 0 && (
+          <span className="flex items-center gap-2 rounded-xl border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground">
+            <span className="text-sm font-semibold text-foreground tabular-nums">{skippedCount}</span>satıra “Girme” dedin
+          </span>
+        )}
       </div>
       <div className="relative">
         <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -353,10 +372,10 @@ export function PreviewList(props: ListProps) {
             >
               <span className={cn('size-2 rounded-full flex-shrink-0', STATUS_META[s].dot)} />
               <h2 className="text-[15px] font-semibold whitespace-nowrap">
-                {STATUS_META[s].label}{' '}
+                {meta(s).label}{' '}
                 <span className="font-normal text-muted-foreground tabular-nums">{s === 'review' && pendingReview ? `${pendingReview}/${list.length}` : list.length}</span>
               </h2>
-              <span className="text-xs text-muted-foreground/80 hidden md:inline truncate">{STATUS_META[s].hint}</span>
+              <span className="text-xs text-muted-foreground/80 hidden md:inline truncate">{meta(s).hint}</span>
               {(() => { const n = list.filter(r => problemByKey.has(r.key)).length; return n > 0 && (
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive whitespace-nowrap">{n} eksik</span>
               ) })()}

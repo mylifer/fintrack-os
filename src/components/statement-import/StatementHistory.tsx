@@ -23,8 +23,9 @@ import type { Transaction } from '@/types'
    kimlikleriyle saklanır (statement-drafts.store, committedAt). Buradan bir
    ekstre açılınca o ekstrede girilen işlemler ve ekstrenin dönemindeki bütün
    işlemler listelenir; satıra tıklayınca işlem düzenleme penceresi açılır,
-   birden çok satır seçilip toplu düzenlenebilir. "Yeniden karşılaştır" ekstreyi
-   bugünkü kayıtlarla tekrar açar (eksik kalan satır varsa girilebilir). */
+   birden çok satır seçilip toplu düzenlenebilir. "Satırlar ve kararlar" ekstreyi
+   ilk yüklendiği haliyle, her satıra verilen kararla ("Girme" dahil) açar;
+   değiştirilen kararlar yalnız o satırlara uygulanır (lib/statement-import/history.ts). */
 
 /** Dönem önceki kesimin ertesi günü başlar (özet ekranıyla aynı) */
 const nextDay = (iso: string) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + 1)).toISOString().slice(0, 10)
@@ -167,7 +168,7 @@ function StatementIndex({ list: all, kind, missing }: { list: StatementDraft[]; 
             </Link>
             <div className="flex flex-wrap items-center gap-2">
               <Link href={`/ekstre-yukle/yuklenenler?ekstre=${d.id}`} className={buttonVariants({ size: 'sm', className: 'rounded-lg' })}>İşlemleri aç</Link>
-              <Link href={`/ekstre-yukle?taslak=${d.id}`} className={buttonVariants({ size: 'sm', variant: 'outline', className: 'rounded-lg' })} title="Ekstreyi bugünkü kayıtlarla yeniden karşılaştırır">Yeniden karşılaştır</Link>
+              <Link href={`/ekstre-yukle?taslak=${d.id}`} className={buttonVariants({ size: 'sm', variant: 'outline', className: 'rounded-lg' })} title="Ekstre ilk yüklediğin haliyle, verdiğin kararlarla (“Girme” dediklerin dahil) açılır">Satırlar ve kararlar</Link>
               <span className="flex-1" />
               {confirm === d.id
                 ? (
@@ -239,8 +240,8 @@ function StatementDetail({ draft }: { draft: StatementDraft }) {
           <div className="text-xs text-muted-foreground mt-0.5">Onaylandı: {stamp(draft.committedAt!)}</div>
         </div>
         <div className="flex gap-2">
-          <Link href={`/ekstre-yukle?taslak=${draft.id}`} className={buttonVariants({ size: 'sm', variant: 'outline', className: 'rounded-lg' })} title="Ekstreyi bugünkü kayıtlarla yeniden karşılaştırır; eksik satır varsa girebilirsin">
-            Yeniden karşılaştır
+          <Link href={`/ekstre-yukle?taslak=${draft.id}`} className={buttonVariants({ size: 'sm', variant: 'outline', className: 'rounded-lg' })} title="Ekstre ilk yüklediğin haliyle, verdiğin kararlarla (“Girme” dediklerin dahil) açılır; bir kararı değiştirip kaydedebilirsin">
+            Satırlar ve kararlar
           </Link>
         </div>
       </div>
