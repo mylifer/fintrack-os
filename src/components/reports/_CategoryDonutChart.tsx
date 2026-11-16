@@ -164,7 +164,7 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, onDri
             >
               {formatCurrency(top[activeIndex].amount)}
             </span>
-            <span className="text-[10px] text-muted-foreground tabular">
+            <span className="text-[12px] text-muted-foreground tabular">
               {top[activeIndex].percent.toFixed(1)}%
             </span>
           </div>
@@ -177,7 +177,7 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, onDri
       </div>
 
       {/* Legend — clickable */}
-      <div className="px-5 pb-5 grid grid-cols-2 gap-x-5 gap-y-1.5">
+      <div className="px-5 pb-5 grid grid-cols-1 gap-y-1">
         {top.map((slice, i) => {
           const isActive  = activeIndex === i
           const isFaded   = activeIndex !== null && !isActive
@@ -195,15 +195,19 @@ export function CategoryDonutChartInner({ data, activeIndex, onSliceClick, onDri
                 className={`w-2.5 h-2.5 rounded-sm flex-shrink-0 transition-all ${isActive ? 'ring-2 ring-offset-1' : ''}`}
                 style={{ background: slice.color, '--tw-ring-color': slice.color } as React.CSSProperties}
               />
-              <span className={`text-[11px] font-medium truncate flex-1 ${isActive ? 'text-foreground' : 'text-foreground/70'}`}>
+              <span className={`text-[13px] font-medium truncate flex-1 ${isActive ? 'text-foreground' : 'text-foreground/80'}`}>
                 {slice.name}
               </span>
-              <span className="text-[10px] text-muted-foreground tabular flex-shrink-0">
-                {slice.percent.toFixed(0)}%
+              <span className="text-[13px] font-semibold text-foreground tabular flex-shrink-0">
+                {formatCurrency(slice.amount)}
               </span>
-              {slice.categoryId === OTHER_ID && (
-                <span className="text-[10px] text-muted-foreground/60 flex-shrink-0 leading-none">›</span>
-              )}
+              <span className="text-[12px] text-muted-foreground tabular flex-shrink-0 w-12 text-right">
+                {slice.percent.toFixed(1)}%
+              </span>
+              {/* Her satırda yer ayrılır → tutar/yüzde sütunları "Diğer" satırında kaymaz */}
+              <span className="w-2 text-[12px] text-muted-foreground/60 flex-shrink-0 leading-none">
+                {slice.categoryId === OTHER_ID ? '›' : ''}
+              </span>
             </button>
           )
         })}
