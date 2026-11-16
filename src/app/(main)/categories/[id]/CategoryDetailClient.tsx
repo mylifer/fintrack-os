@@ -78,7 +78,9 @@ export default function CategoryDetailClient({ id }: Props) {
   /* Transactions */
   // Liste TAM işlem satırlarını gösterir: bölünmüş bir işlem paylarından biri
   // bu kategoriye düşüyorsa satır tamamıyla listelenir (tıklanınca düzenleme
-  // açar). Başlıktaki toplam ise yalnızca bu kategoriye düşen PAYI sayar.
+  // açar). Başlıktaki toplam ise yalnızca bu kategoriye düşen PAYI sayar; Miktar
+  // sütunu da bu payı (kategori + alt kategoriler) ana tutar olarak gösterir,
+  // işlemin toplamı altında küçük yazılır (focusCategoryIds).
   const catTxs = useMemo(
     () => transactions
       .filter(t => {
@@ -372,6 +374,7 @@ export default function CategoryDetailClient({ id }: Props) {
         <TransactionList
           transactions={catTxs}
           layout="table"
+          focusCategoryIds={descendantIds}
           showAccount
           emptyTitle="İşlem bulunamadı"
           emptyDescription={search || typeFilter ? 'Filtreyle eşleşen işlem yok.' : 'Bu kategoriye ait henüz işlem yok.'}

@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { TransactionList }     from '@/components/transactions/TransactionList'
 import type { CategorySlice }  from '@/components/reports/_CategoryDonutChart'
@@ -21,6 +22,11 @@ export function CategoryDrilldowns({
   setSelectedIncomeCat: (s: CategorySlice | null) => void
   setActiveIncomeSliceIdx: (i: number | null) => void
 }) {
+  // Satırlar memo'lu → Set her render'da yeniden kurulmasın.
+  const expenseCatId = selectedCat?.categoryId ?? null
+  const incomeCatId  = selectedIncomeCat?.categoryId ?? null
+  const expenseFocus = useMemo(() => expenseCatId ? new Set([expenseCatId]) : undefined, [expenseCatId])
+  const incomeFocus  = useMemo(() => incomeCatId ? new Set([incomeCatId]) : undefined, [incomeCatId])
   return (
     <>
       {/* ── Category drill-down ───────────────────────────────────── */}
@@ -44,7 +50,7 @@ export function CategoryDrilldowns({
             <div className="overflow-auto" style={{ maxHeight: 440 }}>
               <TransactionList
                 transactions={catFilteredTxs}
-                focusCategoryId={selectedCat.categoryId}
+                focusCategoryIds={expenseFocus}
                 showAccount
                 emptyTitle="İşlem bulunamadı"
                 emptyDescription="Seçili dönemde bu kategoride gider yok."
@@ -75,7 +81,7 @@ export function CategoryDrilldowns({
             <div className="overflow-auto" style={{ maxHeight: 440 }}>
               <TransactionList
                 transactions={incomeCatFilteredTxs}
-                focusCategoryId={selectedIncomeCat.categoryId}
+                focusCategoryIds={incomeFocus}
                 showAccount
                 emptyTitle="İşlem bulunamadı"
                 emptyDescription="Seçili dönemde bu kategoride gelir yok."
