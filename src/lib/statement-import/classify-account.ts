@@ -597,21 +597,8 @@ export function buildAccountPlan(input: PlanInput): ImportPlan {
     }, d))
   }
 
-  // 6) Ters kontrol: dönem içinde sistemde olup dökümde olmayan
-  const keep: RowOption = { key: 'keep', label: 'Sistemdeki kayıt kalsın', actions: [] }
-  for (const t of inAccount) {
-    if (usedTx.has(t.id) || t.date < firstDate || t.date > lastDate) continue
-    rows.push({
-      key: `sys:${t.id}`, lines: [], status: 'review', kind: 'orphan', date: t.date,
-      amount: toMajor(-effectOn(t, A)), bonus: null, title: t.description, raw: describeTx(t), foreign: null,
-      recipientId: t.recipientId ?? undefined, categoryId: t.categoryId ?? undefined,
-      match: { txIds: [t.id], text: describeTx(t) },
-      issue: 'Sistemde var, dökümde yok',
-      reason: 'Bu kayıt bu hesapta, döküm dönemi içinde duruyor ama dökümde karşılığı yok. Başka bir hesaptan yapılmış ya da tutarı farklı girilmiş olabilir.',
-      options: [keep, { key: 'delete', label: 'Sistemden sil', actions: [{ type: 'delete', txIds: [t.id] }] }],
-      recommended: 0, defaultOption: null, sideEffects: [],
-    })
-  }
+  // Dönem içinde sistemde olup dökümde olmayan kayıtlar için uyarı verilmez:
+  // takip dışı hareketler ve başka kanaldan girilen kayıtlar gürültü yaratıyordu.
 
   // Kullanıcı kuralları (öğrenilmiş öneriden önce — bkz. user-rules.ts),
   // sabit anahtar ve önceki "girme / kalsın" kararları
@@ -624,8 +611,8 @@ export function buildAccountPlan(input: PlanInput): ImportPlan {
     if (input.skipped?.has(stableKey) && (r.status === 'review' || r.status === 'new')) {
       return {
         ...row, status: 'exists', issue: undefined,
-        reason: (r.kind === 'orphan' ? 'Bu kaydın kalmasına daha önce karar verdin. ' : 'Bu satırı daha önceki bir yüklemede girmemeyi seçtin. ') + r.reason,
-        options: [{ key: 'keep', label: r.kind === 'orphan' ? 'Kalsın (önceki kararın)' : 'Girme (önceki kararın)', actions: [] }, ...r.options.filter(o => o.actions.length > 0)],
+        reason: 'Bu satırı daha önceki bir yüklemede girmemeyi seçtin. ' + r.reason,
+        options: [{ key: 'keep', label: 'Girme (önceki kararın)', actions: [] }, ...r.options.filter(o => o.actions.length > 0)],
         recommended: 0, defaultOption: 0,
       }
     }

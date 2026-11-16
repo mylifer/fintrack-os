@@ -177,12 +177,10 @@ describe('buildAccountPlan', () => {
     expect(again.rows.filter(r => r.kind === 'orphan')).toEqual([])
   })
 
-  it('sistemde olup dökümde olmayan kayıt sorulur; "kalsın" kararı hatırlanır', () => {
+  it('sistemde olup dökümde olmayan kayıt için uyarı verilmez', () => {
     const odd = tx({ type: 'income', amount: 7.91, date: '2026-10-20', description: 'Hibe' })
     const p = plan([['2026-10-21', '10:00', 100, 'ATM PARA ÇEKME-9900']], [odd])
-    const orphan = p.rows.find(r => r.kind === 'orphan')!
-    expect(orphan).toMatchObject({ status: 'review', recommended: 0, issue: 'Sistemde var, dökümde yok' })
-    const again = plan([['2026-10-21', '10:00', 100, 'ATM PARA ÇEKME-9900']], [odd], new Set([orphan.stableKey]))
-    expect(again.rows.find(r => r.kind === 'orphan')!.status).toBe('exists')
+    expect(p.rows.filter(r => r.kind === 'orphan')).toEqual([])
+    expect(p.rows.some(r => r.match?.txIds.includes(odd.id))).toBe(false)
   })
 })
