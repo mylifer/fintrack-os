@@ -64,37 +64,46 @@ export function AppearanceSettings() {
           Kenar çubuğu yalnızca geniş ekranlarda görünür; mobilde alt menü kullanılır.
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        {/* Kart dikey: önizleme üstte, metin altta. Yan yana dizilimde dar
+            sütunda metin 5–6 karaktere sıkışıyor ve rozet taşıyordu. */}
+        <div role="radiogroup" aria-label="Kenar çubuğu düzeni" className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {SIDEBAR_VARIANTS.map(option => {
             const selected = variant === option.key
             return (
               <button
                 key={option.key}
                 type="button"
+                role="radio"
                 onClick={() => setVariant(option.key)}
-                aria-pressed={selected}
+                aria-checked={selected}
                 className={[
-                  'flex gap-3 items-start text-left p-3 rounded-xl border transition-colors',
+                  'flex flex-col text-left p-3 rounded-xl border transition-colors',
                   selected
                     ? 'border-primary bg-primary/5 ring-1 ring-primary'
                     : 'border-border hover:border-muted-foreground/40 hover:bg-accent',
                 ].join(' ')}
               >
-                <Preview variant={option.key} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold">{option.label}</span>
-                    {option.key === DEFAULT_SIDEBAR_VARIANT && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Varsayılan
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">{option.hint}</div>
-                  {selected && (
-                    <div className="text-[11px] font-semibold text-foreground mt-1.5">✓ Seçili</div>
-                  )}
+                <div className="flex items-center justify-center rounded-lg bg-muted/50 py-4">
+                  <Preview variant={option.key} />
                 </div>
+                <div className="flex items-center gap-2 mt-3">
+                  <span className="text-sm font-semibold">{option.label}</span>
+                  {option.key === DEFAULT_SIDEBAR_VARIANT && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      Varsayılan
+                    </span>
+                  )}
+                  <span
+                    aria-hidden
+                    className={[
+                      'ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0',
+                      selected ? 'border-primary' : 'border-muted-foreground/40',
+                    ].join(' ')}
+                  >
+                    {selected && <span className="w-2 h-2 rounded-full bg-primary" />}
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{option.hint}</div>
               </button>
             )
           })}
