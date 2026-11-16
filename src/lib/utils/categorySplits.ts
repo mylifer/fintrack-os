@@ -199,6 +199,25 @@ export function txHasCategory(tx: Transaction, categoryId: string): boolean {
   return tx.categoryId === categoryId
 }
 
+/**
+ * Bölünmüş işlemde verilen kategorilere (ör. bir kategori + alt kategorileri)
+ * düşen payların toplamı. İşlem bölünmemişse, hiçbir pay eşleşmiyorsa ya da
+ * paylar işlemin tamamını kapsıyorsa (pay = tutar) undefined döner — listede
+ * ayrıca "pay" göstermeye gerek olmayan durumlar.
+ */
+export function focusedSplitShare(tx: Transaction, categoryIds: ReadonlySet<string>): number | undefined {
+  if (!isSplitTx(tx)) return undefined
+  let acc = 0
+  let hit = false
+  for (const s of tx.categorySplits!) {
+    if (!categoryIds.has(s.categoryId)) continue
+    acc += toMinor(s.amount)
+    hit = true
+  }
+  if (!hit || acc === toMinor(tx.amount)) return undefined
+  return toMajor(acc)
+}
+
 /** İşlemin dokunduğu tüm kategori id'leri (bölünmemişse tek elemanlı). */
 export function txCategoryIds(tx: Transaction): string[] {
   if (tx.categorySplits?.length) return tx.categorySplits.map(s => s.categoryId)

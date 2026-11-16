@@ -19,6 +19,7 @@ import { PersonAvatar, recipientIconDomain } from '@/components/people/PersonAva
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { TagBadges } from '@/components/transactions/TagBadges'
 import { SplitCountBadge } from '@/components/transactions/SplitCountBadge'
+import { focusedSplitShare } from '@/lib/utils/categorySplits'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { detectBrand } from '@/lib/subscriptions/brands'
@@ -337,7 +338,7 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
   tx, cat, account, toAccount, recipient, family, balanceAfter, balanceCurrency, projected, future, openModal, removeTx,
-  selectable, selected, onToggleSelect, grouped, isFirst, isLast, compact,
+  selectable, selected, onToggleSelect, grouped, isFirst, isLast, compact, focusCategoryIds,
 }: {
   tx: Transaction
   cat?: Category
@@ -363,10 +364,13 @@ const TableTxRow = memo(function TableTxRow({
   /** Kompakt satır (gelecek konteyneri): hücre dolgusu yarıya iner ve açıklama
    *  hücresi tarihi satır içinde önek olarak taşır — üstünde gün etiketi yok. */
   compact?: boolean
+  /** Bkz. Props.focusCategoryIds */
+  focusCategoryIds?: ReadonlySet<string>
 }) {
   const isIncome    = tx.type === 'income'
   const isXfer      = tx.type === 'transfer'
   const isRefund    = tx.type === 'expense' && tx.amount < 0
+  const focusShare  = focusCategoryIds ? focusedSplitShare(tx, focusCategoryIds) : undefined
   // Kompaktta hücrelerin py-2'si tek yerden ezilir: alt seçici (0,2,0) tek
   // sınıftan (0,1,0) daha özgül olduğu için her hücreyi ayrı koşullamaya gerek
   // yok. Satır yüksekliği ~40px'ten ~30px'e iner.
@@ -517,14 +521,19 @@ const TableTxRow = memo(function TableTxRow({
       </div>
 
       {/* Miktar */}
-      <div className="px-3 py-2 flex items-center justify-end">
+      <div className="px-3 py-2 flex flex-col items-end justify-center">
         <span className={[
           'text-xs font-semibold tabular-nums',
           isIncome || isRefund ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground',
         ].join(' ')}>
           {isIncome || isRefund ? '+' : isXfer ? '' : '−'}
-          {formatCurrency(Math.abs(tx.amount), tx.currency)}
+          {formatCurrency(Math.abs(focusShare ?? tx.amount), tx.currency)}
         </span>
+        {focusShare !== undefined && (
+          <span className="text-[10px] tabular-nums text-muted-foreground/70 leading-tight whitespace-nowrap" title="İşlemin toplam tutarı">
+            Toplam {isIncome || isRefund ? '+' : '−'}{formatCurrency(Math.abs(tx.amount), tx.currency)}
+          </span>
+        )}
       </div>
 
       {/* Güncel Bakiye */}
@@ -590,7 +599,7 @@ const TableTxRow = memo(function TableTxRow({
 
 // ── CARDS row (compact minimal) ───────────────────────────────────────────
 const CardTxRow = memo(function CardTxRow({
-  tx, cat, account, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryId,
+  tx, cat, account, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryIds,
 }: {
   tx: Transaction
   cat?: Category
@@ -602,17 +611,15 @@ const CardTxRow = memo(function CardTxRow({
   future?: boolean
   openModal: OpenModal
   removeTx: (id: string) => void
-  /** Bkz. Props.focusCategoryId */
-  focusCategoryId?: string | null
+  /** Bkz. Props.focusCategoryIds */
+  focusCategoryIds?: ReadonlySet<string>
 }) {
   const isIncome  = tx.type === 'income'
   const isXfer    = tx.type === 'transfer'
   const isRefund  = tx.type === 'expense' && tx.amount < 0
   // Kategori odaklı listede bölünmüş satırın ana tutarı o kategorinin PAYI;
   // işlemin tamamı altında küçük yazılır.
-  const focusShare = focusCategoryId && (tx.categorySplits?.length ?? 0) > 1
-    ? tx.categorySplits!.find(sp => sp.categoryId === focusCategoryId)?.amount
-    : undefined
+  const focusShare = focusCategoryIds ? focusedSplitShare(tx, focusCategoryIds) : undefined
   const sign = isIncome || isRefund ? '+' : isXfer ? '' : '−'
 
   // Build meta items — each can have an href for navigation
@@ -774,9 +781,10 @@ interface Props {
    *  liste görünüm seçicili bir kabuğa gömülüyse çubuğun payı düşülmüş bir
    *  değer geçilir. */
   heightClass?: string
-  /** Kategori drill-down'u: bölünmüş satırlarda ana tutar bu kategorinin payı
-   *  olur, işlemin toplamı altında küçük gösterilir (yalnızca cards layout). */
-  focusCategoryId?: string | null
+  /** Kategori odaklı liste (rapor drill-down'u, kategori detayı): bölünmüş
+   *  satırlarda ana tutar bu kategorilere düşen payların toplamı olur, işlemin
+   *  toplamı altında küçük gösterilir. */
+  focusCategoryIds?: ReadonlySet<string>
 }
 
 export function TransactionList({
@@ -795,7 +803,7 @@ export function TransactionList({
   onSelectMany,
   summary,
   heightClass = 'h-[calc(100vh-220px)]',
-  focusCategoryId,
+  focusCategoryIds,
 }: Props) {
   const categories = useCategoryStore(s => s.categories)
   const accounts   = useAccountStore(s => s.accounts)
@@ -1013,6 +1021,7 @@ export function TransactionList({
                         tx={row.tx}
                         future={row.future}
                         compact={row.compact}
+                        focusCategoryIds={focusCategoryIds}
                         grouped={row.compact ? true : dateGrouped}
                         isFirst={row.isFirst}
                         isLast={row.isLast}
@@ -1071,7 +1080,7 @@ export function TransactionList({
                     projected={projectedIds?.has(row.tx.id)}
                     openModal={openModal}
                     removeTx={removeTx}
-                    focusCategoryId={focusCategoryId}
+                    focusCategoryIds={focusCategoryIds}
                   />
                 )}
               </div>

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   equalSplit, splitsMatchAmount, splitsAreValid, setSplitAmount, distributeSplits, unpinSplits,
   rescaleSplits, primarySplitCategoryId, txCategorySlices, expandByCategory, txHasCategory,
-  txCategoryIds, hasDuplicateCategory, type DraftSplit,
+  txCategoryIds, hasDuplicateCategory, focusedSplitShare, type DraftSplit,
 } from './categorySplits'
 import { sumMoney } from './money'
 import type { Transaction } from '@/types'
@@ -285,5 +285,27 @@ describe('txHasCategory / txCategoryIds', () => {
   it('bölünmemiş işlemde tek kategoriye düşer', () => {
     expect(txCategoryIds(tx({ categoryId: 'a' }))).toEqual(['a'])
     expect(txCategoryIds(tx({ categoryId: undefined }))).toEqual([])
+  })
+})
+
+describe('focusedSplitShare', () => {
+  const base = {
+    id: 'x', type: 'expense', amount: 1000, currency: 'TRY', date: '2026-11-05', accountId: 'a',
+    description: 'd', isInstallment: false, createdAt: '', updatedAt: '',
+  } as const
+  const split = { ...base, categoryId: 'pet', categorySplits: [
+    { categoryId: 'pet', amount: 600 }, { categoryId: 'mutfak', amount: 250 }, { categoryId: 'mutfak-alt', amount: 150 },
+  ] }
+
+  it('tek kategorinin payını döner', () => {
+    expect(focusedSplitShare(split, new Set(['mutfak']))).toBe(250)
+  })
+  it('kategori + alt kategorilerin paylarını toplar', () => {
+    expect(focusedSplitShare(split, new Set(['mutfak', 'mutfak-alt']))).toBe(400)
+  })
+  it('bölünmemiş, eşleşmeyen veya tamamı kapsanan işlemde undefined', () => {
+    expect(focusedSplitShare({ ...base, categoryId: 'pet' }, new Set(['pet']))).toBeUndefined()
+    expect(focusedSplitShare(split, new Set(['yok']))).toBeUndefined()
+    expect(focusedSplitShare(split, new Set(['pet', 'mutfak', 'mutfak-alt']))).toBeUndefined()
   })
 })
