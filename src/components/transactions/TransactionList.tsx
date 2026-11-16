@@ -590,7 +590,7 @@ const TableTxRow = memo(function TableTxRow({
 
 // ── CARDS row (compact minimal) ───────────────────────────────────────────
 const CardTxRow = memo(function CardTxRow({
-  tx, cat, account, recipient, family, showAccount, projected, future, openModal, removeTx,
+  tx, cat, account, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryId,
 }: {
   tx: Transaction
   cat?: Category
@@ -602,10 +602,18 @@ const CardTxRow = memo(function CardTxRow({
   future?: boolean
   openModal: OpenModal
   removeTx: (id: string) => void
+  /** Bkz. Props.focusCategoryId */
+  focusCategoryId?: string | null
 }) {
   const isIncome  = tx.type === 'income'
   const isXfer    = tx.type === 'transfer'
   const isRefund  = tx.type === 'expense' && tx.amount < 0
+  // Kategori odaklı listede bölünmüş satırın ana tutarı o kategorinin PAYI;
+  // işlemin tamamı altında küçük yazılır.
+  const focusShare = focusCategoryId && (tx.categorySplits?.length ?? 0) > 1
+    ? tx.categorySplits!.find(sp => sp.categoryId === focusCategoryId)?.amount
+    : undefined
+  const sign = isIncome || isRefund ? '+' : isXfer ? '' : '−'
 
   // Build meta items — each can have an href for navigation
   const metaItems: MetaItem[] = []
@@ -673,12 +681,19 @@ const CardTxRow = memo(function CardTxRow({
       </div>
 
       {/* Amount */}
-      <span className={[
-        'text-[13px] font-medium tabular-nums flex-shrink-0',
-        isIncome || isRefund ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground',
-      ].join(' ')}>
-        {isIncome || isRefund ? '+' : isXfer ? '' : '−'}{formatCurrency(Math.abs(tx.amount), tx.currency)}
-      </span>
+      <div className="flex flex-col items-end flex-shrink-0">
+        <span className={[
+          'text-[13px] font-medium tabular-nums',
+          isIncome || isRefund ? 'text-green-600' : isXfer ? 'text-foreground/50' : 'text-foreground',
+        ].join(' ')}>
+          {sign}{formatCurrency(Math.abs(focusShare ?? tx.amount), tx.currency)}
+        </span>
+        {focusShare !== undefined && (
+          <span className="text-[10.5px] tabular-nums text-muted-foreground/70 leading-tight" title="İşlemin toplam tutarı">
+            Toplam {sign}{formatCurrency(Math.abs(tx.amount), tx.currency)}
+          </span>
+        )}
+      </div>
 
       {/* Actions — visible only on row hover; planlanan satırlar yalnızca düzenlenebilir */}
       <div className="row-actions flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -759,6 +774,9 @@ interface Props {
    *  liste görünüm seçicili bir kabuğa gömülüyse çubuğun payı düşülmüş bir
    *  değer geçilir. */
   heightClass?: string
+  /** Kategori drill-down'u: bölünmüş satırlarda ana tutar bu kategorinin payı
+   *  olur, işlemin toplamı altında küçük gösterilir (yalnızca cards layout). */
+  focusCategoryId?: string | null
 }
 
 export function TransactionList({
@@ -777,6 +795,7 @@ export function TransactionList({
   onSelectMany,
   summary,
   heightClass = 'h-[calc(100vh-220px)]',
+  focusCategoryId,
 }: Props) {
   const categories = useCategoryStore(s => s.categories)
   const accounts   = useAccountStore(s => s.accounts)
@@ -1052,6 +1071,7 @@ export function TransactionList({
                     projected={projectedIds?.has(row.tx.id)}
                     openModal={openModal}
                     removeTx={removeTx}
+                    focusCategoryId={focusCategoryId}
                   />
                 )}
               </div>
