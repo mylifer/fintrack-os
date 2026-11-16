@@ -32,6 +32,7 @@ import { useDebtStore, debtPaymentPatches } from '@/store/debts.store'
 import type { Debt } from '@/types'
 import { buildCommit, commitEffect, optionForEdit, remapByStableKey, rowTitle, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
+import { buildHistoryCommit, changedRows, skippedAsOf, transactionsAsOf, type CommittedBaseline } from '@/lib/statement-import/history'
 import type { BatchOp } from '@/lib/sync/engine'
 import { PreviewList, STATUS_META } from './PreviewList'
 import { RowModal } from './RowModal'
@@ -47,6 +48,8 @@ interface DoneState {
   patched: number
   undo: BatchOp[]
   skippedKeys: string[]
+  /** Yüklenmiş ekstrede "girme"den "gir"e çevrilen satırlar (geri almada hafızaya döner) */
+  unskippedKeys: string[]
   accountId: string
   undone: boolean
   /** Onaylanan ekstrenin kimliği ve onaydan önceki hali (geri almada geri konur) */
@@ -71,6 +74,17 @@ function syncDrafts(): Promise<unknown> {
 function wsName(id: string | null | undefined): string {
   const ws = useWorkspaceStore.getState().workspaces
   return (id ? ws.find(w => w.id === id) : ws.find(w => w.isDefault))?.name ?? 'başka bir'
+}
+
+/** Onaylanmış ekstrenin kararları: liste onay anındaki haliyle kurulur (history.ts) */
+function baselineOf(d: Pick<StatementDraft, 'committedAt' | 'createdTxIds' | 'choices' | 'edits'>): CommittedBaseline | null {
+  return d.committedAt ? { ownTxIds: new Set(d.createdTxIds ?? []), committedAt: d.committedAt, choices: d.choices, edits: d.edits } : null
+}
+
+/** Yüklenmiş ekstre açılınca gösterilen bilgi */
+function committedNotice(d: Pick<StatementDraft, 'committedAt'>, st: ParsedStatement): string {
+  const at = d.committedAt ? formatDate(d.committedAt.slice(0, 10), 'd MMM yyyy') : ''
+  return `${statementKind(st) === 'period' ? 'Bu dönem içi liste' : 'Bu ekstre'} ${at} tarihinde onaylandı. Liste ilk yüklediğin haliyle, verdiğin kararlarla gösteriliyor (“Girme” dediklerin dahil). Bir kararı değiştirip kaydedersen yalnız o satır güncellenir.`
 }
 
 /** Hesap önerisi: kayıtlarıyla en çok eşleşen hesap (kart ekstresinde kart,
@@ -107,6 +121,9 @@ export function StatementImport() {
   const [undoing, setUndoing]       = useState(false)
   const [offlineOk, setOfflineOk]   = useState(false)
   const [draftId, setDraftId]       = useState<string | null>(null)
+  /** Yüklenmiş (onaylanmış) ekstre açıksa onaylanan kararlar: liste ilk yüklemedeki
+   *  gibi kurulur, yalnız değiştirilen satırlar yazılır */
+  const [baseline, setBaseline]     = useState<CommittedBaseline | null>(null)
   /** Açık ekstrenin ait olduğu çalışma alanı (açıldığı ya da yüklendiği an) */
   const [draftWs, setDraftWs]       = useState<string | null | undefined>(undefined)
   const [applyCalendar, setApplyCalendar] = useState(true)
@@ -133,32 +150,51 @@ export function StatementImport() {
   const candidates = useMemo(() => accounts.filter(a => accountFits(a, statement)), [accounts, statement])
   const account = accounts.find(a => a.id === accountId)
 
-  const makePlan = useCallback((st: ParsedStatement, accId: string, txs = useTransactionStore.getState().transactions): ImportPlan | null => {
+  /** Ekstrenin planı. `base` verilirse (yüklenmiş ekstre) onay anındaki kayıtlarla:
+   *  bu ekstrenin girdikleri ve sonradan girilenler eşleşmez, bu ekstrede verilen
+   *  "girme" kararları hafızadan sayılmaz — satırlar ilk yüklemedeki gibi sorulur. */
+  const makePlan = useCallback((st: ParsedStatement, accId: string, base?: CommittedBaseline | null): ImportPlan | null => {
     const acc = useAccountStore.getState().accounts.find(a => a.id === accId)
     if (!acc) return null
-    return sortNewestFirst(withManualOptions((st.type === 'checking' ? buildAccountPlan : buildImportPlan)({
+    const all = useTransactionStore.getState().transactions
+    const build = (skipped: ReadonlySet<string>) => sortNewestFirst(withManualOptions((st.type === 'checking' ? buildAccountPlan : buildImportPlan)({
       statement: st, account: acc, accounts: useAccountStore.getState().accounts,
-      transactions: txs, people: usePeopleStore.getState().people, categories: useCategoryStore.getState().categories,
-      todayStr: today(), skipped: loadSkipped(accId), rules: useRulesStore.getState().rules,
+      transactions: base ? transactionsAsOf(all, base) : all, people: usePeopleStore.getState().people, categories: useCategoryStore.getState().categories,
+      todayStr: today(), skipped, rules: useRulesStore.getState().rules,
     })))
+    const skipped = loadSkipped(accId)
+    if (!base) return build(skipped)
+    return build(skippedAsOf(skipped, build(skipped).rows, base.choices))
   }, [])
 
   // Plan, store'daki her değişiklikte (başka cihazdan gelen kayıt dahil) yeniden hesaplanır
   const plan = useMemo(() => {
     if (!statement || !accountId) return null
     void transactions; void people; void categories; void accounts; void rules
-    return makePlan(statement, accountId)
-  }, [statement, accountId, transactions, people, categories, accounts, rules, makePlan])
+    return makePlan(statement, accountId, baseline)
+  }, [statement, accountId, baseline, transactions, people, categories, accounts, rules, makePlan])
+
+  // Yüklenmiş ekstrede bugünkü kayıtlarla eşleşmeler: sonradan başka yoldan girilen
+  // satır, kararı "gir"e çevrilirse mükerrer olmasın
+  const liveMatches = useMemo(() => {
+    if (!baseline || !statement || !accountId) return null
+    void transactions; void people; void categories; void accounts; void rules
+    const live = makePlan(statement, accountId)
+    return new Map((live?.rows ?? []).filter(r => r.match).map(r => [r.stableKey, r.match!.txIds]))
+  }, [baseline, statement, accountId, transactions, people, categories, accounts, rules, makePlan])
 
   const existing = useMemo(() => new Map(transactions.map(t => [t.id, t])), [transactions])
 
   const preview = useMemo(() => {
     if (!plan || !accountId) return null
-    return buildCommit({
+    const input = {
       rows: plan.rows, choices, edits, accountId, existing, people, workspaceId,
       nowIso: new Date().toISOString(), todayStr: today(), newId: () => 'preview',
-    })
-  }, [plan, choices, edits, accountId, existing, people, workspaceId])
+    }
+    return baseline
+      ? buildHistoryCommit({ ...input, base: baseline, liveMatches: liveMatches ?? new Map() })
+      : { ...buildCommit(input), changed: 0, unskippedKeys: [] as string[], rewrittenTxIds: [] as string[] }
+  }, [plan, choices, edits, accountId, existing, people, workspaceId, baseline, liveMatches])
 
   // Ekstrenin kesim / son ödeme tarihleri → Kart Takvimi (hesap seçiliyse)
   const calendarFor = useCallback((st: ParsedStatement, accId: string): CalendarUpdate | null => {
@@ -264,19 +300,24 @@ export function StatementImport() {
     setAccountId(prevAccount ?? best?.id ?? '')
     setSuggested(best && best.matched > 0 ? { id: best.id, matched: best.matched } : null)
     // Ekstre yeniden okununca satırlar değişmiş olabilir (okuyucu düzeltmesi):
-    // kararlar satır sırasıyla değil, satırın kalıcı kimliğiyle taşınır
-    const oldPlan = prevAccount ? makePlan(prev!.statement, prevAccount) : null
-    const newPlan = prevAccount ? makePlan(st, prevAccount) : null
-    setChoices(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.choices) : {})
-    setEdits(oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.edits) : {})
+    // kararlar satır sırasıyla değil, satırın kalıcı kimliğiyle taşınır.
+    // Yüklenmiş ekstrenin planları onay anındaki kayıtlarla kurulur (kararlar görünsün)
+    const oldBase = prevAccount ? baselineOf(prev!) : null
+    const oldPlan = prevAccount ? makePlan(prev!.statement, prevAccount, oldBase) : null
+    const newPlan = prevAccount ? makePlan(st, prevAccount, oldBase) : null
+    const nextChoices = oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.choices) : {}
+    const nextEdits = oldPlan && newPlan ? remapByStableKey(oldPlan.rows, newPlan.rows, prev!.edits) : {}
+    setChoices(nextChoices)
+    setEdits(nextEdits)
+    setBaseline(oldBase ? { ...oldBase, choices: nextChoices, edits: nextEdits } : null)
     if (prevAccount) setNotice(prev?.committedAt
-      ? (statementKind(st) === 'period' ? 'Bu dönem içi liste daha önce yüklenip onaylanmış;' : 'Bu ekstre daha önce yüklenip onaylanmış;') + ' girilen kayıtlar “Zaten sistemde” görünür, verdiğin kararlar geri getirildi.'
+      ? committedNotice(prev, st)
       : 'Bu ekstre daha önce yüklenip yarım bırakılmış; verdiğin kararlar geri getirildi.')
     setStep('preview')
   }
 
   function reset() {
-    setStep('upload'); setStatement(null); setFileName(''); setAccountId(''); setChoices({}); setEdits({})
+    setStep('upload'); setStatement(null); setFileName(''); setAccountId(''); setChoices({}); setEdits({}); setBaseline(null)
     setError(''); setNotice(''); setDone(null); setOpenKey(null); setOfflineOk(false); setDraftId(null); setDraftWs(undefined)
     setTable(null); setMapping(null); setMapLabel(''); setRemembered(null)
     if (fileRef.current) fileRef.current.value = ''
@@ -313,6 +354,9 @@ export function StatementImport() {
     setSuggested(null)
     setChoices(d.choices)
     setEdits(d.edits)
+    // Yüklenmiş ekstre ilk yüklendiği haliyle, verilen kararlarla açılır
+    setBaseline(baselineOf(d))
+    if (d.committedAt) setNotice(committedNotice(d, d.statement))
     if (!accountOk) setNotice(fallback
       ? `Bu taslağın kayıtlı hesabı bulunamadı; ekstreye en uygun hesap “${fallback.name}” seçildi. Doğru değilse yukarıdan değiştirin; verdiğin kararlar korunuyor.`
       : 'Bu taslağın hesabı bulunamadı. Listeyi görmek için yukarıdan hesabı seçin; verdiğin kararlar korunuyor.')
@@ -346,6 +390,9 @@ export function StatementImport() {
   const lastSaved = useRef('')
   useEffect(() => {
     if (step !== 'preview' || !statement || !draftId || !plan || !preview) return
+    // Yüklenmiş ekstrede kararlar yalnız "Değişiklikleri kaydet"le yazılır: kaydedilmeyen
+    // değişiklik onaylanmış kararların yerine geçmesin
+    if (baseline) return
     // Taslak yalnız ait olduğu alanda yazılır (alan değişirken öbür alana taşınmasın)
     if (draftWs !== undefined && workspaceId && !rowInWorkspace({ workspaceId: draftWs }, workspaceId)) return
     const review = plan.rows.filter(r => r.status === 'review')
@@ -358,7 +405,7 @@ export function StatementImport() {
     if (sig === lastSaved.current) return
     lastSaved.current = sig
     saveDraft({ id: draftId, workspaceId, fileName, statement, accountId, choices, edits, progress })
-  }, [step, statement, draftId, draftWs, accountId, choices, edits, fileName, plan, preview, workspaceId, saveDraft])
+  }, [step, statement, draftId, draftWs, accountId, choices, edits, fileName, plan, preview, workspaceId, saveDraft, baseline])
 
   // ── Onay ─────────────────────────────────────────────────────────────────
   const authoritative = lastPullWasAuthoritative('transactions')
@@ -371,17 +418,21 @@ export function StatementImport() {
       // Son bir kez buluttan çek ve planı yeniden kur: bu arada başka cihazda
       // girilen bir kayıt varsa önizleme değişir, yazma yapılmaz.
       await useTransactionStore.getState().load()
-      const fresh = makePlan(statement, accountId)
+      const fresh = makePlan(statement, accountId, baseline)
       if (!fresh || planSignature(fresh) !== planSignature(plan)) {
         setNotice('Bu arada sistemde değişiklik oldu (başka bir cihazdan kayıt gelmiş olabilir). Önizleme güncellendi; kontrol edip yeniden onaylayın.')
         setStep('preview')
         return
       }
       const txs = useTransactionStore.getState().transactions
-      const res = buildCommit({
+      const input = {
         rows: fresh.rows, choices, edits, accountId, existing: new Map(txs.map(t => [t.id, t])),
         people: usePeopleStore.getState().people, nowIso: new Date().toISOString(), todayStr: today(), workspaceId,
-      })
+      }
+      const live = baseline ? makePlan(statement, accountId) : null
+      const res = baseline
+        ? buildHistoryCommit({ ...input, base: baseline, liveMatches: new Map((live?.rows ?? []).filter(r => r.match).map(r => [r.stableKey, r.match!.txIds])) })
+        : { ...buildCommit(input), unskippedKeys: [] as string[] }
       if (res.problems.length) {
         setError(`${res.problems.length} satırda eksik var: ${res.problems[0].message}.`)
         setStep('preview')
@@ -403,6 +454,7 @@ export function StatementImport() {
       await localBatch([...res.ops, ...debtOps, ...(cal?.ops ?? [])], { source: 'import' })
       if (debtPatches.size) useDebtStore.getState().applyLocal(debtPatches)
       rememberSkipped(accountId, res.skippedKeys)
+      forgetSkipped(accountId, res.unskippedKeys)
       // Onaylanan ekstre silinmez: "Yüklenen Ekstreler"de dönemiyle birlikte kalır
       const drafts = useStatementDraftsStore.getState()
       const draftBefore = draftId ? drafts.get(draftId) : undefined
@@ -422,7 +474,7 @@ export function StatementImport() {
       setDone({
         calendar: cal?.changes.length ?? 0,
         created: res.createdTxIds.length, people: res.createdPeople.length, deleted: res.deletedTxIds.length,
-        patched: res.patchedTxIds.length, undo: [...res.undo, ...debtUndo, ...(cal?.undo ?? [])], skippedKeys: res.skippedKeys, accountId, undone: false,
+        patched: res.patchedTxIds.length, undo: [...res.undo, ...debtUndo, ...(cal?.undo ?? [])], skippedKeys: res.skippedKeys, unskippedKeys: res.unskippedKeys, accountId, undone: false,
         draftId, draftBefore,
       })
       setStep('done')
@@ -439,6 +491,7 @@ export function StatementImport() {
     try {
       await localBatch(done.undo, { source: 'undo' })
       forgetSkipped(done.accountId, done.skippedKeys)
+      rememberSkipped(done.accountId, done.unskippedKeys)
       // Ekstre onaydan önceki haline döner (yarım kalan taslak olarak)
       if (done.draftId) useStatementDraftsStore.getState().restore(done.draftId, done.draftBefore)
       await Promise.all([
@@ -553,7 +606,9 @@ export function StatementImport() {
   const rows = plan?.rows ?? []
   const openRow = rows.find(r => r.key === openKey) ?? null
   const reviewKeys = rows.filter(r => r.status === 'review')
-  const pending = reviewKeys.filter(r => selectedOption(r, choices) === null).length
+  // Yüklenmiş ekstrede yalnız değiştirilen satırlar yazılır: karar beklemesi engel olmaz
+  const pending = baseline ? 0 : reviewKeys.filter(r => selectedOption(r, choices) === null).length
+  const changedCount = baseline && plan ? changedRows(plan.rows, choices, edits, baseline).length : 0
   const blockers = plan?.blockers ?? []
   const needsOfflineAck = !authoritative && !offlineOk
   const problems = (preview?.problems ?? []).filter(p => p.message !== 'Karar verilmedi')
@@ -573,7 +628,7 @@ export function StatementImport() {
   // Yapılacaklar: karar bekleyen ya da eksik alanı olan satırlar (listedeki sırayla)
   const problemByKey = new Map(problems.map(p => [p.rowKey, p.message]))
   const todo = rows
-    .filter(r => r.status === 'review' || problemByKey.has(r.key))
+    .filter(r => (!baseline && r.status === 'review') || problemByKey.has(r.key))
     .map(r => {
       const undecided = r.status === 'review' && selectedOption(r, choices) === null
       const problem = problemByKey.get(r.key) ?? null
@@ -669,7 +724,8 @@ export function StatementImport() {
             // Taslağın hesabı bulunamamışsa hesap seçmek bir onarımdır: kararlar korunur
             const repairing = !!accountId && !accounts.some(a => a.id === accountId)
             setAccountId(e.target.value)
-            if (!repairing) { setChoices({}); setEdits({}) }
+            // Başka hesaba geçmek yeni bir yüklemedir: önceki kararlar o hesaba ait değil
+            if (!repairing) { setChoices({}); setEdits({}); setBaseline(null) }
           }}
           options={candidates.map(a => ({ value: a.id, label: a.name }))}
           placeholder={statement.type === 'checking' ? 'Hesap seçin' : 'Kart seçin'}
@@ -770,6 +826,7 @@ export function StatementImport() {
           closed={closedSections}
           onToggleSection={(sec, open) => setClosedSections(c => ({ ...c, [sec]: open === undefined ? !c[sec] : !open }))}
           highlightKey={highlightKey}
+          committed={!!baseline}
         />
       )}
 
@@ -792,10 +849,12 @@ export function StatementImport() {
           <Button
             onClick={handleCommit}
             loading={step === 'saving'}
-            disabled={!plan || blockers.length > 0 || pending > 0 || problems.length > 0 || needsOfflineAck || step === 'saving'}
+            disabled={!plan || blockers.length > 0 || pending > 0 || problems.length > 0 || needsOfflineAck || step === 'saving' || (!!baseline && changedCount === 0)}
             className="rounded-xl"
           >
-            {pending > 0 ? 'Önce kararları verin' : `Onayla ve gir · ${preview?.createdTxIds.length ?? 0} kayıt`}
+            {baseline
+              ? changedCount ? `Değişiklikleri kaydet · ${changedCount} satır` : 'Değişiklik yok'
+              : pending > 0 ? 'Önce kararları verin' : `Onayla ve gir · ${preview?.createdTxIds.length ?? 0} kayıt`}
           </Button>
           {todo.length > 0 && (
             <div className="relative flex items-center gap-2.5">
