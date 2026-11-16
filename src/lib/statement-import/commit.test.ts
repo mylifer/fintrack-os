@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCommit, chosenIndex, selectedOption } from './commit'
+import { buildCommit, chosenIndex, selectedOption, withRecommended } from './commit'
 import type { DraftTx, PlanRow, RowOption } from './classify'
 
 const draft: DraftTx = {
@@ -37,5 +37,27 @@ describe('kararlar seçenek anahtarıyla saklanır', () => {
   it('geçersiz varsayılan seçenek de karar sayılmaz', () => {
     const r = { ...row([create]), defaultOption: 3 }
     expect(commit(r, {}).problems).toEqual([{ rowKey: 'l0', message: 'Karar verilmedi' }])
+  })
+})
+
+describe('önerilen kararlar baştan uygulanır', () => {
+  it('kararı olmayan satıra önerilen yazılır ve otomatik işaretlenir', () => {
+    const r = { ...row([create, skip]), recommended: 0 }
+    const res = withRecommended([r], {})
+    expect(res.choices).toEqual({ l0: 'create' })
+    expect([...res.auto]).toEqual(['l0'])
+    expect(commit(r, res.choices).createdTxIds).toHaveLength(1)
+  })
+
+  it('kullanıcının kararı ve satırın varsayılanı ezilmez', () => {
+    const r = { ...row([create, skip]), recommended: 0 }
+    expect(withRecommended([r], { l0: 'skip' })).toEqual({ choices: { l0: 'skip' }, auto: new Set() })
+    expect(withRecommended([{ ...r, defaultOption: 1 }], {}).auto.size).toBe(0)
+  })
+
+  it('önerisi olmayan ya da geçersiz önerili satır karar bekler', () => {
+    expect(withRecommended([row([create, skip])], {}).auto.size).toBe(0)
+    expect(withRecommended([{ ...row([create]), recommended: -1 }], {}).auto.size).toBe(0)
+    expect(withRecommended([{ ...row([create]), recommended: 0, status: 'new' } as PlanRow], {}).auto.size).toBe(0)
   })
 })

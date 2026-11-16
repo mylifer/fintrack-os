@@ -1,8 +1,7 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { IconAlertTriangle, IconChevronRight, IconDots, IconSearch } from '@tabler/icons-react'
-import { Button } from '@/components/ui/button'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { cn } from '@/lib/utils'
@@ -19,13 +18,16 @@ import { RefundLinkPicker, refundLinkSelection } from './RefundLinkPicker'
    Hiyerarşi: (Sorun) → Kontrol et → Girilecek → Zaten sistemde → Kayda girmez.
    Dikkat isteyenler açık ve en üstte; sorunsuzlar kapalı başlar. Geniş ekranda
    tablo: Tarih | Açıklama | Alıcı | Kategori | Karar | Tutar | ⋯; telefonda
-   alıcı ve kategori başlığın altına, karar onun altına iner. Karar bir açılır
-   listedir (önerilen işaretli). Satıra ya da ⋯'e tıklamak ayrıntı penceresini
-   açar; "İade, alıma bağla" seçilince aday alımlar satırın altında açılır. */
+   alıcı ve kategori başlığın altına, karar onun altına iner. Önerisi olan satıra
+   önerilen karar baştan uygulanır ("otomatik"); karar sütununda seçili karar ve
+   "Değiştir" durur, seçenekler satırın altında düğme olarak açılır (tek tık).
+   Önerisi olmayan satırın seçenekleri baştan açıktır. Satıra ya da ⋯'e tıklamak
+   ayrıntı penceresini açar; "İade, alıma bağla" seçilince aday alımlar satırın
+   altında açılır. */
 
 export const STATUS_META: Record<'error' | RowStatus, { label: string; dot: string; hint: string }> = {
   error:  { label: 'Sorun',          dot: 'bg-destructive',       hint: 'Bunlar çözülmeden kayıt yapılmaz.' },
-  review: { label: 'Kontrol et',     dot: 'bg-orange-600',        hint: 'Her biri için bir seçim yapın' },
+  review: { label: 'Kontrol et',     dot: 'bg-orange-600',        hint: 'Önerilen kararlar uygulandı; yanlış olanı değiştir' },
   new:    { label: 'Girilecek',      dot: 'bg-green-600',         hint: 'Geçmiş kayıtlarınızdan öğrenilen alıcı ve kategoriyle' },
   exists: { label: 'Zaten sistemde', dot: 'bg-muted-foreground/60', hint: 'Tekrar girilmeyecek' },
   info:   { label: 'Kayda girmez',   dot: 'bg-sky-500',           hint: 'Bonus, hesap içi aktarım ve takip dışı hareketler' },
@@ -95,7 +97,10 @@ const Dot = () => <span className="text-muted-foreground/50">·</span>
 interface ListProps {
   rows: PlanRow[]
   blockers: string[]
+  /** Geçerli kararlar (önerilenle doldurulanlar dahil) */
   choices: RowChoices
+  /** Önerilen kararla otomatik doldurulan satırlar */
+  autoKeys: ReadonlySet<string>
   edits: Record<string, RowEdit>
   categories: Category[]
   problems: { rowKey: string; message: string }[]
@@ -104,7 +109,6 @@ interface ListProps {
   onChoose: (key: string, index: number) => void
   onOpen: (key: string) => void
   openKey: string | null
-  onAcceptRecommended: () => void
   /** Satırın düzenlemesi (iade satırında bağlanacak alımın seçimi) */
   onEdit: (key: string, patch: RowEdit) => void
   /** Kapalı bölümler (ilerleme listesinden atlarken açılabilsin diye yukarıda tutulur) */
@@ -120,6 +124,8 @@ export function PreviewList(props: ListProps) {
   const { rows, blockers, choices, edits, categories, problems, query, onQuery } = props
   const closed = props.closed
   const people = usePeopleStore(st => st.people)
+  /** Kararının seçenekleri açık satır ("Değiştir") */
+  const [changing, setChanging] = useState<string | null>(null)
   const personById = useMemo(() => new Map(people.map(p => [p.id, p])), [people])
   const catById = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
 
@@ -136,7 +142,7 @@ export function PreviewList(props: ListProps) {
 
   const byStatus = (s: RowStatus) => rows.filter(r => r.status === s)
   const pendingReview = rows.filter(r => r.status === 'review' && chosenIndex(r, choices) === null).length
-  const recommendable = props.committed ? 0 : rows.filter(r => r.status === 'review' && chosenIndex(r, choices) === null && r.recommended !== null).length
+  const autoCount = props.committed ? 0 : rows.filter(r => r.status === 'review' && props.autoKeys.has(r.key)).length
   const meta = (s: RowStatus) => ({ ...STATUS_META[s], ...(props.committed ? COMMITTED_META[s] : undefined) })
   // Yüklenmiş ekstrede "Girme" denen satırlar (karar ya da otomatik satırda)
   const skippedCount = props.committed
@@ -204,31 +210,57 @@ export function PreviewList(props: ListProps) {
     return bits.length ? bits.flatMap((b, i) => (i ? [<Dot key={`d${i}`} />, b] : [b])) : null
   }
 
-  // ── Karar: açılır liste (önerilen işaretli); karar verilmemişse turuncu çerçeve ──
+  // ── Karar: seçili karar + "Değiştir"; seçenekler satırın altında düğme olarak ──
   const decision = (r: PlanRow) => {
     const sel = chosenIndex(r, choices)
+    if (sel === null) {
+      return <span className="text-xs font-medium text-orange-700 dark:text-orange-400" title={r.issue}>Karar bekliyor</span>
+    }
+    const open = changing === r.key
     return (
-      <select
-        aria-label={`${r.title} için karar`}
-        value={sel === null ? '' : String(sel)}
-        onClick={e => e.stopPropagation()}
-        onKeyDown={e => e.stopPropagation()}
-        onChange={e => { if (e.target.value !== '') props.onChoose(r.key, Number(e.target.value)) }}
-        title={r.issue}
-        className={cn('h-8 w-full min-w-0 rounded-lg border bg-background px-2 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-          sel === null ? 'border-orange-500 text-orange-700 dark:text-orange-400' : 'border-input')}
-      >
-        {sel === null && <option value="">{r.issue ? `${r.issue} — seçin…` : 'Karar seçin…'}</option>}
-        {optionDisplayOrder(r.options).map(i => (
-          <option key={r.options[i].key} value={i}>{r.options[i].label}{r.recommended === i ? ' · önerilen' : ''}</option>
-        ))}
-      </select>
+      <div className="flex items-center gap-1.5 min-w-0 text-xs">
+        <span className="truncate font-medium" title={r.options[sel].label}>{r.options[sel].label}</span>
+        {props.autoKeys.has(r.key) && (
+          <span className="flex-shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-semibold text-primary" title="Önerilen karar otomatik uygulandı">otomatik</span>
+        )}
+        {r.options.length > 1 && (
+          <button type="button" aria-expanded={open} aria-label={`${r.title} kararını değiştir`}
+            onClick={() => setChanging(open ? null : r.key)}
+            className="flex-shrink-0 rounded px-1 text-primary hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {open ? 'Kapat' : 'Değiştir'}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  /** Kararın seçenekleri: önerisi olmayan satırda baştan, ötekilerde "Değiştir"le açık */
+  const decisionOptions = (r: PlanRow) => {
+    if (r.status !== 'review') return null
+    const sel = chosenIndex(r, choices)
+    if (sel !== null && changing !== r.key) return null
+    return (
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={`${r.title} için karar`}>
+        {optionDisplayOrder(r.options).map(i => {
+          const o = r.options[i]
+          const on = sel === i
+          return (
+            <button key={o.key} type="button" aria-pressed={on}
+              onClick={() => { props.onChoose(r.key, i); setChanging(null) }}
+              className={cn('rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                on ? 'border-primary bg-primary text-primary-foreground'
+                  : r.recommended === i ? 'border-dashed border-primary/60 bg-background hover:bg-muted' : 'border-border bg-background hover:bg-muted')}>
+              {o.label}{r.recommended === i && !on && <span className="ml-1 text-[10px] font-semibold text-primary">önerilen</span>}
+            </button>
+          )
+        })}
+      </div>
     )
   }
 
   /* Geniş ekranda tablo sütunları, telefonda alt alta (yatay kaydırma yok):
      Tarih | Açıklama | Alıcı | Kategori | Karar | Tutar | ⋯ */
-  const COLS = 'md:grid-cols-[52px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.9fr)_200px_110px_32px]'
+  const COLS = 'md:grid-cols-[52px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.9fr)_260px_110px_32px]'
   const headerRow = (
     <div className={cn('hidden md:grid gap-x-3 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border/60', COLS)}>
       <span>Tarih</span><span>Açıklama</span><span>Alıcı</span><span>Kategori</span><span>Karar</span><span className="text-right">Tutar</span><span />
@@ -240,6 +272,7 @@ export function PreviewList(props: ListProps) {
     const quiet = r.status === 'exists' || r.status === 'info'
     const extra = extraLine(r)
     const linking = r.refundLink && r.options[selectedOption(r, choices) ?? -1]?.key === 'link'
+    const opts = decisionOptions(r)
     return (
       <div
         key={r.key}
@@ -279,6 +312,9 @@ export function PreviewList(props: ListProps) {
         >
           <IconDots className="size-4" />
         </button>
+        {opts && (
+          <div className="col-start-2 col-span-2 md:col-start-2 md:col-span-6 mt-1.5 min-w-0" onClick={e => e.stopPropagation()}>{opts}</div>
+        )}
         {linking && (
           <div className="col-start-2 col-span-2 md:col-start-2 md:col-span-6 mt-1.5 min-w-0">
             <RefundLinkPicker row={r} selectedId={refundLinkSelection(r, choices, edit)} onPick={patch => props.onEdit(r.key, patch)} />
@@ -380,12 +416,8 @@ export function PreviewList(props: ListProps) {
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive whitespace-nowrap">{n} eksik</span>
               ) })()}
               <span className="flex-1" />
-              {s === 'review' && recommendable > 0
-                ? (
-                  <Button size="sm" variant="outline" className="rounded-lg" onClick={e => { e.stopPropagation(); props.onAcceptRecommended() }}>
-                    Önerilenleri uygula
-                  </Button>
-                )
+              {s === 'review' && autoCount > 0
+                ? <span className="text-xs text-muted-foreground whitespace-nowrap"><b className="font-semibold text-primary tabular-nums">{autoCount}</b> otomatik</span>
                 : s === 'new' && <span className="text-sm text-muted-foreground tabular-nums">{sum < 0 ? '+' : ''}{formatCurrency(Math.abs(sum))}</span>}
               <IconChevronRight className={cn('size-4 text-muted-foreground transition-transform flex-shrink-0', !isClosed && 'rotate-90')} />
             </div>
