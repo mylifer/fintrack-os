@@ -104,6 +104,34 @@ describe('eşleştirme', () => {
     expect([r.status, r.recipientId, r.categoryId]).toEqual(['new', 'p-ys', 'c-food'])
   })
 
+  describe('kartı veren şirket aynı zamanda işyeri (Getir kartı faizleri "Getir" alıcısında)', () => {
+    const getir: Person = { id: 'p-getir', name: 'Getir', role: 'recipient', createdAt: '' }
+    const fees = ['Alışveriş Faizi', 'BSMV', 'KKDF', 'Gecikme Faizi', 'BSMV', 'KKDF'].map((d, i) =>
+      tx({ id: `f${i}`, amount: 4, date: '2026-09-01', description: d, recipientId: 'p-getir', categoryId: 'c-bank' }))
+    const market = tx({ id: 'm1', amount: 834, date: '2026-07-16', description: 'Getir', recipientId: 'p-getir', categoryId: 'c-food' })
+
+    it('alımın kategorisi alıcının banka masraflarından öğrenilmez', () => {
+      const r = plan([line({ description: 'PAYCELL/GETIR PERAKE', amount: 357.64, date: '2026-09-30' })], [...fees, market], { people: [...people, getir] }).rows[0]
+      expect([r.recipientId, r.categoryId]).toEqual(['p-getir', 'c-food'])
+    })
+
+    it('bağımsız iade de Banka Giderleri kategorisine düşmez', () => {
+      const p = plan([line({ description: 'PAYCELL/GETIR PERAKE', amount: -46.65, date: '2026-10-01' })], [...fees, market], { people: [...people, getir] })
+      const r = p.rows[0]
+      expect(r.kind).toBe('refund')
+      const standalone = r.options.find(o => o.key === 'standalone')!
+      const draft = (standalone.actions[0] as { draft: { categoryId?: string; amount: number } }).draft
+      expect([draft.amount, draft.categoryId]).toEqual([-46.65, 'c-food'])
+    })
+
+    it('işyeri geçmişindeki yanlış Banka Giderleri kaydı öneri olmaz', () => {
+      const wrong = tx({ id: 'w1', amount: 469.47, date: '2026-09-30', merchant: 'PAYCELL/GETIR PERAKE', description: 'Getir', recipientId: 'p-getir', categoryId: 'c-bank' })
+      const r = plan([line({ description: 'PAYCELL/GETIR PERAKE', amount: 120, date: '2026-10-19' })], [...fees, market, wrong], { people: [...people, getir] }).rows[0]
+      expect(r.recipientId).toBe('p-getir')
+      expect(r.categoryId).not.toBe('c-bank')
+    })
+  })
+
   it('bilinmeyen işyeri: yeni alıcı kararı istenir, kategori yoksa yazılamaz', () => {
     const p = plan([line({ description: 'İDDAALI BÜFE TEKEL', amount: 600 })], [])
     const r = p.rows[0]
