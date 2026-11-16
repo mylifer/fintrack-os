@@ -140,7 +140,7 @@ export function useTransactionSubmit({
     if (!amount || amount <= 0)   e.amount            = 'Geçerli bir tutar girin'
     if (!form.accountId)          e.accountId         = 'Hesap seçin'
     if (!targetWorkspaceId)       e.targetWorkspaceId = 'Çalışma alanı seçin'
-    if (crossWsDebt && !editingTx && !targetDebtId) e.debtId = 'Borç seçin'
+    if (crossWsDebt && !targetDebtId) e.debtId        = 'Borç seçin'
     if (!targetAccountId)         e.toAccountId       = crossWsDebt ? 'Ödemenin geçeceği hesabı seçin' : 'Hedef hesap seçin'
     if (!form.date)               e.date              = 'Tarih seçin'
     if (!form.description.trim()) e.description       = 'Açıklama girin'
@@ -157,16 +157,14 @@ export function useTransactionSubmit({
         date:        form.date,
         description: form.description.trim(),
         notes:       form.notes || undefined,
+        targetDebtId: crossWsDebt ? targetDebtId : undefined,
       }
       if (editingTx) {
         // Düzenleme: aynı-alan transferini başka alana çevirir ya da var olan
         // alanlar arası transferin iki bacağını birlikte günceller.
         await useTransactionStore.getState().updateCrossWorkspaceTransfer(editingTx.id, input)
       } else {
-        await useTransactionStore.getState().addCrossWorkspaceTransfer({
-          ...input,
-          targetDebtId: crossWsDebt ? targetDebtId : undefined,
-        })
+        await useTransactionStore.getState().addCrossWorkspaceTransfer(input)
       }
       rememberAddedDate(form.date)
       closeModal()

@@ -61,6 +61,9 @@ vi.mock('@/lib/sync/engine', () => ({
       if (op.kind === 'patchMany' && op.table === 'transactions') {
         dexieTransactions = dexieTransactions.map(t => op.ids!.includes(t.id) ? { ...t, ...op.patch } : t)
       }
+      if (op.kind === 'patch' && op.table === 'transactions') {
+        dexieTransactions = dexieTransactions.map(t => t.id === op.id ? { ...t, ...op.patch } : t)
+      }
       if (op.kind === 'patch' && op.table === 'debts') {
         dexieDebts = dexieDebts.map(d => d.id === op.id ? { ...d, ...op.patch } : d)
       }
@@ -173,14 +176,7 @@ describe('updateCrossWorkspaceTransfer', () => {
     expect(dexieTransactions.find(r => r.id === 'out')).toMatchObject({ peerWorkspaceId: 'ws-c' })
   })
 
-  it('borç ödemeli üçlü, giriş bacağı ve taksit düzenlenmez', async () => {
-    const out = tx({ id: 'out', type: 'expense', workspaceTransferId: 'L', peerWorkspaceId: 'ws-b' })
-    const inc = tx({ id: 'inc', type: 'income', accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L' })
-    const pay = tx({ id: 'pay', type: 'transfer', debtId: 'borc', accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L' })
-    dexieTransactions = [out, inc, pay]
-    useTransactionStore.setState({ transactions: [out] })
-    await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('out', editInput)).rejects.toThrow()
-
+  it('giriş bacağı ve taksit düzenlenmez', async () => {
     const incA = tx({ id: 'inc-a', type: 'income', workspaceTransferId: 'M' })
     dexieTransactions = [incA, tx({ id: 'out-b', type: 'expense', workspaceId: 'ws-b', workspaceTransferId: 'M' })]
     useTransactionStore.setState({ transactions: [incA] })
@@ -190,6 +186,61 @@ describe('updateCrossWorkspaceTransfer', () => {
     useTransactionStore.setState({ transactions: [inst] })
     await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('ins', editInput)).rejects.toThrow()
     expect(batches).toHaveLength(0)
+  })
+
+  // Borç ödemeli üçlü: çıkış (ws-a) + giriş (ws-b, ara) + ödeme (ws-b, borc)
+  function seedDebtTriple(amount = 1_500) {
+    const out = tx({ id: 'out', type: 'expense', amount, workspaceTransferId: 'L', peerWorkspaceId: 'ws-b', icon: '⇄' })
+    const inc = tx({ id: 'inc', type: 'income', amount, accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L', peerWorkspaceId: 'ws-a', icon: '⇄' })
+    const pay = tx({ id: 'pay', type: 'transfer', amount, amountTry: amount, accountId: 'ara', debtId: 'borc', workspaceId: 'ws-b', workspaceTransferId: 'L', peerWorkspaceId: 'ws-a' })
+    dexieTransactions = [out, inc, pay]
+    // Borç bu ödemeyi zaten içeriyor: 2.000 + 1.500
+    dexieDebts = [debt({ paidAmount: 3_500, paidInstallments: 3 })]
+    useTransactionStore.setState({ transactions: [out] })
+  }
+
+  it('borç ödemeli transferde tutar değişince üç bacak ve borç farkla güncellenir (taksit sayısı aynı)', async () => {
+    seedDebtTriple()
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('out', {
+      ...editInput, amount: 2_000, targetDebtId: 'borc',
+    })
+    expect(dexieTransactions.filter(t => !t.deleted_at)).toHaveLength(3)
+    expect(dexieTransactions.find(t => t.id === 'pay')).toMatchObject({ amount: 2_000, debtId: 'borc', accountId: 'ara' })
+    expect(dexieTransactions.find(t => t.id === 'inc')).toMatchObject({ amount: 2_000 })
+    expect(dexieDebts[0]).toMatchObject({ paidAmount: 4_000, paidInstallments: 3 })
+    expect(batches).toHaveLength(1)
+  })
+
+  it('borç ödemesi kaldırılınca ödeme bacağı silinir ve borç geri alınır', async () => {
+    seedDebtTriple()
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('out', editInput)
+    expect(dexieTransactions.find(t => t.id === 'pay')!.deleted_at).toBeTruthy()
+    expect(dexieTransactions.find(t => t.id === 'inc')!.deleted_at).toBeFalsy()
+    expect(dexieDebts[0]).toMatchObject({ paidAmount: 2_000, paidInstallments: 2 })
+  })
+
+  it('düz alanlar arası transfere sonradan borç ödemesi eklenir', async () => {
+    const out = tx({ id: 'out', type: 'expense', workspaceTransferId: 'L', peerWorkspaceId: 'ws-b', icon: '⇄' })
+    const inc = tx({ id: 'inc', type: 'income', accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L' })
+    dexieTransactions = [out, inc]
+    useTransactionStore.setState({ transactions: [out] })
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('out', { ...editInput, targetDebtId: 'borc' })
+    const pay = dexieTransactions.find(t => t.debtId === 'borc')!
+    expect(pay).toMatchObject({ type: 'transfer', amount: 750, accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L' })
+    expect(dexieDebts[0]).toMatchObject({ paidAmount: 2_750, paidInstallments: 3 })
+  })
+
+  it('bu ödemenin kapattığı borç düzenlemede yine seçilebilir', async () => {
+    seedDebtTriple()
+    dexieDebts = [debt({ totalAmount: 3_500, paidAmount: 3_500, paidInstallments: 3, isSettled: true })]
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('out', { ...editInput, amount: 1_000, targetDebtId: 'borc' })
+    expect(dexieDebts[0]).toMatchObject({ paidAmount: 3_000, isSettled: false })
+  })
+
+  it('başka bir kapanmış borç seçilemez', async () => {
+    seedDebtTriple()
+    dexieDebts = [debt(), debt({ id: 'kapali', isSettled: true })]
+    await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('out', { ...editInput, targetDebtId: 'kapali' })).rejects.toThrow()
   })
 
   it('hedef alan aktif alanla aynı olamaz', async () => {

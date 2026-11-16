@@ -88,8 +88,7 @@ export function TransferTargetField({
             onOpenChange={onSelectOpen}
           />
           {errors.targetWorkspaceId && <p className="text-xs text-destructive">{errors.targetWorkspaceId}</p>}
-          {/* Borç ödemesi yalnız yeni kayıtta (düzenlemede borç mutabakatı yürütülmez) */}
-          {targetWorkspaceId && !isEdit && (
+          {targetWorkspaceId && (
             <div className="flex self-start rounded border border-input overflow-hidden text-[11px]">
               <button
                 type="button"

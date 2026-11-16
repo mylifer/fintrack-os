@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useWorkspaceStore } from '@/store'
-import { crossWorkspacePeers } from '@/store/transactions.store'
+import { crossWorkspacePeers, splitCrossWsPeers } from '@/store/transactions.store'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
 import { rowInWorkspace } from '@/lib/workspace-context'
@@ -18,9 +18,9 @@ export function useCrossWorkspaceTransfer({
   // ── Çalışma alanları arası transfer ─────────────────────────────────────
   // Yeni kayıtta: bkz. useTransactionStore.addCrossWorkspaceTransfer.
   // Düzenlemede: kayıtlı bir aynı-alan transferi başka alana çevrilebilir ya da
-  // var olan alanlar arası transferin ÇIKIŞ bacağı (hedef alan + hesap ön dolu)
-  // düzenlenir — bkz. updateCrossWorkspaceTransfer. Giriş bacağı ve borç
-  // ödemeli üçlü eskisi gibi sıradan gelir/gider olarak düzenlenir.
+  // var olan alanlar arası transferin ÇIKIŞ bacağı (hedef alan + hesap ve varsa
+  // ödenen borç ön dolu) düzenlenir — bkz. updateCrossWorkspaceTransfer. Giriş
+  // bacağı eskisi gibi sıradan gelir olarak düzenlenir.
   const allWorkspaces    = useWorkspaceStore(s => s.workspaces)
   const activeWorkspaceId = useWorkspaceStore(s => s.activeId)
   const otherWorkspaces  = useMemo(
@@ -44,22 +44,24 @@ export function useCrossWorkspaceTransfer({
   const [targetAccountId, setTargetAccountId] = useState('')
   // Hedef alandaki bir borcu öde: para hedef hesaba girer ve aynı hesaptan
   // seçilen borca ödeme olarak çıkar (bkz. addCrossWorkspaceTransfer).
-  // Yalnız yeni kayıtta.
   const [crossWsDebt, setCrossWsDebt]         = useState(false)
   const [targetDebts, setTargetDebts]         = useState<Debt[]>([])
   const [targetDebtId, setTargetDebtId]       = useState('')
-  // Düzenlenen bacak gerçekten tek karşı bacaklı bir transfer mi (borç
-  // ödemeli üçlü değil)? Doğrulanınca true; kayıtta bağ koparma buna bakar.
+  // Düzenlenen bacağın karşı bacakları doğrulandı mı (giriş + varsa borç
+  // ödemesi)? Doğrulanınca true; kayıtta bağ koparma buna bakar.
   const [linkedEditable, setLinkedEditable]   = useState(false)
+  // Düzenlenen transferin ödediği borç: bu ödeme borcu kapatmış olabilir —
+  // kapanmış olsa da listede kalsın.
+  const [editingDebtId, setEditingDebtId]     = useState('')
 
   useEffect(() => {
     if (!linkedLeg || !editingTx) return
     let cancelled = false
     crossWorkspacePeers(editingTx).then(peers => {
       if (cancelled) return
-      const peer = peers.length === 1 && !peers[0].debtId ? peers[0] : undefined
+      const { incoming: peer, payment } = splitCrossWsPeers(peers)
       if (!peer) {
-        // Borç ödemeli üçlü (ya da yetim bacak): eskisi gibi gider olarak düzenlenir.
+        // Yetim/bozuk bacak kümesi: eskisi gibi gider olarak düzenlenir.
         setCrossWs(false)
         setTargetWorkspaceId('')
         setTab('expense')
@@ -68,6 +70,11 @@ export function useCrossWorkspaceTransfer({
       setLinkedEditable(true)
       if (peer.workspaceId) setTargetWorkspaceId(peer.workspaceId)
       setTargetAccountId(peer.accountId)
+      if (payment?.debtId) {
+        setCrossWsDebt(true)
+        setTargetDebtId(payment.debtId)
+        setEditingDebtId(payment.debtId)
+      }
     })
     return () => { cancelled = true }
     // Yalnız açılışta: modal her açılışta yeniden bağlanır.
@@ -89,11 +96,12 @@ export function useCrossWorkspaceTransfer({
       // Yalnız ödenecek yöndeki (benim borcum) ve kapanmamış borçlar
       setTargetDebts(
         debtRows.filter(isLive)
-          .filter(d => rowInWorkspace(d, targetWorkspaceId) && d.direction === 'owe' && !d.isSettled) as Debt[],
+          .filter(d => rowInWorkspace(d, targetWorkspaceId) && d.direction === 'owe'
+            && (!d.isSettled || d.id === editingDebtId)) as Debt[],
       )
     })
     return () => { cancelled = true }
-  }, [crossWs, targetWorkspaceId])
+  }, [crossWs, targetWorkspaceId, editingDebtId])
 
   return {
     otherWorkspaces,

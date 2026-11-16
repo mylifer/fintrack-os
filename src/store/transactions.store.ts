@@ -155,6 +155,36 @@ export async function crossWorkspacePeers(tx: Pick<Transaction, 'id' | 'workspac
   return (rows as Transaction[]).filter(p => p.id !== tx.id && isLive(p))
 }
 
+/** Çıkış bacağının karşı bacaklarını ayırır: hedef giriş (gelir) ve varsa hedef
+ *  alandaki borç ödemesi. Beklenmeyen bir küme (fazla/eksik bacak) → boş. */
+export function splitCrossWsPeers(peers: Transaction[]): { incoming?: Transaction; payment?: Transaction } {
+  const incomings = peers.filter(p => p.type === 'income' && !p.debtId)
+  const payments  = peers.filter(p => p.type === 'transfer' && !!p.debtId)
+  if (incomings.length !== 1 || payments.length > 1 || incomings.length + payments.length !== peers.length) return {}
+  if (payments[0] && payments[0].workspaceId !== incomings[0].workspaceId) return {}
+  return { incoming: incomings[0], payment: payments[0] }
+}
+
+/** Borç ödemesi düzenlenirken borç yamaları: önce eski ödeme geri alınır (−1),
+ *  yeni ödeme geri alınmış durumun ÜZERİNE uygulanır (+1). Aynı borçta taksit
+ *  sayısı net değişmez, yalnız tutar farkı yansır. */
+async function debtEditPatches(
+  oldPay: { debtId: string; amount: number } | undefined,
+  newPay: { debtId: string; amount: number } | undefined,
+): Promise<Map<string, Partial<Debt>>> {
+  const out = oldPay ? await debtPaymentPatches([oldPay], -1) : new Map<string, Partial<Debt>>()
+  if (!newPay) return out
+  const current = useDebtStore.getState().debts.find(d => d.id === newPay.debtId) ?? await db.debts.get(newPay.debtId)
+  if (!current) return out
+  const base = { ...current, ...(out.get(newPay.debtId) ?? {}) } as Debt
+  // recordPayment/paymentPatches(+1) ile aynı aritmetik, geri alınmış durumun üstüne.
+  const paidAmount = Math.round((base.paidAmount + newPay.amount) * 100) / 100
+  const step = newPay.amount > 0 ? 1 : newPay.amount < 0 ? -1 : 0
+  const paidInstallments = Math.max(0, (base.paidInstallments ?? 0) + step)
+  out.set(newPay.debtId, { paidAmount, paidInstallments, isSettled: paidAmount >= base.totalAmount })
+  return out
+}
+
 /** Kaynak/hedef hesabı doğrular ve hedef tutarı (gerekirse FX ile) hesaplar —
  *  ekleme ve düzenleme aynı kuralı kullanır. */
 async function resolveCrossWorkspaceAmounts(input: CrossWorkspaceTransferInput) {
@@ -189,8 +219,10 @@ interface TransactionState {
   addCrossWorkspaceTransfer: (input: CrossWorkspaceTransferInput) => Promise<void>
   /** Kayıtlı bir transferi alanlar arası transfere çevirir ya da var olan
    *  alanlar arası transferin (çıkış bacağı `id`) hedefini/tutarını/tarihini
-   *  İKİ bacakta birlikte günceller. Borç ödemeli transfer desteklenmez. */
-  updateCrossWorkspaceTransfer: (id: string, input: Omit<CrossWorkspaceTransferInput, 'targetDebtId'>) => Promise<void>
+   *  TÜM bacaklarda birlikte günceller. `targetDebtId` verilirse hedef alandaki
+   *  borç ödenir (ödeme bacağı eklenir/güncellenir; borç tutarları eski ödeme
+   *  geri alınıp yenisi uygulanarak düzeltilir), verilmezse ödeme bacağı silinir. */
+  updateCrossWorkspaceTransfer: (id: string, input: CrossWorkspaceTransferInput) => Promise<void>
   /** Alanlar arası transferin çıkış bacağını sıradan satıra çevirmeden önce:
    *  karşı bacak(lar)ı siler, bağ alanlarını temizler. */
   detachCrossWorkspaceTransfer: (id: string) => Promise<void>
@@ -367,16 +399,28 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     if (cur.isInstallment || cur.installGroupId || cur.debtId || cur.systemKind || cur.refundOfId) {
       throw new Error('Bu işlem alanlar arası transfere çevrilemez')
     }
-    // Var olan alanlar arası transferde yalnız ÇIKIŞ bacağı düzenlenir ve
-    // tek bir karşı bacak (hedef giriş) olmalı — borç ödemeli üçlü değil.
+    // Var olan alanlar arası transferde yalnız ÇIKIŞ bacağı düzenlenir;
+    // karşı bacaklar: hedef giriş + (varsa) hedef alandaki borç ödemesi.
     const peers = await crossWorkspacePeers(cur)
-    if (cur.workspaceTransferId && (cur.type !== 'expense' || peers.length !== 1 || peers[0].debtId)) {
+    const { incoming: prevPeer, payment: prevPayment } = splitCrossWsPeers(peers)
+    if (cur.workspaceTransferId && (cur.type !== 'expense' || !prevPeer)) {
       throw new Error('Bu alanlar arası transfer düzenlenemez')
     }
-    const prevPeer = peers[0] as Transaction | undefined
 
-    const { sourceCurrency, targetCurrency, amountTrySnap, targetAmount } =
+    const { sourceCurrency, targetCurrency, amountTry, amountTrySnap, targetAmount } =
       await resolveCrossWorkspaceAmounts(input)
+
+    // Borç: hedef alana ait ve ödenecek yönde olmalı. Kapanmış borç yalnız bu
+    // ödemenin kendi borcuysa kabul edilir (onu bu ödeme kapatmış olabilir).
+    let targetDebt: Debt | undefined
+    if (input.targetDebtId) {
+      targetDebt = await db.debts.get(input.targetDebtId)
+      if (!targetDebt || !isLive(targetDebt) || !rowInWorkspace(targetDebt, input.targetWorkspaceId)
+        || targetDebt.direction !== 'owe'
+        || (targetDebt.isSettled && targetDebt.id !== prevPayment?.debtId)) {
+        throw new Error('Ödenecek borç bulunamadı')
+      }
+    }
     const now = new Date().toISOString()
     const linkId = cur.workspaceTransferId ?? crypto.randomUUID()
 
@@ -420,12 +464,35 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       peerWorkspaceId:     sourceWorkspaceId,
     }
 
+    // Borç ödemesi bacağı: giriş bacağının yattığı hesaptan borca transfer
+    // (addCrossWorkspaceTransfer ile aynı biçim). Varsa id'si korunur.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { icon: _icon, ...incomingFields } = incoming
+    const payment: Transaction | undefined = targetDebt && {
+      ...incomingFields,
+      id:        prevPayment?.id ?? crypto.randomUUID(),
+      type:      'transfer',
+      debtId:    targetDebt.id,
+      createdAt: prevPayment?.createdAt ?? now,
+    }
+    // Borç tutarları (TRY): eski ödeme geri alınır, yenisi uygulanır.
+    const debtPatches = await debtEditPatches(
+      prevPayment?.debtId ? { debtId: prevPayment.debtId, amount: baseAmount(prevPayment) } : undefined,
+      payment ? { debtId: payment.debtId!, amount: amountTry } : undefined,
+    )
+
     await localBatch([
       { kind: 'upsert', table: 'transactions', entity: outgoing },
       { kind: 'upsert', table: 'transactions', entity: incoming },
+      ...(payment ? [{ kind: 'upsert', table: 'transactions', entity: payment } as BatchOp] : []),
+      ...(prevPayment && !payment
+        ? [{ kind: 'patch', table: 'transactions', id: prevPayment.id, patch: { deleted_at: now } } as BatchOp]
+        : []),
+      ...[...debtPatches].map(([did, patch]): BatchOp => ({ kind: 'patch', table: 'debts', id: did, patch })),
     ], { source: 'form' })
+    useDebtStore.getState().applyLocal(debtPatches)
 
-    // Karşı bacak başka alanda → bellekte yalnız çıkış bacağı güncellenir.
+    // Karşı bacaklar başka alanda → bellekte yalnız çıkış bacağı güncellenir.
     const next = get().transactions.map(t => t.id === id ? outgoing : t)
     next.sort(txSortComparator)
     set({ transactions: next })
