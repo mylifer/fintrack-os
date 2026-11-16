@@ -19,7 +19,7 @@ import { PersonAvatar, recipientIconDomain } from '@/components/people/PersonAva
 import { AccountAvatar } from '@/components/accounts/AccountAvatar'
 import { TagBadges } from '@/components/transactions/TagBadges'
 import { SplitCountBadge } from '@/components/transactions/SplitCountBadge'
-import { focusedSplitShare } from '@/lib/utils/categorySplits'
+import { focusedSplitShare, focusedCategoryId } from '@/lib/utils/categorySplits'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { detectBrand } from '@/lib/subscriptions/brands'
@@ -508,7 +508,7 @@ const TableTxRow = memo(function TableTxRow({
       <div className="px-2 py-2 flex items-center min-w-0 overflow-hidden">
         {cat ? (
           <Link
-            href={`/categories/${tx.categoryId}`}
+            href={`/categories/${cat.id}`}
             className="inline-flex items-center gap-1.5 max-w-full rounded-full border border-border bg-[#f2f2f0] px-2 py-0.5 hover:bg-[#ebebe8] hover:border-border/80 transition-all group/link dark:bg-[#1c1c1c] dark:hover:bg-[#232323] dark:border-[#262626] dark:hover:border-[#262626]"
           >
             <span className="h-[7px] w-[7px] rounded-full flex-shrink-0" style={{ background: cat.color }} />
@@ -628,7 +628,7 @@ const CardTxRow = memo(function CardTxRow({
   // Bölünmüş satırda kategori adı "Market +2" olarak okunur (bkz. SplitCountBadge).
   if (cat) metaItems.push({
     text: (tx.categorySplits?.length ?? 0) > 1 ? `${cat.name} +${tx.categorySplits!.length - 1}` : cat.name,
-    href: `/categories/${tx.categoryId}`,
+    href: `/categories/${cat.id}`,
   })
   if (tx.isInstallment) metaItems.push({ text: installmentLabel(tx) })
   if (recipient) metaItems.push({ text: recipient.name, href: `/alicilar/${tx.recipientId}` })
@@ -814,6 +814,12 @@ export function TransactionList({
 
   // O(1) lookup maps — replace per-row categories/accounts/people .find() scans.
   const catById    = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
+  // Rozet kategorisi: kategori odaklı listede bölünmüş satır açık kategoriyi
+  // gösterir (bkz. focusedCategoryId); aksi halde tx.categoryId (en büyük pay).
+  const catFor = (t: Transaction) => {
+    const cid = focusedCategoryId(t, focusCategoryIds)
+    return cid ? catById.get(cid) : undefined
+  }
   const accById    = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts])
   const personById = useMemo(() => new Map(people.map(p => [p.id, p])), [people])
 
@@ -1025,7 +1031,7 @@ export function TransactionList({
                         grouped={row.compact ? true : dateGrouped}
                         isFirst={row.isFirst}
                         isLast={row.isLast}
-                        cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
+                        cat={catFor(row.tx)}
                         account={accById.get(row.tx.accountId)}
                         toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
                         recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
@@ -1072,7 +1078,7 @@ export function TransactionList({
                   <CardTxRow
                     tx={row.tx}
                     future={row.future}
-                    cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
+                    cat={catFor(row.tx)}
                     account={accById.get(row.tx.accountId)}
                     recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                     family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
