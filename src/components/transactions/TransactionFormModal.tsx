@@ -131,12 +131,11 @@ export function TransactionFormModal() {
   )
 
   // ── Çalışma alanları arası transfer ─────────────────────────────────────
-  // Sadece YENİ (düzenlenmeyen, tekrarlamayan) transfer için — bkz.
-  // useTransactionStore.addCrossWorkspaceTransfer. Karşı bacak sıradan bir
-  // gider/gelir satırı olduğundan, mevcut bir bacağı düzenlerken bu blok hiç
-  // görünmez (o zaman tab 'expense'/'income'dir, 'transfer' değil).
-  const crossWorkspace = useCrossWorkspaceTransfer()
-  const { crossWs, targetWorkspaceId, targetAccountId, crossWsDebt, targetDebtId } = crossWorkspace
+  // Yeni transferde ve düzenlemede (aynı-alan transferini başka alana çevirme,
+  // var olan alanlar arası transferin çıkış bacağını düzenleme) — bkz.
+  // useCrossWorkspaceTransfer.
+  const crossWorkspace = useCrossWorkspaceTransfer({ isEdit, isPlannedEdit, editingTx, setTab })
+  const { crossWs, targetWorkspaceId, targetAccountId, crossWsDebt, targetDebtId, linkedEditable } = crossWorkspace
 
   const patch = (p: Partial<TxForm>) => setForm(f => ({ ...f, ...p }))
 
@@ -189,7 +188,7 @@ export function TransactionFormModal() {
     installments, manualAmounts, splits, accounts, categories, editingTx, editingRec, isPlannedEdit,
     isRecurring, isCollection, selectedReceivable, receivableRemaining, isInterest, taxRate,
     interestSplit, linkedTaxTx, convertibleTx, crossWs, targetWorkspaceId, targetAccountId,
-    crossWsDebt, targetDebtId, canKeepOpen, keepOpen, sessionEditId, setSession, setSessionEditId,
+    crossWsDebt, targetDebtId, linkedEditable, canKeepOpen, keepOpen, sessionEditId, setSession, setSessionEditId,
     resetForNext,
   })
 

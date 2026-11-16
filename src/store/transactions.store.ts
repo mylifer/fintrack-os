@@ -143,6 +143,43 @@ export interface CrossWorkspaceTransferInput {
   targetDebtId?: string
 }
 
+/** Alanlar arası transfer bacaklarını işaretleyen ikon — kategori analizlerinden
+ *  hariç tutulsun diye (bkz. addCrossWorkspaceTransfer). */
+const CROSS_WS_ICON = '⇄'
+
+/** Alanlar arası transferi düzenlerken karşı bacak(lar): satırın kendisi hariç,
+ *  aynı workspaceTransferId'li canlı satırlar (ham Dexie — karşı alan yüklü değil). */
+export async function crossWorkspacePeers(tx: Pick<Transaction, 'id' | 'workspaceTransferId'>): Promise<Transaction[]> {
+  if (!tx.workspaceTransferId) return []
+  const rows = await db.transactions.where('workspaceTransferId').equals(tx.workspaceTransferId).toArray()
+  return (rows as Transaction[]).filter(p => p.id !== tx.id && isLive(p))
+}
+
+/** Kaynak/hedef hesabı doğrular ve hedef tutarı (gerekirse FX ile) hesaplar —
+ *  ekleme ve düzenleme aynı kuralı kullanır. */
+async function resolveCrossWorkspaceAmounts(input: CrossWorkspaceTransferInput) {
+  const sourceAccount = useAccountStore.getState().accounts.find(a => a.id === input.sourceAccountId)
+  if (!sourceAccount) throw new Error('Kaynak hesap bulunamadı')
+
+  const targetAccount = await db.accounts.get(input.targetAccountId)
+  if (!targetAccount || !isLive(targetAccount) || !rowInWorkspace(targetAccount, input.targetWorkspaceId)) {
+    throw new Error('Hedef hesap bulunamadı')
+  }
+
+  const sourceCurrency = sourceAccount.currency
+  const targetCurrency = targetAccount.currency
+  // Hedef tutar hesabı kur yokken ham fallback'e düşebilir (transfer ANINDA
+  // donar, sonradan düzeltilemez). KALICI snapshot ise baseSnapshot'tan gelir:
+  // kur yoksa damgalanmaz, böylece baseAmount() kurlar gelince canlı çevirir
+  // (withBase/update ile aynı kural — yanlış ham değer kalıcılaşmasın).
+  const amountTry = toBaseTry(input.amount, sourceCurrency)
+  const amountTrySnap = baseSnapshot(input.amount, sourceCurrency) ?? undefined
+  const targetAmount = targetCurrency === sourceCurrency
+    ? input.amount
+    : fromBaseTry(amountTry, targetCurrency)
+  return { sourceCurrency, targetCurrency, amountTry, amountTrySnap, targetAmount }
+}
+
 interface TransactionState {
   transactions: Transaction[]
   loading: boolean
@@ -150,6 +187,13 @@ interface TransactionState {
   load: () => Promise<void>
   add: (tx: Transaction, source?: TxHistorySource) => Promise<void>
   addCrossWorkspaceTransfer: (input: CrossWorkspaceTransferInput) => Promise<void>
+  /** Kayıtlı bir transferi alanlar arası transfere çevirir ya da var olan
+   *  alanlar arası transferin (çıkış bacağı `id`) hedefini/tutarını/tarihini
+   *  İKİ bacakta birlikte günceller. Borç ödemeli transfer desteklenmez. */
+  updateCrossWorkspaceTransfer: (id: string, input: Omit<CrossWorkspaceTransferInput, 'targetDebtId'>) => Promise<void>
+  /** Alanlar arası transferin çıkış bacağını sıradan satıra çevirmeden önce:
+   *  karşı bacak(lar)ı siler, bağ alanlarını temizler. */
+  detachCrossWorkspaceTransfer: (id: string) => Promise<void>
   /** Üretilen satırların id'lerini taksit sırasıyla döndürür (ilk taksit başta). */
   addInstallmentGroup: (
     base: Omit<Transaction, 'id' | 'installIndex' | 'installGroupId' | 'createdAt' | 'updatedAt'>,
@@ -227,13 +271,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const sourceWorkspaceId = useWorkspaceStore.getState().activeId
     if (!sourceWorkspaceId) throw new Error('Aktif çalışma alanı bulunamadı')
 
-    const sourceAccount = useAccountStore.getState().accounts.find(a => a.id === input.sourceAccountId)
-    if (!sourceAccount) throw new Error('Kaynak hesap bulunamadı')
-
-    const targetAccount = await db.accounts.get(input.targetAccountId)
-    if (!targetAccount || !isLive(targetAccount) || !rowInWorkspace(targetAccount, input.targetWorkspaceId)) {
-      throw new Error('Hedef hesap bulunamadı')
-    }
+    const { sourceCurrency, targetCurrency, amountTry, amountTrySnap, targetAmount } =
+      await resolveCrossWorkspaceAmounts(input)
 
     // Borç ödemesi: borç hedef alana ait ve ödenecek yönde (benim borcum) olmalı.
     // Hedef alan yüklü olmadığından borç da ham Dexie'den okunur.
@@ -246,24 +285,12 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       }
     }
 
-    const sourceCurrency = sourceAccount.currency
-    const targetCurrency = targetAccount.currency
-    // Hedef tutar hesabı kur yokken ham fallback'e düşebilir (transfer ANINDA
-    // donar, sonradan düzeltilemez). KALICI snapshot ise baseSnapshot'tan gelir:
-    // kur yoksa damgalanmaz, böylece baseAmount() kurlar gelince canlı çevirir
-    // (withBase/update ile aynı kural — yanlış ham değer kalıcılaşmasın).
-    const amountTry = toBaseTry(input.amount, sourceCurrency)
-    const amountTrySnap = baseSnapshot(input.amount, sourceCurrency) ?? undefined
-    const targetAmount = targetCurrency === sourceCurrency
-      ? input.amount
-      : fromBaseTry(amountTry, targetCurrency)
-
     const linkId = crypto.randomUUID()
     const now = new Date().toISOString()
     // Kategori analizlerinden hariç tutulsun diye bir ikon işareti taşır —
     // yatırım defter satırlarının kategori dağılımından hariç tutulma
     // deseniyle aynı (bkz. DetailedStats.tsx: `!t.icon` filtresi).
-    const ICON = '⇄'
+    const ICON = CROSS_WS_ICON
 
     const outgoing: Transaction = {
       id: crypto.randomUUID(),
@@ -325,6 +352,102 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // yüklenmediği için burada yok; o alana geçilince reconcilingPull getirir.
     const next = [outgoing, ...get().transactions]
     next.sort(txSortComparator)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
+  },
+
+  updateCrossWorkspaceTransfer: async (id, input) => {
+    const sourceWorkspaceId = useWorkspaceStore.getState().activeId
+    if (!sourceWorkspaceId) throw new Error('Aktif çalışma alanı bulunamadı')
+    if (input.targetWorkspaceId === sourceWorkspaceId) throw new Error('Hedef alan kaynak alanla aynı olamaz')
+
+    const cur = get().transactions.find(t => t.id === id)
+    if (!cur) throw new Error('İşlem bulunamadı')
+    // Taksit/borç ödemesi/sistem satırı alanlar arası transfere çevrilemez.
+    if (cur.isInstallment || cur.installGroupId || cur.debtId || cur.systemKind || cur.refundOfId) {
+      throw new Error('Bu işlem alanlar arası transfere çevrilemez')
+    }
+    // Var olan alanlar arası transferde yalnız ÇIKIŞ bacağı düzenlenir ve
+    // tek bir karşı bacak (hedef giriş) olmalı — borç ödemeli üçlü değil.
+    const peers = await crossWorkspacePeers(cur)
+    if (cur.workspaceTransferId && (cur.type !== 'expense' || peers.length !== 1 || peers[0].debtId)) {
+      throw new Error('Bu alanlar arası transfer düzenlenemez')
+    }
+    const prevPeer = peers[0] as Transaction | undefined
+
+    const { sourceCurrency, targetCurrency, amountTrySnap, targetAmount } =
+      await resolveCrossWorkspaceAmounts(input)
+    const now = new Date().toISOString()
+    const linkId = cur.workspaceTransferId ?? crypto.randomUUID()
+
+    // Aynı-alan transferinin hedef/kategori alanları düşer (artık gider bacağı).
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { toAccountId: _to, categoryId: _cat, categorySplits: _splits, ...kept } = cur
+    const outgoing: Transaction = {
+      ...kept,
+      type:        'expense',
+      amount:      input.amount,
+      amountTry:   amountTrySnap,
+      currency:    sourceCurrency,
+      date:        input.date,
+      accountId:   input.sourceAccountId,
+      icon:        CROSS_WS_ICON,
+      description: input.description,
+      notes:       input.notes,
+      updatedAt:   now,
+      workspaceId: cur.workspaceId ?? sourceWorkspaceId,
+      workspaceTransferId: linkId,
+      peerWorkspaceId:     input.targetWorkspaceId,
+    }
+    const incoming: Transaction = {
+      ...(prevPeer ?? {}),
+      id:            prevPeer?.id ?? crypto.randomUUID(),
+      type:          'income',
+      amount:        targetAmount,
+      amountTry:     amountTrySnap,
+      currency:      targetCurrency,
+      date:          input.date,
+      accountId:     input.targetAccountId,
+      icon:          CROSS_WS_ICON,
+      description:   input.description,
+      notes:         input.notes,
+      isInstallment: false,
+      approvalStatus: outgoing.approvalStatus,
+      createdAt:     prevPeer?.createdAt ?? now,
+      updatedAt:     now,
+      workspaceId:   input.targetWorkspaceId,
+      workspaceTransferId: linkId,
+      peerWorkspaceId:     sourceWorkspaceId,
+    }
+
+    await localBatch([
+      { kind: 'upsert', table: 'transactions', entity: outgoing },
+      { kind: 'upsert', table: 'transactions', entity: incoming },
+    ], { source: 'form' })
+
+    // Karşı bacak başka alanda → bellekte yalnız çıkış bacağı güncellenir.
+    const next = get().transactions.map(t => t.id === id ? outgoing : t)
+    next.sort(txSortComparator)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
+  },
+
+  detachCrossWorkspaceTransfer: async (id) => {
+    const cur = get().transactions.find(t => t.id === id)
+    if (!cur?.workspaceTransferId) return
+    const peers = await crossWorkspacePeers(cur)
+    // Karşı bacaklar (borç ödemesi dahil) silinir; borç katkısı geri alınır.
+    if (peers.length) await setDeletedWithDebts([], peers, true)
+    const clear: Partial<Transaction> = {
+      workspaceTransferId: undefined,
+      peerWorkspaceId:     undefined,
+      ...(cur.icon === CROSS_WS_ICON ? { icon: undefined } : {}),
+    }
+    await localPatch('transactions', id, clear, { source: 'form' })
+    const peerIds = new Set(peers.map(p => p.id))
+    const next = get().transactions
+      .filter(t => !peerIds.has(t.id))
+      .map(t => t.id === id ? { ...t, ...clear } : t)
     set({ transactions: next })
     useAccountStore.getState().recomputeBalances(next)
   },

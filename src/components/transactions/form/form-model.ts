@@ -87,6 +87,12 @@ export type RecForm = ReturnType<typeof newRecurringForm>
 // Build the initial form once (used as a lazy useState initializer). On edit it
 // hydrates from the transaction being edited; on add it seeds an empty form,
 // optionally pre-filling the account passed via the modal payload.
+/** Alanlar arası transferin ÇIKIŞ bacağı mı? Düzenlemede Transfer sekmesinde,
+ *  "Diğer Alan" hedefiyle açılır (bkz. useCrossWorkspaceTransfer). */
+export function isCrossWsOutgoingLeg(tx: Pick<Transaction, 'workspaceTransferId' | 'type' | 'debtId'>): boolean {
+  return !!tx.workspaceTransferId && tx.type === 'expense' && !tx.debtId
+}
+
 export function buildInitialForm(
   isEdit: boolean,
   editingTx: Transaction | undefined,

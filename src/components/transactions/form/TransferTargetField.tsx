@@ -23,7 +23,7 @@ export function TransferTargetField({
   crossWorkspace: CrossWorkspaceTransfer
 }) {
   const {
-    otherWorkspaces, crossWs, setCrossWs, targetWorkspaceId, setTargetWorkspaceId,
+    otherWorkspaces, editable, crossWs, setCrossWs, targetWorkspaceId, setTargetWorkspaceId,
     targetAccounts, setTargetAccounts, targetAccountId, setTargetAccountId,
     crossWsDebt, setCrossWsDebt, targetDebts, setTargetDebts, targetDebtId, setTargetDebtId,
   } = crossWorkspace
@@ -60,7 +60,7 @@ export function TransferTargetField({
               Borç
             </button>
           )}
-          {!isEdit && !sessionEditId && otherWorkspaces.length > 0 && (
+          {(!isEdit || editable) && !sessionEditId && otherWorkspaces.length > 0 && (
             <button
               type="button"
               onClick={() => { setCrossWs(true); patch({ isDebtPayment: false, toAccountId: undefined }) }}
@@ -88,7 +88,8 @@ export function TransferTargetField({
             onOpenChange={onSelectOpen}
           />
           {errors.targetWorkspaceId && <p className="text-xs text-destructive">{errors.targetWorkspaceId}</p>}
-          {targetWorkspaceId && (
+          {/* Borç ödemesi yalnız yeni kayıtta (düzenlemede borç mutabakatı yürütülmez) */}
+          {targetWorkspaceId && !isEdit && (
             <div className="flex self-start rounded border border-input overflow-hidden text-[11px]">
               <button
                 type="button"

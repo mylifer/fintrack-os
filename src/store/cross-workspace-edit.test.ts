@@ -1,0 +1,217 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { Account, Debt, Transaction } from '@/types'
+
+/* ────────────────────────────────────────────────────────────────────────
+   Çalışma alanları arası transferi DÜZENLEME (updateCrossWorkspaceTransfer)
+   ve bağı koparma (detachCrossWorkspaceTransfer). Kurulum
+   cross-workspace-debt.test.ts ile aynı; aşağıdaki açıklama oradan.
+
+   Çalışma alanları arası transferle borç ödemesi
+
+   Kaynak alandaki hesaptan, BAŞKA bir alandaki borç ödenir. Üç satır doğar:
+     1. kaynak alan  — 'expense' (kaynak hesaptan çıkış)
+     2. hedef alan   — 'income'  (ara hesaba giriş)
+     3. hedef alan   — debtId'li 'transfer' (ara hesaptan borç ödemesi)
+   Üçü de aynı workspaceTransferId'yi taşır. Borç hedef alana ait olduğundan
+   bellekteki borç listesinde YOKTUR — paidAmount yaması Dexie'deki borçtan
+   hesaplanıp aynı atomik localBatch'e girmelidir; silme de geri almalıdır.
+──────────────────────────────────────────────────────────────────────── */
+
+let dexieTransactions: Transaction[] = []
+let dexieAccounts: Account[] = []
+let dexieDebts: Debt[] = []
+const patches: { table: string; id: string; patch: Record<string, unknown> }[] = []
+const batches: { kind: string; table: string; id?: string; ids?: string[]; entity?: Transaction; patch?: Record<string, unknown> }[][] = []
+
+vi.mock('@/lib/db', () => ({
+  db: {
+    transactions: {
+      toArray: async () => dexieTransactions,
+      where: (field: keyof Transaction) => ({
+        equals: (value: unknown) => ({
+          toArray: async () => dexieTransactions.filter(t => t[field] === value),
+        }),
+      }),
+    },
+    accounts: { get: async (id: string) => dexieAccounts.find(a => a.id === id) },
+    debts: {
+      get: async (id: string) => dexieDebts.find(d => d.id === id),
+      bulkGet: async (ids: string[]) => ids.map(id => dexieDebts.find(d => d.id === id)),
+    },
+  },
+}))
+
+vi.mock('@/lib/supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }))
+
+// localBatch, Dexie'yi de günceller ki silme akışı karşı bacakları bulabilsin.
+vi.mock('@/lib/sync/engine', () => ({
+  localUpsert: async () => {},
+  localBulkUpsert: async () => {},
+  localPatch: async (table: string, id: string, patch: Record<string, unknown>) => {
+    patches.push({ table, id, patch })
+    if (table === 'transactions') dexieTransactions = dexieTransactions.map(t => t.id === id ? { ...t, ...patch } : t)
+  },
+  softDelete: async () => {},
+  softDeleteMany: async () => {},
+  reconcilingPull: async () => [],
+  localBatch: async (ops: typeof batches[number]) => {
+    batches.push(ops)
+    for (const op of ops) {
+      if (op.kind === 'upsert' && op.table === 'transactions') dexieTransactions = [...dexieTransactions.filter(t => t.id !== op.entity!.id), op.entity!]
+      if (op.kind === 'patchMany' && op.table === 'transactions') {
+        dexieTransactions = dexieTransactions.map(t => op.ids!.includes(t.id) ? { ...t, ...op.patch } : t)
+      }
+      if (op.kind === 'patch' && op.table === 'debts') {
+        dexieDebts = dexieDebts.map(d => d.id === op.id ? { ...d, ...op.patch } : d)
+      }
+    }
+  },
+}))
+
+vi.mock('./accounts.store', () => ({
+  useAccountStore: {
+    getState: () => ({
+      recomputeBalances: () => {},
+      accounts: [account('kaynak', 'ws-a'), account('kaynak-usd', 'ws-a', 'USD')],
+    }),
+  },
+}))
+
+vi.mock('./workspace.store', () => ({
+  useWorkspaceStore: { getState: () => ({ activeId: 'ws-a' }) },
+}))
+
+const { useTransactionStore } = await import('./transactions.store')
+const { useDebtStore } = await import('./debts.store')
+
+function account(id: string, workspaceId: string, currency = 'TRY'): Account {
+  return {
+    id, name: id, type: 'checking', currency: currency as Account['currency'], balance: 0, initialBalance: 0,
+    color: '#000', isArchived: false, createdAt: '2026-01-01', workspaceId,
+  }
+}
+
+function debt(p: Partial<Debt> = {}): Debt {
+  return {
+    id: 'borc', name: 'Kredi', type: 'loan', direction: 'owe', totalAmount: 10_000,
+    paidAmount: 2_000, paidInstallments: 2, startDate: '2026-01-01', isSettled: false,
+    createdAt: '2026-01-01', workspaceId: 'ws-b', ...p,
+  } as Debt
+}
+
+beforeEach(() => {
+  batches.length = 0
+  patches.length = 0
+  dexieTransactions = []
+  dexieAccounts = [account('kaynak', 'ws-a'), account('ara', 'ws-b'), account('ara2', 'ws-b'), account('c-hesap', 'ws-c')]
+  dexieDebts = [debt()]
+  useTransactionStore.setState({ transactions: [], ready: true, loading: false })
+  useDebtStore.setState({ debts: [] })   // aktif alan ws-a: borç bellekte YOK
+})
+
+
+function tx(p: Partial<Transaction>): Transaction {
+  return {
+    id: 't', type: 'transfer', amount: 500, currency: 'TRY', date: '2026-02-01',
+    accountId: 'kaynak', description: 'Aktarım', isInstallment: false,
+    createdAt: '2026-02-01', updatedAt: '2026-02-01', workspaceId: 'ws-a', ...p,
+  }
+}
+
+const editInput = {
+  sourceAccountId: 'kaynak', targetWorkspaceId: 'ws-b', targetAccountId: 'ara',
+  amount: 750, date: '2026-02-05', description: 'Damla harçlık',
+}
+
+describe('updateCrossWorkspaceTransfer', () => {
+  it('aynı-alan transferini alanlar arası transfere çevirir (id korunur, hedefte giriş doğar)', async () => {
+    const t = tx({ id: 'tr', toAccountId: 'baska', categoryId: 'kat' })
+    dexieTransactions = [t]
+    useTransactionStore.setState({ transactions: [t] })
+
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('tr', editInput)
+
+    const out = dexieTransactions.find(r => r.id === 'tr')!
+    const inc = dexieTransactions.find(r => r.id !== 'tr')!
+    expect(out).toMatchObject({ type: 'expense', amount: 750, date: '2026-02-05', workspaceId: 'ws-a', peerWorkspaceId: 'ws-b', icon: '⇄' })
+    expect(out.toAccountId).toBeUndefined()
+    expect(out.categoryId).toBeUndefined()
+    expect(inc).toMatchObject({ type: 'income', amount: 750, accountId: 'ara', workspaceId: 'ws-b', peerWorkspaceId: 'ws-a' })
+    expect(inc.workspaceTransferId).toBe(out.workspaceTransferId)
+    // Bellekte yalnız aktif alandaki çıkış bacağı
+    expect(useTransactionStore.getState().transactions.map(r => r.id)).toEqual(['tr'])
+    // Tek atomik yazma
+    expect(batches).toHaveLength(1)
+  })
+
+  it('var olan alanlar arası transferin iki bacağını birlikte günceller (karşı bacak id korunur)', async () => {
+    const out = tx({ id: 'out', type: 'expense', workspaceTransferId: 'L', peerWorkspaceId: 'ws-b', icon: '⇄' })
+    const inc = tx({ id: 'inc', type: 'income', accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L', peerWorkspaceId: 'ws-a', icon: '⇄' })
+    dexieTransactions = [out, inc]
+    useTransactionStore.setState({ transactions: [out] })
+
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('out', {
+      ...editInput, targetAccountId: 'ara2',
+    })
+
+    expect(dexieTransactions).toHaveLength(2)
+    expect(dexieTransactions.find(r => r.id === 'inc')).toMatchObject({ accountId: 'ara2', amount: 750, date: '2026-02-05', workspaceTransferId: 'L' })
+    expect(dexieTransactions.find(r => r.id === 'out')).toMatchObject({ amount: 750, workspaceTransferId: 'L' })
+  })
+
+  it('hedef alanı değiştirince karşı bacak yeni alana taşınır', async () => {
+    const out = tx({ id: 'out', type: 'expense', workspaceTransferId: 'L', peerWorkspaceId: 'ws-b', icon: '⇄' })
+    const inc = tx({ id: 'inc', type: 'income', accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L', peerWorkspaceId: 'ws-a', icon: '⇄' })
+    dexieTransactions = [out, inc]
+    useTransactionStore.setState({ transactions: [out] })
+
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('out', {
+      ...editInput, targetWorkspaceId: 'ws-c', targetAccountId: 'c-hesap',
+    })
+
+    expect(dexieTransactions.find(r => r.id === 'inc')).toMatchObject({ workspaceId: 'ws-c', accountId: 'c-hesap' })
+    expect(dexieTransactions.find(r => r.id === 'out')).toMatchObject({ peerWorkspaceId: 'ws-c' })
+  })
+
+  it('borç ödemeli üçlü, giriş bacağı ve taksit düzenlenmez', async () => {
+    const out = tx({ id: 'out', type: 'expense', workspaceTransferId: 'L', peerWorkspaceId: 'ws-b' })
+    const inc = tx({ id: 'inc', type: 'income', accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L' })
+    const pay = tx({ id: 'pay', type: 'transfer', debtId: 'borc', accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L' })
+    dexieTransactions = [out, inc, pay]
+    useTransactionStore.setState({ transactions: [out] })
+    await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('out', editInput)).rejects.toThrow()
+
+    const incA = tx({ id: 'inc-a', type: 'income', workspaceTransferId: 'M' })
+    dexieTransactions = [incA, tx({ id: 'out-b', type: 'expense', workspaceId: 'ws-b', workspaceTransferId: 'M' })]
+    useTransactionStore.setState({ transactions: [incA] })
+    await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('inc-a', editInput)).rejects.toThrow()
+
+    const inst = tx({ id: 'ins', isInstallment: true, installGroupId: 'g' })
+    useTransactionStore.setState({ transactions: [inst] })
+    await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('ins', editInput)).rejects.toThrow()
+    expect(batches).toHaveLength(0)
+  })
+
+  it('hedef alan aktif alanla aynı olamaz', async () => {
+    const t = tx({ id: 'tr', toAccountId: 'baska' })
+    useTransactionStore.setState({ transactions: [t] })
+    await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('tr', { ...editInput, targetWorkspaceId: 'ws-a' })).rejects.toThrow()
+  })
+})
+
+describe('detachCrossWorkspaceTransfer', () => {
+  it('karşı bacağı siler ve bağ alanlarını temizler', async () => {
+    const out = tx({ id: 'out', type: 'expense', workspaceTransferId: 'L', peerWorkspaceId: 'ws-b', icon: '⇄' })
+    const inc = tx({ id: 'inc', type: 'income', accountId: 'ara', workspaceId: 'ws-b', workspaceTransferId: 'L' })
+    dexieTransactions = [out, inc]
+    useTransactionStore.setState({ transactions: [out] })
+
+    await useTransactionStore.getState().detachCrossWorkspaceTransfer('out')
+
+    expect(dexieTransactions.find(r => r.id === 'inc')!.deleted_at).toBeTruthy()
+    expect(patches).toEqual([{ table: 'transactions', id: 'out', patch: { workspaceTransferId: undefined, peerWorkspaceId: undefined, icon: undefined } }])
+    const mem = useTransactionStore.getState().transactions.find(r => r.id === 'out')!
+    expect(mem.workspaceTransferId).toBeUndefined()
+    expect(mem.icon).toBeUndefined()
+  })
+})
