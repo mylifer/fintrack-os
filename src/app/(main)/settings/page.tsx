@@ -15,6 +15,7 @@ import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
 import { InvestmentsViewSettings } from '@/components/settings/InvestmentsViewSettings'
 import { FundTaxSettings } from '@/components/settings/FundTaxSettings'
 import { ErrorLogsCard } from '@/components/settings/ErrorLogsCard'
+import { InstallmentSplitRepair } from '@/components/settings/InstallmentSplitRepair'
 import { SettingsSectionChips } from '@/components/settings/SettingsSectionNav'
 import { loadDemoData, clearAllData } from '@/lib/seed'
 import { scanDemoData, removeDemoData, type DemoScan } from '@/lib/demo-cleanup'
@@ -353,6 +354,9 @@ export default function SettingsPage() {
                     )
                   )}
                 </div>
+
+                {/* Taksitli bölünmüş işlemlerin kategori paylarını onar */}
+                <InstallmentSplitRepair />
 
                 {/* Import */}
                 <div className="flex items-start justify-between gap-4 pt-4 border-t border-border">

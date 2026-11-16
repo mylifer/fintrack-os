@@ -1,7 +1,7 @@
 import type { CategorySplit, Transaction } from '@/types'
 import { toMinor, toMajor, splitMoney, splitInstallments } from './money'
 import { baseAmount } from './fx'
-import { rescaleSplits } from './categorySplits'
+import { rescaleSplits, splitsForInstallments } from './categorySplits'
 
 /* ────────────────────────────────────────────────────────────────────────
    Taksit editöründe tekil değişiklik → ALTTAKİ taksitlerin yeniden bölüşümü
@@ -197,4 +197,142 @@ export function groupCategorySplits(head: Transaction, rows: readonly Transactio
     }
   }
   return rescaleSplits(head.categorySplits, toMajor(amountMinor))
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Taksitli + bölünmüş alışverişlerde kategori payı onarımı (tek seferlik)
+
+   Eskiden satın alma düzeyindeki paylar her taksitte AYRI yuvarlanıyordu
+   (rescaleSplits): r_ij = round(a_i × s_j / T). Kategori toplamları kuruş
+   kayıyordu (2.199,00₺'lik pay → 2.198,98₺). Şimdiki kayıt yolu
+   splitsForInstallments ile tam dağıtır; bu tarayıcı eski grupları bulur.
+
+   Girilen pay s_j kayıtlı satırlardan GERİ ÇÖZÜLÜR: her taksit için
+   (r_ij − ½)·T/a_i ≤ s_j < (r_ij + ½)·T/a_i (kuruş biriminde). Aralıkların
+   kesişimindeki adaylardan en "yuvarlak" olan seçilir (tam lira > 10 kuruş >
+   diğer), eşitlikte bugünkü toplama en yakın. Son kategori kalanı alır
+   (rescaleSplits'te de kalan son paya yazılıyordu).
+
+   Kesişimi boş olan grup (ör. sonradan tek taksiti elle değiştirilmiş) tahmin
+   edilmez; `unresolved` listesinde döner, elle düzenlenmesi için gösterilir.
+──────────────────────────────────────────────────────────────────────── */
+export interface InstallmentSplitFix {
+  groupId: string
+  description: string
+  currency: Transaction['currency']
+  total: number
+  /** Kategori bazında bugünkü toplam → onarılmış toplam (yalnızca değişenler). */
+  categories: { categoryId: string; from: number; to: number }[]
+  /** Satırlar ve yeni payları (yalnızca payı değişen satırlar). */
+  changes: { tx: Transaction; splits: CategorySplit[] }[]
+}
+
+export interface InstallmentSplitScan {
+  fixes: InstallmentSplitFix[]
+  /** Payları kayıtlı taksitlerden tutarlı biçimde geri çözülemeyen gruplar. */
+  unresolved: { groupId: string; description: string }[]
+}
+
+function sameSplits(a: readonly CategorySplit[] | undefined, b: readonly CategorySplit[]): boolean {
+  if (!a || a.length !== b.length) return false
+  return a.every((s, i) => s.categoryId === b[i].categoryId && toMinor(s.amount) === toMinor(b[i].amount))
+}
+
+/** Yuvarlaklık puanı: tam lira 2, 10 kuruş 1, diğer 0. */
+function roundness(minor: number): number {
+  return minor % 100 === 0 ? 2 : minor % 10 === 0 ? 1 : 0
+}
+
+export function findInstallmentSplitFixes(transactions: readonly Transaction[]): InstallmentSplitScan {
+  const groups = new Map<string, Transaction[]>()
+  for (const t of transactions) {
+    if (!t.installGroupId || t.deleted_at) continue
+    const g = groups.get(t.installGroupId)
+    if (g) g.push(t)
+    else groups.set(t.installGroupId, [t])
+  }
+
+  const fixes: InstallmentSplitFix[] = []
+  const unresolved: InstallmentSplitScan['unresolved'] = []
+
+  for (const [groupId, rows] of groups) {
+    if (rows.length < 2) continue
+    rows.sort((a, b) => (a.installIndex ?? 0) - (b.installIndex ?? 0))
+    const head = rows[0]
+    if (!head.categorySplits || head.categorySplits.length < 2) continue
+    const order = head.categorySplits.map(s => s.categoryId)
+    const amounts = rows.map(t => t.amount)
+    const aMinor = amounts.map(toMinor)
+    const T = aMinor.reduce((x, y) => x + y, 0)
+
+    // Yalnız pozitif tutarlı, her satırı aynı kategori sırasıyla bölünmüş gruplar.
+    const shapeOk = T > 0 && aMinor.every(a => a > 0) && rows.every(t =>
+      t.categorySplits?.length === order.length &&
+      t.categorySplits.every((s, i) => s.categoryId === order[i] && toMinor(s.amount) >= 0))
+    if (!shapeOk) {
+      // Bölünmüş ama tutarlı biçimde çözülemeyen grup → elle bakılsın.
+      if (rows.some(t => (t.categorySplits?.length ?? 0) > 1)) unresolved.push({ groupId, description: head.description })
+      continue
+    }
+
+    const current = order.map((_, j) => rows.reduce((acc, t) => acc + toMinor(t.categorySplits![j].amount), 0))
+    // Satırlar YENİ kayıt yoluyla (splitsForInstallments) da üretilmiş olabilir.
+    // Bugünkü toplamlar o yolla satırları birebir veriyorsa bugünkü toplam da
+    // geçerli bir adaydır — eşit yuvarlaklıkta mesafesi 0 olduğu için kazanır.
+    const exact = splitsForInstallments(order.map((categoryId, j) => ({ categoryId, amount: toMajor(current[j]) })), amounts)
+    const newPathOk = rows.every((t, i) => sameSplits(t.categorySplits, exact[i]))
+
+    // Son kategori dışındakileri ESKİ yoldan (satır satır yuvarlama) geri çöz.
+    const target: number[] = []
+    let legacyOk = true
+    for (let j = 0; j < order.length - 1 && legacyOk; j++) {
+      let lo = -Infinity
+      let hi = Infinity
+      for (let i = 0; i < rows.length; i++) {
+        const r = toMinor(rows[i].categorySplits![j].amount)
+        lo = Math.max(lo, ((r - 0.5) * T) / aMinor[i])
+        hi = Math.min(hi, ((r + 0.5) * T) / aMinor[i])
+      }
+      let best: number | null = null
+      for (let c = Math.max(0, Math.ceil(lo - 1e-9)); c < hi - 1e-9; c++) {
+        if (best === null) { best = c; continue }
+        const rc = roundness(c)
+        const rb = roundness(best)
+        if (rc > rb || (rc === rb && Math.abs(c - current[j]) < Math.abs(best - current[j]))) best = c
+      }
+      if (best === null) legacyOk = false
+      else target.push(best)
+    }
+    if (!legacyOk) {
+      // Eski yolla açıklanamıyor: yeni yolla tutarlıysa zaten doğrudur, değilse elle bakılsın.
+      if (!newPathOk) unresolved.push({ groupId, description: head.description })
+      continue
+    }
+    // İki yolla da açıklanabiliyorsa bugünkü toplam da aday: daha yuvarlak değilse
+    // değiştirilmez (yeni kaydedilmiş, kasıtlı kuruşlu payları korur).
+    if (newPathOk) {
+      for (let j = 0; j < target.length; j++) {
+        if (roundness(current[j]) >= roundness(target[j])) target[j] = current[j]
+      }
+    }
+    const lastMinor = T - target.reduce((x, y) => x + y, 0)
+    if (lastMinor < 0) {
+      unresolved.push({ groupId, description: head.description })
+      continue
+    }
+    target.push(lastMinor)
+
+    const targetSplits = order.map((categoryId, j) => ({ categoryId, amount: toMajor(target[j]) }))
+    const next = splitsForInstallments(targetSplits, amounts)
+    const categories = order
+      .map((categoryId, j) => ({ categoryId, from: toMajor(current[j]), to: toMajor(target[j]) }))
+      .filter(c => toMinor(c.from) !== toMinor(c.to))
+    // Kategori toplamları zaten doğruysa satır içi dağılımı yeniden yazmaya gerek yok.
+    if (categories.length === 0) continue
+    const changes = rows
+      .map((tx, i) => ({ tx, splits: next[i] }))
+      .filter(c => !sameSplits(c.tx.categorySplits, c.splits))
+    fixes.push({ groupId, description: head.description, currency: head.currency, total: toMajor(T), categories, changes })
+  }
+  return { fixes, unresolved }
 }
