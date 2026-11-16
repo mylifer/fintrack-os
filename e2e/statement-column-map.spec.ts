@@ -1,4 +1,4 @@
-import { test, expect, openApp, createAccount, memFile, trDate, addDays } from './helpers'
+import { test, expect, openApp, createAccount, memFile, trDate, addDays, decisionOptions, pickDecision } from './helpers'
 
 /* Ekstre Yükle: biçimi tanınmayan döküm → sütun eşleme → mevcut önizleme ve
    kayıt hattı; aynı biçimin sonraki dökümünde eşleme hatırlanır. */
@@ -34,11 +34,9 @@ test('tanınmayan döküm: sütun eşleme önerilir, önizlemeden kaydedilir, e�
   await expect(page.getByText(/Dönem başı bakiye ₺10\.000,00/)).toBeVisible()
   // Vadesiz dökümde tanınmayan satırlar karar ister (mevcut sınıflandırma hattı;
   // "Gider olarak gir" kategori de ister — burada hattın sonuna kadar gitmek yeter)
-  const decide = page.getByRole('combobox', { name: 'MAAS ODEMESI için karar' })
-  await expect(decide.locator('option', { hasText: 'Gelir olarak gir' })).toHaveCount(1)
-  for (const name of ['MIGROS ATASEHIR', 'MAAS ODEMESI', 'EV KIRASI']) {
-    await page.getByRole('combobox', { name: `${name} için karar` }).selectOption({ label: 'Girme' })
-  }
+  const decide = await decisionOptions(page, 'MAAS ODEMESI')
+  await expect(decide.getByRole('button', { name: 'Gelir olarak gir' })).toHaveCount(1)
+  for (const name of ['MIGROS ATASEHIR', 'MAAS ODEMESI', 'EV KIRASI']) await pickDecision(page, name, 'Girme')
   const offline = page.getByText(/Buluttaki en güncel kayıtlar alınamadı/)
   if (await offline.isVisible()) await offline.click()
   await page.getByRole('button', { name: /Onayla ve gir · 0 kayıt/ }).click()
