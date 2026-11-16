@@ -318,6 +318,30 @@ describe('updateCrossWorkspaceTransfer — giriş bacağından (hedef alan aktif
     expect(dexieDebts[0]).toMatchObject({ paidAmount: 2_000, paidInstallments: 2 })
   })
 
+  it('borç ödemesi satırından düzenlenir: tüm bacaklar ve borç güncellenir', async () => {
+    seed(true)
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('pay', { ...inInput, targetAccountId: 'ara', targetDebtId: 'borc' })
+    expect(dexieTransactions.find(t => t.id === 'out')).toMatchObject({ amount: 2_000, date: '2026-02-07' })
+    expect(dexieTransactions.find(t => t.id === 'inc')).toMatchObject({ amount: 2_000 })
+    expect(dexieTransactions.find(t => t.id === 'pay')).toMatchObject({ amount: 2_000, debtId: 'borc' })
+    expect(dexieDebts[0]).toMatchObject({ paidAmount: 4_000, paidInstallments: 3 })
+  })
+
+  it('borç ödemesi satırından borç kaldırılınca o satır silinir, giriş kalır', async () => {
+    seed(true)
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('pay', { ...inInput, targetAccountId: 'ara' })
+    expect(dexieTransactions.find(t => t.id === 'pay')!.deleted_at).toBeTruthy()
+    expect(useTransactionStore.getState().transactions.map(t => t.id)).toEqual(['inc'])
+    expect(dexieDebts[0]).toMatchObject({ paidAmount: 2_000, paidInstallments: 2 })
+  })
+
+  it('alanlar arası transfere ait olmayan borç ödemesi çevrilemez', async () => {
+    seed(false)
+    const lone = tx({ id: 'lone', debtId: 'borc', workspaceId: 'ws-b' })
+    useTransactionStore.setState({ transactions: [lone] })
+    await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('lone', inInput)).rejects.toThrow()
+  })
+
   it('düzenlenen giriş bacağı başka alana taşınamaz', async () => {
     seed(false)
     await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('inc', {

@@ -88,13 +88,14 @@ export type RecForm = ReturnType<typeof newRecurringForm>
 // hydrates from the transaction being edited; on add it seeds an empty form,
 // optionally pre-filling the account passed via the modal payload.
 /** Alanlar arası transferin hangi bacağı: 'out' çıkış (gider, kaynak alan),
- *  'in' giriş (gelir, hedef alan); bacak değilse null. İkisi de düzenlemede
- *  Transfer sekmesinde açılır (bkz. useCrossWorkspaceTransfer). Borç ödemesi
- *  bacağı (debtId'li transfer) sıradan borç ödemesi gibi düzenlenir. */
+ *  'in' hedef alandaki bacak — giriş (gelir) ya da borç ödemesi (debtId'li
+ *  transfer); bacak değilse null. Hepsi düzenlemede Transfer sekmesinde açılır
+ *  (bkz. useCrossWorkspaceTransfer). */
 export function crossWsLegDirection(
   tx: Pick<Transaction, 'workspaceTransferId' | 'type' | 'debtId'>,
 ): 'out' | 'in' | null {
-  if (!tx.workspaceTransferId || tx.debtId) return null
+  if (!tx.workspaceTransferId) return null
+  if (tx.debtId) return tx.type === 'transfer' ? 'in' : null
   return tx.type === 'expense' ? 'out' : tx.type === 'income' ? 'in' : null
 }
 

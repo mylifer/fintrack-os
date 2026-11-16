@@ -21,8 +21,9 @@ export function useCrossWorkspaceTransfer({
   //   • kayıtlı bir aynı-alan transferi başka alana çevrilebilir;
   //   • ÇIKIŞ bacağı ('out'): karşı alan = hedef; alan, hesap ve varsa ödenen
   //     borç (hedef alanda) ön dolu açılır;
-  //   • GİRİŞ bacağı ('in'): karşı alan = KAYNAK; formun "Hesap"ı paranın
-  //     girdiği bu alandaki hesaptır, borç da bu alandan seçilir.
+  //   • GİRİŞ bacağı ya da hedef alandaki BORÇ ÖDEMESİ bacağı ('in'): karşı
+  //     alan = KAYNAK; formun "Hesap"ı paranın girdiği bu alandaki hesaptır,
+  //     borç da bu alandan seçilir.
   // `targetWorkspaceId/targetAccountId/targetAccounts` her iki yönde de KARŞI
   // alanı/hesabı tutar; yönü `direction` söyler.
   const allWorkspaces    = useWorkspaceStore(s => s.workspaces)
@@ -37,11 +38,11 @@ export function useCrossWorkspaceTransfer({
   const legDirection = isEdit && editingTx ? crossWsLegDirection(editingTx) : null
   const direction: 'out' | 'in' = legDirection ?? 'out'
   // Düzenlemede "Diğer Alan" seçeneği: taksitsiz, borçsuz sıradan transfer ya
-  // da alanlar arası transfer bacağı.
+  // da alanlar arası transfer bacağı (borç ödemesi bacağı dahil).
   const editable = isEdit && !isPlannedEdit && !!editingTx
-    && !editingTx.isInstallment && !editingTx.installGroupId && !editingTx.debtId
+    && !editingTx.isInstallment && !editingTx.installGroupId
     && !editingTx.systemKind && !editingTx.refundOfId
-    && (editingTx.type === 'transfer' || !!legDirection)
+    && (!!legDirection || (editingTx.type === 'transfer' && !editingTx.debtId))
 
   const [crossWs, setCrossWs]                 = useState(!!legDirection)
   const [targetWorkspaceId, setTargetWorkspaceId] = useState(legDirection ? editingTx?.peerWorkspaceId ?? '' : '')

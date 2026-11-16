@@ -422,8 +422,10 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
     const cur = get().transactions.find(t => t.id === id)
     if (!cur) throw new Error('İşlem bulunamadı')
-    // Taksit/borç ödemesi/sistem satırı alanlar arası transfere çevrilemez.
-    if (cur.isInstallment || cur.installGroupId || cur.debtId || cur.systemKind || cur.refundOfId) {
+    // Taksit/sistem satırı ve (alanlar arası transfere ait olmayan) borç
+    // ödemesi alanlar arası transfere çevrilemez.
+    if (cur.isInstallment || cur.installGroupId || (cur.debtId && !cur.workspaceTransferId)
+      || cur.systemKind || cur.refundOfId) {
       throw new Error('Bu işlem alanlar arası transfere çevrilemez')
     }
 
@@ -441,8 +443,8 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       throw new Error('Bu işlem alanlar arası transfere çevrilemez')
     }
     // Düzenlenen satır kendi alanında kalır: çıkıştan düzenlemede kaynak,
-    // girişten düzenlemede hedef aktif alandır.
-    const editingIncoming = cur.id === prevIn?.id
+    // girişten ya da borç ödemesinden düzenlemede hedef aktif alandır.
+    const editingIncoming = cur.id === prevIn?.id || cur.id === prevPayment?.id
     if (editingIncoming ? input.targetWorkspaceId !== activeId : sourceWorkspaceId !== activeId) {
       throw new Error('Düzenlenen bacak kendi alanında kalmalı')
     }
