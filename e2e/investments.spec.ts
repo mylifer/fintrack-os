@@ -17,14 +17,17 @@ async function trade(page: Page, kind: 'Al' | 'Sat', qty: string, price: string,
   await expect(m).toHaveCount(0)
 }
 
-test('al/sat penceresi: dialog rolü, Esc ile kapanır, odak geri döner', async ({ page }) => {
+test('al/sat penceresi: dialog rolü, Esc kapatmaz, X kapatır, odak geri döner', async ({ page }) => {
   await openApp(page)
   await page.goto('/investments')
   const opener = page.getByRole('button', { name: 'Al', exact: true }).first()
   await opener.click()
   const m = page.getByRole('dialog', { name: 'Yatırım İşlemi' })
   await expect(m).toBeVisible()
+  // Esc pencereyi kapatmaz (yalnız titretir); X kapatır
   await page.keyboard.press('Escape')
+  await expect(m).toBeVisible()
+  await m.getByRole('button', { name: 'Kapat' }).click()
   await expect(m).toHaveCount(0)
   await expect(opener).toBeFocused()
 })

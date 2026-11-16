@@ -233,6 +233,7 @@ export function TransactionFormModal() {
             <button
               type="button"
               onClick={closeModal}
+              aria-label="Kapat"
               className="rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <X className="size-4" />
