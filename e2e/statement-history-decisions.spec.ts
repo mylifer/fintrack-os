@@ -1,4 +1,4 @@
-import { test, expect, openApp, createAccount, memFile, trDate, addDays } from './helpers'
+import { test, expect, openApp, createAccount, memFile, trDate, addDays, decisionCell, pickDecision } from './helpers'
 
 /* Yüklenen Ekstreler → "Satırlar ve kararlar": onaylanan ekstre ilk yüklemedeki
    haliyle, her satıra verilen kararla ("Girme" dahil) açılır; bir karar
@@ -6,12 +6,6 @@ import { test, expect, openApp, createAccount, memFile, trDate, addDays } from '
 
 const csv = (rows: [Date, string, string, string, string][]) =>
   ['Hesap No;TR00 0000', 'İşlem Tarihi;Açıklama;Borç;Alacak;Bakiye', ...rows.map(r => [trDate(r[0]), ...r.slice(1)].join(';'))].join('\n')
-
-const pick = async (page: import('@playwright/test').Page, title: string, label: string) => {
-  const sel = page.getByRole('combobox', { name: `${title} için karar` })
-  const value = await sel.locator('option', { hasText: label }).first().getAttribute('value')
-  await sel.selectOption(value!)
-}
 
 test('yüklenmiş ekstre kararlarıyla açılır, "Girme" dahil; değişen satır yazılır', async ({ page }) => {
   await openApp(page)
@@ -38,7 +32,7 @@ test('yüklenmiş ekstre kararlarıyla açılır, "Girme" dahil; değişen satı
   await page.getByPlaceholder('Kategori ara...').fill('Karar Gideri')
   await page.getByRole('button', { name: /“Karar Gideri” kategorisini ekle/ }).click()
   await row.getByRole('button', { name: 'Tamam' }).click()
-  await pick(page, 'IKINCI DUKKAN', 'Girme')
+  await pickDecision(page, 'IKINCI DUKKAN', 'Girme')
 
   const offline = page.getByText(/Buluttaki en güncel kayıtlar alınamadı/)
   if (await offline.isVisible()) await offline.click()
@@ -51,10 +45,8 @@ test('yüklenmiş ekstre kararlarıyla açılır, "Girme" dahil; değişen satı
   await expect(page.getByRole('heading', { name: 'Karar Bank · hesap dökümü' })).toBeVisible()
   await expect(page.getByText(/ilk yüklediğin haliyle, verdiğin kararlarla/)).toBeVisible()
   await expect(page.getByText('satıra “Girme” dedin')).toBeVisible()
-  const first = page.getByRole('combobox', { name: 'BIRINCI DUKKAN için karar' })
-  const second = page.getByRole('combobox', { name: 'IKINCI DUKKAN için karar' })
-  await expect(first.locator('option:checked')).toHaveText(/Gider olarak gir/)
-  await expect(second.locator('option:checked')).toHaveText(/Girme/)
+  await expect(decisionCell(page, 'BIRINCI DUKKAN')).toContainText('Gider olarak gir')
+  await expect(decisionCell(page, 'IKINCI DUKKAN')).toContainText('Girme')
   await expect(page.getByRole('button', { name: 'Değişiklik yok' })).toBeDisabled()
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/decisions.png`, fullPage: true })
 
@@ -74,6 +66,6 @@ test('yüklenmiş ekstre kararlarıyla açılır, "Girme" dahil; değişen satı
   await expect(page.getByText(/2 satır · 2 kayıt girildi/)).toBeVisible()
   // Yeniden açınca ikisi de "gir" kararıyla
   await page.getByRole('link', { name: 'Satırlar ve kararlar' }).click()
-  await expect(page.getByRole('combobox', { name: 'IKINCI DUKKAN için karar' }).locator('option:checked')).toHaveText(/Gider olarak gir/)
+  await expect(decisionCell(page, 'IKINCI DUKKAN')).toContainText('Gider olarak gir')
   await expect(page.getByText('satıra “Girme” dedin')).toHaveCount(0)
 })

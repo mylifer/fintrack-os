@@ -84,6 +84,26 @@ export function chosenIndex(row: Pick<PlanRow, 'key' | 'options'>, choices: Read
   return i < 0 ? null : i
 }
 
+/** Önerilen kararlar baştan uygulanmış hali: kullanıcının kararı ya da satırın
+ *  varsayılanı olmayan "Kontrol et" satırına önerilen seçenek yazılır. Kullanıcının
+ *  kararları ayrı saklanır; `auto` önerilenle doldurulan satırların anahtarlarıdır
+ *  (listede "otomatik" diye gösterilir, kullanıcı değiştirince kalkar). */
+export function withRecommended(
+  rows: readonly PlanRow[],
+  choices: Readonly<RowChoices>,
+): { choices: RowChoices; auto: ReadonlySet<string> } {
+  const out: RowChoices = { ...choices }
+  const auto = new Set<string>()
+  for (const r of rows) {
+    if (r.status !== 'review' || r.recommended === null) continue
+    const rec = r.options[r.recommended]
+    if (!rec || selectedOption(r, choices) !== null) continue
+    out[r.key] = rec.key
+    auto.add(r.key)
+  }
+  return { choices: out, auto }
+}
+
 /** Aynı ekstre yeniden okununca (okuyucu düzeltmesi: satır eklendi/sırası değişti)
  *  satır anahtarları ("L5") kayar; kararlar ve düzenlemeler satırın kalıcı
  *  kimliği (stableKey: tarih + işyeri + tutar) üzerinden yeni satırlara taşınır.

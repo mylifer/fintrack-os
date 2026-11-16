@@ -30,7 +30,7 @@ import { sortNewestFirst, withManualOptions } from '@/lib/statement-import/manua
 import { db } from '@/lib/db'
 import { useDebtStore, debtPaymentPatches } from '@/store/debts.store'
 import type { Debt } from '@/types'
-import { buildCommit, commitEffect, optionForEdit, remapByStableKey, rowTitle, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
+import { buildCommit, commitEffect, optionForEdit, remapByStableKey, rowTitle, selectedOption, withRecommended, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 import { forgetSkipped, loadSkipped, rememberSkipped } from '@/lib/statement-import/skip-memory'
 import { buildHistoryCommit, changedRows, skippedAsOf, transactionsAsOf, type CommittedBaseline } from '@/lib/statement-import/history'
 import type { BatchOp } from '@/lib/sync/engine'
@@ -185,16 +185,24 @@ export function StatementImport() {
 
   const existing = useMemo(() => new Map(transactions.map(t => [t.id, t])), [transactions])
 
+  // Önerilen kararlar baştan uygulanır (yalnız yeni yüklemede): kullanıcı yalnız önerisi
+  // olmayanlara karar verir, yanlış olanı değiştirir. Taslağa kullanıcının kararları
+  // yazılır; otomatikler her açılışta yeniden hesaplanır.
+  const { choices: decisions, auto: autoKeys } = useMemo(
+    () => (plan && !baseline ? withRecommended(plan.rows, choices) : { choices, auto: new Set<string>() }),
+    [plan, baseline, choices],
+  )
+
   const preview = useMemo(() => {
     if (!plan || !accountId) return null
     const input = {
-      rows: plan.rows, choices, edits, accountId, existing, people, workspaceId,
+      rows: plan.rows, choices: decisions, edits, accountId, existing, people, workspaceId,
       nowIso: new Date().toISOString(), todayStr: today(), newId: () => 'preview',
     }
     return baseline
       ? buildHistoryCommit({ ...input, base: baseline, liveMatches: liveMatches ?? new Map() })
       : { ...buildCommit(input), changed: 0, unskippedKeys: [] as string[], rewrittenTxIds: [] as string[] }
-  }, [plan, choices, edits, accountId, existing, people, workspaceId, baseline, liveMatches])
+  }, [plan, decisions, edits, accountId, existing, people, workspaceId, baseline, liveMatches])
 
   // Ekstrenin kesim / son ödeme tarihleri → Kart Takvimi (hesap seçiliyse)
   const calendarFor = useCallback((st: ParsedStatement, accId: string): CalendarUpdate | null => {
@@ -398,14 +406,14 @@ export function StatementImport() {
     const review = plan.rows.filter(r => r.status === 'review')
     const progress = {
       review: review.length,
-      pending: review.filter(r => selectedOption(r, choices) === null).length,
+      pending: review.filter(r => selectedOption(r, decisions) === null).length,
       create: preview.createdTxIds.length,
     }
     const sig = JSON.stringify([draftId, accountId, choices, edits, progress])
     if (sig === lastSaved.current) return
     lastSaved.current = sig
     saveDraft({ id: draftId, workspaceId, fileName, statement, accountId, choices, edits, progress })
-  }, [step, statement, draftId, draftWs, accountId, choices, edits, fileName, plan, preview, workspaceId, saveDraft, baseline])
+  }, [step, statement, draftId, draftWs, accountId, choices, decisions, edits, fileName, plan, preview, workspaceId, saveDraft, baseline])
 
   // ── Onay ─────────────────────────────────────────────────────────────────
   const authoritative = lastPullWasAuthoritative('transactions')
@@ -425,8 +433,10 @@ export function StatementImport() {
         return
       }
       const txs = useTransactionStore.getState().transactions
+      // Onaylanan ekstrenin kararları otomatikler dahil yazılır (yüklenenler listesi onlarla kurulur)
+      const finalChoices = baseline ? choices : withRecommended(fresh.rows, choices).choices
       const input = {
-        rows: fresh.rows, choices, edits, accountId, existing: new Map(txs.map(t => [t.id, t])),
+        rows: fresh.rows, choices: finalChoices, edits, accountId, existing: new Map(txs.map(t => [t.id, t])),
         people: usePeopleStore.getState().people, nowIso: new Date().toISOString(), todayStr: today(), workspaceId,
       }
       const live = baseline ? makePlan(statement, accountId) : null
@@ -461,8 +471,8 @@ export function StatementImport() {
       if (draftId) {
         const review = fresh.rows.filter(r => r.status === 'review')
         drafts.save({
-          id: draftId, workspaceId: draftWs !== undefined ? draftWs : workspaceId, fileName, statement, accountId, choices, edits,
-          progress: { review: review.length, pending: review.filter(r => selectedOption(r, choices) === null).length, create: res.createdTxIds.length },
+          id: draftId, workspaceId: draftWs !== undefined ? draftWs : workspaceId, fileName, statement, accountId, choices: finalChoices, edits,
+          progress: { review: review.length, pending: review.filter(r => selectedOption(r, finalChoices) === null).length, create: res.createdTxIds.length },
         })
         drafts.markCommitted(draftId, res.createdTxIds)
       }
@@ -607,7 +617,7 @@ export function StatementImport() {
   const openRow = rows.find(r => r.key === openKey) ?? null
   const reviewKeys = rows.filter(r => r.status === 'review')
   // Yüklenmiş ekstrede yalnız değiştirilen satırlar yazılır: karar beklemesi engel olmaz
-  const pending = baseline ? 0 : reviewKeys.filter(r => selectedOption(r, choices) === null).length
+  const pending = baseline ? 0 : reviewKeys.filter(r => selectedOption(r, decisions) === null).length
   const changedCount = baseline && plan ? changedRows(plan.rows, choices, edits, baseline).length : 0
   const blockers = plan?.blockers ?? []
   const needsOfflineAck = !authoritative && !offlineOk
@@ -630,7 +640,7 @@ export function StatementImport() {
   const todo = rows
     .filter(r => (!baseline && r.status === 'review') || problemByKey.has(r.key))
     .map(r => {
-      const undecided = r.status === 'review' && selectedOption(r, choices) === null
+      const undecided = r.status === 'review' && selectedOption(r, decisions) === null
       const problem = problemByKey.get(r.key) ?? null
       return { row: r, undecided, done: !undecided && !problem, why: undecided ? (r.issue ?? 'Karar bekliyor') : problem }
     })
@@ -658,7 +668,7 @@ export function StatementImport() {
     const opt = row?.options[i]
     if (!row || !opt) return
     setChoices(c => ({ ...c, [key]: opt.key }))
-    const prevIdx = selectedOption(row, choices)
+    const prevIdx = selectedOption(row, decisions)
     if (prevIdx === i) return
     // Gider ↔ gelir geçişinde seçilmiş kategori öteki türe ait olur: o da silinir
     const typeOf = (o?: RowOption) => { const a = o?.actions.find(x => x.type === 'create'); return a?.type === 'create' ? a.draft.type : undefined }
@@ -686,15 +696,6 @@ export function StatementImport() {
     if (!('recipientId' in patch) && !('newRecipient' in patch)) return
     const i = optionForEdit(row, next)
     if (i !== null) setChoices(c => ({ ...c, [row.key]: row.options[i].key }))
-  }
-
-  function acceptRecommended() {
-    const next = { ...choices }
-    for (const r of rows) {
-      const rec = r.recommended !== null ? r.options[r.recommended] : undefined
-      if (r.status === 'review' && rec && selectedOption(r, next) === null) next[r.key] = rec.key
-    }
-    setChoices(next)
   }
 
   return (
@@ -812,7 +813,8 @@ export function StatementImport() {
         <PreviewList
           rows={rows}
           blockers={blockers}
-          choices={choices}
+          choices={decisions}
+          autoKeys={autoKeys}
           edits={edits}
           categories={categories}
           problems={preview?.problems ?? []}
@@ -821,7 +823,6 @@ export function StatementImport() {
           onChoose={choose}
           onOpen={setOpenKey}
           openKey={openKey}
-          onAcceptRecommended={acceptRecommended}
           onEdit={(key, patch) => { const r = rows.find(x => x.key === key); if (r) editRow(r, patch) }}
           closed={closedSections}
           onToggleSection={(sec, open) => setClosedSections(c => ({ ...c, [sec]: open === undefined ? !c[sec] : !open }))}
@@ -835,7 +836,7 @@ export function StatementImport() {
         row={openRow}
         statement={statement}
         accountId={accountId}
-        choice={openRow ? selectedOption(openRow, choices) : null}
+        choice={openRow ? selectedOption(openRow, decisions) : null}
         edit={openRow ? edits[openRow.key] : undefined}
         onChoose={i => openRow && choose(openRow.key, i)}
         onEdit={patch => openRow && editRow(openRow, patch)}
@@ -888,7 +889,7 @@ export function StatementImport() {
                       <span className={cn('size-2 rounded-full mt-1.5 flex-shrink-0', t.undecided ? 'bg-orange-600' : 'bg-destructive')} />
                       <span className="min-w-0 flex-1">
                         <span className="flex justify-between gap-2 text-sm">
-                          <span className="truncate font-medium">{rowTitle(t.row, choices, edits[t.row.key])}</span>
+                          <span className="truncate font-medium">{rowTitle(t.row, decisions, edits[t.row.key])}</span>
                           {t.row.amount !== null && <span className="tabular-nums text-muted-foreground whitespace-nowrap">{formatCurrency(t.row.amount)}</span>}
                         </span>
                         <span className="block text-xs text-muted-foreground truncate">{t.why}</span>

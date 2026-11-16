@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from '@playwright/test'
+import { test as base, expect, type Locator, type Page } from '@playwright/test'
 
 /* Ortak yardımcılar. `test` fikstürü her testte konsol hatalarını ve hata
    sınırını ("Bir şeyler ters gitti") izler; test sonunda ikisi de boş olmalı. */
@@ -66,4 +66,25 @@ export async function importCsv(page: Page, _testInfo: { outputPath: (n: string)
   await page.getByRole('button', { name: /Önizle/ }).click()
   await page.getByRole('dialog').getByRole('button', { name: new RegExp(`${rows} İşlemi İçe Aktar`) }).click()
   await expect(page.getByText(new RegExp(`${rows} işlem`)).first()).toBeVisible()
+}
+
+/** Ekstre önizlemesinde satırın karar seçenekleri: önerisi olmayan satırda zaten
+ *  açıktır, önerilenle doldurulanda "Değiştir"le açılır. */
+export async function decisionOptions(page: Page, title: string): Promise<Locator> {
+  const group = page.getByRole('group', { name: `${title} için karar`, exact: true })
+  if (!(await group.isVisible())) await page.getByRole('button', { name: `${title} kararını değiştir`, exact: true }).click()
+  await expect(group).toBeVisible()
+  return group
+}
+
+/** Satırın kararını seçer (adında `label` geçen ilk seçenek) */
+export async function pickDecision(page: Page, title: string, label: string) {
+  const group = await decisionOptions(page, title)
+  await group.getByRole('button', { name: label }).first().click()
+  await expect(group).toBeHidden()
+}
+
+/** Satırın seçili kararı (karar sütunundaki metin) */
+export function decisionCell(page: Page, title: string): Locator {
+  return page.getByRole('button', { name: `${title} kararını değiştir`, exact: true }).locator('..')
 }
