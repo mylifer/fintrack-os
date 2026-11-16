@@ -11,7 +11,6 @@ import { Icon, IC } from './icons'
 import { NAV_GROUPS, activeNavHref } from './nav'
 import { NavTree, defaultBadge, rolledUpBadge, type NavTreeStyles } from './NavTree'
 import { useSidebarData } from './useSidebarData'
-import { SettingsSectionList } from '@/components/settings/SettingsSectionNav'
 
 /* ── Varyant: ÇİFT PANEL (varsayılan) ──────────────────────────────────────────────────
    Solda dört bölümlük dar bir ray (Genel · Analiz · Planlama · Kişiler),
@@ -59,9 +58,6 @@ export function SidebarDual() {
   const current = picked && picked.path === pathname ? picked.group : groupOf(pathname)
   const group = NAV_GROUPS.find(g => g.title === current) ?? NAV_GROUPS[0]
   const onSettings = pathname === '/settings'
-  // Ayarlar açıkken panel, ana menü yerine Ayarlar bölümlerini gösteren bir
-  // katmana döner; raydan bir bölüm seçmek katmanı kapatır.
-  const settingsLayer = onSettings && !(picked && picked.path === pathname)
 
   return (
     <aside className="hidden lg:flex print:hidden w-[272px] h-screen sticky top-0 shrink-0 border-r border-border">
@@ -73,7 +69,7 @@ export function SidebarDual() {
         </div>
         <div className="flex flex-col items-center gap-2">
           {NAV_GROUPS.map(g => {
-            const sel = !settingsLayer && g.title === group.title
+            const sel = g.title === group.title
             const alert = g.items.some((_, i) => rolledUpBadge(g.items, i, data))
             return (
               <button
@@ -120,24 +116,10 @@ export function SidebarDual() {
       <div className="flex-1 min-w-0 flex flex-col bg-muted/50">
         <div className="px-3 pt-4 pb-2 flex-shrink-0"><WorkspaceSwitcher /></div>
         <div className="px-3 pb-3 flex-shrink-0"><SearchTrigger /></div>
-        {settingsLayer ? (
-          <>
-            <div className="px-4 pb-2 flex items-center gap-2 text-[17px] font-bold tracking-tight text-foreground flex-shrink-0">
-              <Icon d={IC.settings} size={18} className="text-primary" />
-              Ayarlar
-            </div>
-            <nav aria-label="Ayarlar bölümleri" className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 flex flex-col gap-0.5">
-              <SettingsSectionList rowCls={styles.row} iconSize={styles.iconSize} iconActive={styles.iconActive} />
-            </nav>
-          </>
-        ) : (
-          <>
-            <div className="px-4 pb-2 text-[17px] font-bold tracking-tight text-foreground flex-shrink-0">{group.title}</div>
-            <nav className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 flex flex-col gap-0.5">
-              <NavTree items={group.items} data={data} styles={styles} />
-            </nav>
-          </>
-        )}
+        <div className="px-4 pb-2 text-[17px] font-bold tracking-tight text-foreground flex-shrink-0">{group.title}</div>
+        <nav className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 flex flex-col gap-0.5">
+          <NavTree items={group.items} data={data} styles={styles} />
+        </nav>
         <div className="m-3 p-3 rounded-xl bg-background border border-border flex-shrink-0">
           <div className="text-[9.5px] font-bold tracking-[0.12em] uppercase text-muted-foreground">Net Varlık</div>
           <div className="flex items-baseline gap-2 mt-0.5">
