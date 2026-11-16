@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  buildCategoryData, buildIncomeCategoryData, buildTagExpenseData, buildPeriodComparison, FUND_GAIN_SLICE_ID,
+  buildCategoryData, buildExpenseCategoryData, buildIncomeCategoryData, FUND_LOSS_SLICE_ID, buildTagExpenseData, buildPeriodComparison, FUND_GAIN_SLICE_ID,
 } from './report-data'
 import type { Transaction } from '@/types'
 
@@ -19,6 +19,19 @@ describe('buildCategoryData', () => {
       tx({ amount: 50 }), tx({ categoryId: 'c3', amount: -20 }),
     ], cats)
     expect(d.map(s => [s.categoryId, s.name, s.amount])).toEqual([['c2', 'Kira', 300], ['c1', 'Market', 100], [null, 'Kategorisiz', 50]])
+    expect(d.reduce((s, x) => s + x.percent, 0)).toBeCloseTo(100)
+  })
+})
+
+describe('buildExpenseCategoryData', () => {
+  it('gerçekleşen satış zararı/stopajı KPI ile aynı toplamı verecek şekilde eklenir', () => {
+    const d = buildExpenseCategoryData([
+      tx({ categoryId: 'c1', amount: 300 }),
+      tx({ amount: 100, icon: 'F', description: 'TP2 Satış Zararı' }),
+      tx({ categoryId: 'c2', amount: 50, icon: 'F', description: 'TP2 Satış Stopajı' }),
+      tx({ amount: 999, icon: 'F', description: 'TP2 Alımı' }),
+    ], cats)
+    expect(d.map(s => [s.categoryId, s.amount])).toEqual([['c1', 300], [FUND_LOSS_SLICE_ID, 100], ['c2', 50]])
     expect(d.reduce((s, x) => s + x.percent, 0)).toBeCloseTo(100)
   })
 })

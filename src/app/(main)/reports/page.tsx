@@ -16,7 +16,7 @@ import { CashFlowDetailOverlay } from '@/components/reports/CashFlowDetailOverla
 import type { CategorySlice }       from '@/components/reports/_CategoryDonutChart'
 import { PRESET_UNIT, formatPresetLabel, getPresetRange, type Preset } from '@/lib/reports/period'
 import {
-  buildCategoryData, buildIncomeCategoryData, buildTagExpenseData, buildPeriodComparison, buildCategoryTrendData,
+  buildExpenseCategoryData, buildIncomeCategoryData, buildTagExpenseData, buildPeriodComparison, buildCategoryTrendData,
 } from '@/lib/reports/report-data'
 import { buildTrendData } from '@/lib/reports/balance-trend'
 import { useFundPeriodGain } from '@/components/reports/sections/useFundPeriodGain'
@@ -192,7 +192,7 @@ export default function ReportsPage() {
   // barlara EKLENMEZ (para hareketi yok) — KPI "Toplam Gelir" değeri de artık
   // yalnız gerçekleşen nakit olduğundan ikisi tam tutarlı.
   const cashFlowData    = useMemo(() => buildCashFlowData(filteredTxs, dateRange), [filteredTxs, dateRange])
-  const categoryData    = useMemo(() => buildCategoryData(filteredTxs, categories),                   [filteredTxs, categories])
+  const categoryData    = useMemo(() => buildExpenseCategoryData(filteredTxs, categories),            [filteredTxs, categories])
   const incomeCatData   = useMemo(() => buildIncomeCategoryData(filteredTxs, categories, fundGain),    [filteredTxs, categories, fundGain])
   const tagData         = useMemo(() => buildTagExpenseData(filteredTxs),                             [filteredTxs])
   const topTags         = useMemo(() => tagData.slice(0, 8),                                          [tagData])

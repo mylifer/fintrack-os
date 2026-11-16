@@ -84,6 +84,47 @@ export function buildIncomeCategoryData(
     .sort((a, b) => b.amount - a.amount)
 }
 
+/* ── Expense distribution + yatırım zararı dilimi ──────────────────────
+   Gelir donut'unun simetriği. "Toplam Gider" KPI'ı (calcPeriodFlow) anahtar
+   AÇIKKEN gerçekleşen yatırım giderlerini — "… Satış Zararı" ve "… Satış
+   Stopajı" — sayar; bunlar icon'lu olduğundan sumExpenseByKey onları atlar ve
+   donut toplamı KPI'ın altında kalırdı. Burada geri eklenir:
+     • kategorisi olan satır (stopaj → Vergi) kendi kategori dilimine,
+     • kategorisiz satır (satış zararı) tek bir "Yatırım Zararı" dilimine.
+   Anahtar KAPALIYKEN bu satırlar filteredTxs'te zaten ayıklanmıştır → no-op.
+ ──────────────────────────────────────────────────────────────────────── */
+
+export const FUND_LOSS_SLICE_ID = '__fund_loss__'
+export const FUND_LOSS_COLOR    = '#a855f7'
+
+export function buildExpenseCategoryData(
+  transactions: Transaction[],
+  categories: Array<{ id: string; name: string; color: string }>,
+): CategorySlice[] {
+  const minor = new Map<string, number>()
+  for (const [k, v] of sumExpenseByKey(transactions, tx => tx.categoryId ?? '__none__')) minor.set(k, toMinor(v))
+  for (const tx of transactions) {
+    if (tx.type !== 'expense' || !isRealizedInvestmentPnlTx(tx)) continue
+    const k = tx.categoryId ?? FUND_LOSS_SLICE_ID
+    minor.set(k, (minor.get(k) ?? 0) + toMinor(baseAmount(tx)))
+  }
+  const entries = [...minor.entries()].filter(([, m]) => m > 0)
+  const total = entries.reduce((s, [, m]) => s + m, 0)
+  if (total === 0) return []
+  return entries
+    .map(([key, m]) => {
+      const amount = toMajor(m)
+      const percent = (m / total) * 100
+      if (key === FUND_LOSS_SLICE_ID) {
+        return { categoryId: FUND_LOSS_SLICE_ID, name: 'Yatırım Zararı', amount, percent, color: FUND_LOSS_COLOR }
+      }
+      const cat        = categories.find(c => c.id === key)
+      const categoryId = key === '__none__' ? null : key
+      return { categoryId, name: cat?.name ?? 'Kategorisiz', amount, percent, color: cat?.color ?? '#8C8C8C' }
+    })
+    .sort((a, b) => b.amount - a.amount)
+}
+
 /* ── Tag distribution (expenses) ──────────────────────────────────────
    Attributes each tagged expense's full amount to EVERY tag it carries
    (multi-tag transactions are counted once per tag). Untagged and

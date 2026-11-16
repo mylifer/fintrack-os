@@ -3,7 +3,7 @@
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { CategoryDonutChart }  from '@/components/reports/CategoryDonutChart'
 import type { CategorySlice }  from '@/components/reports/_CategoryDonutChart'
-import { FUND_GAIN_SLICE_ID } from '@/lib/reports/report-data'
+import { FUND_GAIN_SLICE_ID, FUND_LOSS_SLICE_ID } from '@/lib/reports/report-data'
 import { DonutSkeleton } from './skeletons'
 
 /* ── Kategori dağılımları (gider + gelir donut'ları) ───────────────── */
@@ -54,7 +54,8 @@ export function CategoryDistributionRow({
                       setSelectedCat(null)
                       setActiveSliceIdx(null)
                     } else {
-                      setSelectedCat(slice)
+                      // "Yatırım Zararı" defter kategorisi değil → drill-down açılmaz.
+                      setSelectedCat(slice.categoryId === FUND_LOSS_SLICE_ID ? null : slice)
                       setActiveSliceIdx(idx)
                     }
                   }}
