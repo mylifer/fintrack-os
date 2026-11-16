@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { addMonths, format } from 'date-fns'
 import type { Account, Budget, Category, Debt, PriceData, Transaction } from '@/types'
-import { awaitsApproval, buildDebtBurdenSeries, calcAvailableCredit, calcBudgetSpent, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtCollectionTx, isDebtPrincipalTx, isFlowTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
+import { awaitsApproval, buildDebtBurdenSeries, calcAvailableCredit, calcBudgetSpent, calcPendingInstallments, calcDebtBurden, calcDebtBurdenAsOf, calcPeriodFlow, computeTransactionEffect, enrichBudget, enrichDebt, excludeFuture, expandCategoryIds, isDebtCollectionTx, isDebtPrincipalTx, isFlowTx, isInvestmentPrincipalTx, isPrincipalMoveTx, isRealizedInvestmentPnlTx, isPosted, sumByType, sumExpenseByKey, sumIncomeByKey, txTouchesAccount } from './calculations'
 import { setBaseRates } from './fx'
 
 const tx = (o: Partial<Transaction>): Transaction => ({
@@ -44,6 +44,11 @@ describe('calcAvailableCredit — taksitli alım', () => {
 
   it('isInstallment bayrağı olmayan grup satırları installGroupId ile yine bloke edilir', () => {
     expect(available(group({ isInstallment: undefined as unknown as boolean }))).toBe(48000)
+  })
+
+  it('calcPendingInstallments: yalnız vadesi gelmemiş taksitler (kenar çubuğu taksit dahil borç)', () => {
+    expect(calcPendingInstallments(card, group())).toBe(10000)
+    expect(calcPendingInstallments({ id: 'other' }, group())).toBe(0)
   })
 })
 
