@@ -19,7 +19,7 @@ import { toBaseTry, fromBaseTry, baseAmount, baseSnapshot } from '@/lib/utils/fx
 import { txTouchesAccount } from '@/lib/utils/calculations'
 import { splitInstallments, mulMoney } from '@/lib/utils/money'
 import { findInstallmentRoundingFixes } from '@/lib/utils/installments'
-import { splitsAreValid, splitsMatchAmount, primarySplitCategoryId, rescaleSplits, txHasCategory } from '@/lib/utils/categorySplits'
+import { splitsAreValid, splitsMatchAmount, primarySplitCategoryId, rescaleSplits, splitsForInstallments, txHasCategory } from '@/lib/utils/categorySplits'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 import { withLinkedInterestTax } from '@/lib/utils/interest-tax'
 
@@ -585,6 +585,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     // taşır. Kullanıcı elle tutar girdiyse (amounts) onlar kullanılır; yoksa
     // banka kuralı: taksitler aşağı yuvarlanır, kuruş kalanı 1. taksite.
     const perInstallment = amounts?.length === count ? amounts : splitInstallments(base.amount, count)
+    const rowSplits = base.categorySplits?.length ? splitsForInstallments(base.categorySplits, perInstallment) : null
     for (let i = 0; i < count; i++) {
       const date = format(addMonths(parseISO(base.date), i), 'yyyy-MM-dd')
       // Taksitler onay kapısında BEKLEMEZ: gelecek aylara düşenler dahil hepsi
@@ -592,9 +593,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       // Kategori payları toplam satın alma tutarına göre girilir; her taksit
       // satırı kendi tutarına ölçeklenmiş payları taşır (toplamları o satırın
       // tutarına eşit) — böylece kategori bazlı raporlar taksit taksit doğrudur.
-      const splits = base.categorySplits?.length
-        ? rescaleSplits(base.categorySplits, perInstallment[i])
-        : undefined
+      const splits = rowSplits ? rowSplits[i] : undefined
       txs.push(withSplits(withBase({ ...base, amount: perInstallment[i], categorySplits: splits, id: crypto.randomUUID(), isInstallment: true, installTotal: count, installIndex: i + 1, installGroupId: groupId, date, approvalStatus: 'approved', approvedAt: now, createdAt: now, updatedAt: now })))
     }
     await localBulkUpsert('transactions', txs, { source })
@@ -646,7 +645,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       // bölme kaldırılmış demektir: alan açıkça null'lanır ki eski paylar kalmasın.
       if ('categorySplits' in shared) {
         const src = shared.categorySplits
-        rowFields.categorySplits = src?.length ? rescaleSplits(src, amounts[i]) : undefined
+        rowFields.categorySplits = src?.length ? splitsForInstallments(src, amounts)[i] : undefined
       }
       if (i < existing.length) {
         const cur = existing[i]
@@ -745,7 +744,7 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       // (bkz. addInstallmentGroup); boş gelirse bölme kaldırılmış demektir.
       if ('categorySplits' in shared) {
         const src = shared.categorySplits
-        rowFields.categorySplits = src?.length ? rescaleSplits(src, amounts[i]) : undefined
+        rowFields.categorySplits = src?.length ? splitsForInstallments(src, amounts)[i] : undefined
       }
       if (i === 0) {
         const merged = withSplits(withBase({ ...cur, ...rowFields } as Transaction))

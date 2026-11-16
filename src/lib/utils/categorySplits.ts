@@ -185,6 +185,50 @@ export function rescaleSplits(splits: readonly CategorySplit[], nextAmount: numb
   return out
 }
 
+/**
+ * Satın alma düzeyindeki payları taksitlere dağıtır. Her satırın payları o
+ * satırın tutarına eşit olur VE her kategorinin taksitler boyunca toplamı
+ * girilen paya kuruşu kuruşuna eşit kalır.
+ *
+ * Satır satır rescaleSplits her taksitte ayrı yuvarladığı için kuruş farkları
+ * birikiyordu (9 taksitte 2.199,00₺'lik pay 2.198,98₺ oluyordu). Burada son
+ * kategori dışındakiler KÜMÜLATİF tutar üzerinden yuvarlanır: i. taksitteki pay
+ * = round(kümülatif_i × oran) − round(kümülatif_{i−1} × oran) → farklar
+ * teleskoplanır, toplam tam paya iner. Son kategori satırın kalanını alır.
+ */
+export function splitsForInstallments(
+  splits: readonly CategorySplit[],
+  amounts: readonly number[],
+): CategorySplit[][] {
+  if (splits.length === 0) return amounts.map(() => [])
+  const totalMinor = amounts.reduce((a, x) => a + toMinor(x), 0)
+  const splitMinor = splits.map(s => toMinor(s.amount))
+  const splitTotal = splitMinor.reduce((a, x) => a + x, 0)
+  // Paylar toplamı tutmuyorsa (eski/bozuk kayıt) satır satır ölçeklemeye düş.
+  if (splitTotal !== totalMinor || totalMinor === 0) return amounts.map(a => rescaleSplits(splits, a))
+
+  const last = splits.length - 1
+  const prev = splitMinor.map(() => 0)
+  let cum = 0
+  return amounts.map(amount => {
+    const rowMinor = toMinor(amount)
+    cum += rowMinor
+    let acc = 0
+    return splits.map((s, j) => {
+      let part: number
+      if (j === last) {
+        part = rowMinor - acc
+      } else {
+        const upto = Math.round((cum * splitMinor[j]) / totalMinor)
+        part = upto - prev[j]
+        prev[j] = upto
+        acc += part
+      }
+      return { ...s, amount: toMajor(part) }
+    })
+  })
+}
+
 /** En büyük paya sahip kategori — `tx.categoryId` bununla damgalanır. */
 export function primarySplitCategoryId(splits: readonly CategorySplit[] | undefined): string | undefined {
   if (!splits?.length) return undefined
