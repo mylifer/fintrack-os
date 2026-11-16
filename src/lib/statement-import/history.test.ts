@@ -88,7 +88,7 @@ describe('yüklenmiş ekstrede kararı değiştirip kaydetmek', () => {
     const res = commit(rows, { L0: 'income' }, base({ L0: 'create' }, [idA]), [old])
     expect(res.createdTxIds).toEqual([])
     expect(res.rewrittenTxIds).toEqual([idA])
-    const up = res.ops.find(o => o.kind === 'upsert') as { entity: Transaction }
+    const up = res.ops.find(o => o.kind === 'upsert') as unknown as { entity: Transaction }
     expect(up.entity.type).toBe('income')
     expect(up.entity.createdAt).toBe(old.createdAt)
     expect(res.undo).toContainEqual({ kind: 'upsert', table: 'transactions', entity: old })
