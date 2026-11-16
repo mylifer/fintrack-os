@@ -161,6 +161,9 @@ interface DraftsState {
   markCommitted: (id: string, createdTxIds: readonly string[]) => void
   /** Onay geri alındı: ekstre onay öncesindeki haline döner (yoksa silinir) */
   restore: (id: string, before: StatementDraft | undefined) => void
+  /** Yüklenen ekstre geri alındı (kayıtları silindi): ekstre, kararlarıyla
+   *  birlikte yarım kalan taslağa döner; hesap değiştirilip yeniden onaylanabilir */
+  uncommit: (id: string) => void
   remove: (id: string) => void
 }
 
@@ -228,6 +231,16 @@ export const useStatementDraftsStore = create<DraftsState>()((set, get) => {
     if (!before) { get().remove(id); return }
     get().load()
     put({ ...before, updatedAt: new Date().toISOString() })
+  },
+
+  uncommit: (id) => {
+    get().load()
+    const prev = get().drafts.find(d => d.id === id)
+    if (!prev) return
+    const next: StatementDraft = { ...prev, updatedAt: new Date().toISOString() }
+    delete next.committedAt
+    delete next.createdTxIds
+    put(next)
   },
 
   remove: (id) => {
