@@ -10,7 +10,7 @@ import {
   useAccountStore, useInvestmentStore,
   useTransactionStore, useBudgetStore, useCategoryStore, useDebtStore,
 } from '@/store'
-import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, computeTransactionEffect, isPosted, isMonthlyCategoryBudget } from '@/lib/utils/calculations'
+import { calcNetWorth, calcDebtBurden, calcDebtBurdenAsOf, calcPendingInstallments, computeTransactionEffect, isPosted, isMonthlyCategoryBudget } from '@/lib/utils/calculations'
 import { computeHoldings } from '@/store/investment.store'
 import { currentMonthYear, prevMonth, monthRange } from '@/lib/utils/date'
 import { useCountUp } from '@/lib/hooks/useCountUp'
@@ -63,6 +63,19 @@ export function useSidebarData() {
   const prevWealth = totalWealth - trendAmount
   const trendPct   = prevWealth !== 0 ? (trendAmount / Math.abs(prevWealth)) * 100 : null
 
+  // Hesap listesinde kredi kartı, vadesi gelmemiş taksitler DAHİL borçla
+  // görünür (ör. -4.252 yerine -19.860): kullanıcı kartın toplam yükünü
+  // görmek istiyor. Yalnız görüntü içindir — net varlık ve trend yukarıda
+  // ham `accounts` bakiyesiyle hesaplanır, gelecek taksitler oraya girmez.
+  const navAccounts = useMemo(
+    () => accounts.map(a => {
+      if (a.type !== 'credit_card') return a
+      const pending = calcPendingInstallments(a, transactions)
+      return pending > 0 ? { ...a, balance: a.balance - pending } : a
+    }),
+    [accounts, transactions],
+  )
+
   const budgets       = useBudgetStore(useShallow(s => s.budgets.filter(isMonthlyCategoryBudget)))
   const allCategories = useCategoryStore(useShallow(s => s.categories))
 
@@ -86,7 +99,7 @@ export function useSidebarData() {
 
   return {
     pathname,
-    accounts,
+    accounts: navAccounts,
     budgets,
     allCategories,
     dueCount,
