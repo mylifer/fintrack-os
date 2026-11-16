@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
@@ -12,6 +13,7 @@ import { Icon, Chevron, IC } from './icons'
 import { NAV_GROUPS } from './nav'
 import { useSidebarData } from './useSidebarData'
 import { SearchTrigger } from '@/components/layout/command-palette/SearchTrigger'
+import { SettingsSectionList } from '@/components/settings/SettingsSectionNav'
 
 /* ── Varyant: RAFİNE ──────────────────────────────────────────────────────
    Ferah satırlar, dört başlıklı gruplama, yumuşak aksan hapları ve ayrı bir
@@ -50,6 +52,13 @@ export function SidebarRefined() {
     handleSignOut,
   } = useSidebarData()
 
+  // Ayarlar açıkken gezinti alanı Ayarlar bölümlerini gösteren bir katmana
+  // döner. "Ana menü" yalnızca bu yol için katmanı kapatır; başka sayfaya
+  // geçip geri gelince katman yeniden açılır.
+  const onSettings = pathname === '/settings'
+  const [mainOn, setMainOn] = useState<string | null>(null)
+  const settingsLayer = onSettings && mainOn !== pathname
+
   return (
     <aside className="hidden lg:flex print:hidden flex-col w-64 h-screen sticky top-0 shrink-0 bg-background border-r border-border">
 
@@ -75,8 +84,34 @@ export function SidebarRefined() {
         <SearchTrigger />
       </div>
 
-      {/* ── Gruplanmış nav ── */}
+      {/* ── Gruplanmış nav · Ayarlar sayfasında bölüm katmanı ── */}
+      {settingsLayer ? (
+        <nav aria-label="Ayarlar bölümleri" className="flex-1 px-3 pb-3 flex flex-col gap-0.5 overflow-y-auto min-h-0">
+          <button
+            type="button"
+            onClick={() => setMainOn(pathname)}
+            className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors w-fit"
+          >
+            <Icon d={IC.back} size={14} />
+            Ana menü
+          </button>
+          <div className="px-2.5 pt-2 pb-1.5 text-[9.5px] font-bold uppercase tracking-[0.13em] text-muted-foreground">
+            Ayarlar
+          </div>
+          <SettingsSectionList rowCls={navCls} />
+        </nav>
+      ) : (
       <nav className="flex-1 px-3 pb-3 flex flex-col overflow-y-auto min-h-0">
+        {onSettings && (
+          <button
+            type="button"
+            onClick={() => setMainOn(null)}
+            className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors w-fit"
+          >
+            <Icon d={IC.settings} size={14} />
+            Ayarlar bölümleri
+          </button>
+        )}
         {NAV_GROUPS.map(group => (
           <div key={group.title} className="flex flex-col gap-0.5">
             <div className="px-2.5 pt-3.5 pb-1.5 text-[9.5px] font-bold uppercase tracking-[0.13em] text-muted-foreground">
@@ -213,6 +248,7 @@ export function SidebarRefined() {
           </div>
         ))}
       </nav>
+      )}
 
       {/* ── Net varlık kartı ── */}
       <div className="mx-3 mb-3 px-3.5 py-3.5 rounded-xl bg-muted border border-border flex-shrink-0">
