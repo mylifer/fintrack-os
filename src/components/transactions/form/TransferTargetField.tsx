@@ -23,7 +23,7 @@ export function TransferTargetField({
   crossWorkspace: CrossWorkspaceTransfer
 }) {
   const {
-    otherWorkspaces, editable, direction, crossWs, setCrossWs, targetWorkspaceId, setTargetWorkspaceId,
+    otherWorkspaces, editable, direction, isLinkedLeg, crossWs, setCrossWs, targetWorkspaceId, setTargetWorkspaceId,
     targetAccounts, setTargetAccounts, targetAccountId, setTargetAccountId,
     crossWsDebt, setCrossWsDebt, targetDebts, setTargetDebts, targetDebtId, setTargetDebtId,
   } = crossWorkspace
@@ -63,7 +63,9 @@ export function TransferTargetField({
         <span className={cn("text-sm font-medium", (errors.toAccountId || errors.debtId || errors.targetWorkspaceId) && "text-destructive")}>
           {incoming ? 'Kaynak' : 'Hedef'}
         </span>
-        {!incoming && <div className="flex rounded border border-input overflow-hidden text-[11px]">
+        {/* Bağlı bacakta yön sabittir; bağsız borç ödemesinde ise geri
+            dönülebilsin diye seçim görünür kalır. */}
+        {!(incoming && isLinkedLeg) && <div className="flex rounded border border-input overflow-hidden text-[11px]">
           <button
             type="button"
             onClick={() => { setCrossWs(false); patch({ isDebtPayment: false, debtId: undefined }) }}
@@ -92,7 +94,17 @@ export function TransferTargetField({
           {(!isEdit || editable) && !sessionEditId && otherWorkspaces.length > 0 && (
             <button
               type="button"
-              onClick={() => { setCrossWs(true); patch({ isDebtPayment: false, toAccountId: undefined }) }}
+              onClick={() => {
+                setCrossWs(true)
+                if (direction === 'in') {
+                  // Bağsız borç ödemesi: borç ve ara hesap (formun hesabı) bu
+                  // alanda kalır, yalnız para diğer alandan gelir.
+                  setCrossWsDebt(true)
+                  setTargetDebtId(form.debtId ?? '')
+                } else {
+                  patch({ isDebtPayment: false, toAccountId: undefined })
+                }
+              }}
               className={cn(
                 "px-2 py-0.5 transition-colors border-l border-input",
                 crossWs ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground",
@@ -109,7 +121,8 @@ export function TransferTargetField({
             value={targetWorkspaceId}
             onChange={v => {
               setTargetWorkspaceId(v); setTargetAccountId(''); setTargetAccounts([])
-              setTargetDebtId(''); setTargetDebts([])
+              // Borç hedef alandadır: 'in'de bu alan — kaynak alan değişince korunur
+              if (!incoming) { setTargetDebtId(''); setTargetDebts([]) }
             }}
             options={otherWorkspaces.map(w => ({ value: w.id, label: w.name }))}
             placeholder={incoming ? "Kaynak alan..." : "Çalışma alanı seçin..."}

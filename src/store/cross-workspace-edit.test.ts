@@ -335,11 +335,39 @@ describe('updateCrossWorkspaceTransfer — giriş bacağından (hedef alan aktif
     expect(dexieDebts[0]).toMatchObject({ paidAmount: 2_000, paidInstallments: 2 })
   })
 
-  it('alanlar arası transfere ait olmayan borç ödemesi çevrilemez', async () => {
-    seed(false)
-    const lone = tx({ id: 'lone', debtId: 'borc', workspaceId: 'ws-b' })
+  it('bu alandaki sıradan borç ödemesi alanlar arası transfere çevrilir: ödeme satırı kalır, çıkış ve giriş doğar', async () => {
+    activeId = 'ws-b'
+    // ws-b'de Garanti(ara)'dan Kredi'ye 1.500'lük sıradan ödeme; borç bunu içeriyor
+    const lone = tx({ id: 'lone', amount: 1_500, amountTry: 1_500, accountId: 'ara', debtId: 'borc', workspaceId: 'ws-b', description: 'Kredi taksiti' })
+    dexieTransactions = [lone]
+    dexieDebts = [debt({ paidAmount: 3_500, paidInstallments: 3 })]
     useTransactionStore.setState({ transactions: [lone] })
-    await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('lone', inInput)).rejects.toThrow()
+
+    await useTransactionStore.getState().updateCrossWorkspaceTransfer('lone', {
+      ...inInput, targetAccountId: 'ara', amount: 1_500, targetDebtId: 'borc',
+    })
+
+    const pay = dexieTransactions.find(t => t.id === 'lone')!
+    const out = dexieTransactions.find(t => t.type === 'expense')!
+    const inc = dexieTransactions.find(t => t.type === 'income')!
+    expect(pay).toMatchObject({ type: 'transfer', debtId: 'borc', accountId: 'ara', workspaceId: 'ws-b', amount: 1_500 })
+    expect(out).toMatchObject({ accountId: 'kaynak', workspaceId: 'ws-a', amount: 1_500, peerWorkspaceId: 'ws-b' })
+    expect(out.debtId).toBeFalsy()
+    expect(out.id).not.toBe('lone')
+    expect(inc).toMatchObject({ accountId: 'ara', workspaceId: 'ws-b', amount: 1_500 })
+    expect(new Set([pay.workspaceTransferId, out.workspaceTransferId, inc.workspaceTransferId]).size).toBe(1)
+    expect(pay.workspaceTransferId).toBeTruthy()
+    // Aynı tutar → borç değişmez, taksit sayısı aynı
+    expect(dexieDebts[0]).toMatchObject({ paidAmount: 3_500, paidInstallments: 3 })
+    // Bellek (ws-b): ödeme + yeni giriş
+    expect(useTransactionStore.getState().transactions.map(t => t.id).sort()).toEqual([inc.id, 'lone'].sort())
+  })
+
+  it('hesaba giden sıradan borç olmayan gelir/gider çevrilemez', async () => {
+    seed(false)
+    const exp = tx({ id: 'exp', type: 'expense', workspaceId: 'ws-b' })
+    useTransactionStore.setState({ transactions: [exp] })
+    await expect(useTransactionStore.getState().updateCrossWorkspaceTransfer('exp', inInput)).rejects.toThrow()
   })
 
   it('düzenlenen giriş bacağı başka alana taşınamaz', async () => {

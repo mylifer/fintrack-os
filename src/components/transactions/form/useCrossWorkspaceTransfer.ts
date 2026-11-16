@@ -36,13 +36,18 @@ export function useCrossWorkspaceTransfer({
   // Düzenlenen satır var olan bir alanlar arası transferin bacağı mı?
   // (Karşı bacak kontrolü asenkron — aşağıdaki effect doğrular.)
   const legDirection = isEdit && editingTx ? crossWsLegDirection(editingTx) : null
-  const direction: 'out' | 'in' = legDirection ?? 'out'
-  // Düzenlemede "Diğer Alan" seçeneği: taksitsiz, borçsuz sıradan transfer ya
-  // da alanlar arası transfer bacağı (borç ödemesi bacağı dahil).
+  // Bu alanda yapılmış sıradan bir borç ödemesi: "Diğer Alan" seçilince parası
+  // başka bir alandan gelmiş sayılır — yön 'in' (kaynak diğer alan, borç ve
+  // ara hesap bu alanda); ödeme satırı yerinde kalır.
+  const unlinkedDebtPayment = isEdit && !!editingTx && !editingTx.workspaceTransferId
+    && editingTx.type === 'transfer' && !!editingTx.debtId && !editingTx.toAccountId
+  const direction: 'out' | 'in' = legDirection ?? (unlinkedDebtPayment ? 'in' : 'out')
+  // Düzenlemede "Diğer Alan" seçeneği: taksitsiz sıradan transfer (hesaba ya
+  // da borca) ya da alanlar arası transfer bacağı (borç ödemesi bacağı dahil).
   const editable = isEdit && !isPlannedEdit && !!editingTx
     && !editingTx.isInstallment && !editingTx.installGroupId
     && !editingTx.systemKind && !editingTx.refundOfId
-    && (!!legDirection || (editingTx.type === 'transfer' && !editingTx.debtId))
+    && (!!legDirection || editingTx.type === 'transfer')
 
   const [crossWs, setCrossWs]                 = useState(!!legDirection)
   const [targetWorkspaceId, setTargetWorkspaceId] = useState(legDirection ? editingTx?.peerWorkspaceId ?? '' : '')
@@ -59,7 +64,7 @@ export function useCrossWorkspaceTransfer({
   const [linkedEditable, setLinkedEditable]   = useState(false)
   // Düzenlenen transferin ödediği borç: bu ödeme borcu kapatmış olabilir —
   // kapanmış olsa da listede kalsın.
-  const [editingDebtId, setEditingDebtId]     = useState('')
+  const [editingDebtId, setEditingDebtId]     = useState(unlinkedDebtPayment ? editingTx?.debtId ?? '' : '')
 
   useEffect(() => {
     if (!legDirection || !editingTx) return
@@ -118,8 +123,10 @@ export function useCrossWorkspaceTransfer({
     otherWorkspaces,
     /** Düzenlemede "Diğer Alan" sunulabilir mi */
     editable,
-    /** 'out': karşı alan hedeftir; 'in': karşı alan kaynaktır (giriş bacağı düzenleniyor) */
+    /** 'out': karşı alan hedeftir; 'in': karşı alan kaynaktır (giriş/ödeme bacağı düzenleniyor) */
     direction,
+    /** Düzenlenen satır zaten alanlar arası transferin bacağı mı (yönü sabit) */
+    isLinkedLeg: !!legDirection,
     /** Düzenlenen satır doğrulanmış bir alanlar arası transfer bacağı */
     linkedEditable,
     crossWs, setCrossWs,

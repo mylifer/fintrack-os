@@ -422,16 +422,18 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
 
     const cur = get().transactions.find(t => t.id === id)
     if (!cur) throw new Error('İşlem bulunamadı')
-    // Taksit/sistem satırı ve (alanlar arası transfere ait olmayan) borç
-    // ödemesi alanlar arası transfere çevrilemez.
-    if (cur.isInstallment || cur.installGroupId || (cur.debtId && !cur.workspaceTransferId)
-      || cur.systemKind || cur.refundOfId) {
+    // Taksit/sistem satırı alanlar arası transfere çevrilemez.
+    if (cur.isInstallment || cur.installGroupId || cur.systemKind || cur.refundOfId) {
       throw new Error('Bu işlem alanlar arası transfere çevrilemez')
     }
 
     // Bacaklar: var olan alanlar arası transferde düzenlenen satır + karşı
-    // bacaklar sınıflanır. Bağsız satır (aynı-alan transferi) çıkış bacağına
-    // dönüşür; o zaman kaynak aktif alandır.
+    // bacaklar sınıflanır. Bağsız satırlar:
+    //   • aynı-alan transferi (hedefi hesap) → çıkış bacağına dönüşür; kaynak
+    //     aktif alandır;
+    //   • aynı-alan borç ödemesi (debtId'li transfer) → ödeme bacağı olarak
+    //     yerinde kalır; kaynak diğer alana taşınır, aradaki çıkış/giriş
+    //     bacakları yeni doğar (hedef aktif alandır).
     let prevOut: Transaction | undefined
     let prevIn: Transaction | undefined
     let prevPayment: Transaction | undefined
@@ -439,7 +441,9 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       const legs = classifyCrossWsLegs([cur, ...await crossWorkspacePeers(cur)])
       if (!legs.outgoing) throw new Error('Bu alanlar arası transfer düzenlenemez')
       ;({ outgoing: prevOut, incoming: prevIn, payment: prevPayment } = legs)
-    } else if (cur.type !== 'transfer') {
+    } else if (cur.type === 'transfer' && cur.debtId && !cur.toAccountId) {
+      prevPayment = cur
+    } else if (cur.type !== 'transfer' || cur.debtId) {
       throw new Error('Bu işlem alanlar arası transfere çevrilemez')
     }
     // Düzenlenen satır kendi alanında kalır: çıkıştan düzenlemede kaynak,
@@ -478,10 +482,15 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
       workspaceTransferId: linkId,
     }
 
-    // Çıkış bacağı: var olan çıkış ya da (bağsız) aynı-alan transferi — o
-    // zaman hedef/kategori alanları düşer.
+    // Çıkış bacağı: var olan çıkış, (bağsız) aynı-alan transferi — o zaman
+    // hedef/kategori alanları düşer — ya da (bağsız borç ödemesinden
+    // çevrilirken) yepyeni bir satır.
+    const outSeed: Transaction = prevOut
+      ?? (cur.id === prevPayment?.id
+        ? { ...cur, id: crypto.randomUUID(), debtId: undefined, createdAt: now }
+        : cur)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { toAccountId: _to, categoryId: _cat, categorySplits: _splits, ...outBase } = prevOut ?? cur
+    const { toAccountId: _to, categoryId: _cat, categorySplits: _splits, ...outBase } = outSeed
     const outgoing: Transaction = {
       ...outBase,
       ...shared,
