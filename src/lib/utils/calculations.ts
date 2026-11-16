@@ -124,6 +124,28 @@ export function calcTotalAssets(accounts: Account[], prices?: PriceData | null):
   return toMajor(minor)
 }
 
+// Kartın henüz bakiyeye işlenmemiş (vadesi gelmemiş) taksit satırlarının
+// toplamı. Kullanılabilir limit bunu bloke eder; kenar çubuğu "taksitler dahil"
+// borcu göstermek için bakiyeden düşer. Taksit satırı tanımı için aşağıdaki
+// calcAvailableCredit notuna bakın.
+export function calcPendingInstallments(
+  account: Pick<Account, 'id'>,
+  transactions: Transaction[] = [],
+): number {
+  let minor = 0
+  for (const t of transactions) {
+    if (
+      (t.isInstallment || !!t.installGroupId) &&
+      t.type === 'expense' &&
+      t.accountId === account.id &&
+      !isPosted(t)
+    ) {
+      minor += toMinor(t.amount)
+    }
+  }
+  return toMajor(minor)
+}
+
 export function calcAvailableCredit(account: Account, transactions: Transaction[] = []): number {
   if (account.type !== 'credit_card' || !account.creditLimit) return 0
   // Balance is negative for credit card debt; posted transactions (past/current
@@ -142,18 +164,9 @@ export function calcAvailableCredit(account: Account, transactions: Transaction[
   // kimlikle bulur. Yalnız `isInstallment` bayrağına bakmak, bayrağı taşımayan
   // grup satırlarında gelecek taksitleri limitten HİÇ düşürmüyordu (12.000 ₺ /
   // 6 taksitte kullanılabilir 48.000 yerine 58.000 görünüyordu).
-  let blockedMinor = 0
-  for (const t of transactions) {
-    if (
-      (t.isInstallment || !!t.installGroupId) &&
-      t.type === 'expense' &&
-      t.accountId === account.id &&
-      !isPosted(t)
-    ) {
-      blockedMinor += toMinor(t.amount)
-    }
-  }
-  return account.creditLimit + account.balance - toMajor(blockedMinor)
+  return toMajor(
+    toMinor(account.creditLimit) + toMinor(account.balance) - toMinor(calcPendingInstallments(account, transactions)),
+  )
 }
 
 // categoryId can hold a plain UUID or a JSON-encoded string[] for multi-category budgets
