@@ -128,12 +128,28 @@ function pairDescription(all: readonly Tx[], recipientId?: string, categoryId?: 
   return descs.length >= 2 && allSame(descs) ? descs[0] : undefined
 }
 
-function ruleFromHistory(txs: readonly Tx[], people: ReadonlyMap<string, Person>, refundTag: string, all: readonly Tx[]): MerchantRule | undefined {
-  const rows = txs.filter(t => t.type === 'expense' && t.amount > 0 && !t.deleted_at)
+/** Banka ücreti kaydı (faiz, BSMV, KKDF, aidat …): işyeri değil, bankanın
+ *  kestiği masraf. Ekstrenin faiz satırları işyeri adı (`merchant`) taşımaz. */
+const BANK_CHARGE_RE = /\b(faiz|bsmv|kkdf|ucret|komisyon|aidat|gecikme|kar payi)/
+export function isBankCharge(t: Pick<Tx, 'merchant' | 'description'>): boolean {
+  return !t.merchant && BANK_CHARGE_RE.test(foldText(t.description))
+}
+
+/** Banka masrafı kategorisi ("Banka Giderleri"). Bir işyerindeki alım ya da
+ *  iadesi bu kategoriye öğrenilmez: kartı veren şirketin adı alıcı olarak
+ *  işyeriyle aynı olabilir (Getir kartının faizleri "Getir" alıcısında) ve
+ *  bu masraflar o işyerinin alışverişlerini Banka Giderleri'ne çekerdi. */
+export function isBankChargeCategory(c: Pick<Category, 'name'>): boolean {
+  return foldText(c.name) === 'banka giderleri'
+}
+
+function ruleFromHistory(txs: readonly Tx[], people: ReadonlyMap<string, Person>, refundTag: string, all: readonly Tx[], skipCategory: (id: string) => boolean): MerchantRule | undefined {
+  const rows = txs.filter(t => t.type === 'expense' && t.amount > 0 && !t.deleted_at && !isBankCharge(t))
   if (!rows.length) return undefined
   const dates = rows.map(t => t.date)
   const recipientId = mode(rows.map(t => t.recipientId ?? undefined), dates)
-  const categoryId = mode(rows.map(t => t.categoryId ?? undefined), dates)
+  const cats = rows.map(t => (t.categoryId && !skipCategory(t.categoryId) ? t.categoryId : undefined))
+  const categoryId = mode(cats, dates)
   const descs = rows.map(t => t.description)
   const recipientName = recipientId ? people.get(recipientId)?.name : undefined
   const tagLists = rows.map(t => (t.tags ?? []).filter(x => foldText(x).replace('#', '') !== foldText(refundTag).replace('#', '')))
@@ -146,7 +162,7 @@ function ruleFromHistory(txs: readonly Tx[], people: ReadonlyMap<string, Person>
   return {
     recipientId,
     categoryId,
-    categorySure: allSame(rows.map(t => t.categoryId ?? undefined)),
+    categorySure: !!categoryId && allSame(cats),
     // Tek kayıttan genelleme yapılmaz: bir kez "Meross Akıllı Priz" yazılan
     // işyerinin her alımı o ürün değildir
     description: rows.length >= 2 && allSame(descs) ? descs[0] : (pairDescription(all, recipientId, categoryId) ?? recipientName),
@@ -213,8 +229,14 @@ export function buildRuleBook(opts: {
   }
   const keys = [...byKey.keys()]
 
+  const chargeCats = new Set(opts.categories.filter(isBankChargeCategory).map(c => c.id))
+  const skipCategory = (id: string) => chargeCats.has(id)
+  const fromHistory = (txs: readonly Tx[]) => ruleFromHistory(txs, peopleById, opts.refundTag, opts.transactions, skipCategory)
+
   const recipientRule = (p: Person, confidence: MerchantRule['confidence']): MerchantRule => {
-    const own = opts.transactions.filter(t => t.recipientId === p.id && t.type === 'expense' && t.amount > 0 && !t.deleted_at)
+    // Alıcıya kesilen banka masrafları (kartı veren şirketse) işyeri alımının kategorisini belirlemez
+    const own = opts.transactions.filter(t => t.recipientId === p.id && t.type === 'expense' && t.amount > 0 && !t.deleted_at &&
+      !isBankCharge(t) && !(t.categoryId && skipCategory(t.categoryId)))
     const categoryId = recipientCategory(p.id, 'expense', own as Transaction[], opts.categories as Category[])
     return {
       recipientId: p.id,
@@ -245,11 +267,11 @@ export function buildRuleBook(opts: {
     ruleFor(description, bankLabel) {
       // 1) Geçmiş: birebir aynı işyeri metni, sonra bankadan bankaya yazım farkı
       const exact = byKey.get(merchantKey(description))
-      const fromHist = exact ? ruleFromHistory(exact, peopleById, opts.refundTag, opts.transactions) : undefined
+      const fromHist = exact ? fromHistory(exact) : undefined
       if (fromHist) return withCategory(fromHist, description, bankLabel)
       const twins = keys.filter(k => sameCore(k, description))
       if (twins.length) {
-        const r = ruleFromHistory(twins.flatMap(k => byKey.get(k)!), peopleById, opts.refundTag, opts.transactions)
+        const r = fromHistory(twins.flatMap(k => byKey.get(k)!))
         const shown = byKey.get(twins[0])!.find(t => t.merchant)?.merchant ?? twins[0]
         if (r) return withCategory({ ...r, via: shown }, description, bankLabel)
       }
@@ -265,7 +287,7 @@ export function buildRuleBook(opts: {
       // 3) Aynı markanın geçmişi: hepsi tek alıcıdaysa o alıcı
       const brand = brandOf(description)
       const fam = brand ? byBrand.get(brand) : undefined
-      const famRule = fam ? ruleFromHistory(fam.txs, peopleById, opts.refundTag, opts.transactions) : undefined
+      const famRule = fam ? fromHistory(fam.txs) : undefined
       if (fam && famRule?.recipientId) {
         const rows = fam.txs.filter(t => t.type === 'expense' && t.amount > 0 && !t.deleted_at)
         const agree = rows.filter(t => t.recipientId === famRule.recipientId).length
