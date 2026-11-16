@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { AccountAvatar, getBankBrand } from '@/components/accounts/AccountAvatar'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
+import type { ParsedStatement } from '@/lib/statement-import/statement'
 import type { StatementDraft } from '@/store/statement-drafts.store'
 import type { Account } from '@/types'
 
@@ -35,8 +36,8 @@ export function statementTitle(d: Pick<StatementDraft, 'statement'>): string {
 type AvatarAccount = Pick<Account, 'name' | 'color' | 'icon'>
 
 /** Ekstrenin bankasının ikonu; banka tanınmıyorsa (elle eşlenen ekstre) hesabın ikonu */
-export function StatementBankIcon({ draft, account, size = 'md' }: { draft: Pick<StatementDraft, 'statement'>; account?: AvatarAccount; size?: 'sm' | 'md' | 'lg' }) {
-  const label = draft.statement.bankLabel
+export function StatementBankIcon({ statement, account, size = 'md' }: { statement: Pick<ParsedStatement, 'bankLabel'>; account?: AvatarAccount; size?: 'sm' | 'md' | 'lg' }) {
+  const label = statement.bankLabel
   const brand = getBankBrand(label)
   // Banka tanınıyorsa marka rengiyle banka rozeti (çevrimiçi logo kapalıyken de
   // tanınır); tanınmıyorsa (elle eşlenen ekstre) hesabın kendi ikonu.
@@ -50,7 +51,7 @@ export function StatementCardHeader({ draft, account, lines }: { draft: Statemen
   const hasAmount = !!(st.summary || (st.account && (!st.mapped || st.mapped.hasBalance)))
   return (
     <div className="flex items-start gap-3">
-      <StatementBankIcon draft={draft} account={account} />
+      <StatementBankIcon statement={st} account={account} />
       <div className="min-w-0 flex-1">
         <div className="text-[15px] font-semibold leading-snug line-clamp-2 group-hover:underline underline-offset-2">{statementTitle(draft)}</div>
         {lines}

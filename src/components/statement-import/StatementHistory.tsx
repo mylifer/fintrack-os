@@ -271,7 +271,7 @@ function StatementDetail({ draft }: { draft: StatementDraft }) {
           <Link href={`/ekstre-yukle/yuklenenler?tur=${kindParamOf(statementKind(draft.statement))}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
             <IconArrowLeft className="size-4" />{KIND_LABEL[statementKind(draft.statement)]}
           </Link>
-          <h2 className="text-xl font-semibold tracking-tight mt-1 flex items-center gap-2"><StatementBankIcon draft={draft} account={account} size="sm" />{statementTitle(draft)}</h2>
+          <h2 className="text-xl font-semibold tracking-tight mt-1 flex items-center gap-2"><StatementBankIcon statement={draft.statement} account={account} size="sm" />{statementTitle(draft)}</h2>
           <div className="text-sm text-muted-foreground mt-0.5 tabular-nums">
             {formatDate(start, 'd MMM')} – {formatDate(end, 'd MMM yyyy')}
             {st.dueDate && <> · son ödeme {formatDate(st.dueDate, 'd MMM')}</>}
