@@ -24,7 +24,7 @@ const txs = (res: ReturnType<typeof buildCommit>) => res.ops.filter(o => o.kind 
 describe('elle gir seçenekleri', () => {
   it('çıkışta Gider + Transfer, girişte Gelir + Transfer eklenir', () => {
     expect(manualOptionsFor(row()).map(o => o.key)).toEqual([MANUAL_KEYS.expense, MANUAL_KEYS.transfer])
-    expect(manualOptionsFor(row({ amount: -500 })).map(o => o.key)).toEqual([MANUAL_KEYS.income, MANUAL_KEYS.transfer])
+    expect(manualOptionsFor(row({ amount: -500 })).map(o => o.key)).toEqual([MANUAL_KEYS.income, MANUAL_KEYS.refund, MANUAL_KEYS.transfer])
   })
 
   it('sistemde olan, satırsız ya da tutarsız satıra eklenmez', () => {
@@ -92,5 +92,14 @@ describe('elle gir seçenekleri', () => {
     expect(res.debtPayments).toEqual([{ debtId: 'd9', amount: 11000 }])
     // Geri alma oluşturulan üç satırı da siler
     expect(res.undo).toEqual([expect.objectContaining({ kind: 'patchMany', ids: all.map(t => t.id) })])
+  })
+})
+
+describe('sortNewestFirst', () => {
+  it('tarih azalan, aynı günde sonraki satır önce, satırsızlar en sonda', async () => {
+    const { sortNewestFirst } = await import('./manual-options')
+    const r = (key: string, date: string, lines: number[]) => row({ key, date, lines })
+    const plan = { rows: [r('a', '2026-11-01', [0]), r('o', '2026-11-05', []), r('b', '2026-11-05', [3]), r('c', '2026-11-05', [4]), r('d', '2026-11-10', [9])] } as ImportPlan
+    expect(sortNewestFirst(plan).rows.map(x => x.key)).toEqual(['d', 'c', 'b', 'o', 'a'])
   })
 })

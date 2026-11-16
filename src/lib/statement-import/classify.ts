@@ -51,6 +51,7 @@ export interface DraftTx {
   categoryId?: string
   familyMemberId?: string | null
   tags?: string[]
+  notes?: string
   refundOfId?: string
   /** Hesaba GELEN transferin kaynak hesabı (karta ödeme, vadesize giriş) */
   fromAccountId?: string
