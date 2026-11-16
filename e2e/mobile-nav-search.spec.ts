@@ -86,7 +86,8 @@ test('işlem araması düzenleme penceresini açar', async ({ page }) => {
 
   // Hızlı ekle (FAB) ile tek işlem
   await page.getByRole('button', { name: 'İşlem ekle' }).click()
-  const form = page.getByRole('dialog')
+  // Adıyla: kapanmış açılır menüler de role=dialog olarak DOM'da kalabiliyor
+  const form = page.getByRole('dialog', { name: 'İşlem Ekle' })
   await form.getByLabel('Tutar').fill('123,45')
   await form.getByPlaceholder('Migros, Maaş, Kira...').fill('Kahveci Zeynep')
   const combos = form.getByRole('combobox')
