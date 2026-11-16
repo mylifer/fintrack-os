@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { collapseInstallments, rebalanceInstallmentsBelow, findInstallmentRoundingFixes } from './installments'
+import { collapseInstallments, rebalanceInstallmentsBelow, findInstallmentRoundingFixes, findInstallmentSplitFixes } from './installments'
+import { rescaleSplits, splitsForInstallments } from './categorySplits'
+import { splitInstallments } from './money'
 import { calcPeriodFlow, excludeFuture, sumExpenseByKey } from './calculations'
 import type { Transaction } from '@/types'
 
@@ -198,5 +200,100 @@ describe('findInstallmentRoundingFixes', () => {
     const withDeleted = mk('d', legacy)
     withDeleted[2] = { ...withDeleted[2], deleted_at: '2026-01-01T00:00:00Z' }
     expect(findInstallmentRoundingFixes([...partial, ...withDeleted])).toEqual([])
+  })
+})
+
+/* ── Taksitli + bölünmüş alışveriş: kategori payı onarımı ──────────────── */
+
+/** ESKİ kayıt yolu: paylar her taksitte ayrı yuvarlanır (rescaleSplits). */
+function legacySplitGroup(groupId: string, total: number, n: number, splits: { categoryId: string; amount: number }[]): Transaction[] {
+  const amounts = splitInstallments(total, n)
+  return amounts.map((amount, i) => tx({
+    amount, amountTry: amount, date: `2026-${String((i % 12) + 1).padStart(2, '0')}-05`,
+    description: 'Kedi Tuvaleti + Others', categoryId: splits[0].categoryId,
+    categorySplits: rescaleSplits(splits, amount),
+    isInstallment: true, installTotal: n, installIndex: i + 1, installGroupId: groupId,
+  }))
+}
+const k = (n: number) => Math.round(n * 100)
+function categorySums(rows: Transaction[]): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const r of rows) for (const s of r.categorySplits ?? []) m.set(s.categoryId, (m.get(s.categoryId) ?? 0) + k(s.amount))
+  return m
+}
+function applyFix(rows: Transaction[]): Transaction[] {
+  const { fixes } = findInstallmentSplitFixes(rows)
+  const byId = new Map(fixes.flatMap(f => f.changes.map(c => [c.tx.id, c.splits] as const)))
+  return rows.map(r => byId.has(r.id) ? { ...r, categorySplits: byId.get(r.id) } : r)
+}
+
+describe('findInstallmentSplitFixes', () => {
+  const userSplits = [
+    { categoryId: 'pets', amount: 9000 }, { categoryId: 'ev', amount: 2514.5 },
+    { categoryId: 'temizlik', amount: 1699.5 }, { categoryId: 'mutfak', amount: 2199 },
+  ]
+
+  it('eski yuvarlamayla kaymış paylari girilen tutarlara geri getirir (15.413₺ / 9 taksit)', () => {
+    const rows = legacySplitGroup('g-k', 15413, 9, userSplits)
+    const before = categorySums(rows)
+    expect(userSplits.some(s => before.get(s.categoryId) !== k(s.amount))).toBe(true)   // kayma var
+
+    const { fixes, unresolved } = findInstallmentSplitFixes(rows)
+    expect(unresolved).toEqual([])
+    expect(fixes).toHaveLength(1)
+    const after = categorySums(applyFix(rows))
+    for (const s of userSplits) expect(after.get(s.categoryId)).toBe(k(s.amount))
+    // Satır toplamları taksit tutarına eşit kalır.
+    for (const r of applyFix(rows)) expect(r.categorySplits!.reduce((a, s) => a + k(s.amount), 0)).toBe(k(r.amount))
+  })
+
+  it('onarılmış ya da yeni yolla kaydedilmiş grubu tekrar önermez', () => {
+    expect(findInstallmentSplitFixes(applyFix(legacySplitGroup('g-k', 15413, 9, userSplits))).fixes).toEqual([])
+    const amounts = splitInstallments(15413, 9)
+    const exact = splitsForInstallments(userSplits, amounts)
+    const rows = amounts.map((amount, i) => tx({
+      amount, categorySplits: exact[i], isInstallment: true, installTotal: 9, installIndex: i + 1, installGroupId: 'g-n',
+    }))
+    expect(findInstallmentSplitFixes(rows)).toEqual({ fixes: [], unresolved: [] })
+  })
+
+  it('sonradan tek taksiti elle değiştirilmiş grubu tahmin etmez, unresolved döner', () => {
+    const rows = legacySplitGroup('g-t', 15413, 9, userSplits)
+    rows[3] = { ...rows[3], categorySplits: [
+      { categoryId: 'pets', amount: 100 }, { categoryId: 'ev', amount: 100 },
+      { categoryId: 'temizlik', amount: 100 }, { categoryId: 'mutfak', amount: k(rows[3].amount) / 100 - 300 },
+    ] }
+    const { fixes, unresolved } = findInstallmentSplitFixes(rows)
+    expect(fixes).toEqual([])
+    expect(unresolved.map(u => u.groupId)).toEqual(['g-t'])
+  })
+
+  it('tam liralık paylar her taksit sayısında birebir geri çözülür (özellik testi)', () => {
+    let seed = 7
+    const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n }
+    let checked = 0
+    for (let iter = 0; iter < 400; iter++) {
+      const n = 2 + rnd(23)
+      const cats = 2 + rnd(4)
+      const parts = Array.from({ length: cats }, () => 1 + rnd(5000))
+      const splits = parts.map((p, j) => ({ categoryId: `c${j}`, amount: p }))
+      const total = parts.reduce((a, b) => a + b, 0)
+      const rows = legacySplitGroup(`g${iter}`, total, n, splits)
+      const fixed = applyFix(rows)
+      const sums = categorySums(fixed)
+      for (const s of splits) expect(sums.get(s.categoryId), `n=${n} total=${total} parts=${parts}`).toBe(k(s.amount))
+      checked++
+    }
+    expect(checked).toBe(400)
+  })
+
+  it('yeni yolla kaydedilmiş kasıtlı kuruşlu payı yuvarlamaz', () => {
+    const splits = [{ categoryId: 'a', amount: 1000.37 }, { categoryId: 'b', amount: 499.63 }]
+    const amounts = splitInstallments(1500, 6)
+    const exact = splitsForInstallments(splits, amounts)
+    const rows = amounts.map((amount, i) => tx({
+      amount, categorySplits: exact[i], isInstallment: true, installTotal: 6, installIndex: i + 1, installGroupId: 'g-q',
+    }))
+    expect(findInstallmentSplitFixes(rows).fixes).toEqual([])
   })
 })

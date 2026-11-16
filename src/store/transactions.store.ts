@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { db } from '@/lib/db'
-import type { Account, Debt, Transaction, TransactionFilters, TxHistorySource } from '@/types'
+import type { Account, CategorySplit, Debt, Transaction, TransactionFilters, TxHistorySource } from '@/types'
 import { isInRange, today } from '@/lib/utils/date'
 import { addMonths, format, parseISO } from 'date-fns'
 import { useAccountStore } from './accounts.store'
@@ -17,8 +17,8 @@ import { rowInActiveWorkspace, rowInWorkspace } from '@/lib/workspace-context'
 import { useWorkspaceStore } from './workspace.store'
 import { toBaseTry, fromBaseTry, baseAmount, baseSnapshot } from '@/lib/utils/fx'
 import { txTouchesAccount } from '@/lib/utils/calculations'
-import { splitInstallments, mulMoney } from '@/lib/utils/money'
-import { findInstallmentRoundingFixes } from '@/lib/utils/installments'
+import { splitInstallments, mulMoney, toMinor } from '@/lib/utils/money'
+import { findInstallmentRoundingFixes, findInstallmentSplitFixes, groupCategorySplits } from '@/lib/utils/installments'
 import { splitsAreValid, splitsMatchAmount, primarySplitCategoryId, rescaleSplits, splitsForInstallments, txHasCategory } from '@/lib/utils/categorySplits'
 import { tagKey, normalizeTag, dedupeTags } from '@/lib/utils/tags'
 import { withLinkedInterestTax } from '@/lib/utils/interest-tax'
@@ -39,6 +39,11 @@ function withBase(tx: Transaction): Transaction {
 // damgalanır; geçersiz/tek paysa alan tamamen düşer ve işlem sıradan tek
 // kategorili satır olarak yaşar. Böylece "bölünmüş ama toplamı tutmayan" satır
 // hiçbir yazma yolundan içeri sızamaz (form dışından gelen import/refund dahil).
+function splitsEqual(a: readonly CategorySplit[] | undefined, b: readonly CategorySplit[] | undefined): boolean {
+  if (!a || !b) return a === b
+  return a.length === b.length && a.every((s, i) => s.categoryId === b[i].categoryId && toMinor(s.amount) === toMinor(b[i].amount))
+}
+
 function withSplits(tx: Transaction): Transaction {
   const splits = tx.categorySplits
   if (!splitsAreValid(splits, tx.amount)) {
@@ -273,6 +278,9 @@ interface TransactionState {
   /** Eski yuvarlamayla bölünmüş taksit gruplarını banka kuralına çevirir
    *  (kuruş kalanı 1. taksite). Tek undo ile geri alınır. Düzeltilen grup sayısını döner. */
   fixInstallmentRounding: () => Promise<number>
+  /** Taksitli + bölünmüş alışverişlerde kuruş kaymış kategori paylarını onarır
+   *  (bkz. findInstallmentSplitFixes). Onarılan grup sayısını döner; geri alınabilir. */
+  fixInstallmentSplits: () => Promise<number>
   update: (id: string, patch: Partial<Transaction>, source?: TxHistorySource) => Promise<void>
   updateMany: (
     ids: string[],
@@ -809,9 +817,22 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     const prevById = new Map<string, Transaction>()
 
     for (const fix of fixes) {
-      for (const { tx, amount } of fix.changes) {
-        const amountTry = tx.amountTry == null ? undefined : mulMoney(tx.amountTry, amount / tx.amount)
-        const splits = tx.categorySplits?.length ? rescaleSplits(tx.categorySplits, amount) : undefined
+      // Kategori payları grup düzeyinde yeniden dağıtılır: satır satır ölçeklemek
+      // (rescaleSplits) kategori toplamlarını kuruş kaydırıyordu. Kategori
+      // toplamları korunur, yalnız taksitler arası dağılım yeni tutarlara uyar.
+      const groupRows = get().transactions
+        .filter(t => t.installGroupId === fix.groupId && !t.deleted_at)
+        .sort((x, y) => (x.installIndex ?? 0) - (y.installIndex ?? 0))
+      const newAmount = new Map(fix.changes.map(c => [c.tx.id, c.amount]))
+      const groupSplits = groupRows.length ? groupCategorySplits(groupRows[0], groupRows) : undefined
+      const rowSplits = groupSplits && groupSplits.length > 1
+        ? splitsForInstallments(groupSplits, groupRows.map(t => newAmount.get(t.id) ?? t.amount))
+        : null
+      const rowChanges = groupRows
+        .map((tx, i) => ({ tx, amount: newAmount.get(tx.id) ?? tx.amount, splits: rowSplits ? rowSplits[i] : tx.categorySplits }))
+        .filter(c => newAmount.has(c.tx.id) || (rowSplits && !splitsEqual(c.tx.categorySplits, c.splits)))
+      for (const { tx, amount, splits } of rowChanges) {
+        const amountTry = tx.amountTry == null || amount === tx.amount ? tx.amountTry : mulMoney(tx.amountTry, amount / tx.amount)
         const merged = withSplits({ ...tx, amount, amountTry, categorySplits: splits, updatedAt: now })
         const patch: Record<string, unknown> = {
           amount,
@@ -835,6 +856,49 @@ export const useTransactionStore = create<TransactionState>()((set, get) => ({
     useAccountStore.getState().recomputeBalances(next)
 
     useUndoStore.getState().pushUndo(`${fixes.length} taksitli işlemin kuruşları düzeltildi`, async () => {
+      await localBatch(undoOps, { source: 'undo' })
+      const reverted = get().transactions.map(t => prevById.get(t.id) ?? t)
+      set({ transactions: reverted })
+      useAccountStore.getState().recomputeBalances(reverted)
+    })
+    return fixes.length
+  },
+
+  fixInstallmentSplits: async () => {
+    const { fixes } = findInstallmentSplitFixes(get().transactions)
+    if (fixes.length === 0) return 0
+    const now = new Date().toISOString()
+    type PatchOp = Extract<BatchOp, { kind: 'patch' }>
+    const forward: PatchOp[] = []
+    const undoOps: PatchOp[] = []
+    const nextById = new Map<string, Transaction>()
+    const prevById = new Map<string, Transaction>()
+
+    for (const fix of fixes) {
+      for (const { tx, splits } of fix.changes) {
+        // Satır tutarı değişmez → amountTry aynen kalır; yalnız paylar (ve en
+        // büyük paya bağlı categoryId) yeniden yazılır.
+        const merged = withSplits({ ...tx, categorySplits: splits, updatedAt: now })
+        const patch: Record<string, unknown> = {
+          categorySplits: merged.categorySplits ?? null,
+          categoryId:     merged.categoryId ?? null,
+          updatedAt:      now,
+        }
+        const rev: Record<string, unknown> = {}
+        for (const k of Object.keys(patch)) rev[k] = (tx as unknown as Record<string, unknown>)[k] ?? null
+        forward.push({ kind: 'patch', table: 'transactions', id: tx.id, patch })
+        undoOps.push({ kind: 'patch', table: 'transactions', id: tx.id, patch: rev })
+        nextById.set(tx.id, merged)
+        prevById.set(tx.id, tx)
+      }
+    }
+
+    await localBatch(forward, { source: 'app' })
+    const next = get().transactions.map(t => nextById.get(t.id) ?? t)
+    set({ transactions: next })
+    useAccountStore.getState().recomputeBalances(next)
+
+    useUndoStore.getState().pushUndo(`${fixes.length} taksitli işlemin kategori payları onarıldı`, async () => {
       await localBatch(undoOps, { source: 'undo' })
       const reverted = get().transactions.map(t => prevById.get(t.id) ?? t)
       set({ transactions: reverted })
