@@ -5,26 +5,34 @@ import { useAccountStore, useDebtStore, useWorkspaceStore } from '@/store'
 import { db } from '@/lib/db'
 import { isLive } from '@/lib/sync/tombstone'
 import { rowInWorkspace } from '@/lib/workspace-context'
-import { SelectField } from '@/components/ui/Select'
+import { AccountAvatar } from '@/components/accounts/AccountAvatar'
+import { AppSelect } from '@/components/transactions/form/fields'
 import { cn } from '@/lib/utils'
 import type { Account, Debt } from '@/types'
 import type { CrossWsTarget, DraftTx, TransferMode } from '@/lib/statement-import/classify'
 import type { RowEdit } from '@/lib/statement-import/commit'
 
-/* ── Elle transferin hedefi ───────────────────────────────────────────────────
+/* ── Ekstre satırında transferin karşı tarafı ────────────────────────────────
    İşlem Ekle formundaki transfer "Hedef" alanının ekstre karşılığı (bkz.
    TransferTargetField): giden parada hesap / bu alandaki borç / başka çalışma
    alanı (hesaba yatır ya da o alandaki borcu öde); gelen parada kaynak hesap.
-   Diğer alanın hesap ve borçları bellekte değil, ham Dexie'den okunur
-   (useCrossWorkspaceTransfer ile aynı). Ekstre TL olduğundan hedef alanda
-   yalnız TL hesaplar listelenir (kayıt kur dönüşümü yapmaz). */
+
+   Sınıflandırıcının önerdiği transferde (ör. "Kart ödemesi: X") hedef hesap
+   değiştirilebilir; Borç / Diğer Alan seçilince karar elle transfere geçer
+   (onUseManual). Diğer alanın hesap ve borçları bellekte değil, ham Dexie'den
+   okunur (useCrossWorkspaceTransfer ile aynı). Ekstre TL olduğundan hedef
+   alanda yalnız TL hesaplar listelenir (kayıt kur dönüşümü yapmaz). */
 
 interface Props {
   draft: DraftTx
   edit: RowEdit | undefined
-  /** Ekstrenin yüklendiği hesap (hedef listesinden çıkarılır) */
+  /** Ekstrenin yüklendiği hesap (listeden çıkarılır) */
   accountId: string
+  /** Para hesaptan çıkıyor mu (hedef seçilir) yoksa giriyor mu (kaynak seçilir) */
+  outgoing: boolean
   onEdit: (patch: RowEdit) => void
+  /** Kararı elle transfere çevir (Borç / Diğer Alan sınıflandırıcı önerisinde yok) */
+  onUseManual: () => void
 }
 
 const MODES: { key: TransferMode; label: string }[] = [
@@ -33,12 +41,12 @@ const MODES: { key: TransferMode; label: string }[] = [
   { key: 'workspace', label: 'Diğer Alan' },
 ]
 
-function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { key: T; label: string }[]; onChange: (v: T) => void }) {
+function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: { key: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (
-    <div className="flex self-start rounded-md border border-input overflow-hidden text-xs" role="tablist">
+    <div className="flex rounded border border-input overflow-hidden text-[11px]" role="tablist" aria-label={label}>
       {options.map((o, i) => (
         <button key={o.key} type="button" role="tab" aria-selected={value === o.key} onClick={() => onChange(o.key)}
-          className={cn('px-2.5 py-1 transition-colors', i > 0 && 'border-l border-input',
+          className={cn('px-2 py-0.5 transition-colors', i > 0 && 'border-l border-input',
             value === o.key ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground')}>
           {o.label}
         </button>
@@ -47,14 +55,37 @@ function Segmented<T extends string>({ value, options, onChange }: { value: T; o
   )
 }
 
-export function ManualTransferFields({ draft, edit, accountId, onEdit }: Props) {
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground select-none">{children}</div>
+}
+
+/** Gelen transferin kaynak hesabı (İşlem Ekle'deki "Hesap" alanının yerinde) */
+export function TransferSourceSelect({ draft, edit, accountId, onEdit, onOpenChange }: Pick<Props, 'draft' | 'edit' | 'accountId' | 'onEdit'> & { onOpenChange?: (o: boolean) => void }) {
+  const accounts = useAccountStore(s => s.accounts)
+  const options = useMemo(
+    () => accounts.filter(a => !a.isArchived && a.id !== accountId).map(a => ({ value: a.id, label: a.name, icon: <AccountAvatar account={a} size="xs" /> })),
+    [accounts, accountId],
+  )
+  return (
+    <AppSelect
+      value={edit?.fromAccountId ?? draft.fromAccountId ?? ''}
+      onChange={v => onEdit({ fromAccountId: v || undefined })}
+      options={options}
+      placeholder="Paranın geldiği hesap…"
+      error={!(edit?.fromAccountId ?? draft.fromAccountId)}
+      onOpenChange={onOpenChange}
+    />
+  )
+}
+
+export function TransferTargetFields({ draft, edit, accountId, outgoing, onEdit, onUseManual, onOpenChange }: Props & { onOpenChange?: (o: boolean) => void }) {
   const accounts    = useAccountStore(s => s.accounts)
   const debts       = useDebtStore(s => s.debts)
   const workspaces  = useWorkspaceStore(s => s.workspaces)
   const activeWsId  = useWorkspaceStore(s => s.activeId)
 
   const ownAccounts = useMemo(
-    () => accounts.filter(a => !a.isArchived && a.id !== accountId).map(a => ({ value: a.id, label: a.name })),
+    () => accounts.filter(a => !a.isArchived && a.id !== accountId).map(a => ({ value: a.id, label: a.name, icon: <AccountAvatar account={a} size="xs" /> })),
     [accounts, accountId],
   )
   const ownDebts = useMemo(
@@ -63,8 +94,7 @@ export function ManualTransferFields({ draft, edit, accountId, onEdit }: Props) 
   )
   const otherWs = useMemo(() => workspaces.filter(w => w.id !== activeWsId), [workspaces, activeWsId])
 
-  const outgoing = !!draft.transferMode
-  const mode: TransferMode = edit?.transferMode ?? draft.transferMode ?? 'account'
+  const mode: TransferMode = draft.manual ? (edit?.transferMode ?? draft.transferMode ?? 'account') : 'account'
   const ws: CrossWsTarget | undefined = edit?.crossWs
 
   // Seçilen diğer alanın hesap ve borçları (ham Dexie)
@@ -87,90 +117,74 @@ export function ManualTransferFields({ draft, edit, accountId, onEdit }: Props) 
   const wsDebts    = wsData && wsData.wsId === ws?.workspaceId ? wsData.debts : []
 
   const setWs = (patch: Partial<CrossWsTarget>) => onEdit({ crossWs: { workspaceId: ws?.workspaceId ?? '', ...ws, ...patch } })
+  // Açıklama elle değiştirilmediyse borcun adını izler (İşlem Ekle ile aynı)
+  const describe = (name: string) => (edit?.description === undefined || edit.description === draft.description ? { description: `${name} ödemesi` } : {})
 
-  if (!outgoing) {
-    return (
-      <SelectField
-        label="Paranın geldiği hesap"
-        value={edit?.fromAccountId ?? ''}
-        onChange={e => onEdit({ fromAccountId: e.target.value || undefined })}
-        options={[{ value: '', label: 'Hesap seçin…' }, ...ownAccounts]}
-      />
-    )
+  function pickMode(m: TransferMode) {
+    if (m === mode) return
+    if (!draft.manual) onUseManual()
+    onEdit({ transferMode: m })
   }
 
+  if (!outgoing) return null
+  const toAccount = edit?.toAccountId ?? draft.toAccountId ?? ''
+
   return (
-    <div className="flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-muted-foreground">Hedef</span>
-        <Segmented value={mode} options={otherWs.length ? MODES : MODES.filter(m => m.key !== 'workspace')}
-          onChange={m => onEdit({ transferMode: m })} />
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">Hedef</span>
+        <Segmented label="Hedef türü" value={mode} options={otherWs.length ? MODES : MODES.filter(m => m.key !== 'workspace')} onChange={pickMode} />
       </div>
 
       {mode === 'account' && (
-        <SelectField
-          label="Paranın gittiği hesap"
-          value={edit?.toAccountId ?? ''}
-          onChange={e => onEdit({ toAccountId: e.target.value || undefined })}
-          options={[{ value: '', label: 'Hesap seçin…' }, ...ownAccounts]}
-        />
+        <AppSelect value={toAccount} onChange={v => onEdit({ toAccountId: v || undefined })}
+          options={ownAccounts} placeholder="Seçin..." error={!toAccount} onOpenChange={onOpenChange} />
       )}
 
       {mode === 'debt' && (ownDebts.length === 0
-        ? <div className="text-sm text-muted-foreground">Bu çalışma alanında ödenecek aktif borç yok.</div>
-        : <SelectField
-            label="Ödenecek borç"
-            value={edit?.debtId ?? ''}
-            onChange={e => {
-              const id = e.target.value || undefined
-              const name = debts.find(d => d.id === id)?.name
-              onEdit({ debtId: id, ...(name && (edit?.description === undefined || edit.description === draft.description) ? { description: `${name} ödemesi` } : {}) })
-            }}
-            options={[{ value: '', label: 'Borç seçin…' }, ...ownDebts]}
-          />
+        ? <Empty>Aktif borcunuz bulunmuyor</Empty>
+        : <AppSelect value={edit?.debtId ?? ''} options={ownDebts} placeholder="Borç seçin..." error={!edit?.debtId} onOpenChange={onOpenChange}
+            onChange={v => {
+              const name = debts.find(d => d.id === v)?.name
+              onEdit({ debtId: v || undefined, ...(name ? describe(name) : {}) })
+            }} />
       )}
 
       {mode === 'workspace' && (
         <div className="flex flex-col gap-2">
-          <SelectField
-            label="Hedef çalışma alanı"
-            value={ws?.workspaceId ?? ''}
-            onChange={e => onEdit({ crossWs: { workspaceId: e.target.value, payDebt: ws?.payDebt } })}
-            options={[{ value: '', label: 'Çalışma alanı seçin…' }, ...otherWs.map(w => ({ value: w.id, label: w.name }))]}
-          />
+          <AppSelect value={ws?.workspaceId ?? ''} placeholder="Çalışma alanı seçin..." error={!ws?.workspaceId} onOpenChange={onOpenChange}
+            onChange={v => onEdit({ crossWs: { workspaceId: v, payDebt: ws?.payDebt } })}
+            options={otherWs.map(w => ({ value: w.id, label: w.name }))} />
           {ws?.workspaceId && (
-            <Segmented value={ws.payDebt ? 'debt' : 'account'}
-              options={[{ key: 'account', label: 'Hesaba yatır' }, { key: 'debt', label: 'Borç öde' }]}
-              onChange={v => setWs({ payDebt: v === 'debt', debtId: undefined })} />
+            <div className="self-start">
+              <Segmented label="Diğer alanda" value={ws.payDebt ? 'debt' : 'account'}
+                options={[{ key: 'account', label: 'Hesaba yatır' }, { key: 'debt', label: 'Borç öde' }]}
+                onChange={v => setWs({ payDebt: v === 'debt', debtId: undefined })} />
+            </div>
           )}
           {ws?.workspaceId && ws.payDebt && (wsDebts.length === 0
-            ? <div className="text-sm text-muted-foreground">Bu alanda ödenecek aktif borç yok.</div>
-            : <SelectField
-                label="Ödenecek borç"
-                value={ws.debtId ?? ''}
-                onChange={e => {
-                  const debt = wsDebts.find(d => d.id === e.target.value)
+            ? <Empty>Bu alanda aktif borç bulunmuyor</Empty>
+            : <AppSelect value={ws.debtId ?? ''} placeholder="Borç seçin..." error={!ws.debtId} onOpenChange={onOpenChange}
+                options={wsDebts.map(d => ({ value: d.id, label: d.name }))}
+                onChange={v => {
+                  const debt = wsDebts.find(d => d.id === v)
                   // Borcun kendi ödeme hesabı o alanda TL hesapsa ara hesap olarak öner
                   const via = debt?.accountId && wsAccounts.some(a => a.id === debt.accountId) ? debt.accountId : ws.accountId
                   setWs({ debtId: debt?.id, accountId: via })
-                  if (debt && (edit?.description === undefined || edit.description === draft.description)) onEdit({ description: `${debt.name} ödemesi` })
-                }}
-                options={[{ value: '', label: 'Borç seçin…' }, ...wsDebts.map(d => ({ value: d.id, label: d.name }))]}
-              />
+                  if (debt) { const p = describe(debt.name); if (p.description) onEdit(p) }
+                }} />
           )}
           {ws?.workspaceId && (wsAccounts.length === 0
-            ? <div className="text-sm text-muted-foreground">Bu alanda TL hesap yok.</div>
-            : <SelectField
-                label={ws.payDebt ? 'Ödemenin geçeceği hesap' : 'Paranın gittiği hesap'}
-                value={ws.accountId ?? ''}
-                onChange={e => setWs({ accountId: e.target.value || undefined })}
-                options={[{ value: '', label: ws.payDebt ? 'Ödemenin geçeceği hesap…' : 'Hesap seçin…' }, ...wsAccounts.map(a => ({ value: a.id, label: a.name }))]}
-              />
+            ? <Empty>Bu alanda TL hesap bulunamadı</Empty>
+            : <AppSelect value={ws.accountId ?? ''} error={!ws.accountId} onOpenChange={onOpenChange}
+                placeholder={ws.payDebt ? 'Ödemenin geçeceği hesap...' : 'Hedef hesap seçin...'}
+                onChange={v => setWs({ accountId: v || undefined })}
+                options={wsAccounts.map(a => ({ value: a.id, label: a.name }))} />
           )}
           {ws?.payDebt && (
-            <span className="text-[11px] text-muted-foreground">
-              Para hedef alandaki bu hesaba girer ve aynı hesaptan borca ödenir — o hesabın bakiyesi değişmez.
-            </span>
+            <p className="text-xs text-muted-foreground">
+              Ödeme, hedef alandaki bu hesaptan geçer: para bu hesaba girer ve borca ödenir — hesabın bakiyesi değişmez.
+            </p>
           )}
         </div>
       )}

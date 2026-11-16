@@ -26,7 +26,7 @@ import { isLegacyXls, isZip, readXlsxRows } from '@/lib/utils/xlsx'
 import { useRulesStore } from '@/store/rules.store'
 import { buildImportPlan, type ImportPlan, type PlanRow, type RowOption } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
-import { withManualOptions } from '@/lib/statement-import/manual-options'
+import { sortNewestFirst, withManualOptions } from '@/lib/statement-import/manual-options'
 import { db } from '@/lib/db'
 import { useDebtStore, debtPaymentPatches } from '@/store/debts.store'
 import type { Debt } from '@/types'
@@ -136,11 +136,11 @@ export function StatementImport() {
   const makePlan = useCallback((st: ParsedStatement, accId: string, txs = useTransactionStore.getState().transactions): ImportPlan | null => {
     const acc = useAccountStore.getState().accounts.find(a => a.id === accId)
     if (!acc) return null
-    return withManualOptions((st.type === 'checking' ? buildAccountPlan : buildImportPlan)({
+    return sortNewestFirst(withManualOptions((st.type === 'checking' ? buildAccountPlan : buildImportPlan)({
       statement: st, account: acc, accounts: useAccountStore.getState().accounts,
       transactions: txs, people: usePeopleStore.getState().people, categories: useCategoryStore.getState().categories,
       todayStr: today(), skipped: loadSkipped(accId), rules: useRulesStore.getState().rules,
-    }))
+    })))
   }, [])
 
   // Plan, store'daki her değişiklikte (başka cihazdan gelen kayıt dahil) yeniden hesaplanır

@@ -21,6 +21,10 @@ export interface RowEdit {
   familyMemberId?: string | null
   /** Etiketler (abonelik işareti "abonelik" etiketidir) */
   tags?: string[]
+  /** Not (İşlem Ekle'deki "Not" alanı) */
+  notes?: string
+  /** Kaydın tarihi (varsayılan bankanın tarihi; taksitli kayıtta değişmez) */
+  date?: string
   /** İadenin bağlandığı alım (null: bağlantı kaldırıldı) */
   refundOfId?: string | null
   /** Bu düzenleme bir alım seçilerek dolduruldu ("İade, alıma bağla"); karar değişince geri alınır */
@@ -138,11 +142,33 @@ export function optionForEdit(row: Pick<PlanRow, 'options'>, edit: RowEdit | und
   return i < 0 ? null : i
 }
 
-function applyEdit(d: DraftTx, e: RowEdit | undefined): DraftTx {
+/** Her kayıt türünde düzenlenebilen alanlar (İşlem Ekle'deki gibi): açıklama,
+ *  not, etiket ve — taksit dışında — tarih. Sınıflandırıcının kilitli
+ *  (editable: false) taslaklarında da geçerli: kaydın NE olduğunu değil yalnız
+ *  nasıl yazıldığını değiştirirler. */
+function applyCommon(d: DraftTx, e: RowEdit | undefined): DraftTx {
+  if (!e) return d
+  const out = { ...d }
+  if (e.description !== undefined) out.description = e.description
+  if (e.notes !== undefined) out.notes = e.notes.trim() || undefined
+  if (e.tags !== undefined) out.tags = e.tags
+  if (e.date && !d.installments && !d.installmentOf) out.date = e.date
+  return out
+}
+
+/** Transfer satırlarına da yazılan isteğe bağlı alanlar (not, etiket) */
+function transferExtras(d: DraftTx): Partial<Transaction> {
+  return {
+    ...(d.notes ? { notes: d.notes } : {}),
+    ...(d.tags?.length ? { tags: [...new Set(d.tags)] } : {}),
+  }
+}
+
+function applyEdit(draft: DraftTx, e: RowEdit | undefined): DraftTx {
+  const d = applyCommon(draft, e)
   // Elle transfer: hedef onay ekranında seçilir (hesap / borç / diğer alan)
   if (d.manual && d.type === 'transfer') {
     const out = { ...d }
-    if (e?.description !== undefined) out.description = e.description
     if (!d.transferMode) {
       out.fromAccountId = e?.fromAccountId
       return out
@@ -154,19 +180,17 @@ function applyEdit(d: DraftTx, e: RowEdit | undefined): DraftTx {
     out.crossWs     = mode === 'workspace' ? e?.crossWs : undefined
     return out
   }
-  if (!e || !d.editable) {
+  if (!e || !d.editable || d.type === 'transfer') {
     if (d.fromAccountId && e?.fromAccountId) return { ...d, fromAccountId: e.fromAccountId }
     if (d.toAccountId && e?.toAccountId) return { ...d, toAccountId: e.toAccountId }
     return d
   }
   const out = { ...d }
-  if (e.description !== undefined) out.description = e.description
   // Var olan alıcı seçildiyse (null = alıcısız) yeni alıcı adı yok sayılır
   if (e.recipientId !== undefined) { out.recipientId = e.recipientId; out.newRecipient = undefined }
   else if (e.newRecipient !== undefined) { out.newRecipient = e.newRecipient.trim() || undefined; out.recipientId = null }
   if (e.categoryId !== undefined) out.categoryId = e.categoryId
   if (e.familyMemberId !== undefined) out.familyMemberId = e.familyMemberId
-  if (e.tags !== undefined) out.tags = e.tags
   if (e.refundOfId !== undefined) out.refundOfId = e.refundOfId ?? undefined
   return out
 }
@@ -208,6 +232,7 @@ export function buildCommit(input: CommitInput): CommitResult {
     categoryId: d.categoryId,
     familyMemberId: d.familyMemberId ?? null,
     tags: d.tags?.length ? [...new Set(d.tags)] : undefined,
+    notes: d.notes,
     refundOfId: d.refundOfId,
     createdAt: nowIso,
     updatedAt: nowIso,
@@ -241,7 +266,7 @@ export function buildCommit(input: CommitInput): CommitResult {
       const amount = Math.abs(d.amount)
       push({
         id: txIdFromSeed(d.idSeed), type: 'transfer', amount, amountTry: amount, currency: 'TRY', date: d.date,
-        accountId, debtId: d.debtId, description: d.description, isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
+        accountId, debtId: d.debtId, description: d.description.trim(), ...transferExtras(d), isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
       })
       debtPayments.push({ debtId: d.debtId, amount })
       return
@@ -258,7 +283,7 @@ export function buildCommit(input: CommitInput): CommitResult {
       const link = txIdFromSeed(d.idSeed, 'ws-link')
       const outgoing: Transaction = {
         id: txIdFromSeed(d.idSeed), type: 'expense', amount, amountTry: amount, currency: 'TRY', date: d.date,
-        accountId, icon: '⇄', description: d.description, isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
+        accountId, icon: '⇄', description: d.description.trim(), ...transferExtras(d), isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
         ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
         workspaceTransferId: link, peerWorkspaceId: t.workspaceId,
       }
@@ -285,7 +310,7 @@ export function buildCommit(input: CommitInput): CommitResult {
       push({
         id: txIdFromSeed(d.idSeed), type: 'transfer', amount: Math.abs(d.amount), amountTry: Math.abs(d.amount),
         currency: 'TRY', date: d.date, accountId: out ? accountId : d.fromAccountId!, toAccountId: out ? d.toAccountId! : accountId,
-        description: d.description, merchant: d.merchant, isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
+        description: d.description.trim(), ...transferExtras(d), merchant: d.merchant, isInstallment: false, createdAt: nowIso, updatedAt: nowIso,
       })
       return
     }
