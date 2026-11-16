@@ -44,6 +44,7 @@ export function CategoryDrilldowns({
             <div className="overflow-auto" style={{ maxHeight: 440 }}>
               <TransactionList
                 transactions={catFilteredTxs}
+                focusCategoryId={selectedCat.categoryId}
                 showAccount
                 emptyTitle="İşlem bulunamadı"
                 emptyDescription="Seçili dönemde bu kategoride gider yok."
@@ -74,6 +75,7 @@ export function CategoryDrilldowns({
             <div className="overflow-auto" style={{ maxHeight: 440 }}>
               <TransactionList
                 transactions={incomeCatFilteredTxs}
+                focusCategoryId={selectedIncomeCat.categoryId}
                 showAccount
                 emptyTitle="İşlem bulunamadı"
                 emptyDescription="Seçili dönemde bu kategoride gelir yok."

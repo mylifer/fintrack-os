@@ -226,8 +226,8 @@ export default function ReportsPage() {
   const catFilteredTxs = useMemo(() => {
     if (!selectedCat) return []
     // Bölünmüş satırlar TAM haliyle listelenir (dilim olarak değil): satır
-    // gerçek işlemdir, tıklanınca düzenleme açar. Dilimin payı listede değil
-    // grafikte okunur — satırdaki çoklu-kategori rozeti farkı belli eder.
+    // gerçek işlemdir, tıklanınca düzenleme açar. Ana tutar seçili kategorinin
+    // PAYIDIR, işlemin toplamı altında küçük yazılır (focusCategoryId).
     // tx.icon (yatırım-ikonlu satırlar) donut dilimlerine girmez → listeye de
     // girmez (gelir drill-down'uyla aynı kural).
     return filteredTxs.filter(tx => {
