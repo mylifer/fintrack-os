@@ -144,7 +144,7 @@ export function collapseInstallments(transactions: Transaction[]): Transaction[]
       ...head,
       amount,
       amountTry:    toMajor(baseMinor),
-      categorySplits: collapseSplits(head, rows, amountMinor),
+      categorySplits: groupCategorySplits(head, rows),
       installTotal: head.installTotal ?? rows.length,
       installIndex: undefined,
     })
@@ -170,9 +170,12 @@ export function collapseInstallments(transactions: Transaction[]): Transaction[]
    pay/tutar oranıyla bölüp KALANI son paya yazdığı için son kategori neredeyse
    tüm alışverişi üstleniyordu (ör. 2.199₺'lik mutfak payı 13.944₺ görünüyordu).
    Paylar kategori bazında taksitler boyunca toplanır; tutmazsa (eksik/bozuk
-   pay) baş satırın oranlarıyla toplama ölçeklenir. */
-function collapseSplits(head: Transaction, rows: Transaction[], amountMinor: number): CategorySplit[] | undefined {
+   pay) baş satırın oranlarıyla toplama ölçeklenir. İşlem formu da taksitli
+   grubun paylarını buradan okur — liste ile form aynı sayıyı gösterir. */
+export function groupCategorySplits(head: Transaction, rows: readonly Transaction[]): CategorySplit[] | undefined {
   if (!head.categorySplits || head.categorySplits.length < 2) return head.categorySplits
+  let amountMinor = 0
+  for (const t of rows) amountMinor += toMinor(t.amount)
   const byCat = new Map<string, number>()
   for (const s of head.categorySplits) byCat.set(s.categoryId, 0)
   let ok = true

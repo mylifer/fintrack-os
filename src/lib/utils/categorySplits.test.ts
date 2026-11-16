@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   equalSplit, splitsMatchAmount, splitsAreValid, setSplitAmount, distributeSplits, unpinSplits,
   rescaleSplits, primarySplitCategoryId, txCategorySlices, expandByCategory, txHasCategory,
-  txCategoryIds, hasDuplicateCategory, focusedSplitShare, focusedCategoryId, type DraftSplit,
+  txCategoryIds, hasDuplicateCategory, focusedSplitShare, focusedCategoryId, splitsForInstallments, type DraftSplit,
 } from './categorySplits'
 import { sumMoney } from './money'
 import type { Transaction } from '@/types'
@@ -327,5 +327,33 @@ describe('focusedCategoryId', () => {
     expect(focusedCategoryId(split, undefined)).toBe('pet')
     expect(focusedCategoryId(split, new Set(['yok']))).toBe('pet')
     expect(focusedCategoryId({ ...base, categoryId: 'pet' }, new Set(['mutfak']))).toBe('pet')
+  })
+})
+
+describe('splitsForInstallments', () => {
+  // 15.413₺ / 9 taksit (banka kuralı: kalan 1. taksite) — 4 kategoriye bölünmüş.
+  const amounts = [1712.6, ...Array(8).fill(1712.55)]
+  const splits = [
+    { categoryId: 'pet', amount: 9000 }, { categoryId: 'ev', amount: 2514.5 },
+    { categoryId: 'temizlik', amount: 1699.5 }, { categoryId: 'mutfak', amount: 2199 },
+  ]
+  const toK = (n: number) => Math.round(n * 100)
+
+  it('her kategorinin taksitler boyunca toplamı girilen paya kuruşu kuruşuna eşit', () => {
+    const rows = splitsForInstallments(splits, amounts)
+    for (const s of splits) {
+      const sum = rows.reduce((a, r) => a + toK(r.find(x => x.categoryId === s.categoryId)!.amount), 0)
+      expect(sum).toBe(toK(s.amount))
+    }
+  })
+
+  it('her satırın payları o taksitin tutarına eşit', () => {
+    const rows = splitsForInstallments(splits, amounts)
+    rows.forEach((r, i) => expect(r.reduce((a, x) => a + toK(x.amount), 0)).toBe(toK(amounts[i])))
+  })
+
+  it('paylar toplamı tutmuyorsa satır satır ölçeklemeye düşer', () => {
+    const rows = splitsForInstallments([{ categoryId: 'a', amount: 10 }, { categoryId: 'b', amount: 10 }], [50, 50])
+    expect(rows[0]).toEqual([{ categoryId: 'a', amount: 25 }, { categoryId: 'b', amount: 25 }])
   })
 })

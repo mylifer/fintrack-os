@@ -3,6 +3,7 @@ import { useTransactionStore } from '@/store'
 import { sumMoney } from '@/lib/utils/money'
 import { impliedTaxRate, interestTaxId } from '@/lib/utils/interest-tax'
 import { rescaleSplits, type DraftSplit } from '@/lib/utils/categorySplits'
+import { groupCategorySplits } from '@/lib/utils/installments'
 import type { Transaction, ModalPayload, RecurringTransaction } from '@/types'
 import {
   buildInitialForm, crossWsLegDirection, newRecurringForm, recallKeepOpen, toAmountStr,
@@ -76,12 +77,15 @@ export function useTransactionFormState({
   // ── Çoklu kategori (oran barı) ─────────────────────────────────────────
   // null → bölme kapalı (tek kategori, alan bugünkü haliyle çalışır).
   // Paylar BÜYÜKLÜK uzayında tutulur; işaret kayıtta amountSign ile verilir.
-  // Taksitli grup düzenlenirken paylar TOPLAM tutara ölçeklenir (ilk-giriş
-  // görünümüyle tutarlı: satır satır değil, satın almanın tamamı üzerinden).
+  // Taksitli grup düzenlenirken paylar satın almanın TOPLAMI üzerinden gösterilir:
+  // her kategorinin taksitlerdeki payları toplanır (groupCategorySplits) — ilk
+  // taksitin paylarını toplama ölçeklemek kuruş kaydırıyordu (liste ≠ form).
   // Kayıtlı paylar SABİT gelir: düzenlemede kullanıcının bir kez verdiği
   // tutarlar kendiliğinden oynamaz (tutar değişirse kalanı son pay yutar).
   const [splits, setSplits] = useState<DraftSplit[] | null>(() => {
-    const src = installGroup.length ? installGroup[0].categorySplits : editingTx?.categorySplits
+    const src = installGroup.length
+      ? groupCategorySplits(installGroup[0], installGroup)
+      : editingTx?.categorySplits
     if (!src?.length || src.length < 2) return null
     const magnitude = src.map(s => ({ ...s, amount: Math.abs(s.amount) }))
     const totalSeed = installGroup.length
