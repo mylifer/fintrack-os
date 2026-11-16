@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { IconArrowBackUp, IconArrowLeft, IconFileTypePdf, IconSearch, IconTrash } from '@tabler/icons-react'
+import { IconArrowBackUp, IconArrowLeft, IconSearch, IconTrash } from '@tabler/icons-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TransactionList } from '@/components/transactions/TransactionList'
@@ -14,9 +14,11 @@ import { useAccountStore, useInvestmentStore, usePeopleStore, useTransactionStor
 import { isCommitted, statementKind, useStatementDraftsStore, type StatementDraft, type StatementKind } from '@/store/statement-drafts.store'
 import { rowInWorkspace } from '@/lib/workspace-context'
 import { foldText } from '@/lib/auto-category'
-import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
+import { StatementBankIcon, StatementCardHeader, statementRange, statementTitle } from './StatementCardHeader'
+
+export { statementRange }
 import type { Transaction } from '@/types'
 
 /* ── Yüklenen (onaylanmış) ekstreler ─────────────────────────────────────────
@@ -33,29 +35,7 @@ import type { Transaction } from '@/types'
    onaylanabilir. Mevcut kayıtlara yapılan yamalar (onay, karşı taraf adı) ve
    Kart Takvimi değişiklikleri onay anında saklanmadığı için geri alınmaz. */
 
-/** Dönem önceki kesimin ertesi günü başlar (özet ekranıyla aynı) */
-const nextDay = (iso: string) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + 1)).toISOString().slice(0, 10)
-
 const stamp = (iso: string) => formatDate(iso.slice(0, 10), 'd MMM yyyy') + ' ' + new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-
-/** Ekstrenin kapsadığı tarih aralığı: vadesiz dökümde dönem, kartta önceki
- *  kesimin ertesi → kesim; satır tarihleri aralığın dışına taşıyorsa genişletilir. */
-export function statementRange(d: Pick<StatementDraft, 'statement'>): { start: string; end: string } {
-  const st = d.statement
-  const dates = st.lines.map(l => l.date).filter((x): x is string => !!x).sort()
-  let start = st.account?.periodStart ?? (st.prevStatementDate ? nextDay(st.prevStatementDate) : dates[0] ?? st.statementDate)
-  let end = st.account?.periodEnd ?? st.statementDate
-  if (dates.length) {
-    if (dates[0] < start) start = dates[0]
-    if (dates[dates.length - 1] > end) end = dates[dates.length - 1]
-  }
-  return { start, end }
-}
-
-function statementTitle(d: StatementDraft): string {
-  const st = d.statement
-  return `${st.bankLabel} ${st.mapped ? (st.type === 'checking' ? '· hesap dökümü' : '· kart işlemleri') : st.type === 'checking' ? 'vadesiz hesap dökümü' : st.provisional ? 'dönem içi işlemler' : 'kredi kartı ekstresi'}`
-}
 
 export function StatementHistory() {
   const workspaceId = useWorkspaceStore(s => s.activeId)
@@ -198,23 +178,19 @@ function StatementIndex({ list: all, kind, missing }: { list: StatementDraft[]; 
       {shown.map(d => {
         const st = d.statement
         const account = accounts.find(a => a.id === d.accountId)
-        const { start, end } = statementRange(d)
         const created = d.createdTxIds?.length ?? 0
         const stillLive = (d.createdTxIds ?? []).filter(id => liveIds.has(id)).length
         return (
           <div key={d.id} className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
-            <Link href={`/ekstre-yukle/yuklenenler?ekstre=${d.id}`} className="flex items-start gap-3 group">
-              <IconFileTypePdf className="size-5 text-muted-foreground flex-shrink-0 mt-0.5" stroke={1.5} />
-              <div className="min-w-0 flex-1">
-                <div className="text-[15px] font-semibold truncate group-hover:underline underline-offset-2">{statementTitle(d)}</div>
-                <div className="text-xs text-muted-foreground tabular-nums mt-0.5 truncate">
-                  {formatDate(start, 'd MMM')} – {formatDate(end, 'd MMM yyyy')} · {account?.name ?? 'Hesap bulunamadı'} · {d.fileName}
-                </div>
-                <div className="text-xs text-muted-foreground tabular-nums mt-0.5">
-                  {st.lines.length} satır · {created} kayıt girildi · onay {stamp(d.committedAt!)}
-                </div>
-              </div>
-              {(st.summary || (st.account && (!st.mapped || st.mapped.hasBalance))) && <div className="text-sm font-semibold tabular-nums whitespace-nowrap">{formatCurrency(st.summary?.debt ?? st.account!.closingBalance)}</div>}
+            <Link href={`/ekstre-yukle/yuklenenler?ekstre=${d.id}`} className="block group">
+              <StatementCardHeader draft={d} account={account} lines={
+                <>
+                  <div className="text-xs text-muted-foreground mt-0.5 truncate">{account?.name ?? 'Hesap bulunamadı'} · {d.fileName}</div>
+                  <div className="text-xs text-muted-foreground tabular-nums mt-0.5">
+                    {st.lines.length} satır · {created} kayıt girildi · onay {stamp(d.committedAt!)}
+                  </div>
+                </>
+              } />
             </Link>
             <div className="flex flex-wrap items-center gap-2">
               <Link href={`/ekstre-yukle/yuklenenler?ekstre=${d.id}`} className={buttonVariants({ size: 'sm', className: 'rounded-lg' })}>İşlemleri aç</Link>
@@ -295,7 +271,7 @@ function StatementDetail({ draft }: { draft: StatementDraft }) {
           <Link href={`/ekstre-yukle/yuklenenler?tur=${kindParamOf(statementKind(draft.statement))}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
             <IconArrowLeft className="size-4" />{KIND_LABEL[statementKind(draft.statement)]}
           </Link>
-          <h2 className="text-xl font-semibold tracking-tight mt-1">{statementTitle(draft)}</h2>
+          <h2 className="text-xl font-semibold tracking-tight mt-1 flex items-center gap-2"><StatementBankIcon statement={draft.statement} account={account} size="sm" />{statementTitle(draft)}</h2>
           <div className="text-sm text-muted-foreground mt-0.5 tabular-nums">
             {formatDate(start, 'd MMM')} – {formatDate(end, 'd MMM yyyy')}
             {st.dueDate && <> · son ödeme {formatDate(st.dueDate, 'd MMM')}</>}

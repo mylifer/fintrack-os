@@ -2,34 +2,41 @@
 
 import { usePrivacyStore } from '@/store/privacy.store'
 
-const BANKS: { pattern: RegExp; domain: string }[] = [
-  { pattern: /garanti|bbva/i,                        domain: 'garantibbva.com.tr' },
-  { pattern: /iş bank|işbank|isbank/i,               domain: 'isbank.com.tr' },
-  { pattern: /yapı kredi|yapikredi|\bykb\b/i,         domain: 'yapikredi.com.tr' },
-  { pattern: /ziraat/i,                              domain: 'ziraatbank.com.tr' },
-  { pattern: /vakıf|vakif/i,                         domain: 'vakifbank.com.tr' },
-  { pattern: /halkbank|halk bank/i,                  domain: 'halkbank.com.tr' },
-  { pattern: /akbank/i,                              domain: 'akbank.com' },
-  { pattern: /finansbank|qnb/i,                      domain: 'finansbank.com.tr' },
-  { pattern: /enpara/i,                              domain: 'enpara.com' },
-  { pattern: /\bteb\b|türk ekonomi/i,                domain: 'teb.com.tr' },
-  { pattern: /denizbank/i,                           domain: 'denizbank.com' },
-  { pattern: /\bing\b/i,                             domain: 'ingbank.com.tr' },
-  { pattern: /\bhsbc\b/i,                            domain: 'hsbc.com.tr' },
-  { pattern: /fibabanka|fiba bank/i,                 domain: 'fibabanka.com' },
-  { pattern: /kuveyt türk|kuveyt turk|kuveytturk/i,  domain: 'kuveytturk.com.tr' },
-  { pattern: /albaraka/i,                            domain: 'albaraka.com.tr' },
-  { pattern: /türkiye finans|turkiye finans/i,        domain: 'turkiyefinans.com.tr' },
-  { pattern: /şekerbank|sekerbank/i,                 domain: 'sekerbank.com.tr' },
-  { pattern: /odeabank|\bodea bank/i,                domain: 'odeabank.com' },
-  { pattern: /burgan/i,                              domain: 'burgan.com.tr' },
-  { pattern: /papara/i,                              domain: 'papara.com' },
-  { pattern: /nkolay/i,                              domain: 'nkolay.com' },
+/* Banka markaları: alan adı favicon için, renk çevrimdışı rozet için (çevrimiçi
+   logolar gizlilik ayarıyla kapalıyken de banka tanınır kalsın). */
+const BANKS: { pattern: RegExp; domain: string; color: string }[] = [
+  { pattern: /garanti|bbva/i,                        domain: 'garantibbva.com.tr',  color: '#00A19B' },
+  { pattern: /iş bank|işbank|isbank/i,               domain: 'isbank.com.tr',       color: '#0D4E96' },
+  { pattern: /yapı kredi|yapikredi|\bykb\b/i,        domain: 'yapikredi.com.tr',    color: '#0B3C7E' },
+  { pattern: /ziraat/i,                              domain: 'ziraatbank.com.tr',   color: '#C8102E' },
+  { pattern: /vakıf|vakif/i,                         domain: 'vakifbank.com.tr',    color: '#E8A200' },
+  { pattern: /halkbank|halk bank/i,                  domain: 'halkbank.com.tr',     color: '#005BAA' },
+  { pattern: /akbank/i,                              domain: 'akbank.com',          color: '#E2001A' },
+  { pattern: /finansbank|qnb/i,                      domain: 'finansbank.com.tr',   color: '#7F2653' },
+  { pattern: /enpara/i,                              domain: 'enpara.com',          color: '#8E2B8C' },
+  { pattern: /\bteb\b|türk ekonomi/i,                domain: 'teb.com.tr',          color: '#00874A' },
+  { pattern: /denizbank/i,                           domain: 'denizbank.com',       color: '#005EB8' },
+  { pattern: /\bing\b/i,                             domain: 'ingbank.com.tr',      color: '#FF6200' },
+  { pattern: /\bhsbc\b/i,                            domain: 'hsbc.com.tr',         color: '#DB0011' },
+  { pattern: /fibabanka|fiba bank/i,                 domain: 'fibabanka.com',       color: '#005A9C' },
+  { pattern: /kuveyt türk|kuveyt turk|kuveytturk/i,  domain: 'kuveytturk.com.tr',   color: '#0B7C3F' },
+  { pattern: /albaraka/i,                            domain: 'albaraka.com.tr',     color: '#00573F' },
+  { pattern: /türkiye finans|turkiye finans/i,        domain: 'turkiyefinans.com.tr', color: '#0C8A4A' },
+  { pattern: /şekerbank|sekerbank/i,                 domain: 'sekerbank.com.tr',    color: '#009640' },
+  { pattern: /odeabank|\bodea bank/i,                domain: 'odeabank.com',        color: '#E30613' },
+  { pattern: /burgan/i,                              domain: 'burgan.com.tr',       color: '#00707F' },
+  { pattern: /papara/i,                              domain: 'papara.com',          color: '#662D91' },
+  { pattern: /nkolay/i,                              domain: 'nkolay.com',          color: '#F15A29' },
 ]
 
-function getBankDomain(name: string): string | null {
-  for (const b of BANKS) if (b.pattern.test(name)) return b.domain
+/** Banka adından marka (favicon alanı + çevrimdışı rozet rengi); tanınmazsa null */
+export function getBankBrand(name: string): { domain: string; color: string } | null {
+  for (const b of BANKS) if (b.pattern.test(name)) return { domain: b.domain, color: b.color }
   return null
+}
+
+export function getBankDomain(name: string): string | null {
+  return getBankBrand(name)?.domain ?? null
 }
 
 const SIZES = {

@@ -11,20 +11,48 @@
  *    kabuk olarak saklanmasın diye).
  */
 
-const VERSION = 'v1'
+const VERSION = 'v3'
 const SHELL_CACHE = `ft-shell-${VERSION}`
 const STATIC_CACHE = `ft-static-${VERSION}`
 const STATIC_LIMIT = 80 // basit büyüme sınırı (LRU yaklaşığı: en eskiler silinir)
 
-const OFFLINE_HTML = `<!doctype html><html lang="tr"><head><meta charset="utf-8">
+/* Gezinme isteği düştüğünde gösterilen sayfa. İki ayrı durum var ve ayırmak
+   önemli: cihaz gerçekten çevrimdışı olabilir ya da internet varken YALNIZ bu
+   adrese ulaşılamıyor olabilir (ISP engeli, DNS, sunucu kapalı). İkisine de
+   "çevrimdışısınız" demek kullanıcıyı yanlış yere baktırıyor. */
+function fallbackHtml(online) {
+  const title = online ? 'Siteye ulaşılamıyor' : 'Çevrimdışısınız'
+  const body = online
+    ? `İnternet bağlantınız var ama bu adrese şu an ulaşılamıyor. Sunucu geçici olarak
+kapalı olabilir ya da bağlantınız bu adresi engelliyor olabilir — başka bir ağ
+(mobil veri) işe yarayabilir. Verileriniz cihazınızda güvende.`
+    : `İnternet bağlantısı yok ve bu sayfa daha önce önbelleğe alınmamış.
+Verileriniz cihazınızda güvende — bağlantı gelince kaldığınız yerden devam edersiniz.`
+  return `<!doctype html><html lang="tr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Çevrimdışı — FinTrack OS</title>
-<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+<title>${title} — FinTrack OS</title>
+<style>
+:root{color-scheme:light dark}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
 background:#09090b;color:#f4f4f5;font-family:system-ui,sans-serif;text-align:center;padding:24px}
-p{color:#a1a1aa;max-width:36ch;line-height:1.6}</style></head><body><div>
-<h1>Çevrimdışısınız</h1><p>İnternet bağlantısı yok ve bu sayfa daha önce önbelleğe alınmamış.
-Bağlantı gelince sayfayı yenileyin — verileriniz cihazınızda güvende.</p>
-</div></body></html>`
+p{color:#a1a1aa;max-width:38ch;line-height:1.6;margin:12px auto 0}
+button{margin-top:24px;padding:10px 20px;border:0;border-radius:12px;font:inherit;font-weight:600;
+background:#f4f4f5;color:#09090b;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+small{display:block;margin-top:16px;color:#71717a;font-size:12px;word-break:break-all}
+</style></head><body><div>
+<h1>${title}</h1><p>${body}</p>
+<button id="r" type="button">Yeniden dene</button>
+<small id="u"></small></div>
+<script>
+var b=document.getElementById('r')
+document.getElementById('u').textContent=location.host
+function retry(){b.disabled=true;b.textContent='Deneniyor…';location.reload()}
+b.addEventListener('click',retry)
+// Bağlantı geri gelince kendiliğinden dener
+addEventListener('online',retry)
+</script></body></html>`
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting())
@@ -68,7 +96,9 @@ async function handleNavigation(request) {
   } catch {
     const cached = await cache.match(request, { ignoreSearch: true })
     if (cached) return cached
-    return new Response(OFFLINE_HTML, {
+    // navigator.onLine yalnız "ağ var mı" der; true iken istek düşüyorsa sorun
+    // bu adrese erişimde demektir (bkz. fallbackHtml)
+    return new Response(fallbackHtml(self.navigator.onLine), {
       status: 503,
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
     })

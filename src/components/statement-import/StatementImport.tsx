@@ -27,6 +27,7 @@ import { useRulesStore } from '@/store/rules.store'
 import { buildImportPlan, type ImportPlan, type PlanRow, type RowOption } from '@/lib/statement-import/classify'
 import { buildAccountPlan, systemBalance } from '@/lib/statement-import/classify-account'
 import { sortNewestFirst, withManualOptions } from '@/lib/statement-import/manual-options'
+import { StatementBankIcon } from './StatementCardHeader'
 import { db } from '@/lib/db'
 import { useDebtStore, debtPaymentPatches } from '@/store/debts.store'
 import type { Debt } from '@/types'
@@ -702,11 +703,14 @@ export function StatementImport() {
     <div className="flex flex-col gap-4">
       {/* Başlık + hesap */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex items-start gap-3">
+          <StatementBankIcon statement={statement} account={account} />
+          <div className="min-w-0">
           <h2 className="text-xl font-semibold tracking-tight">{statement.bankLabel} {statement.mapped ? (statement.type === 'checking' ? '· hesap dökümü' : '· kart işlemleri') : statement.type === 'checking' ? 'vadesiz hesap dökümü' : statement.provisional ? 'kredi kartı · dönem içi işlemler' : 'kredi kartı ekstresi'}</h2>
           <div className="text-sm text-muted-foreground mt-0.5 tabular-nums">
             {plan ? formatDate(plan.periodStart, 'd MMM') : statement.account ? formatDate(statement.account.periodStart, 'd MMM') : '…'} – {formatDate(statement.statementDate, 'd MMM yyyy')}
             {statement.dueDate && <> · son ödeme {formatDate(statement.dueDate, 'd MMM')}</>} · <span className="break-all">{fileName}</span>
+          </div>
           </div>
         </div>
         <div className="flex gap-2">
