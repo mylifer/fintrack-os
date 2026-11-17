@@ -112,7 +112,9 @@ export interface RefundCandidate {
 export type Action =
   | { type: 'create'; draft: DraftTx }
   | { type: 'delete'; txIds: string[] }
-  | { type: 'patch'; txId: string; patch: Partial<Transaction> }
+  /** `refundLinkFromEdit`: bağlanacak alım onay ekranında seçilir (RowEdit.refundOfId);
+   *  seçilen alımın bağlantısı ve açıklama/alıcı/kategorisi kayda yazılır */
+  | { type: 'patch'; txId: string; patch: Partial<Transaction>; refundLinkFromEdit?: true }
 
 export interface RowOption {
   key: string
@@ -777,6 +779,113 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     handled.add(r.index)
   }
 
+  /** İadenin bağlanabileceği alımlar: aynı işyeri/alıcı (`candidates`) ve bu
+   *  karttaki öteki alımlar (`more`). Her alacak satırında kullanılır: iade
+   *  satırı, taksitli iade, sistemde zaten olan iade (bkz. 5. adım). */
+  const refundLinkFor = (l: StatementLine, rule: ReturnType<typeof rules.ruleFor>) => {
+    const key = merchantKey(l.description)
+    const refundMinor = -minor(l.amount!)
+    const ld = dayNum(dateOf(l))
+    // Bağlanabilecek alımlar: bu karttaki, iadeden önceki, iadeden küçük olmayan giderler
+    const pool = accTx.filter(t => t.accountId === acc && t.type === 'expense' && t.amount > 0 && !t.refundOfId &&
+      dayNum(t.date) <= ld && ld - dayNum(t.date) <= 365 && minor(t.amount) >= refundMinor)
+    // Benzerlik (0..1): bankanın işyeri adı (birebir, bankadan bankaya yazım farkı,
+    // aynı marka) ya da alıcının adı iadenin metnine ne kadar benziyor. Alıcı
+    // eşleştirmesiyle aynı ölçü (merchant-match.ts): "YEMEKPAY /YEMEKSEPE" ile
+    // "YEMEKSEPETIPAY/YEMEKSEPISTANBUL" aynı işyeri; elle girilmiş, işyeri adı
+    // olmayan "Yemeksepeti" alıcılı kayıt da aday olur.
+    const brandL = brandOf(l.description)
+    const coreL = merchantCore(l.description).joined
+    const textSim = (text?: string | null) => {
+      if (!text) return 0
+      if (merchantKey(text) === key) return 1
+      if (sameCore(text, l.description)) return 0.95
+      const b = brandOf(text)
+      if (b && brandL && b === brandL) return 0.9
+      // Biri ötekinin kesik hali: "yemeksepe" ~ "yemeksep" (bankalar adı farklı yerden keser)
+      const c = merchantCore(text).joined
+      return c.length >= 6 && coreL.length >= 6 && (c.startsWith(coreL) || coreL.startsWith(c)) ? 0.85 : 0
+    }
+    const nameSim = (pid?: string | null) => {
+      if (!pid) return 0
+      if (rule?.recipientId === pid) return 1
+      const n = peopleById.get(pid)?.name
+      return n ? nameScore(n, l.description) : 0
+    }
+    const simOf = new Map<string, number>()
+    const simTx = (t: Transaction) => {
+      const v = Math.max(textSim(t.merchant), nameSim(t.recipientId), Math.min(0.85, nameScore(t.description, l.description)))
+      simOf.set(t.id, v)
+      return v
+    }
+    const origins = pool.filter(t => ld - dayNum(t.date) <= 180 && simTx(t) >= MAYBE)
+    const isExact = (t: Transaction) => minor(t.amount) === refundMinor
+    const cand = (t: Transaction): RefundCandidate => ({
+      txId: t.id, title: t.description, date: t.date, amount: t.amount,
+      who: t.recipientId ? peopleById.get(t.recipientId)?.name : undefined, exact: isExact(t),
+      patch: {
+        refundOfId: t.id, description: `[İade] ${t.description}`, recipientId: t.recipientId ?? null, categoryId: t.categoryId,
+        familyMemberId: t.familyMemberId ?? null, tags: [...(t.tags ?? []).filter(x => x !== refundTag), refundTag], linkFill: true,
+      },
+    })
+    const linkFields = (c: RefundCandidate): Partial<DraftTx> => ({
+      refundOfId: c.patch.refundOfId, description: c.patch.description, recipientId: c.patch.recipientId,
+      categoryId: c.patch.categoryId, familyMemberId: c.patch.familyMemberId, tags: c.patch.tags,
+    })
+    // Aynı ekstredeki alımlar da aday: iade çoğu zaman aynı listedeki alımın
+    // iadesidir (Yemeksepeti siparişi ve iadesi aynı gün). Sistemle eşleşmişse
+    // o kayıt, değilse bu onayla girilecek kaydın kimliği bağlanır.
+    const knownIds = new Set(origins.map(t => t.id))
+    const fromLines: RefundCandidate[] = []
+    const otherLines: RefundCandidate[] = []
+    for (const p of lines) {
+      if (p === l || p.kind !== 'purchase' || p.amount === null) continue
+      // Taksitli alım: bu ekstrede başlayan (1. taksit) yeni alım aday olur, tutarı
+      // alımın toplamıdır; iade grubun 1. taksit kaydına bağlanır. Sistemde olan
+      // taksitler zaten karttaki alımlar arasında.
+      const newInst = p.installment && !matchOf.has(p.index) ? p.installment : null
+      if (p.installment && !matchOf.has(p.index) && p.installment.index !== 1) continue
+      const pAmount = newInst ? newInst.total : p.amount
+      if (minor(pAmount) < refundMinor) continue
+      const pd = dayNum(dateOf(p))
+      if (pd > ld || ld - pd > 180) continue
+      const pr = rules.ruleFor(p.description, p.bankCategory)
+      const sim = Math.max(textSim(p.description), nameSim(pr?.recipientId))
+      const m = matchOf.get(p.index)
+      if (m) {
+        const t = byId.get(m.txIds[0])
+        if (t && t.type === 'expense' && !knownIds.has(t.id)) {
+          knownIds.add(t.id)
+          simOf.set(t.id, Math.max(sim, simOf.get(t.id) ?? 0))
+          ;(sim >= MAYBE ? fromLines : otherLines).push(cand(t))
+        }
+        continue
+      }
+      const txId = newInst ? txIdFromSeed(groupSeedOf.get(p.index)!, 1) : txIdFromSeed(seedOf.get(p.index)!)
+      simOf.set(txId, sim)
+      const pTitle = pr?.description ?? (pr?.recipientId ? peopleById.get(pr.recipientId)?.name : undefined) ?? prettyMerchant(p.description)
+      ;(sim >= MAYBE ? fromLines : otherLines).push({
+        txId, title: newInst ? `${pTitle} · ${newInst.count} taksit` : pTitle, date: dateOf(p), amount: pAmount, fromStatement: true,
+        who: pr?.recipientId ? peopleById.get(pr.recipientId)?.name : undefined, exact: minor(pAmount) === refundMinor,
+        patch: {
+          refundOfId: txId, description: `[İade] ${pTitle}`, recipientId: pr?.recipientId ?? null, categoryId: pr?.categoryId,
+          familyMemberId: pr?.familyMemberId ?? null, tags: [...(pr?.tags ?? []).filter(x => x !== refundTag), refundTag], linkFill: true,
+        },
+      })
+    }
+    // Sıra: tutarı tutan önce, sonra iadeye en yakın tarih
+    const near = (c: RefundCandidate) => Math.abs(ld - dayNum(c.date))
+    const candidates = [...origins.map(cand), ...fromLines].sort((a, b) => (Number(b.exact) - Number(a.exact)) || (near(a) - near(b)))
+    // "Diğer…": bu karttaki öteki alımlar ve bu ekstredeki öteki alımlar; benzerliği
+    // yüksek olan önce (0,1'lik basamaklarla), sonra iadeye en yakın tarih
+    const simC = (c: RefundCandidate) => Math.floor((simOf.get(c.txId) ?? 0) * 10)
+    const more = [...pool.filter(t => !knownIds.has(t.id)).map(t => { if (!simOf.has(t.id)) simTx(t); return cand(t) }), ...otherLines]
+      .sort((a, b) => (simC(b) - simC(a)) || (near(a) - near(b)))
+      .slice(0, 80)
+    const exactCand = candidates.find(c => c.exact)
+    return { candidates, more, exactCand, origins, linkFields }
+  }
+
   // 3c) Kalan satırlar
   for (const l of lines) {
     if (handled.has(l.index)) continue
@@ -1072,99 +1181,7 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     }
 
     if (l.kind === 'refund') {
-      const key = merchantKey(l.description)
-      const refundMinor = -minor(l.amount!)
-      const ld = dayNum(dateOf(l))
-      // Bağlanabilecek alımlar: bu karttaki, iadeden önceki, iadeden küçük olmayan giderler
-      const pool = accTx.filter(t => t.accountId === acc && t.type === 'expense' && t.amount > 0 && !t.refundOfId &&
-        dayNum(t.date) <= ld && ld - dayNum(t.date) <= 365 && minor(t.amount) >= refundMinor)
-      // Benzerlik (0..1): bankanın işyeri adı (birebir, bankadan bankaya yazım farkı,
-      // aynı marka) ya da alıcının adı iadenin metnine ne kadar benziyor. Alıcı
-      // eşleştirmesiyle aynı ölçü (merchant-match.ts): "YEMEKPAY /YEMEKSEPE" ile
-      // "YEMEKSEPETIPAY/YEMEKSEPISTANBUL" aynı işyeri; elle girilmiş, işyeri adı
-      // olmayan "Yemeksepeti" alıcılı kayıt da aday olur.
-      const brandL = brandOf(l.description)
-      const coreL = merchantCore(l.description).joined
-      const textSim = (text?: string | null) => {
-        if (!text) return 0
-        if (merchantKey(text) === key) return 1
-        if (sameCore(text, l.description)) return 0.95
-        const b = brandOf(text)
-        if (b && brandL && b === brandL) return 0.9
-        // Biri ötekinin kesik hali: "yemeksepe" ~ "yemeksep" (bankalar adı farklı yerden keser)
-        const c = merchantCore(text).joined
-        return c.length >= 6 && coreL.length >= 6 && (c.startsWith(coreL) || coreL.startsWith(c)) ? 0.85 : 0
-      }
-      const nameSim = (pid?: string | null) => {
-        if (!pid) return 0
-        if (rule?.recipientId === pid) return 1
-        const n = peopleById.get(pid)?.name
-        return n ? nameScore(n, l.description) : 0
-      }
-      const simOf = new Map<string, number>()
-      const simTx = (t: Transaction) => {
-        const v = Math.max(textSim(t.merchant), nameSim(t.recipientId), Math.min(0.85, nameScore(t.description, l.description)))
-        simOf.set(t.id, v)
-        return v
-      }
-      const origins = pool.filter(t => ld - dayNum(t.date) <= 180 && simTx(t) >= MAYBE)
-      const isExact = (t: Transaction) => minor(t.amount) === refundMinor
-      const cand = (t: Transaction): RefundCandidate => ({
-        txId: t.id, title: t.description, date: t.date, amount: t.amount,
-        who: t.recipientId ? peopleById.get(t.recipientId)?.name : undefined, exact: isExact(t),
-        patch: {
-          refundOfId: t.id, description: `[İade] ${t.description}`, recipientId: t.recipientId ?? null, categoryId: t.categoryId,
-          familyMemberId: t.familyMemberId ?? null, tags: [...(t.tags ?? []).filter(x => x !== refundTag), refundTag], linkFill: true,
-        },
-      })
-      const linkFields = (c: RefundCandidate): Partial<DraftTx> => ({
-        refundOfId: c.patch.refundOfId, description: c.patch.description, recipientId: c.patch.recipientId,
-        categoryId: c.patch.categoryId, familyMemberId: c.patch.familyMemberId, tags: c.patch.tags,
-      })
-      // Aynı ekstredeki alımlar da aday: iade çoğu zaman aynı listedeki alımın
-      // iadesidir (Yemeksepeti siparişi ve iadesi aynı gün). Sistemle eşleşmişse
-      // o kayıt, değilse bu onayla girilecek kaydın kimliği bağlanır.
-      const knownIds = new Set(origins.map(t => t.id))
-      const fromLines: RefundCandidate[] = []
-      const otherLines: RefundCandidate[] = []
-      for (const p of lines) {
-        if (p === l || p.kind !== 'purchase' || p.installment || p.amount === null || minor(p.amount) < refundMinor) continue
-        const pd = dayNum(dateOf(p))
-        if (pd > ld || ld - pd > 180) continue
-        const pr = rules.ruleFor(p.description, p.bankCategory)
-        const sim = Math.max(textSim(p.description), nameSim(pr?.recipientId))
-        const m = matchOf.get(p.index)
-        if (m) {
-          const t = byId.get(m.txIds[0])
-          if (t && t.type === 'expense' && !knownIds.has(t.id)) {
-            knownIds.add(t.id)
-            simOf.set(t.id, Math.max(sim, simOf.get(t.id) ?? 0))
-            ;(sim >= MAYBE ? fromLines : otherLines).push(cand(t))
-          }
-          continue
-        }
-        const txId = txIdFromSeed(seedOf.get(p.index)!)
-        simOf.set(txId, sim)
-        const pTitle = pr?.description ?? (pr?.recipientId ? peopleById.get(pr.recipientId)?.name : undefined) ?? prettyMerchant(p.description)
-        ;(sim >= MAYBE ? fromLines : otherLines).push({
-          txId, title: pTitle, date: dateOf(p), amount: p.amount, fromStatement: true,
-          who: pr?.recipientId ? peopleById.get(pr.recipientId)?.name : undefined, exact: minor(p.amount) === refundMinor,
-          patch: {
-            refundOfId: txId, description: `[İade] ${pTitle}`, recipientId: pr?.recipientId ?? null, categoryId: pr?.categoryId,
-            familyMemberId: pr?.familyMemberId ?? null, tags: [...(pr?.tags ?? []).filter(x => x !== refundTag), refundTag], linkFill: true,
-          },
-        })
-      }
-      // Sıra: tutarı tutan önce, sonra iadeye en yakın tarih
-      const near = (c: RefundCandidate) => Math.abs(ld - dayNum(c.date))
-      const candidates = [...origins.map(cand), ...fromLines].sort((a, b) => (Number(b.exact) - Number(a.exact)) || (near(a) - near(b)))
-      // "Diğer…": bu karttaki öteki alımlar ve bu ekstredeki öteki alımlar; benzerliği
-      // yüksek olan önce (0,1'lik basamaklarla), sonra iadeye en yakın tarih
-      const simC = (c: RefundCandidate) => Math.floor((simOf.get(c.txId) ?? 0) * 10)
-      const more = [...pool.filter(t => !knownIds.has(t.id)).map(t => { if (!simOf.has(t.id)) simTx(t); return cand(t) }), ...otherLines]
-        .sort((a, b) => (simC(b) - simC(a)) || (near(a) - near(b)))
-        .slice(0, 80)
-      const exactCand = candidates.find(c => c.exact)
+      const { candidates, more, exactCand, origins, linkFields } = refundLinkFor(l, rule)
 
       const standalone = draftFor(l, rule, { description: `[İade] ${title}`, tags: [...(rule?.tags ?? []), refundTag] })
       const options: RowOption[] = []
@@ -1297,6 +1314,36 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     return row
   })
 
+  // ── 6) "İade, alıma bağla" her alacak satırında: sınıflandırıcı satırı iade diye
+  // tanımasa da (taksitli iade, açılış bakiyesindeki iade taksiti, sistemde zaten
+  // olan iade) kullanıcı onu bir alıma bağlayabilsin. Sistemde karşılığı olmayan
+  // satırda bağlı iade girilir; karşılığı olan (gider türünde, eksi tutarlı)
+  // kayıtta yalnız bağlantı o kayda yazılır. Seçenek sona eklenir: kayıtlı
+  // kararların sırası kaymaz.
+  const linkedRows = finalRows.map(r => withRefundLink(r))
+  function withRefundLink(r: PlanRow): PlanRow {
+    if (r.amount === null || r.amount >= 0 || !r.lines.length || r.options.some(o => o.key === 'link')) return r
+    const headIdx = r.lines.find(i => (lineByIdx.get(i)?.amount ?? 0) < 0) ?? r.lines[0]
+    const head = lineByIdx.get(headIdx)
+    if (!head) return r
+    const line: StatementLine = { ...head, amount: r.amount }
+    const rule = rules.ruleFor(head.description, head.bankCategory)
+    const { candidates, more, exactCand, linkFields } = refundLinkFor(line, rule)
+    if (!candidates.length && !more.length) return r
+    const matched = r.match?.txIds ?? []
+    let option: RowOption
+    if (matched.length) {
+      const t = matched.length === 1 ? byId.get(matched[0]) : undefined
+      if (!t || t.type !== 'expense' || t.amount >= 0) return r
+      option = { key: 'link', label: 'İade, alıma bağla (sistemdeki kayda)', actions: [{ type: 'patch', txId: t.id, patch: {}, refundLinkFromEdit: true }] }
+    } else {
+      const title = rule?.description ?? (rule?.recipientId ? peopleById.get(rule.recipientId)?.name : undefined) ?? prettyMerchant(head.description)
+      const draft = draftFor(line, rule, { description: `[İade] ${title}`, tags: [...(rule?.tags ?? []), refundTag] })
+      option = { key: 'link', label: 'İade, alıma bağla', actions: [{ type: 'create', draft: exactCand ? { ...draft, ...linkFields(exactCand) } : { ...draft, needsRefundOf: true } }] }
+    }
+    return { ...r, options: [...r.options, option], refundLink: { candidates, more } }
+  }
+
   const totalLines = lines.filter(l => l.amount !== null).length
-  return { rows: finalRows, blockers, periodStart, openingDate, matchedLines: matchOf.size, totalLines }
+  return { rows: linkedRows, blockers, periodStart, openingDate, matchedLines: matchOf.size, totalLines }
 }

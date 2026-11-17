@@ -14,7 +14,8 @@ import type { DraftTx, ImportPlan, PlanRow, RowOption } from './classify'
 
    Kayıt kimliği satırın sabit anahtarından türer (tek satırlıkta satırın
    tohumu): bir sonraki yüklemede satır "daha önce içe aktarılmış" diye eşleşir.
-   Sistemde karşılığı olan (exists) satırlara dokunulmaz — o kayıt zaten var. */
+   Sistemde karşılığı olan satırlara dokunulmaz — o kayıt zaten var; karşılığı
+   olmayan "zaten sistemde" satırları (açılış bakiyesindeki taksit) dahildir. */
 
 export const MANUAL_KEYS = { expense: 'm-expense', income: 'm-income', refund: 'm-refund', transfer: 'm-transfer' } as const
 
@@ -24,7 +25,9 @@ function createType(o: RowOption): DraftTx['type'] | null {
 }
 
 export function manualOptionsFor(row: PlanRow): RowOption[] {
-  if (row.status === 'exists' || row.lines.length === 0 || row.amount === null || row.amount === 0) return []
+  // Sistemde karşılığı olan satıra yeni kayıt önerilmez (o kayıt zaten var);
+  // karşılığı olmayan "zaten sistemde" satırları (açılış bakiyesindeki taksit) dahil
+  if ((row.status === 'exists' && row.match?.txIds.length) || row.lines.length === 0 || row.amount === null || row.amount === 0) return []
   const out = row.amount > 0
   const has = new Set(row.options.map(createType))
   const base = {
