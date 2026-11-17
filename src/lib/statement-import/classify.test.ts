@@ -631,7 +631,7 @@ describe('"İade, alıma bağla" her alacak satırında', () => {
     const p = plan([l], hist)
     const r = p.rows[0]
     expect([r.status, r.kind]).toEqual(['exists', 'opening'])
-    expect(r.options.map(o => o.key)).toEqual(['keep', 'create', 'link'])
+    expect(r.options.map(o => o.key)).toEqual(['keep', 'create', 'link', 'refund-whole'])
     expect(r.refundLink!.candidates.map(c => c.txId)).toEqual(['a1', 'a2'])
     const i = r.options.findIndex(o => o.key === 'link')
     expect(commit(p, hist, { [r.key]: i }).problems[0].message).toBe('İadenin bağlanacağı alım seçilmedi')
@@ -678,6 +678,53 @@ describe('"İade, alıma bağla" her alacak satırında', () => {
     const inc = tx({ id: 'i1', type: 'income', amount: 1996.36, date: '2026-10-20', description: 'Amazon iade' })
     const p = plan([line({ description: 'IYZICO *AMAZON.COM.T', amount: -1996.36, date: '2026-10-20' }), line({ description: 'IYZICO *AMAZON.COM.T', amount: 50, date: '2026-10-21' })], [...hist, inc])
     for (const r of p.rows) expect(r.options.some(o => o.key === 'link')).toBe(false)
+  })
+})
+
+describe('taksitli iadeyi tek iadeye çevirme ve tutarı düzeltme', () => {
+  const hist = [tx({ id: 'a1', amount: 17735.51, date: '2026-09-18', merchant: 'IYZICO *AMAZON.COM.T', recipientId: 'p-ys', categoryId: 'c-ev', description: 'Amazon' })]
+  const back = (index: number, date: string) => line({ description: 'IYZICO *AMAZON.COM.T', amount: -1219.34, date, installment: { index, count: 3, total: 3658 } })
+
+  it('taksitli iade toplamıyla tek iade olarak girilir, alıma bağlanabilir; sonraki taksitler "tek kayıt" olur', () => {
+    const p = plan([back(1, '2026-10-08')], hist)
+    const r = p.rows[0]
+    const i = r.options.findIndex(o => o.key === 'refund-whole')
+    expect(r.options[i].label).toBe('Tek iade olarak gir (toplam 3.658,00 ₺)')
+    const c = commit(p, hist, { [r.key]: i }, { [r.key]: r.refundLink!.candidates[0].patch })
+    expect(c.problems).toEqual([])
+    const made = created(c.ops)
+    expect(made.map(t => [t.amount, t.date, t.isInstallment, t.refundOfId])).toEqual([[-3658, '2026-10-08', false, 'a1']])
+
+    // Sonraki ekstre: 2. taksit tekrar sorulmaz
+    const next = plan([back(2, '2026-11-08')], [...hist, ...made]).rows[0]
+    expect([next.status, next.kind]).toEqual(['exists', 'lump'])
+  })
+
+  it('sistemde taksitli duran iade, taksitleri silinip tek iadeye çevrilir', () => {
+    const group = [1, 2, 3].map(k => tx({ id: `g${k}`, amount: -1219.34, date: addMonthsIso('2026-10-08', k - 1), isInstallment: true, installIndex: k, installTotal: 3, installGroupId: 'G', categoryId: 'c-ev', description: '[İade] Amazon', refundOfId: k === 1 ? 'a1' : undefined }))
+    const all = [...hist, ...group]
+    const p = plan([back(1, '2026-10-08')], all)
+    const r = p.rows[0]
+    expect([r.status, r.match?.txIds]).toEqual(['exists', ['g1']])
+    const i = r.options.findIndex(o => o.key === 'refund-whole')
+    expect(r.options[i].label).toContain('sistemdeki 3 taksit silinir')
+    const c = commit(p, all, { [r.key]: i })
+    expect(c.problems).toEqual([])
+    expect(c.deletedTxIds.sort()).toEqual(['g1', 'g2', 'g3'])
+    expect(created(c.ops).map(t => [t.amount, t.refundOfId, t.categoryId])).toEqual([[-3658, 'a1', 'c-ev']])
+  })
+
+  it('tutar elle düzeltilir; iadede işaret korunur, taksit grubunda değişmez', () => {
+    const p = plan([back(1, '2026-10-08')], hist)
+    const r = p.rows[0]
+    const i = r.options.findIndex(o => o.key === 'refund-whole')
+    const c = commit(p, hist, { [r.key]: i }, { [r.key]: { categoryId: 'c-ev', amount: 3000 } })
+    expect(created(c.ops).map(t => t.amount)).toEqual([-3000])
+
+    const buy = plan([line({ description: 'IYZICO *AMAZON.COM.T', amount: 100, date: '2026-10-08', installment: { index: 1, count: 3, total: 300 } })], hist)
+    const b = buy.rows[0]
+    const made = created(commit(buy, hist, { [b.key]: 0 }, { [b.key]: { categoryId: 'c-ev', amount: 999 } }).ops)
+    expect(made.map(t => t.amount)).toEqual([100, 100, 100])
   })
 })
 

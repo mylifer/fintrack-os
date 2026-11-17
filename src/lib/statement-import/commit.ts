@@ -25,6 +25,9 @@ export interface RowEdit {
   notes?: string
   /** Kaydın tarihi (varsayılan bankanın tarihi; taksitli kayıtta değişmez) */
   date?: string
+  /** Kaydın tutarı, işaretsiz (varsayılan bankanın tutarı; taksitli kayıtta değişmez).
+   *  İşaret seçeneğin taslağından gelir: iade eksi kalır. */
+  amount?: number
   /** İadenin bağlandığı alım (null: bağlantı kaldırıldı) */
   refundOfId?: string | null
   /** Bu düzenleme bir alım seçilerek dolduruldu ("İade, alıma bağla"); karar değişince geri alınır */
@@ -173,6 +176,7 @@ function applyCommon(d: DraftTx, e: RowEdit | undefined): DraftTx {
   if (e.notes !== undefined) out.notes = e.notes.trim() || undefined
   if (e.tags !== undefined) out.tags = e.tags
   if (e.date && !d.installments && !d.installmentOf) out.date = e.date
+  if (e.amount !== undefined && e.amount > 0 && !d.installments && !d.installmentOf) out.amount = d.amount < 0 ? -e.amount : e.amount
   return out
 }
 

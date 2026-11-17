@@ -673,6 +673,11 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
       if (openingDate && pd < openingDate) continue
       const credits = g.filter(l => l.amount! < 0 && !matchOf.has(l.index))
       if (!credits.length) continue
+      // Taksitli iade daha önce tek iade olarak girilmiş ("Tek iade olarak gir"):
+      // satırlar aşağıda "tek kayıt" diye eşleşir
+      const lumpTotal = -minor(g[0].installment!.total)
+      if (g.every(l => l.amount! < 0) && accTx.some(t => t.accountId === acc && t.type === 'expense' && !t.isInstallment &&
+        Math.abs(minor(t.amount) - lumpTotal) <= 5 && dayDiff(t.date, pd) <= 4)) continue
       const members = g.filter(l => !matchOf.has(l.index))
       // Sistemdeki grup: eşleşmiş bir üyenin grubu ya da imzası tutan grup
       const matchedMember = g.find(l => matchOf.has(l.index))
@@ -1314,34 +1319,67 @@ export function buildImportPlan(input: PlanInput): ImportPlan {
     return row
   })
 
-  // ── 6) "İade, alıma bağla" her alacak satırında: sınıflandırıcı satırı iade diye
-  // tanımasa da (taksitli iade, açılış bakiyesindeki iade taksiti, sistemde zaten
-  // olan iade) kullanıcı onu bir alıma bağlayabilsin. Sistemde karşılığı olmayan
-  // satırda bağlı iade girilir; karşılığı olan (gider türünde, eksi tutarlı)
-  // kayıtta yalnız bağlantı o kayda yazılır. Seçenek sona eklenir: kayıtlı
-  // kararların sırası kaymaz.
-  const linkedRows = finalRows.map(r => withRefundLink(r))
-  function withRefundLink(r: PlanRow): PlanRow {
-    if (r.amount === null || r.amount >= 0 || !r.lines.length || r.options.some(o => o.key === 'link')) return r
+  // ── 6) Her alacak satırında iade seçenekleri (seçenekler sona eklenir: kayıtlı
+  // kararların sırası kaymaz):
+  //  • "İade, alıma bağla": sınıflandırıcı satırı iade diye tanımasa da (taksitli
+  //    iade, açılış bakiyesindeki iade taksiti, sistemde zaten olan iade) kullanıcı
+  //    onu bir alıma bağlayabilsin. Karşılığı olmayan satırda bağlı iade girilir;
+  //    karşılığı olan (gider türünde, eksi tutarlı) kayıtta bağlantı o kayda yazılır.
+  //  • "Tek iade olarak gir": taksitli iade, toplamıyla tek bir iade kaydı olur
+  //    (alım tarihinde). Sistemde taksitli iade olarak duruyorsa o taksitler silinir.
+  //    Sonraki ekstrelerdeki taksitleri "tek kayıt" diye eşleşir.
+  const linkedRows = finalRows.map(r => withRefundOptions(r))
+  function withRefundOptions(r: PlanRow): PlanRow {
+    if (r.amount === null || r.amount >= 0 || !r.lines.length) return r
     const headIdx = r.lines.find(i => (lineByIdx.get(i)?.amount ?? 0) < 0) ?? r.lines[0]
     const head = lineByIdx.get(headIdx)
     if (!head) return r
-    const line: StatementLine = { ...head, amount: r.amount }
     const rule = rules.ruleFor(head.description, head.bankCategory)
-    const { candidates, more, exactCand, linkFields } = refundLinkFor(line, rule)
-    if (!candidates.length && !more.length) return r
+    const title = rule?.description ?? (rule?.recipientId ? peopleById.get(rule.recipientId)?.name : undefined) ?? prettyMerchant(head.description)
+    const refundBits = { description: `[İade] ${title}`, tags: [...(rule?.tags ?? []), refundTag] }
     const matched = r.match?.txIds ?? []
-    let option: RowOption
-    if (matched.length) {
-      const t = matched.length === 1 ? byId.get(matched[0]) : undefined
-      if (!t || t.type !== 'expense' || t.amount >= 0) return r
-      option = { key: 'link', label: 'İade, alıma bağla (sistemdeki kayda)', actions: [{ type: 'patch', txId: t.id, patch: {}, refundLinkFromEdit: true }] }
-    } else {
-      const title = rule?.description ?? (rule?.recipientId ? peopleById.get(rule.recipientId)?.name : undefined) ?? prettyMerchant(head.description)
-      const draft = draftFor(line, rule, { description: `[İade] ${title}`, tags: [...(rule?.tags ?? []), refundTag] })
-      option = { key: 'link', label: 'İade, alıma bağla', actions: [{ type: 'create', draft: exactCand ? { ...draft, ...linkFields(exactCand) } : { ...draft, needsRefundOf: true } }] }
+    const out: PlanRow = { ...r, options: [...r.options] }
+
+    const line: StatementLine = { ...head, amount: r.amount }
+    const link = refundLinkFor(line, rule)
+    const hasCands = link.candidates.length > 0 || link.more.length > 0
+    if (hasCands && !r.options.some(o => o.key === 'link')) {
+      let option: RowOption | null = null
+      if (matched.length) {
+        const t = matched.length === 1 ? byId.get(matched[0]) : undefined
+        if (t && t.type === 'expense' && t.amount < 0) {
+          option = { key: 'link', label: 'İade, alıma bağla (sistemdeki kayda)', actions: [{ type: 'patch', txId: t.id, patch: {}, refundLinkFromEdit: true }] }
+        }
+      } else {
+        const draft = draftFor(line, rule, refundBits)
+        option = { key: 'link', label: 'İade, alıma bağla', actions: [{ type: 'create', draft: link.exactCand ? { ...draft, ...link.linkFields(link.exactCand) } : { ...draft, needsRefundOf: true } }] }
+      }
+      if (option) { out.options.push(option); out.refundLink = { candidates: link.candidates, more: link.more } }
     }
-    return { ...r, options: [...r.options, option], refundLink: { candidates, more } }
+
+    const inst = head.installment
+    const allCredits = r.lines.every(i => (lineByIdx.get(i)?.amount ?? 0) < 0)
+    if (inst && inst.count > 1 && allCredits && !out.options.some(o => o.key === 'refund-whole')) {
+      const whole = draftFor(head, rule, { ...refundBits, amount: -inst.total, date: purchaseDateOf(head, st.statementDate) })
+      const label = `Tek iade olarak gir (toplam ${fmtTr(inst.total)} ₺)`
+      if (!matched.length) {
+        out.options.push({ key: 'refund-whole', label, actions: [{ type: 'create', draft: whole }] })
+      } else {
+        // Sistemde taksitli iade olarak kayıtlı: taksitleri silinip tek iade girilir
+        const gid = byId.get(matched[0])?.installGroupId
+        const group = gid ? live.filter(t => t.installGroupId === gid) : []
+        if (group.length && group.every(t => t.type === 'expense' && t.amount < 0 && !t.debtId)) {
+          const first = group.find(t => t.installIndex === 1) ?? group[0]
+          const keepLink = { refundOfId: first.refundOfId, description: first.description, recipientId: first.recipientId ?? null, categoryId: first.categoryId, familyMemberId: first.familyMemberId ?? null, tags: first.tags }
+          out.options.push({ key: 'refund-whole', label: `${label} · sistemdeki ${group.length} taksit silinir`, actions: [
+            { type: 'delete', txIds: group.map(t => t.id) },
+            { type: 'create', draft: { ...whole, ...keepLink } },
+          ] })
+        }
+      }
+      if (!out.refundLink && hasCands) out.refundLink = { candidates: link.candidates, more: link.more }
+    }
+    return out
   }
 
   const totalLines = lines.filter(l => l.amount !== null).length

@@ -10,9 +10,9 @@ import { formatDate } from '@/lib/utils/date'
 import { foldText } from '@/lib/auto-category'
 import { usePeopleStore } from '@/store'
 import type { Category, Person } from '@/types'
-import { optionDisplayOrder, type PlanRow, type RowKind, type RowStatus } from '@/lib/statement-import/classify'
+import { optionDisplayOrder, type PlanRow, type RowKind, type RowOption, type RowStatus } from '@/lib/statement-import/classify'
 import { chosenIndex, rowTitle, selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
-import { RefundLinkPicker, refundLinkSelection } from './RefundLinkPicker'
+import { RefundLinkPicker, refundLinkable, refundLinkSelection } from './RefundLinkPicker'
 
 /* ── Önizleme listesi ────────────────────────────────────────────────────────
    Hiyerarşi: (Sorun) → Kontrol et → Girilecek → Zaten sistemde → Kayda girmez.
@@ -77,7 +77,16 @@ const KIND_TAG: Partial<Record<RowKind, (r: PlanRow) => string>> = {
 const sumMinor = (list: PlanRow[]) => list.reduce((t, r) => t + Math.round((r.amount ?? 0) * 100), 0) / 100
 
 /** Kart ekstresinde harcama olağan durumdur: harcama düz, alacak yeşil "+". */
-function Amount({ row, quiet }: { row: PlanRow; quiet?: boolean }) {
+/** Kayda girecek tutar bankanınkinden farklıysa (elle düzeltildi ya da "Tek iade
+ *  olarak gir": toplam) işaretsiz tutar; değilse undefined */
+function recordedAmount(row: PlanRow, opt: RowOption | undefined, edit: RowEdit | undefined): number | undefined {
+  const a = opt?.actions.find(x => x.type === 'create')
+  if (a?.type !== 'create' || a.draft.installments || row.amount === null) return undefined
+  const v = edit?.amount ?? Math.abs(a.draft.amount)
+  return Math.round(v * 100) === Math.round(Math.abs(row.amount) * 100) ? undefined : v
+}
+
+function Amount({ row, quiet, recorded }: { row: PlanRow; quiet?: boolean; recorded?: number }) {
   if (row.amount === null) {
     return <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">bonus {row.bonus! > 0 ? '+' : '−'}{formatCurrency(Math.abs(row.bonus!))}</span>
   }
@@ -92,6 +101,7 @@ function Amount({ row, quiet }: { row: PlanRow; quiet?: boolean }) {
           toplam {credit ? '+' : ''}{formatCurrency(row.installment.total)}
         </div>
       )}
+      {recorded !== undefined && <div className="text-[11px] font-medium text-primary tabular-nums" title="Kayda bu tutarla girer">kayıt {credit ? '+' : ''}{formatCurrency(recorded)}</div>}
       {row.foreign && <div className="text-[11px] text-muted-foreground tabular-nums">{row.foreign.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {row.foreign.currency}</div>}
     </div>
   )
@@ -276,7 +286,8 @@ export function PreviewList(props: ListProps) {
     const edit = edits[r.key]
     const quiet = r.status === 'exists' || r.status === 'info'
     const extra = extraLine(r)
-    const linking = r.refundLink && r.options[selectedOption(r, choices) ?? -1]?.key === 'link'
+    const selOpt = r.options[selectedOption(r, choices) ?? -1]
+    const linking = refundLinkable(r, selOpt)
     const opts = decisionOptions(r)
     return (
       <div
@@ -309,7 +320,7 @@ export function PreviewList(props: ListProps) {
         <div className="col-start-2 col-span-2 row-start-2 md:row-start-auto md:col-start-auto md:col-span-1 min-w-0" onClick={e => e.stopPropagation()}>
           {r.status === 'review' ? decision(r) : null}
         </div>
-        <div className="row-start-1 col-start-3 md:row-start-auto md:col-start-auto"><Amount row={r} quiet={quiet} /></div>
+        <div className="row-start-1 col-start-3 md:row-start-auto md:col-start-auto"><Amount row={r} quiet={quiet} recorded={recordedAmount(r, selOpt, edit)} /></div>
         <button
           type="button" aria-label={`${r.title} ayrıntısı`} title="Ayrıntı"
           onClick={e => { e.stopPropagation(); props.onOpen(r.key) }}
@@ -322,7 +333,7 @@ export function PreviewList(props: ListProps) {
         )}
         {linking && (
           <div className="col-start-2 col-span-2 md:col-start-2 md:col-span-6 mt-1.5 min-w-0">
-            <RefundLinkPicker row={r} selectedId={refundLinkSelection(r, choices, edit)} onPick={patch => props.onEdit(r.key, patch)} />
+            <RefundLinkPicker row={r} required={selOpt?.key === 'link'} selectedId={refundLinkSelection(r, choices, edit)} onPick={patch => props.onEdit(r.key, patch)} />
           </div>
         )}
         {problemByKey.has(r.key) && (
