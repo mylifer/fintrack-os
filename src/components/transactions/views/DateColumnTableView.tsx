@@ -13,8 +13,9 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { TagBadges } from '@/components/transactions/TagBadges'
 import { SplitCountBadge } from '@/components/transactions/SplitCountBadge'
 import {
-  TxIcon, DeleteConfirmDialog, PencilIcon, RefundIcon, installmentLabel,
+  TxIcon, DeleteConfirmDialog, PencilIcon, RefundIcon, installmentLabel, crossWsLabel, crossWsTitle,
 } from '@/components/transactions/TransactionList'
+import { useCrossWorkspacePeers, type CrossWsPeer } from '@/components/transactions/useCrossWorkspacePeers'
 import { sortDates, sortWithinDay, splitFuture, type TxViewProps } from './shared'
 import type { Account, Category, ModalPayload, ModalType, Person, Transaction } from '@/types'
 
@@ -62,6 +63,7 @@ export function DateColumnTableView({
   const allTxs     = useTransactionStore(s => s.transactions)
   const openModal  = useUIStore(s => s.openModal)
   const removeTx   = useTransactionStore(s => s.remove)
+  const crossWsPeers = useCrossWorkspacePeers(transactions)
 
   const catById    = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
   const accById    = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts])
@@ -199,6 +201,7 @@ export function DateColumnTableView({
                     account={account}
                     cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
                     toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
+                    crossWs={crossWsPeers.get(row.tx.id)}
                     recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                     family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                     balanceAfter={balances.get(row.tx.id)}
@@ -237,7 +240,7 @@ function SectionBand({ id, count, first }: { id: 'future' | 'past'; count: numbe
 
 /* ── İşlem satırı — 34px; tek yatay çizgi gün grubunun üstünde ────────────── */
 const DateColumnRow = memo(function DateColumnRow({
-  tx, future, dayStart, firstOfAll, cols, account, cat, toAccount, recipient, family,
+  tx, future, dayStart, firstOfAll, cols, account, cat, toAccount, crossWs, recipient, family,
   balanceAfter, projected, openModal, removeTx, selectable, selected, onToggleSelect,
 }: {
   tx: Transaction
@@ -248,6 +251,7 @@ const DateColumnRow = memo(function DateColumnRow({
   account: Account
   cat?: Category
   toAccount?: Account
+  crossWs?: CrossWsPeer
   recipient?: Person
   family?: Person
   balanceAfter?: number
@@ -330,7 +334,9 @@ const DateColumnRow = memo(function DateColumnRow({
 
       {/* Alıcı — transferde hedef hesap "→ X" olarak aynı kolonda */}
       <Cell>
-        {isXfer && toAccount ? (
+        {crossWs ? (
+          <span className="min-w-0 truncate" title={crossWsTitle(crossWs)}>{crossWsLabel(crossWs)}</span>
+        ) : isXfer && toAccount ? (
           <Link href={`/accounts/${tx.toAccountId}`} className="flex min-w-0 items-center gap-1 transition-colors hover:text-foreground">
             <span className="flex-shrink-0 opacity-50">→</span>
             <span className="truncate">{toAccount.name}</span>

@@ -25,6 +25,7 @@ import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { detectBrand } from '@/lib/subscriptions/brands'
 import { getBrandDomain } from '@/lib/people/brands'
 import { usePrivacyStore } from '@/store/privacy.store'
+import { useCrossWorkspacePeers, type CrossWsPeer } from '@/components/transactions/useCrossWorkspacePeers'
 
 type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
@@ -191,7 +192,7 @@ const SELECT_COL = '34px '
 const SELECT_COL_W = 34
 const colsFor = (selectable: boolean) => (selectable ? SELECT_COL + TABLE_COLS : TABLE_COLS)
 
-type MetaItem = { text: string; href?: string }
+type MetaItem = { text: string; href?: string; title?: string }
 
 // İşlem ikonu, sırasıyla:
 //   1. küratörlü marka eşleşmesi (gömülü SVG logo)
@@ -335,15 +336,29 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
   )
 }
 
+/** Alanlar arası transferin karşı tarafı: "→ Kaan · Yapı Kredi" (para buradan
+ *  oraya gitti) ya da "← Damla · Odeabank" (oradan geldi). Karşı alan aktif
+ *  değilken hesabına bağlantı verilmez; yalnız etiket. */
+export function crossWsLabel(peer: CrossWsPeer): string {
+  return `${peer.direction === 'out' ? '→' : '←'} ${peer.workspaceName} · ${peer.accountName}`
+}
+export function crossWsTitle(peer: CrossWsPeer): string {
+  return peer.direction === 'out'
+    ? `Çalışma alanları arası transfer: para "${peer.workspaceName}" alanındaki ${peer.accountName} hesabına gitti`
+    : `Çalışma alanları arası transfer: para "${peer.workspaceName}" alanındaki ${peer.accountName} hesabından geldi`
+}
+
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
-  tx, cat, account, toAccount, recipient, family, balanceAfter, balanceCurrency, projected, future, openModal, removeTx,
+  tx, cat, account, toAccount, crossWs, recipient, family, balanceAfter, balanceCurrency, projected, future, openModal, removeTx,
   selectable, selected, onToggleSelect, grouped, isFirst, isLast, compact, focusCategoryIds,
 }: {
   tx: Transaction
   cat?: Category
   account?: Account
   toAccount?: Account
+  /** Alanlar arası transfer bacağıysa karşı taraf (Alıcı Hesap sütununda gösterilir) */
+  crossWs?: CrossWsPeer
   recipient?: Person
   family?: Person
   balanceAfter?: number
@@ -464,9 +479,14 @@ const TableTxRow = memo(function TableTxRow({
         ) : null}
       </div>
 
-      {/* Alıcı Hesap — yalnızca transferlerde dolu */}
+      {/* Alıcı Hesap — transferlerde ve alanlar arası transfer bacaklarında dolu */}
       <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
-        {isXfer && toAccount ? (
+        {crossWs ? (
+          <span className="flex items-center gap-1.5 min-w-0" title={crossWsTitle(crossWs)}>
+            {crossWs.account && <AccountAvatar account={crossWs.account} size="xs" className="flex-shrink-0" />}
+            <span className="text-xs text-muted-foreground truncate min-w-0">{crossWsLabel(crossWs)}</span>
+          </span>
+        ) : isXfer && toAccount ? (
           <Link href={`/accounts/${tx.toAccountId}`} className="flex items-center gap-1.5 min-w-0 group/link">
             <AccountAvatar account={toAccount} size="xs" className="flex-shrink-0" />
             <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{toAccount.name}</span>
@@ -599,11 +619,13 @@ const TableTxRow = memo(function TableTxRow({
 
 // ── CARDS row (compact minimal) ───────────────────────────────────────────
 const CardTxRow = memo(function CardTxRow({
-  tx, cat, account, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryIds,
+  tx, cat, account, crossWs, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryIds,
 }: {
   tx: Transaction
   cat?: Category
   account?: Account
+  /** Alanlar arası transfer bacağıysa karşı taraf */
+  crossWs?: CrossWsPeer
   recipient?: Person
   family?: Person
   showAccount: boolean
@@ -625,6 +647,7 @@ const CardTxRow = memo(function CardTxRow({
   // Build meta items — each can have an href for navigation
   const metaItems: MetaItem[] = []
   if (showAccount && account) metaItems.push({ text: account.name, href: `/accounts/${tx.accountId}` })
+  if (crossWs) metaItems.push({ text: crossWsLabel(crossWs), title: crossWsTitle(crossWs) })
   // Bölünmüş satırda kategori adı "Market +2" olarak okunur (bkz. SplitCountBadge).
   if (cat) metaItems.push({
     text: (tx.categorySplits?.length ?? 0) > 1 ? `${cat.name} +${tx.categorySplits!.length - 1}` : cat.name,
@@ -679,7 +702,7 @@ const CardTxRow = memo(function CardTxRow({
                   >
                     {item.text}
                   </Link>
-                ) : item.text}
+                ) : item.title ? <span title={item.title}>{item.text}</span> : item.text}
               </span>
             ))}
           </div>
@@ -811,6 +834,7 @@ export function TransactionList({
   const openModal  = useUIStore(s => s.openModal)
   const removeTx   = useTransactionStore(s => s.remove)
   const allTxs     = useTransactionStore(s => s.transactions)
+  const crossWsPeers = useCrossWorkspacePeers(transactions)
 
   // O(1) lookup maps — replace per-row categories/accounts/people .find() scans.
   const catById    = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
@@ -1034,6 +1058,7 @@ export function TransactionList({
                         cat={catFor(row.tx)}
                         account={accById.get(row.tx.accountId)}
                         toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
+                        crossWs={crossWsPeers.get(row.tx.id)}
                         recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                         family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                         balanceAfter={runningBalances.get(row.tx.id)?.balance}
@@ -1080,6 +1105,7 @@ export function TransactionList({
                     future={row.future}
                     cat={catFor(row.tx)}
                     account={accById.get(row.tx.accountId)}
+                    crossWs={crossWsPeers.get(row.tx.id)}
                     recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                     family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                     showAccount={showAccount}
