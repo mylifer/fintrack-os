@@ -17,8 +17,8 @@ import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import { readPdfPages } from '@/lib/statement-import/pdf-text'
-import { readImageText } from '@/lib/statement-import/ocr'
-import { parseScreenshot, parseStatement, UnrecognizedStatementError, type ParsedStatement } from '@/lib/statement-import/statement'
+import { readImagesText } from '@/lib/statement-import/ocr'
+import { parseScreenshots, parseStatement, UnrecognizedStatementError, type ParsedStatement } from '@/lib/statement-import/statement'
 import { buildMappedStatement, gridToTable, guessMapping, pdfToTable, tableSignature, type ColumnMapping, type StatementTable } from '@/lib/statement-import/column-map'
 import { forgetMapping, loadMapping, rememberMapping } from '@/lib/statement-import/mapping-memory'
 import { decodeCsvBytes, parseCsvRecords } from '@/lib/utils/csv'
@@ -223,11 +223,30 @@ export function StatementImport() {
   }, [statement, accountId, accounts, payPlans, payOccurrences, calendarFor])
 
   // ── Yükleme ──────────────────────────────────────────────────────────────
-  async function readFile(file: File) {
+  async function readFiles(files: File[]) {
     setError('')
     setNotice('')
+    if (!files.length) return
+    const isImageFile = (f: File) => /^image\/(png|jpeg|webp)$/.test(f.type) || /\.(png|jpe?g|webp)$/i.test(f.name)
+    if (files.length > 1) {
+      // Uzun dönem içi listesi: aşağı kaydırarak alınmış ekran görüntüleri birlikte okunur
+      if (!files.every(isImageFile)) {
+        setError('Birden çok dosyayı yalnız ekran görüntüleri (PNG/JPG) için seçebilirsiniz; PDF ya da Excel dökümünü tek başına yükleyin.')
+        return
+      }
+      setStep('reading')
+      try {
+        const pages = await readImagesText(files)
+        await openStatement(parseScreenshots(pages), `${files.length} ekran görüntüsü`)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Ekran görüntüleri okunamadı.')
+        setStep('upload')
+      }
+      return
+    }
+    const file = files[0]
     const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf'
-    const isImage = /^image\/(png|jpeg|webp)$/.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name)
+    const isImage = isImageFile(file)
     const isSheet = /\.(csv|txt|xlsx?)$/i.test(file.name) || file.type === 'text/csv' || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     if (!isPdf && !isImage && !isSheet) {
       setError('PDF ekstre, ekran görüntüsü (PNG/JPG) ya da CSV/Excel (.xlsx) döküm yükleyin.')
@@ -254,7 +273,7 @@ export function StatementImport() {
           return
         }
       } else {
-        st = parseScreenshot(await readImageText(file))
+        st = parseScreenshots(await readImagesText([file]))
       }
       await openStatement(st, file.name)
     } catch (err) {
@@ -520,8 +539,8 @@ export function StatementImport() {
   if (step === 'upload' || step === 'reading') {
     return (
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-4">
-        <input ref={fileRef} type="file" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,.csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void readFile(f) }} />
+        <input ref={fileRef} type="file" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,.csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" multiple
+          onChange={e => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; void readFiles(fs) }} />
         <p className="text-sm text-muted-foreground leading-relaxed">
           Kredi kartı ekstresini ya da vadesiz hesap dökümünü (PDF, CSV ya da Excel) yükleyin. Her satır sistemdeki kayıtlarınızla karşılaştırılır; neyin yeni, neyin zaten
           girilmiş olduğunu ve karar gereken satırları tek ekranda görürsünüz. Onaylamadan hiçbir şey kaydedilmez.
@@ -532,7 +551,7 @@ export function StatementImport() {
           onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && step === 'upload') { e.preventDefault(); fileRef.current?.click() } }}
           onDragOver={e => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
-          onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) void readFile(f) }}
+          onDrop={e => { e.preventDefault(); setDragging(false); void readFiles([...(e.dataTransfer.files ?? [])]) }}
           className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-2xl py-14 cursor-pointer transition-colors ${
             dragging ? 'border-primary bg-accent/40' : 'border-border hover:border-primary/50 hover:bg-accent/30'}`}
         >
@@ -548,7 +567,8 @@ export function StatementImport() {
         </div>
         <div className="rounded-xl bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
           <span className="font-semibold text-foreground">Desteklenen:</span> Garanti BBVA, QNB, Burgan (ON), Yapı Kredi, Odeabank ve Kuveyt Türk kredi kartı ekstresi;
-          Garanti BBVA, QNB ve Odeabank dönem içi işlemler (PDF); Kuveyt Türk &quot;Dönem İçi Harcamalar&quot; ekran görüntüsü; Odeabank vadesiz hesap dökümü.
+          Garanti BBVA, QNB ve Odeabank dönem içi işlemler (PDF); Kuveyt Türk &quot;Dönem İçi Harcamalar&quot; ve Burgan (ON) &quot;Kart Hareketleri → Dönem İçi&quot; ekran görüntüsü
+          (uzun listede aşağı kaydırarak aldığınız ekran görüntülerini birlikte seçin); Odeabank vadesiz hesap dökümü.
           Tanınmayan PDF ve CSV/Excel dökümlerinde sütunları bir kez eşlersiniz; aynı bankanın sonraki ekstresinde eşleme hatırlanır.
           Dosya yalnız bu tarayıcıda okunur, hiçbir sunucuya gönderilmez. Diğer bankalar örnekleri geldikçe eklenecek.
         </div>
