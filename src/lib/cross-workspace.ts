@@ -20,9 +20,13 @@ export function classifyCrossWsLegs(legs: Transaction[]): { outgoing?: Transacti
 export interface CrossWsPeer {
   /** 'out': bu satırdan para çıktı (karşı taraf hedef) · 'in': bu satıra para geldi */
   direction: 'out' | 'in'
+  /** Karşı bacağın alanı, hesabı ve satırı — tıklayınca oraya geçilir */
+  workspaceId: string | null
   workspaceName: string
+  accountId: string
   accountName: string
   account?: Account
+  txId: string
 }
 
 /** Bacak kümelerinden satır → karşı taraf eşlemesi. Tanınmayan (eksik/bozuk)
@@ -42,7 +46,10 @@ export function resolveCrossWsPeers(
   const wsName = (id?: string | null) => workspaces.find(w => w.id === id)?.name ?? 'Başka alan'
   const peerOf = (t: Transaction, direction: 'out' | 'in'): CrossWsPeer => {
     const account = accountsById.get(t.accountId)
-    return { direction, workspaceName: wsName(t.workspaceId), accountName: account?.name ?? 'Silinmiş hesap', account }
+    return {
+      direction, workspaceId: t.workspaceId ?? null, workspaceName: wsName(t.workspaceId),
+      accountId: t.accountId, accountName: account?.name ?? 'Silinmiş hesap', account, txId: t.id,
+    }
   }
   const out = new Map<string, CrossWsPeer>()
   for (const group of groups.values()) {

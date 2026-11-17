@@ -13,9 +13,10 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { TagBadges } from '@/components/transactions/TagBadges'
 import { SplitCountBadge } from '@/components/transactions/SplitCountBadge'
 import {
-  TxIcon, DeleteConfirmDialog, PencilIcon, RefundIcon, installmentLabel, crossWsLabel, crossWsTitle,
+  TxIcon, DeleteConfirmDialog, PencilIcon, RefundIcon, installmentLabel,
 } from '@/components/transactions/TransactionList'
 import { useCrossWorkspacePeers, type CrossWsPeer } from '@/components/transactions/useCrossWorkspacePeers'
+import { CrossWsLink } from '@/components/transactions/CrossWsLink'
 import { dayTotals, sortDates, sortWithinDay, splitFuture, type TxViewProps } from './shared'
 import type { Account, Category, CurrencyCode, ModalPayload, ModalType, Person, Transaction } from '@/types'
 
@@ -363,7 +364,7 @@ const RulelessRow = memo(function RulelessRow({
       {/* Alıcı — transferde hedef hesap "→ X" olarak aynı kolonda */}
       <Cell>
         {crossWs ? (
-          <span className="min-w-0 truncate" title={crossWsTitle(crossWs)}>{crossWsLabel(crossWs)}</span>
+          <CrossWsLink peer={crossWs} className="truncate hover:text-foreground" />
         ) : isXfer && toAccount ? (
           <Link href={`/accounts/${tx.toAccountId}`} className="flex min-w-0 items-center gap-1 transition-colors hover:text-foreground">
             <span className="flex-shrink-0 opacity-50">→</span>

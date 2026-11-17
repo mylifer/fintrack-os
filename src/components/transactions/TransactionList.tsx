@@ -26,6 +26,7 @@ import { detectBrand } from '@/lib/subscriptions/brands'
 import { getBrandDomain } from '@/lib/people/brands'
 import { usePrivacyStore } from '@/store/privacy.store'
 import { useCrossWorkspacePeers, type CrossWsPeer } from '@/components/transactions/useCrossWorkspacePeers'
+import { CrossWsLink, crossWsLabel } from '@/components/transactions/CrossWsLink'
 
 type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
@@ -192,7 +193,7 @@ const SELECT_COL = '34px '
 const SELECT_COL_W = 34
 const colsFor = (selectable: boolean) => (selectable ? SELECT_COL + TABLE_COLS : TABLE_COLS)
 
-type MetaItem = { text: string; href?: string; title?: string }
+type MetaItem = { text: string; href?: string; crossWs?: CrossWsPeer }
 
 // İşlem ikonu, sırasıyla:
 //   1. küratörlü marka eşleşmesi (gömülü SVG logo)
@@ -336,18 +337,6 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
   )
 }
 
-/** Alanlar arası transferin karşı tarafı: "→ Kaan · Yapı Kredi" (para buradan
- *  oraya gitti) ya da "← Damla · Odeabank" (oradan geldi). Karşı alan aktif
- *  değilken hesabına bağlantı verilmez; yalnız etiket. */
-export function crossWsLabel(peer: CrossWsPeer): string {
-  return `${peer.direction === 'out' ? '→' : '←'} ${peer.workspaceName} · ${peer.accountName}`
-}
-export function crossWsTitle(peer: CrossWsPeer): string {
-  return peer.direction === 'out'
-    ? `Çalışma alanları arası transfer: para "${peer.workspaceName}" alanındaki ${peer.accountName} hesabına gitti`
-    : `Çalışma alanları arası transfer: para "${peer.workspaceName}" alanındaki ${peer.accountName} hesabından geldi`
-}
-
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
   tx, cat, account, toAccount, crossWs, recipient, family, balanceAfter, balanceCurrency, projected, future, openModal, removeTx,
@@ -482,10 +471,10 @@ const TableTxRow = memo(function TableTxRow({
       {/* Alıcı Hesap — transferlerde ve alanlar arası transfer bacaklarında dolu */}
       <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
         {crossWs ? (
-          <span className="flex items-center gap-1.5 min-w-0" title={crossWsTitle(crossWs)}>
+          <CrossWsLink peer={crossWs} className="flex items-center gap-1.5 group/link">
             {crossWs.account && <AccountAvatar account={crossWs.account} size="xs" className="flex-shrink-0" />}
-            <span className="text-xs text-muted-foreground truncate min-w-0">{crossWsLabel(crossWs)}</span>
-          </span>
+            <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{crossWsLabel(crossWs)}</span>
+          </CrossWsLink>
         ) : isXfer && toAccount ? (
           <Link href={`/accounts/${tx.toAccountId}`} className="flex items-center gap-1.5 min-w-0 group/link">
             <AccountAvatar account={toAccount} size="xs" className="flex-shrink-0" />
@@ -647,7 +636,7 @@ const CardTxRow = memo(function CardTxRow({
   // Build meta items — each can have an href for navigation
   const metaItems: MetaItem[] = []
   if (showAccount && account) metaItems.push({ text: account.name, href: `/accounts/${tx.accountId}` })
-  if (crossWs) metaItems.push({ text: crossWsLabel(crossWs), title: crossWsTitle(crossWs) })
+  if (crossWs) metaItems.push({ text: crossWsLabel(crossWs), crossWs })
   // Bölünmüş satırda kategori adı "Market +2" olarak okunur (bkz. SplitCountBadge).
   if (cat) metaItems.push({
     text: (tx.categorySplits?.length ?? 0) > 1 ? `${cat.name} +${tx.categorySplits!.length - 1}` : cat.name,
@@ -702,7 +691,7 @@ const CardTxRow = memo(function CardTxRow({
                   >
                     {item.text}
                   </Link>
-                ) : item.title ? <span title={item.title}>{item.text}</span> : item.text}
+                ) : item.crossWs ? <CrossWsLink peer={item.crossWs} className="hover:text-foreground" /> : item.text}
               </span>
             ))}
           </div>
