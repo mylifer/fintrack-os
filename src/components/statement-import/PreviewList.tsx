@@ -87,6 +87,11 @@ function Amount({ row, quiet }: { row: PlanRow; quiet?: boolean }) {
       <div className={cn('text-sm tabular-nums', quiet ? 'font-medium text-muted-foreground' : 'font-semibold', credit && 'text-green-600')}>
         {credit ? '+' : ''}{formatCurrency(Math.abs(row.amount))}
       </div>
+      {row.installment && row.installment.count > 1 && row.installment.total > 0 && (
+        <div className="text-[11px] text-muted-foreground tabular-nums" title={`Alımın toplam tutarı (${row.installment.count} taksit)`}>
+          toplam {credit ? '+' : ''}{formatCurrency(row.installment.total)}
+        </div>
+      )}
       {row.foreign && <div className="text-[11px] text-muted-foreground tabular-nums">{row.foreign.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {row.foreign.currency}</div>}
     </div>
   )
