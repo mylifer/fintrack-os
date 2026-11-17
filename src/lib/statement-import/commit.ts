@@ -375,6 +375,19 @@ export function buildCommit(input: CommitInput): CommitResult {
   const run = (rowKey: string, a: Action, edit: RowEdit | undefined) => {
     if (a.type === 'create') create(rowKey, applyEdit(a.draft, edit))
     else if (a.type === 'delete') a.txIds.forEach(id => { if (input.existing.has(id)) deleted.add(id) })
+    else if (a.refundLinkFromEdit) {
+      const id = edit?.refundOfId
+      if (!id) { problems.push({ rowKey, message: 'İadenin bağlanacağı alım seçilmedi' }); return }
+      refundLinks.push({ rowKey, id })
+      if (!input.existing.has(a.txId)) return
+      const link: Partial<Transaction> = { refundOfId: id }
+      if (edit.description !== undefined) link.description = edit.description
+      if (edit.recipientId !== undefined) link.recipientId = edit.recipientId
+      if (edit.categoryId !== undefined) link.categoryId = edit.categoryId
+      if (edit.familyMemberId !== undefined) link.familyMemberId = edit.familyMemberId
+      if (edit.tags !== undefined) link.tags = edit.tags
+      patched.set(a.txId, { ...(patched.get(a.txId) ?? {}), ...a.patch, ...link })
+    }
     else if (input.existing.has(a.txId)) patched.set(a.txId, { ...(patched.get(a.txId) ?? {}), ...a.patch })
   }
 

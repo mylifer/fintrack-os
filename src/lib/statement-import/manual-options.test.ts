@@ -27,8 +27,10 @@ describe('elle gir seçenekleri', () => {
     expect(manualOptionsFor(row({ amount: -500 })).map(o => o.key)).toEqual([MANUAL_KEYS.income, MANUAL_KEYS.refund, MANUAL_KEYS.transfer])
   })
 
-  it('sistemde olan, satırsız ya da tutarsız satıra eklenmez', () => {
-    expect(manualOptionsFor(row({ status: 'exists' }))).toEqual([])
+  it('sistemde karşılığı olan, satırsız ya da tutarsız satıra eklenmez', () => {
+    expect(manualOptionsFor(row({ status: 'exists', match: { txIds: ['t1'], text: '' } }))).toEqual([])
+    // Karşılığı olmayan "zaten sistemde" satırı (açılış bakiyesindeki taksit) da elle girilebilir
+    expect(manualOptionsFor(row({ status: 'exists', match: { txIds: [], text: '' } })).map(o => o.key)).toEqual([MANUAL_KEYS.expense, MANUAL_KEYS.transfer])
     expect(manualOptionsFor(row({ lines: [] }))).toEqual([])
     expect(manualOptionsFor(row({ amount: null }))).toEqual([])
   })

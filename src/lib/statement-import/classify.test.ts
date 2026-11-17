@@ -620,6 +620,67 @@ describe('iadeyi alıma bağlama (satırın altında seçim)', () => {
   })
 })
 
+describe('"İade, alıma bağla" her alacak satırında', () => {
+  const hist = [
+    tx({ id: 'a1', amount: 4143.78, date: '2026-09-18', merchant: 'IYZICO *AMAZON.COM.T', recipientId: 'p-ys', categoryId: 'c-ev', description: 'Mutfak robotu', tags: ['ev'] }),
+    tx({ id: 'a2', amount: 2350, date: '2026-09-12', merchant: 'IYZICO *AMAZON.COM.T', recipientId: 'p-ys', categoryId: 'c-food', description: 'Koşu ayakkabısı' }),
+  ]
+
+  it('açılış bakiyesindeki iade taksiti de bir alıma bağlanıp girilebilir', () => {
+    const l = line({ description: 'IYZICO *AMAZON.COM.T', amount: -1219.34, date: '2026-10-10', installment: { index: 5, count: 6, total: 7316 } })
+    const p = plan([l], hist)
+    const r = p.rows[0]
+    expect([r.status, r.kind]).toEqual(['exists', 'opening'])
+    expect(r.options.map(o => o.key)).toEqual(['keep', 'create', 'link'])
+    expect(r.refundLink!.candidates.map(c => c.txId)).toEqual(['a1', 'a2'])
+    const i = r.options.findIndex(o => o.key === 'link')
+    expect(commit(p, hist, { [r.key]: i }).problems[0].message).toBe('İadenin bağlanacağı alım seçilmedi')
+    const c = commit(p, hist, { [r.key]: i }, { [r.key]: r.refundLink!.candidates[0].patch })
+    expect(c.problems).toEqual([])
+    const made = created(c.ops)[0]
+    expect([made.refundOfId, made.description, made.amount]).toEqual(['a1', '[İade] Mutfak robotu', -1219.34])
+  })
+
+  it('sistemde bağlantısız duran iade kaydı, yeni kayıt açılmadan alıma bağlanır', () => {
+    const ref = tx({ id: 'r1', amount: -1996.36, date: '2026-10-20', description: 'Amazon iade' })
+    const all = [...hist, ref]
+    const p = plan([line({ description: 'IYZICO *AMAZON.COM.T', amount: -1996.36, date: '2026-10-20' })], all)
+    const r = p.rows[0]
+    expect([r.status, r.match?.txIds]).toEqual(['exists', ['r1']])
+    const i = r.options.findIndex(o => o.key === 'link')
+    expect(i).toBeGreaterThan(0)
+    const c = commit(p, all, { [r.key]: i }, { [r.key]: r.refundLink!.candidates[0].patch })
+    expect(c.problems).toEqual([])
+    expect(created(c.ops)).toEqual([])
+    expect(c.patchedTxIds).toEqual(['r1'])
+    const op = c.ops.find(o => o.kind === 'patch' && o.id === 'r1') as Extract<BatchOp, { kind: 'patch' }>
+    expect(op.patch).toMatchObject({ refundOfId: 'a1', description: '[İade] Mutfak robotu', categoryId: 'c-ev' })
+  })
+
+  it('aynı ekstrede başlayan taksitli alım da aday; iade grubun 1. taksitine bağlanır', () => {
+    const buy = line({ description: 'IYZICO *AMAZON.COM.T', amount: 5911.85, date: '2026-10-08', installment: { index: 1, count: 3, total: 17735.51 } })
+    const back = line({ description: 'IYZICO *AMAZON.COM.T', amount: -1219.34, date: '2026-10-08', installment: { index: 1, count: 3, total: 3658 } })
+    const p = plan([buy, back], [])
+    const r = p.rows.find(x => (x.amount ?? 0) < 0)!
+    const i = r.options.findIndex(o => o.key === 'link')
+    expect(i).toBeGreaterThanOrEqual(0)
+    const c0 = r.refundLink!.candidates.find(c => c.fromStatement)!
+    expect([c0.amount, c0.title]).toEqual([17735.51, 'Amazon · 3 taksit'])
+    const buyRow = p.rows.find(x => x.kind === 'installment-new')!
+    const c = commit(p, [], { [r.key]: i, [buyRow.key]: 0 }, { [r.key]: { ...c0.patch, categoryId: 'c-ev' }, [buyRow.key]: { categoryId: 'c-ev' } })
+    expect(c.problems).toEqual([])
+    const made = created(c.ops)
+    const first = made.find(t => t.installIndex === 1)!
+    expect(made.find(t => t.refundOfId)?.refundOfId).toBe(first.id)
+  })
+
+  it('sistemde gelir olarak duran alacağa bağlama önerilmez; harcamaya hiç önerilmez', () => {
+    const inc = tx({ id: 'i1', type: 'income', amount: 1996.36, date: '2026-10-20', description: 'Amazon iade' })
+    const p = plan([line({ description: 'IYZICO *AMAZON.COM.T', amount: -1996.36, date: '2026-10-20' }), line({ description: 'IYZICO *AMAZON.COM.T', amount: 50, date: '2026-10-21' })], [...hist, inc])
+    for (const r of p.rows) expect(r.options.some(o => o.key === 'link')).toBe(false)
+  })
+})
+
 describe('abonelik öğrenimi', () => {
   const draftTags = (p: ReturnType<typeof plan>) => {
     const a = p.rows[0].options[0].actions[0]
