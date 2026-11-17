@@ -676,8 +676,10 @@ export function StatementImport() {
     const typeChanged = typeOf(prevIdx !== null ? row.options[prevIdx] : undefined) !== typeOf(opt)
     setEdits(e => {
       const cur = e[key]
-      if (!cur || (cur.recipientId === undefined && cur.newRecipient === undefined && !(typeChanged && cur.categoryId !== undefined) && !cur.linkFill)) return e
+      if (!cur || (cur.recipientId === undefined && cur.newRecipient === undefined && !(typeChanged && cur.categoryId !== undefined) && !cur.linkFill && cur.amount === undefined)) return e
       const rest = { ...cur }
+      // Tutar seçeneğe göredir (taksit ↔ toplam): elle düzeltilen tutar karar değişince sıfırlanır
+      delete rest.amount
       delete rest.recipientId
       delete rest.newRecipient
       if (typeChanged) { delete rest.categoryId; delete rest.categoryAuto }

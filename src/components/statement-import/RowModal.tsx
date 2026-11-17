@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { X, Wallet, CreditCard, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/Input'
@@ -21,6 +21,7 @@ import { suggestCategoryIcon } from '@/lib/category-icon-suggest'
 import { SUBSCRIPTION_TAG, detectBrand, isSubscriptionTag } from '@/lib/subscriptions/brands'
 import { dedupeTags } from '@/lib/utils/tags'
 import { cn } from '@/lib/utils'
+import { parseAmount } from '@/lib/utils/csv'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
 import type { Category, Person } from '@/types'
@@ -29,7 +30,7 @@ import { recipientEdit, type RowEdit } from '@/lib/statement-import/commit'
 import { MANUAL_KEYS } from '@/lib/statement-import/manual-options'
 import type { ParsedStatement } from '@/lib/statement-import/statement'
 import { STATUS_META } from './PreviewList'
-import { RefundLinkPicker } from './RefundLinkPicker'
+import { RefundLinkPicker, refundLinkable } from './RefundLinkPicker'
 import { TransferSourceSelect, TransferTargetFields } from './ManualTransferFields'
 
 /* ── Ekstre satırının ayrıntısı ──────────────────────────────────────────────
@@ -68,6 +69,24 @@ function optionType(o: RowOption): TxType | null {
 }
 
 const sectionLabel = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
+
+/** Tutarın elle düzeltilmesi: yazarken serbest metin, odaktan çıkınca okunur */
+function AmountEdit({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [text, setText] = useState(fmt(value))
+  const commit = () => {
+    const v = parseAmount(text)
+    if (v !== null && Math.abs(v) > 0) { onChange(Math.round(Math.abs(v) * 100) / 100); setText(fmt(Math.abs(v))) }
+    else setText(fmt(value))
+  }
+  return (
+    <input
+      aria-label="Tutar" inputMode="decimal" value={text}
+      onChange={e => setText(e.target.value)} onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+      className="w-56 bg-transparent text-center text-5xl font-bold tabular-nums leading-none outline-none rounded-md focus:ring-2 focus:ring-ring"
+    />
+  )
+}
 
 export function RowModal({ row, statement, accountId, choice, edit, onChoose, onEdit, onClose }: Props) {
   const people       = usePeopleStore(s => s.people)
@@ -180,7 +199,11 @@ export function RowModal({ row, statement, accountId, choice, edit, onChoose, on
   }
 
   // Tutar hero'su: İşlem Ekle'deki işaretler (gider −, iade/gelir +, transfer işaretsiz)
-  const absAmount = Math.abs(row.amount ?? 0)
+  // Tutar: kararın taslağındaki (ör. "Tek iade olarak gir": toplam), elle
+  // düzeltildiyse o. Taksit grubunda düzenlenmez (taksitler bankanın bölüşümüyle).
+  const amountEditable = !!draft && !draft.installments && !draft.installmentOf
+  const absAmount = edit?.amount ?? Math.abs(draft?.amount ?? row.amount ?? 0)
+  const bankAbs = Math.abs(row.amount ?? 0)
   const heroType: TxType = activeType ?? (outflow ? 'expense' : 'income')
   const refund = heroType === 'expense' && (draft ? draft.amount < 0 : !outflow)
   const sign = heroType === 'transfer' ? '' : heroType === 'income' || refund ? '+' : '−'
@@ -235,9 +258,15 @@ export function RowModal({ row, statement, accountId, choice, edit, onChoose, on
             <div className="flex items-center gap-2">
               {sign && <span className={cn('text-2xl font-semibold leading-none', sign === '+' ? 'text-green-600' : 'text-muted-foreground/50')}>{sign}</span>}
               <span className="text-2xl font-semibold leading-none text-muted-foreground/50">₺</span>
-              <span className="text-5xl font-bold tabular-nums leading-none">{fmt(absAmount)}</span>
+              {amountEditable
+                ? <AmountEdit key={`${row.key}:${selOpt?.key}`} value={absAmount} onChange={v => onEdit({ amount: v })} />
+                : <span className="text-5xl font-bold tabular-nums leading-none">{fmt(absAmount)}</span>}
             </div>
-            <span className="absolute bottom-1.5 text-[10px] text-muted-foreground">Tutar bankanın satırından gelir</span>
+            <span className="absolute bottom-1.5 text-[10px] text-muted-foreground">
+              {Math.round(absAmount * 100) === Math.round(bankAbs * 100)
+                ? (amountEditable ? 'Bankanın tutarı · düzeltmek için tıklayın' : 'Tutar bankanın satırından gelir')
+                : <>Bankada {fmt(bankAbs)} ₺{edit?.amount !== undefined && <> · <button type="button" className="text-primary hover:underline" onClick={() => onEdit({ amount: undefined })}>geri al</button></>}</>}
+            </span>
           </div>
         )}
 
@@ -404,10 +433,10 @@ export function RowModal({ row, statement, accountId, choice, edit, onChoose, on
             )}
 
             {/* İade: hangi alımın iadesi? */}
-            {row.refundLink && selOpt?.key === 'link' && (
+            {refundLinkable(row, selOpt) && (
               <div>
                 <div className="text-xs font-medium text-muted-foreground mb-1.5">Hangi alımın iadesi?</div>
-                <RefundLinkPicker row={row} stacked onPick={onEdit}
+                <RefundLinkPicker row={row} stacked onPick={onEdit} required={selOpt?.key === 'link'}
                   selectedId={edit?.refundOfId !== undefined ? (edit.refundOfId ?? undefined) : draft?.refundOfId} />
               </div>
             )}

@@ -6,7 +6,7 @@ import { foldText } from '@/lib/auto-category'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate } from '@/lib/utils/date'
-import type { PlanRow, RefundCandidate } from '@/lib/statement-import/classify'
+import type { PlanRow, RefundCandidate, RowOption } from '@/lib/statement-import/classify'
 import { selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-import/commit'
 
 /* ── İade satırı: hangi alımın iadesi? ───────────────────────────────────────
@@ -17,6 +17,8 @@ import { selectedOption, type RowChoices, type RowEdit } from '@/lib/statement-i
 
 interface Props {
   row: PlanRow
+  /** Alım seçmek zorunlu mu ("İade, alıma bağla"); değilse bağlamak isteğe bağlı */
+  required?: boolean
   /** Seçili bağlantı: düzenleme, yoksa kararın taslağındaki (tutarı tutan alım) */
   selectedId: string | undefined
   onPick: (patch: RowEdit) => void
@@ -24,12 +26,21 @@ interface Props {
   stacked?: boolean
 }
 
-/** Satırda seçili bağlantı: düzenleme (null = kaldırıldı), yoksa "İade, alıma bağla"
- *  kararının taslağındaki alım (tutarı tutan) */
+/** Seçili kararda alım seçilebilir mi: "İade, alıma bağla" ya da iade giren her
+ *  karar ("Tek iade olarak gir", "İade olarak gir"…; bağlamak isteğe bağlı) */
+export function refundLinkable(row: PlanRow, o: RowOption | undefined): boolean {
+  if (!row.refundLink || !o) return false
+  if (o.key === 'link') return true
+  const a = o.actions.find(x => x.type === 'create')
+  return a?.type === 'create' && a.draft.type === 'expense' && a.draft.amount < 0
+}
+
+/** Satırda seçili bağlantı: düzenleme (null = kaldırıldı), yoksa seçili kararın
+ *  taslağındaki alım (tutarı tutan) */
 export function refundLinkSelection(row: PlanRow, choices: Readonly<RowChoices>, edit: RowEdit | undefined): string | undefined {
   if (edit?.refundOfId !== undefined) return edit.refundOfId ?? undefined
   const o = row.options[selectedOption(row, choices) ?? -1]
-  const a = o?.key === 'link' ? o.actions.find(x => x.type === 'create') : undefined
+  const a = o?.actions.find(x => x.type === 'create')
   return a?.type === 'create' ? a.draft.refundOfId : undefined
 }
 
@@ -57,7 +68,7 @@ function Card({ c, selected, onPick, wide }: { c: RefundCandidate; selected: boo
   )
 }
 
-export function RefundLinkPicker({ row, selectedId, onPick, stacked }: Props) {
+export function RefundLinkPicker({ row, selectedId, onPick, stacked, required = true }: Props) {
   const link = row.refundLink
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -86,7 +97,12 @@ export function RefundLinkPicker({ row, selectedId, onPick, stacked }: Props) {
           </button>
         )}
       </div>
-      {!selectedId && <span className="text-xs text-orange-600">Hangi alımın iadesi olduğunu seçin.</span>}
+      {!selectedId && (required
+        ? <span className="text-xs text-orange-600">Hangi alımın iadesi olduğunu seçin.</span>
+        : <span className="text-xs text-muted-foreground">İstersen hangi alımın iadesi olduğunu seç (isteğe bağlı).</span>)}
+      {selectedId && !required && (
+        <button type="button" onClick={() => onPick({ refundOfId: null })} className="self-start text-xs text-primary hover:underline">Bağlantıyı kaldır</button>
+      )}
       {open && (
         <div className="rounded-xl border border-border bg-card p-2 flex flex-col gap-1.5">
           <label className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5">
