@@ -20,15 +20,20 @@ const MONTHS: Record<string, number> = {
 }
 
 const DATE_RE = /^(\d{1,2}) (\S+) (\d{4})$/
+const NUMERIC_DATE_RE = /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/
 const AMOUNT_RE = /^-?[\d.]+,\d{2}[+-]?$/
 const INSTALLMENT_RE = /([\d.]+,\d{2})\s*x\s*(\d+)\s*=\s*([\d.]+,\d{2})\s*(\d+)\s*\.\s*Taksit/i
 const FOREIGN_RE = /([\d.]+,\d{2})\s*(USD|EUR|GBP|CHF)\b/
 
-/** "30 Ekim 2026" → "2026-10-30"; tanınmazsa null. */
+/** "30 Ekim 2026" ya da "30/10/2026" ("30.10.2026") → "2026-10-30"; tanınmazsa null.
+ *  Garanti ekstrelerinin bir kısmı (ör. Bonus Business) ilk sayfadaki
+ *  "Hesap Kesim Tarihi"ni sayısal biçimde yazar. */
 export function parseTrDate(s: string): string | null {
-  const m = s.trim().replace(/\s+/g, ' ').match(DATE_RE)
+  const t = s.trim().replace(/\s+/g, ' ')
+  const n = t.match(NUMERIC_DATE_RE)
+  const m = n ?? t.match(DATE_RE)
   if (!m) return null
-  const month = MONTHS[foldText(m[2])]
+  const month = n ? Number(m[2]) : MONTHS[foldText(m[2])]
   const day = Number(m[1])
   const year = Number(m[3])
   if (!month || day < 1 || day > 31) return null
@@ -127,6 +132,27 @@ function parseRow(line: PdfLine, cols: Columns): RawRow | null {
   return { date, description, amount, bonus, mid: mid.join(' ') }
 }
 
+export const UNLISTED_FEE_LABEL = 'Faiz ve ücret farkı (ekstrede satırı yok)'
+
+/** Özette olup tabloda satırı olmayan faiz/ücret (kuruş); koşullar tam
+ *  sağlanmıyorsa 0 — o zaman kontrol farkı olduğu gibi gösterir. */
+function unlistedFee(lines: StatementLine[], summary: StatementSummary, tableTotal: number | null): number {
+  let carry = 0, spending = 0, credits = 0, fees = 0
+  for (const l of lines) {
+    if (l.amount === null) continue
+    const v = toMinor(l.amount)
+    if (l.kind === 'carry') carry += v
+    else if (l.kind === 'fee') fees += v
+    else if (v < 0) credits -= v
+    else spending += v
+  }
+  const total = carry + spending + fees - credits
+  if (tableTotal !== null && toMinor(tableTotal) !== total) return 0
+  if (carry !== toMinor(summary.previous) || spending !== toMinor(summary.spending) || credits !== toMinor(summary.payments)) return 0
+  const gap = toMinor(summary.fees) - fees
+  return gap > 0 && total + gap === toMinor(summary.debt) ? gap : 0
+}
+
 const MASK_RE = /\d{4}\s?\d{2}\*{2}\s?\*{4}\s?(\d{4})/g
 
 export function parseGarantiCard(pages: PdfPage[]): ParsedStatement | null {
@@ -195,6 +221,19 @@ export function parseGarantiCard(pages: PdfPage[]): ParsedStatement | null {
     }
   })
 
+  // Bazı ekstreler faiz/ücretin bir kısmını (ör. faizin vergisi) özete katıp
+  // tabloya satır olarak basmıyor: tablonun "Toplam"ı da dönem borcunu tutmaz.
+  // Özetin öteki her kalemi satırlarla kuruşu kuruşuna tutuyor ve fark tam
+  // olarak özetteki faiz/ücret ile ücret satırları arasındaki farksa, eksik
+  // kalem tarihsiz bir ücret satırı olarak tamamlanır.
+  const missingFee = summary ? unlistedFee(lines, summary, tableTotal) : 0
+  if (missingFee > 0) {
+    lines.push({
+      index: lines.length, date: null, description: UNLISTED_FEE_LABEL, amount: toMajor(missingFee),
+      bonus: null, installment: null, foreign: null, kind: 'fee',
+    })
+  }
+
   // ── Kontrol: devir + satırlar = dönem borcu ──
   const issues: string[] = []
   const expected = summary?.debt ?? (debtLabel ? amountsIn(debtLabel)[0] ?? null : null) ?? tableTotal
@@ -206,7 +245,7 @@ export function parseGarantiCard(pages: PdfPage[]): ParsedStatement | null {
   if (expected != null && diff !== 0) {
     issues.push(`Okunan satırların toplamı (${computed.toFixed(2)}) dönem borcunu (${expected.toFixed(2)}) tutmuyor: fark ${diff.toFixed(2)}.`)
   }
-  if (tableTotal !== null && expected != null && toMinor(tableTotal) !== toMinor(expected)) {
+  if (tableTotal !== null && expected != null && toMinor(tableTotal) + missingFee !== toMinor(expected)) {
     issues.push('Tablonun "Toplam" satırı dönem borcuyla aynı değil.')
   }
   if (summary) {

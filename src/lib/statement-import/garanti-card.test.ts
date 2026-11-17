@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { groupLines, type PdfItem, type PdfPage } from './pdf-text'
-import { parseGarantiCard, parseTrDate, parseTrAmount } from './garanti-card'
+import { parseGarantiCard, parseTrDate, parseTrAmount, UNLISTED_FEE_LABEL } from './garanti-card'
 import { parseStatement } from './statement'
 import { expectSameAcrossPageBreak } from './test-helpers'
 
@@ -56,6 +56,12 @@ describe('parseTrDate / parseTrAmount', () => {
     expect(parseTrDate('31 Şubat 2026')).toBeNull()
     expect(parseTrDate('Toplam')).toBeNull()
   })
+  it('sayısal biçim (gg/aa/yyyy, gg.aa.yyyy)', () => {
+    expect(parseTrDate('09/10/2026')).toBe('2026-10-09')
+    expect(parseTrDate('9.10.2026')).toBe('2026-10-09')
+    expect(parseTrDate('31/02/2026')).toBeNull()
+    expect(parseTrDate('09/13/2026')).toBeNull()
+  })
   it('binlik ayraç ve işaret ekleri', () => {
     expect(parseTrAmount('124.641,96')).toBe(124641.96)
     expect(parseTrAmount('452,77+')).toBe(452.77)
@@ -108,6 +114,64 @@ describe('parseGarantiCard', () => {
     const st = parseGarantiCard([samplePage([], '9.999,99')])!
     expect(st.check.ok).toBe(false)
     expect(st.check.issues.join(' ')).toContain('tutmuyor')
+  })
+
+  // Bonus Business ekstresi: kesim tarihi "09/10/2026" biçiminde ve özetteki
+  // faiz/ücretin bir kısmı (2,48) tabloda satır olarak yok — tablo "Toplam"ı
+  // da dönem borcundan o kadar eksik.
+  function businessPage(feesSummary = '52,04 TL', debt = '6.835,36 TL'): PdfPage {
+    const items: PdfItem[] = [
+      left(434, 'Son Ödeme Tarihi: 14 Ekim 2026', 747),
+      left(36, 'Kart Numarası', 718), left(187, '5400 37** ****2016', 718),
+      left(36, 'Hesap Kesim Tarihi', 681), left(214, '09/10/2026', 681),
+      left(36, 'Son Ödeme Tarihi', 651), left(214, '14/10/2026', 651),
+      left(36, 'Toplam Borcunuz', 642), left(211, debt, 642),
+      left(105, 'İşlem Tarihi', 502), left(170, 'Dönem İçi İşlemler', 502), left(303, 'Kalan Borç / Taksit', 502),
+      { x: 405, right: 445, y: 502, str: 'Bonus (TL)' }, { x: 517, right: 553, y: 502, str: 'Tutar (TL)' },
+      ...row(488, null, 'ÖNCEKİ DÖNEMDEN DEVİR EDİLEN TUTAR', { tutar: '9.643,31' }),
+      ...row(480, null, 'DÖNEM FAİZİ', { tutar: '46,86' }),
+      ...row(472, null, 'NAKİT AVANS FAİZ VE MASRAFI', { tutar: '2,70' }),
+      ...row(464, '06 Eylül 2026', 'KREDİ KART ÜYELİK ÜCR İPT', { tutar: '2.100,00+' }),
+      ...row(456, '12 Eylül 2026', 'ÖDEMENİZ İÇİN TEŞEKKÜR EDERİZ', { tutar: '7.060,78+' }),
+      ...row(448, '15 Eylül 2026', 'ÖDEMENİZ İÇİN TEŞEKKÜR EDERİZ', { tutar: '2.582,53+' }),
+      left(105, 'BONUS PROGRAM ORTAKLARI\'NDA YAPTIĞINIZ HARCAMALAR', 434),
+      ...row(424, '28 Eylül 2026', 'N11 ONLİNE ALIŞVERİŞ', { inst: '5.087,68x3=15.263,04 3.Taksit', tutar: '5.087,68' }),
+      ...row(377, '28 Ağustos 2026', 'Int. Taksitli Nakit Avans', { inst: '2.158,64x18=38.855,47 14.Taksit', tutar: '2.158,64' }),
+      ...row(346, '15 Eylül 2026', 'PASEO GELATO SORBET', { tutar: '300,00' }),
+      ...row(338, '07 Ekim 2026', 'EMİN DÖNER', { tutar: '1.240,00' }),
+      ...row(306, '05 Ekim 2026', 'ENNOVA ÇOCUK', { tutar: '17,00' }),
+      ...row(298, '07 Ekim 2026', 'SIMSEK UN VE UNLU MAMULLE', { tutar: '80,00' }),
+      left(37, 'Toplam', 285), right(553, '6.832,88', 285),
+      left(105, 'Bir sonraki hesap kesiminiz 01 Kasım 2026 Pazar ve son ödemeniz 06 Kasım 2026', 265),
+      left(105, 'Cuma.Bir önceki hesap kesim tarihiniz 06 Eylül 2026 Pazar \'dir.', 257),
+      left(125, 'Önceki Bakiye', 243), left(182, 'Dönem Harcamaları', 243), left(258, 'Faiz ve Ücretler', 243),
+      left(331, 'Ödemeleriniz', 243), left(413, 'Dönem Borcunuz', 243), left(479, 'Min. Ödeme Tutarınız', 243),
+      left(132, `9.643,31 TL + 8.883,32 TL + ${feesSummary} - 11.743,31 TL = ${debt} 684,00 TL`, 226),
+      left(37, 'T. Garanti Bankası A.Ş. Genel Müdürlük', 51),
+    ]
+    return { lines: groupLines(items) }
+  }
+
+  it('sayısal kesim tarihi ve tabloda satırı olmayan faiz farkı (Bonus Business)', () => {
+    const st = parseStatement([businessPage()])
+    expect(st.statementDate).toBe('2026-10-09')
+    expect(st.dueDate).toBe('2026-10-14')
+    expect(st.prevStatementDate).toBe('2026-09-06')
+    expect(st.nextStatementDate).toBe('2026-11-01')
+    expect(st.check).toMatchObject({ ok: true, diff: 0 })
+    const gap = st.lines.at(-1)!
+    expect(gap).toMatchObject({ description: UNLISTED_FEE_LABEL, amount: 2.48, kind: 'fee', date: null })
+    expect(st.lines.filter(l => l.kind === 'purchase')).toHaveLength(6)
+  })
+
+  it('faiz farkı özetle açıklanamıyorsa satır uydurmaz, kontrol başarısız kalır', () => {
+    // Özet kendi içinde tutuyor ama fark faiz kaleminden gelmiyor (faiz satırlarla birebir)
+    const st = parseGarantiCard([businessPage('49,56 TL', '6.832,88 TL')])!
+    expect(st.check.ok).toBe(true)
+    expect(st.lines.some(l => l.description === UNLISTED_FEE_LABEL)).toBe(false)
+    const off = parseGarantiCard([businessPage('52,04 TL', '6.900,00 TL')])!
+    expect(off.check.ok).toBe(false)
+    expect(off.lines.some(l => l.description === UNLISTED_FEE_LABEL)).toBe(false)
   })
 
   it('başka bankanın PDF\'ini tanımaz', () => {
