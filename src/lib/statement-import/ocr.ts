@@ -32,9 +32,11 @@ interface TessWord { text: string; bbox: { x0: number; x1: number } }
 interface TessLine { text: string; bbox: { y0: number }; words: TessWord[] }
 interface TessData { blocks: { paragraphs: { lines: TessLine[] }[] }[] | null }
 
-/** Tarayıcıda görüntüden satırlar. tesseract.js yalnız burada, dinamik yüklenir. */
-export async function readImageText(file: Blob): Promise<OcrPage> {
-  const width = await imageWidth(file)
+/** Tarayıcıda görüntülerden satırlar (uzun liste birden çok ekran görüntüsüyle
+ *  gelebilir; hepsi tek motorla sırayla okunur). tesseract.js yalnız burada,
+ *  dinamik yüklenir. */
+export async function readImagesText(files: Blob[], onProgress?: (done: number) => void): Promise<OcrPage[]> {
+  const widths = await Promise.all(files.map(imageWidth))
   const { createWorker } = await import('tesseract.js')
   const worker = await createWorker('tur', 1, {
     workerPath: `${BASE}/worker.min.js`,
@@ -43,8 +45,13 @@ export async function readImageText(file: Blob): Promise<OcrPage> {
     workerBlobURL: false,
   })
   try {
-    const { data } = await worker.recognize(file, {}, { blocks: true })
-    return { width, lines: toLines(data as unknown as TessData) }
+    const pages: OcrPage[] = []
+    for (let i = 0; i < files.length; i++) {
+      const { data } = await worker.recognize(files[i], {}, { blocks: true })
+      pages.push({ width: widths[i], lines: toLines(data as unknown as TessData) })
+      onProgress?.(i + 1)
+    }
+    return pages
   } catch {
     throw new Error('Görüntü okunamadı. Ekran görüntüsünü (PNG/JPG) yeniden deneyin.')
   } finally {
