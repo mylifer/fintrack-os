@@ -1,6 +1,5 @@
 'use client'
 
-import { useMemo } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { TransactionList }     from '@/components/transactions/TransactionList'
 import type { CategorySlice }  from '@/components/reports/_CategoryDonutChart'
@@ -10,11 +9,14 @@ import type { Transaction } from '@/types'
 /* ── Gider / gelir kategori detay katmanları (drill-down) ──────────── */
 export function CategoryDrilldowns({
   isLoading, selectedCat, catFilteredTxs, setSelectedCat, setActiveSliceIdx,
-  selectedIncomeCat, incomeCatFilteredTxs, setSelectedIncomeCat, setActiveIncomeSliceIdx,
+  expenseFocus, incomeFocus, selectedIncomeCat, incomeCatFilteredTxs, setSelectedIncomeCat, setActiveIncomeSliceIdx,
 }: {
   isLoading: boolean
   selectedCat: CategorySlice | null
   catFilteredTxs: Transaction[]
+  /** Seçili gider/gelir dilimi + tüm alt kategorileri (bölünmüş işlemde pay gösterimi). */
+  expenseFocus?: ReadonlySet<string>
+  incomeFocus?: ReadonlySet<string>
   setSelectedCat: (s: CategorySlice | null) => void
   setActiveSliceIdx: (i: number | null) => void
   selectedIncomeCat: CategorySlice | null
@@ -22,11 +24,6 @@ export function CategoryDrilldowns({
   setSelectedIncomeCat: (s: CategorySlice | null) => void
   setActiveIncomeSliceIdx: (i: number | null) => void
 }) {
-  // Satırlar memo'lu → Set her render'da yeniden kurulmasın.
-  const expenseCatId = selectedCat?.categoryId ?? null
-  const incomeCatId  = selectedIncomeCat?.categoryId ?? null
-  const expenseFocus = useMemo(() => expenseCatId ? new Set([expenseCatId]) : undefined, [expenseCatId])
-  const incomeFocus  = useMemo(() => incomeCatId ? new Set([incomeCatId]) : undefined, [incomeCatId])
   return (
     <>
       {/* ── Category drill-down ───────────────────────────────────── */}

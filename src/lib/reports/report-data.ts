@@ -13,18 +13,41 @@ import type { Transaction } from '@/types'
 // Raporlar sayfasının saf toplayıcıları (reports/page.tsx'ten taşındı): kategori
 // ve etiket dağılımları, dönem karşılaştırması, kategori 6-ay trendi.
 
+type ReportCategory = { id: string; name: string; color: string; parentId?: string }
+
+/**
+ * Bir kategorinin EN ÜST atası (kök). Alt kategori harcamaları donut'ta üst
+ * kategorinin dilimine toplanır — Bütçeler'in kuralıyla aynı (bütçe üst
+ * kategoriye açılınca alt kategorileri de sayar, bkz. expandCategoryIds).
+ * Silinmiş üst / döngü durumunda bulunabilen son atada durur.
+ */
+export function rootCategoryId(id: string, byId: Map<string, ReportCategory>): string {
+  let cur = byId.get(id)
+  if (!cur) return id
+  const seen = new Set<string>([cur.id])
+  while (cur.parentId) {
+    const parent = byId.get(cur.parentId)
+    if (!parent || seen.has(parent.id)) break
+    seen.add(parent.id)
+    cur = parent
+  }
+  return cur.id
+}
+
 export function buildCategoryData(
   transactions: Transaction[],
-  categories: Array<{ id: string; name: string; color: string }>,
+  categories: ReportCategory[],
   type: 'expense' | 'income' = 'expense',
 ): CategorySlice[] {
+  const byId = new Map(categories.map(c => [c.id, c]))
+  const keyOf = (tx: Transaction) => tx.categoryId ? rootCategoryId(tx.categoryId, byId) : '__none__'
   // TRY-normalize + kuruş-exact, skip investment-linked (icon) & reconciliation
   // ghosts — DetailedStats ve kategori 6-ay trendiyle aynı kural (tek kaynak).
   // Gelir tarafı aynı kuralı sumIncomeByKey ile paylaşır (yatırım satır dışlaması
   // dahil), böylece iki donut birbirine simetrik okunur.
   const catMap = type === 'income'
-    ? sumIncomeByKey(transactions,  tx => tx.categoryId ?? '__none__')
-    : sumExpenseByKey(transactions, tx => tx.categoryId ?? '__none__')
+    ? sumIncomeByKey(transactions,  keyOf)
+    : sumExpenseByKey(transactions, keyOf)
   // A category whose *net* total is ≤ 0 — fully refunded, or carrying only a
   // refund (negative expense) for a purchase made in an earlier period — is not
   // a positive expense contribution. Drop it before building slices: a negative
@@ -60,7 +83,7 @@ export const FUND_GAIN_COLOR    = '#a855f7'
 
 export function buildIncomeCategoryData(
   transactions: Transaction[],
-  categories: Array<{ id: string; name: string; color: string }>,
+  categories: ReportCategory[],
   unrealizedFundGain: number,
 ): CategorySlice[] {
   const base = buildCategoryData(transactions, categories, 'income')

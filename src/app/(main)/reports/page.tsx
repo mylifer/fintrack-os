@@ -8,9 +8,9 @@ import { comparisonRange, type CompareMode } from '@/lib/utils/period-compare'
 import { Header }           from '@/components/layout/Header'
 import { useTransactionStore, useAccountStore, useCategoryStore, useInvestmentStore, useSettingsStore, useDebtStore } from '@/store'
 import { isReconciliation } from '@/lib/utils/reconciliation'
-import { excludeFuture, calcPeriodFlow, isRealizedInvestmentPnlTx } from '@/lib/utils/calculations'
+import { excludeFuture, calcPeriodFlow, isRealizedInvestmentPnlTx, expandCategoryIds } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
-import { txHasCategory } from '@/lib/utils/categorySplits'
+import { txHasAnyCategory } from '@/lib/utils/categorySplits'
 import { buildCashFlowData } from '@/lib/utils/cashflow'
 import { CashFlowDetailOverlay } from '@/components/reports/CashFlowDetailOverlay'
 import type { CategorySlice }       from '@/components/reports/_CategoryDonutChart'
@@ -223,6 +223,18 @@ export default function ReportsPage() {
     [prevRange],
   )
 
+  // Donut dilimleri üst kategoriye toplanır (alt kategoriler dahil) → detay
+  // listesi de seçili kategoriyi TÜM alt kategorileriyle kapsar; başlıktaki
+  // toplam listedekiyle tutsun. Bütçeler'deki expandCategoryIds kuralının aynısı.
+  const expenseCatIds = useMemo(
+    () => selectedCat?.categoryId ? expandCategoryIds([selectedCat.categoryId], categories) : undefined,
+    [selectedCat, categories],
+  )
+  const incomeCatIds = useMemo(
+    () => selectedIncomeCat?.categoryId ? expandCategoryIds([selectedIncomeCat.categoryId], categories) : undefined,
+    [selectedIncomeCat, categories],
+  )
+
   const catFilteredTxs = useMemo(() => {
     if (!selectedCat) return []
     // Bölünmüş satırlar TAM haliyle listelenir (dilim olarak değil): satır
@@ -232,11 +244,11 @@ export default function ReportsPage() {
     // girmez (gelir drill-down'uyla aynı kural).
     return filteredTxs.filter(tx => {
       if (tx.type !== 'expense' || tx.icon) return false
-      return selectedCat.categoryId === null
+      return !expenseCatIds
         ? !tx.categoryId
-        : txHasCategory(tx, selectedCat.categoryId)
+        : txHasAnyCategory(tx, expenseCatIds)
     })
-  }, [filteredTxs, selectedCat])
+  }, [filteredTxs, selectedCat, expenseCatIds])
 
   // Gelir drill-down'u: donut kapsamıyla birebir aynı satırlar — yatırım-ikonlu
   // gelirler (anapara/realize kâr) dilimlere girmediği için listeye de girmez,
@@ -245,11 +257,11 @@ export default function ReportsPage() {
     if (!selectedIncomeCat) return []
     return filteredTxs.filter(tx => {
       if (tx.type !== 'income' || tx.icon) return false
-      return selectedIncomeCat.categoryId === null
+      return !incomeCatIds
         ? !tx.categoryId
-        : txHasCategory(tx, selectedIncomeCat.categoryId)
+        : txHasAnyCategory(tx, incomeCatIds)
     })
-  }, [filteredTxs, selectedIncomeCat])
+  }, [filteredTxs, selectedIncomeCat, incomeCatIds])
 
   const isLoading = !txsReady || !accountsReady
 
@@ -346,6 +358,8 @@ export default function ReportsPage() {
           isLoading={isLoading}
           selectedCat={selectedCat}
           catFilteredTxs={catFilteredTxs}
+          expenseFocus={expenseCatIds}
+          incomeFocus={incomeCatIds}
           setSelectedCat={setSelectedCat}
           setActiveSliceIdx={setActiveSliceIdx}
           selectedIncomeCat={selectedIncomeCat}

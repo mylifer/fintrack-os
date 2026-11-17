@@ -21,6 +21,19 @@ describe('buildCategoryData', () => {
     expect(d.map(s => [s.categoryId, s.name, s.amount])).toEqual([['c2', 'Kira', 300], ['c1', 'Market', 100], [null, 'Kategorisiz', 50]])
     expect(d.reduce((s, x) => s + x.percent, 0)).toBeCloseTo(100)
   })
+  it('alt kategori harcamalarını en üst kategorinin dilimine toplar (bütçe kuralı)', () => {
+    const tree = [
+      { id: 'yemek', name: 'Yemek', color: '#f00' },
+      { id: 'restoran', name: 'Restoran', color: '#0f0', parentId: 'yemek' },
+      { id: 'kafe', name: 'Kafe', color: '#00f', parentId: 'restoran' },
+      { id: 'yetim', name: 'Yetim', color: '#000', parentId: 'silinmis' },
+    ]
+    const d = buildCategoryData([
+      tx({ categoryId: 'yemek', amount: 100 }), tx({ categoryId: 'restoran', amount: 50 }),
+      tx({ categoryId: 'kafe', amount: 25 }), tx({ categoryId: 'yetim', amount: 10 }),
+    ], tree)
+    expect(d.map(s => [s.categoryId, s.name, s.amount])).toEqual([['yemek', 'Yemek', 175], ['yetim', 'Yetim', 10]])
+  })
 })
 
 describe('buildIncomeCategoryData', () => {

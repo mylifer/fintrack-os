@@ -243,6 +243,13 @@ export function txHasCategory(tx: Transaction, categoryId: string): boolean {
   return tx.categoryId === categoryId
 }
 
+/** txHasCategory'nin küme hali: işlem (ya da paylarından biri) verilen
+ *  kategorilerden birine düşüyor mu? (ör. bir kategori + alt kategorileri) */
+export function txHasAnyCategory(tx: Transaction, categoryIds: ReadonlySet<string>): boolean {
+  if (tx.categorySplits?.length) return tx.categorySplits.some(s => categoryIds.has(s.categoryId))
+  return tx.categoryId !== undefined && categoryIds.has(tx.categoryId)
+}
+
 /**
  * Bölünmüş işlemde verilen kategorilere (ör. bir kategori + alt kategorileri)
  * düşen payların toplamı. İşlem bölünmemişse, hiçbir pay eşleşmiyorsa ya da
