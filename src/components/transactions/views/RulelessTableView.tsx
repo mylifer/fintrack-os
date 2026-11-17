@@ -332,7 +332,7 @@ const RulelessRow = memo(function RulelessRow({
 
       {/* Açıklama + durum rozetleri + etiketler */}
       <div className="flex min-w-0 items-center gap-1.5 overflow-hidden px-2">
-        <span className="truncate text-xs font-medium leading-none text-foreground">
+        <span className="truncate text-xs font-medium leading-normal text-foreground">
           {tx.description}
         </span>
         {tx.receipt && <span className="text-[11px] opacity-70" title="Fiş ekli" aria-label="Fiş ekli">📎</span>}

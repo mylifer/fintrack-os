@@ -426,7 +426,7 @@ const TableTxRow = memo(function TableTxRow({
         )}
         <TxIcon description={tx.description} recipient={recipient} />
         <div className="min-w-0 overflow-hidden">
-          <div className="text-xs font-medium text-foreground truncate leading-none">
+          <div className="text-xs font-medium text-foreground truncate leading-normal">
             {tx.description}
             {tx.receipt && <span className="ml-1 text-[11px] opacity-70" title="Fiş ekli" aria-label="Fiş ekli">📎</span>}
             {tx.isInstallment && (
