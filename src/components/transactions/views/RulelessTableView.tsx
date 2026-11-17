@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo, useRef } from 'react'
+import { memo, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAccountStore, useCategoryStore, usePeopleStore, useTransactionStore, useUIStore } from '@/store'
@@ -17,6 +17,7 @@ import {
 } from '@/components/transactions/TransactionList'
 import { useCrossWorkspacePeers, type CrossWsPeer } from '@/components/transactions/useCrossWorkspacePeers'
 import { CrossWsLink } from '@/components/transactions/CrossWsLink'
+import { useFocusTxRow, FOCUS_ROW_CLASS } from '@/lib/hooks/useFocusTxRow'
 import { dayTotals, sortDates, sortWithinDay, splitFuture, type TxViewProps } from './shared'
 import type { Account, Category, CurrencyCode, ModalPayload, ModalType, Person, Transaction } from '@/types'
 
@@ -139,6 +140,13 @@ export function RulelessTableView({
     },
   })
 
+  const scrollToRow = useCallback((i: number) => {
+    // Liste sayfada aşağıda kalmış olabilir (hesap özeti üstte)
+    parentRef.current?.scrollIntoView({ block: 'end' })
+    virtualizer.scrollToIndex(i, { align: 'center' })
+  }, [virtualizer])
+  const focusedTxId = useFocusTxRow(account.id, rows, scrollToRow)
+
   if (transactions.length === 0) {
     return <EmptyState icon="↕" title={emptyTitle} description={emptyDescription} />
   }
@@ -209,6 +217,7 @@ export function RulelessTableView({
                     cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
                     toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
                     crossWs={crossWsPeers.get(row.tx.id)}
+                    focused={focusedTxId === row.tx.id}
                     recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                     family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                     balanceAfter={balances.get(row.tx.id)}
@@ -287,7 +296,7 @@ function DayBand({
 /* ── İşlem satırı — 32px, hiçbir ayraç yok; hiza tek başına iş görür ───────── */
 const RulelessRow = memo(function RulelessRow({
   tx, future, cols, account, cat, toAccount, crossWs, recipient, family, balanceAfter,
-  projected, openModal, removeTx, selectable, selected, onToggleSelect,
+  projected, openModal, removeTx, selectable, selected, onToggleSelect, focused,
 }: {
   tx: Transaction
   future: boolean
@@ -305,6 +314,7 @@ const RulelessRow = memo(function RulelessRow({
   selectable?: boolean
   selected?: boolean
   onToggleSelect?: (id: string) => void
+  focused?: boolean
 }) {
   const isIncome  = tx.type === 'income'
   const isXfer    = tx.type === 'transfer'
@@ -319,6 +329,7 @@ const RulelessRow = memo(function RulelessRow({
         'group grid h-8 items-center px-3 transition-colors',
         selected ? 'bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.045] hover:bg-accent/50' : 'hover:bg-accent/50',
         projected ? 'opacity-75' : '',
+        focused ? FOCUS_ROW_CLASS : '',
       ].join(' ')}
       style={{ gridTemplateColumns: cols }}
     >

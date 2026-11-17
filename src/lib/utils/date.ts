@@ -3,6 +3,7 @@ import {
   subMonths, addMonths, isWithinInterval, startOfYear, endOfYear,
   differenceInCalendarDays, isBefore, addDays, subDays, subWeeks, subYears,
   addWeeks, addYears, startOfWeek, endOfWeek, startOfDay, isValid,
+  differenceInCalendarWeeks, differenceInCalendarMonths, differenceInCalendarYears,
 } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import type { Account, MonthYear, PeriodType } from '@/types'
@@ -98,6 +99,19 @@ export function getPeriodRange(type: PeriodType): { from: string; to: string } {
 
 /** Period range shifted by `offset` periods from now (offset 0 = current period,
  *  -1 = previous, +1 = next). 'all' ignores the offset. */
+/** getPeriodRangeAt'in tersi: `date` gününü içeren dönemin bugüne göre ofseti
+ *  (ör. Aylık'ta iki ay önce → −2). Bir satıra gidilirken o satırın dönemini açmak için. */
+export function periodOffsetFor(type: PeriodType, date: string, now: Date = new Date()): number {
+  const d = parseISO(date.slice(0, 10))
+  switch (type) {
+    case 'daily':   return differenceInCalendarDays(d, now)
+    case 'weekly':  return differenceInCalendarWeeks(d, now, { locale: tr })
+    case 'monthly': return differenceInCalendarMonths(d, now)
+    case 'yearly':  return differenceInCalendarYears(d, now)
+    case 'all':     return 0
+  }
+}
+
 export function getPeriodRangeAt(type: PeriodType, offset: number): { from: string; to: string } {
   const now = new Date()
   switch (type) {

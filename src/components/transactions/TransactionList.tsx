@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Wand2 } from 'lucide-react'
 import { suggestPatternFrom } from '@/lib/utils/transaction-rules'
@@ -27,6 +27,7 @@ import { getBrandDomain } from '@/lib/people/brands'
 import { usePrivacyStore } from '@/store/privacy.store'
 import { useCrossWorkspacePeers, type CrossWsPeer } from '@/components/transactions/useCrossWorkspacePeers'
 import { CrossWsLink, crossWsLabel } from '@/components/transactions/CrossWsLink'
+import { useFocusTxRow, FOCUS_ROW_CLASS } from '@/lib/hooks/useFocusTxRow'
 
 type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
@@ -340,7 +341,7 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
   tx, cat, account, toAccount, crossWs, recipient, family, balanceAfter, balanceCurrency, projected, future, openModal, removeTx,
-  selectable, selected, onToggleSelect, grouped, isFirst, isLast, compact, focusCategoryIds,
+  selectable, selected, onToggleSelect, grouped, isFirst, isLast, compact, focusCategoryIds, focused,
 }: {
   tx: Transaction
   cat?: Category
@@ -370,6 +371,8 @@ const TableTxRow = memo(function TableTxRow({
   compact?: boolean
   /** Bkz. Props.focusCategoryIds */
   focusCategoryIds?: ReadonlySet<string>
+  /** Başka yerden bu satıra gidildi: kısa süre vurgulanır (bkz. useFocusTxRow) */
+  focused?: boolean
 }) {
   const isIncome    = tx.type === 'income'
   const isXfer      = tx.type === 'transfer'
@@ -396,12 +399,14 @@ const TableTxRow = memo(function TableTxRow({
                 : future ? 'bg-sky-500/[0.06] hover:bg-sky-500/[0.09]'
                 : 'bg-card hover:bg-accent/40',
               projected ? 'opacity-60' : '',
+              focused ? FOCUS_ROW_CLASS : '',
               compactCells,
             ].join(' ')
           : [
               'group grid transition-colors border-b border-border/50',
               selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'hover:bg-accent/40',
               projected ? 'opacity-60' : '',
+              focused ? FOCUS_ROW_CLASS : '',
               compactCells,
             ].join(' ')
       }
@@ -608,7 +613,7 @@ const TableTxRow = memo(function TableTxRow({
 
 // ── CARDS row (compact minimal) ───────────────────────────────────────────
 const CardTxRow = memo(function CardTxRow({
-  tx, cat, account, crossWs, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryIds,
+  tx, cat, account, crossWs, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryIds, focused,
 }: {
   tx: Transaction
   cat?: Category
@@ -624,6 +629,8 @@ const CardTxRow = memo(function CardTxRow({
   removeTx: (id: string) => void
   /** Bkz. Props.focusCategoryIds */
   focusCategoryIds?: ReadonlySet<string>
+  /** Bkz. TableTxRow.focused */
+  focused?: boolean
 }) {
   const isIncome  = tx.type === 'income'
   const isXfer    = tx.type === 'transfer'
@@ -653,6 +660,7 @@ const CardTxRow = memo(function CardTxRow({
       'group flex items-center gap-2.5 px-2 py-[5px] rounded-lg hover:bg-accent/40 transition-colors',
       future ? 'bg-sky-500/[0.04]' : '',
       projected ? 'opacity-60' : '',
+      focused ? FOCUS_ROW_CLASS : '',
     ].join(' ')}>
       {/* Icon — yalnızca açıklamadan */}
       <TxIcon description={tx.description} recipient={recipient} />
@@ -959,6 +967,14 @@ export function TransactionList({
     },
   })
 
+  const scrollToRow = useCallback((i: number) => {
+    // Liste sayfada aşağıda kalmış olabilir (hesap özeti üstte): önce listeyi
+    // görünür yap, sonra satıra kaydır.
+    parentRef.current?.scrollIntoView({ block: 'end' })
+    virtualizer.scrollToIndex(i, { align: 'center' })
+  }, [virtualizer])
+  const focusedTxId = useFocusTxRow(primaryAccountId, rows, scrollToRow)
+
   if (transactions.length === 0) {
     return <EmptyState icon="↕" title={emptyTitle} description={emptyDescription} />
   }
@@ -1048,6 +1064,7 @@ export function TransactionList({
                         account={accById.get(row.tx.accountId)}
                         toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
                         crossWs={crossWsPeers.get(row.tx.id)}
+                        focused={focusedTxId === row.tx.id}
                         recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                         family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                         balanceAfter={runningBalances.get(row.tx.id)?.balance}
@@ -1095,6 +1112,7 @@ export function TransactionList({
                     cat={catFor(row.tx)}
                     account={accById.get(row.tx.accountId)}
                     crossWs={crossWsPeers.get(row.tx.id)}
+                    focused={focusedTxId === row.tx.id}
                     recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                     family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                     showAccount={showAccount}

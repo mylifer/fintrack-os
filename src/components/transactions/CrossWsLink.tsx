@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/store/workspace.store'
 import { getDefaultWorkspaceId } from '@/lib/workspace-context'
+import { useTxFocusStore } from '@/lib/tx-focus'
 import type { CrossWsPeer } from '@/lib/cross-workspace'
 
 export function crossWsLabel(peer: CrossWsPeer): string {
@@ -15,11 +16,12 @@ export function crossWsTitle(peer: CrossWsPeer): string {
   return `Çalışma alanları arası transfer: para ${where} hesab${peer.direction === 'out' ? 'ına gitti' : 'ından geldi'}. Tıklayınca o hesaba geçilir.`
 }
 
-/** Alanlar arası transferin karşı tarafı — tıklayınca karşı alana geçer ve
- *  karşı hesabın sayfasını açar (karşı satır orada, aynı tarihte durur). */
+/** Alanlar arası transferin karşı tarafı — tıklayınca karşı alana geçer,
+ *  karşı hesabın sayfasını açar ve karşı satıra kaydırıp onu vurgular. */
 export function CrossWsLink({ peer, className, children }: { peer: CrossWsPeer; className?: string; children?: ReactNode }) {
   const router = useRouter()
   const setActive = useWorkspaceStore(s => s.setActive)
+  const focusTx = useTxFocusStore(s => s.focus)
   const [busy, setBusy] = useState(false)
 
   const go = async (e: React.MouseEvent) => {
@@ -30,6 +32,7 @@ export function CrossWsLink({ peer, className, children }: { peer: CrossWsPeer; 
     setBusy(true)
     try {
       if (target) await setActive(target)
+      focusTx(peer.txId, peer.accountId)
       router.push(`/accounts/${peer.accountId}`)
     } catch (err) {
       console.error('[cross-ws:navigate]', err)
