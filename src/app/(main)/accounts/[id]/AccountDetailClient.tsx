@@ -14,7 +14,8 @@ import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { txHasCategory } from '@/lib/utils/categorySplits'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
-import { getPeriodRangeAt, formatPeriodLabel, today } from '@/lib/utils/date'
+import { getPeriodRangeAt, formatPeriodLabel, periodOffsetFor, today } from '@/lib/utils/date'
+import { useTxFocusStore } from '@/lib/tx-focus'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { isFutureDate } from '@/components/transactions/views/shared'
 import { Badge }              from '@/components/ui/Badge'
@@ -88,6 +89,20 @@ export default function AccountDetailClient({
     () => getPeriodRangeAt(periodType, periodOffset),
     [periodType, periodOffset],
   )
+
+  // Bir satıra gidiliyorsa (bkz. lib/tx-focus) o satırın dönemini aç; kaydırma
+  // ve vurgu listede yapılır.
+  const focusTxId = useTxFocusStore(s => (s.accountId === id ? s.txId : null))
+  const focusDate = useMemo(
+    () => (focusTxId ? accountTxs.find(t => t.id === focusTxId)?.date.slice(0, 10) ?? null : null),
+    [focusTxId, accountTxs],
+  )
+  // Render sırasında ayarlanır (yukarıdaki ofset sıfırlamasıyla aynı kalıp)
+  const [focusSeen, setFocusSeen] = useState<string | null>(null)
+  if (focusDate && focusDate !== focusSeen) {
+    setFocusSeen(focusDate)
+    if (focusDate < from || focusDate > to) setPeriodOffset(periodOffsetFor(periodType, focusDate))
+  }
 
   // Planlanan gelecek işlemler — bu hesaba dokunan şablonlardan (bkz. planned.ts)
   const projectedTxs = useMemo(() => {

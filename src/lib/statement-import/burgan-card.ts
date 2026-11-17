@@ -11,7 +11,8 @@ import type { LineKind, ParsedStatement, StatementLine } from './statement'
    Tutarlar İngilizce biçimde; "+" önekli tutar alacaktır (ödeme, kampanya
    iadesi). "Önceki Dönem Ekstre Borcu" devirdir. Her kartın sonunda "BU
    KARTINIZLA YAPILAN İŞLEM TOPLAMI", en sonda "Toplam Tutar" yazar.
-   Kontrol: devir + satırlar = dönem borcu; her kartın satırları = kart toplamı. */
+   Kontrol: devir + satırlar = dönem borcu; her kartın satırları = kart toplamı.
+   Hareketsiz dönemde tablo hiç basılmaz: dönem borcu tek devir satırı olur. */
 
 const DATE_RE = /^(\d{2})\/(\d{2})\/(\d{4})$/
 const AMOUNT_RE = /^\+?-?[\d,]*\d\.\d{2}$/
@@ -77,6 +78,7 @@ export function parseBurganCard(pages: PdfPage[]): ParsedStatement | null {
   let total: number | null = null
   let card: string | null = null
   let cols: Cols | null = null
+  let sawTable = false
 
   for (const line of all) {
     const lt = line.text
@@ -89,7 +91,7 @@ export function parseBurganCard(pages: PdfPage[]): ParsedStatement | null {
       continue
     }
     const hc = headerCols(line)
-    if (hc) { cols = hc; continue }
+    if (hc) { cols = hc; sawTable = true; continue }
     if (!cols) continue
     const c = cols
     const amountItem = line.items.find(i => AMOUNT_RE.test(i.str.trim()) && Math.abs(i.right - c.tutarRight) <= COL_TOLERANCE)
@@ -105,6 +107,11 @@ export function parseBurganCard(pages: PdfPage[]): ParsedStatement | null {
     if (!desc) continue
     raw.push({ date, desc: desc + (inst ? ` (${inst[1]}/${inst[2]})` : ''), amount: amountOf(amountItem.str), card })
   }
+
+  // Dönemde hiç hareket yoksa banka işlem tablosunu (devir satırı dahil) hiç
+  // basmıyor; yalnız "Toplam Tutar" = dönem borcu yazıyor. Borcun tamamı devirdir.
+  const quiet = !sawTable && !raw.length && debt != null && total != null && toMinor(total) === toMinor(debt)
+  if (quiet) raw.push({ date: null, desc: 'Önceki Dönem Ekstre Borcu', amount: debt, card: null })
 
   const lines: StatementLine[] = raw.map((r, index) => {
     const carry = !r.date && foldText(r.desc).includes('onceki donem')
@@ -127,7 +134,7 @@ export function parseBurganCard(pages: PdfPage[]): ParsedStatement | null {
     const sum = raw.filter(r => r.card === k && r.date).reduce((s, r) => s + toMinor(r.amount), 0)
     if (sum !== toMinor(t)) issues.push(`*${k} kartının satırları kart toplamını (${t.toFixed(2)}) tutmuyor: fark ${toMajor(sum - toMinor(t)).toFixed(2)}.`)
   }
-  if (!lines.some(l => l.kind !== 'carry')) issues.push('Ekstrede işlem satırı bulunamadı.')
+  if (!quiet && !lines.some(l => l.kind !== 'carry')) issues.push('Ekstrede işlem satırı bulunamadı.')
 
   return {
     bank: 'burgan', bankLabel: 'Burgan (ON)', type: 'credit_card', currency: 'TRY', cards,

@@ -49,4 +49,27 @@ describe('Burgan (ON) ekstresi', () => {
   it('tablo başlıksız bir sonraki sayfaya taşsa da aynı okunur', () => {
     expectSameAcrossPageBreak(parseBurganCard, [page], 'ORNEK KUAFOR')
   })
+
+  it('hareketsiz dönem: tablo yoksa dönem borcu devir sayılır, sorun çıkmaz', () => {
+    const quiet = {
+      lines: groupLines([
+        left(401, 'Kredi Kartı Hesap Özeti', 775),
+        left(39, 'Hesap Kesim Tarihi', 686), left(167, ':', 686), right(288, '07/11/2026', 686),
+        left(39, 'Dönem Borcu (TL)', 674), left(167, ':', 674), right(288, '18,557.44', 674),
+        left(39, 'Son Ödeme Tarihi', 650), left(167, ':', 650), right(288, '17/11/2026', 650),
+        left(365, 'Kalan Taksit:', 320), left(448, '0.00', 320),
+        left(365, 'Toplam Tutar:', 300), left(448, '18,557.44', 300),
+        left(32, 'Burgan Bank A.Ş. Maslak Mah.', 30),
+      ].flat()),
+    }
+    const st = parseStatement([quiet])
+    expect(st.check).toMatchObject({ ok: true, issues: [] })
+    expect(st.lines.map(l => [l.kind, l.amount])).toEqual([['carry', 18557.44]])
+    expect(st.dueDate).toBe('2026-11-17')
+  })
+
+  it('tablo varken satır okunamazsa yine sorun bildirir', () => {
+    const broken = { lines: page.lines.filter(l => !/\d{2}\/\d{2}\/\d{4}|Önceki|TOPLAMI/.test(l.text) || /Tarihi/.test(l.text)) }
+    expect(parseBurganCard([broken])!.check.ok).toBe(false)
+  })
 })

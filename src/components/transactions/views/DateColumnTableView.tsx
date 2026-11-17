@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo, useRef } from 'react'
+import { memo, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAccountStore, useCategoryStore, usePeopleStore, useTransactionStore, useUIStore } from '@/store'
@@ -15,6 +15,9 @@ import { SplitCountBadge } from '@/components/transactions/SplitCountBadge'
 import {
   TxIcon, DeleteConfirmDialog, PencilIcon, RefundIcon, installmentLabel,
 } from '@/components/transactions/TransactionList'
+import { useCrossWorkspacePeers, type CrossWsPeer } from '@/components/transactions/useCrossWorkspacePeers'
+import { CrossWsLink } from '@/components/transactions/CrossWsLink'
+import { useFocusTxRow, FOCUS_ROW_CLASS } from '@/lib/hooks/useFocusTxRow'
 import { sortDates, sortWithinDay, splitFuture, type TxViewProps } from './shared'
 import type { Account, Category, ModalPayload, ModalType, Person, Transaction } from '@/types'
 
@@ -62,6 +65,7 @@ export function DateColumnTableView({
   const allTxs     = useTransactionStore(s => s.transactions)
   const openModal  = useUIStore(s => s.openModal)
   const removeTx   = useTransactionStore(s => s.remove)
+  const crossWsPeers = useCrossWorkspacePeers(transactions)
 
   const catById    = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
   const accById    = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts])
@@ -135,6 +139,13 @@ export function DateColumnTableView({
     },
   })
 
+  const scrollToRow = useCallback((i: number) => {
+    // Liste sayfada aşağıda kalmış olabilir (hesap özeti üstte)
+    parentRef.current?.scrollIntoView({ block: 'end' })
+    virtualizer.scrollToIndex(i, { align: 'center' })
+  }, [virtualizer])
+  const focusedTxId = useFocusTxRow(account.id, rows, scrollToRow)
+
   if (transactions.length === 0) {
     return <EmptyState icon="↕" title={emptyTitle} description={emptyDescription} />
   }
@@ -199,6 +210,8 @@ export function DateColumnTableView({
                     account={account}
                     cat={row.tx.categoryId ? catById.get(row.tx.categoryId) : undefined}
                     toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
+                    crossWs={crossWsPeers.get(row.tx.id)}
+                    focused={focusedTxId === row.tx.id}
                     recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                     family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                     balanceAfter={balances.get(row.tx.id)}
@@ -237,8 +250,8 @@ function SectionBand({ id, count, first }: { id: 'future' | 'past'; count: numbe
 
 /* ── İşlem satırı — 34px; tek yatay çizgi gün grubunun üstünde ────────────── */
 const DateColumnRow = memo(function DateColumnRow({
-  tx, future, dayStart, firstOfAll, cols, account, cat, toAccount, recipient, family,
-  balanceAfter, projected, openModal, removeTx, selectable, selected, onToggleSelect,
+  tx, future, dayStart, firstOfAll, cols, account, cat, toAccount, crossWs, recipient, family,
+  balanceAfter, projected, openModal, removeTx, selectable, selected, onToggleSelect, focused,
 }: {
   tx: Transaction
   future: boolean
@@ -248,6 +261,7 @@ const DateColumnRow = memo(function DateColumnRow({
   account: Account
   cat?: Category
   toAccount?: Account
+  crossWs?: CrossWsPeer
   recipient?: Person
   family?: Person
   balanceAfter?: number
@@ -257,6 +271,7 @@ const DateColumnRow = memo(function DateColumnRow({
   selectable?: boolean
   selected?: boolean
   onToggleSelect?: (id: string) => void
+  focused?: boolean
 }) {
   const isIncome  = tx.type === 'income'
   const isXfer    = tx.type === 'transfer'
@@ -273,6 +288,7 @@ const DateColumnRow = memo(function DateColumnRow({
         dayStart && !firstOfAll ? 'border-t border-border' : '',
         selected ? 'bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.045] hover:bg-accent/50' : 'hover:bg-accent/50',
         projected ? 'opacity-75' : '',
+        focused ? FOCUS_ROW_CLASS : '',
       ].join(' ')}
       style={{ gridTemplateColumns: cols }}
     >
@@ -330,7 +346,9 @@ const DateColumnRow = memo(function DateColumnRow({
 
       {/* Alıcı — transferde hedef hesap "→ X" olarak aynı kolonda */}
       <Cell>
-        {isXfer && toAccount ? (
+        {crossWs ? (
+          <CrossWsLink peer={crossWs} className="truncate hover:text-foreground" />
+        ) : isXfer && toAccount ? (
           <Link href={`/accounts/${tx.toAccountId}`} className="flex min-w-0 items-center gap-1 transition-colors hover:text-foreground">
             <span className="flex-shrink-0 opacity-50">→</span>
             <span className="truncate">{toAccount.name}</span>

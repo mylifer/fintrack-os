@@ -12,6 +12,7 @@ import { useCategoryStore } from './categories.store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { useUndoStore, type RemoveOptions } from './undo.store'
 import { isLive } from '@/lib/sync/tombstone'
+import { classifyCrossWsLegs } from '@/lib/cross-workspace'
 import { localUpsert, localBulkUpsert, localPatch, softDeleteMany, reconcilingPull, localBatch, type BatchOp } from '@/lib/sync/engine'
 import { rowInActiveWorkspace, rowInWorkspace } from '@/lib/workspace-context'
 import { useWorkspaceStore } from './workspace.store'
@@ -164,27 +165,14 @@ const CROSS_WS_ICON = '⇄'
 
 /** Alanlar arası transferi düzenlerken karşı bacak(lar): satırın kendisi hariç,
  *  aynı workspaceTransferId'li canlı satırlar (ham Dexie — karşı alan yüklü değil). */
+export { classifyCrossWsLegs }
+
 export async function crossWorkspacePeers(tx: Pick<Transaction, 'id' | 'workspaceTransferId'>): Promise<Transaction[]> {
   if (!tx.workspaceTransferId) return []
   const rows = await db.transactions.where('workspaceTransferId').equals(tx.workspaceTransferId).toArray()
   return (rows as Transaction[]).filter(p => p.id !== tx.id && isLive(p))
 }
 
-/** Alanlar arası transferin bacaklarını (düzenlenen satır + karşı bacakları)
- *  sınıflar: çıkış (gider, kaynak alan), giriş (gelir, hedef alan) ve varsa
- *  hedef alandaki borç ödemesi. Beklenmeyen bir küme (eksik/fazla bacak,
- *  tutarsız alanlar) → boş nesne: düzenleme bu transferi tanımaz. */
-export function classifyCrossWsLegs(legs: Transaction[]): { outgoing?: Transaction; incoming?: Transaction; payment?: Transaction } {
-  const outs     = legs.filter(t => t.type === 'expense' && !t.debtId)
-  const ins      = legs.filter(t => t.type === 'income' && !t.debtId)
-  const payments = legs.filter(t => t.type === 'transfer' && !!t.debtId)
-  if (outs.length !== 1 || ins.length !== 1 || payments.length > 1
-    || outs.length + ins.length + payments.length !== legs.length) return {}
-  const [outgoing] = outs, [incoming] = ins, [payment] = payments
-  if (outgoing.workspaceId === incoming.workspaceId) return {}
-  if (payment && payment.workspaceId !== incoming.workspaceId) return {}
-  return { outgoing, incoming, payment }
-}
 
 /** Borç ödemesi düzenlenirken borç yamaları: önce eski ödeme geri alınır (−1),
  *  yeni ödeme geri alınmış durumun ÜZERİNE uygulanır (+1). Aynı borçta taksit

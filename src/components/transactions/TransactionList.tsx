@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Wand2 } from 'lucide-react'
 import { suggestPatternFrom } from '@/lib/utils/transaction-rules'
@@ -25,6 +25,9 @@ import { BrandLogo } from '@/components/subscriptions/BrandLogo'
 import { detectBrand } from '@/lib/subscriptions/brands'
 import { getBrandDomain } from '@/lib/people/brands'
 import { usePrivacyStore } from '@/store/privacy.store'
+import { useCrossWorkspacePeers, type CrossWsPeer } from '@/components/transactions/useCrossWorkspacePeers'
+import { CrossWsLink, crossWsLabel } from '@/components/transactions/CrossWsLink'
+import { useFocusTxRow, FOCUS_ROW_CLASS } from '@/lib/hooks/useFocusTxRow'
 
 type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
@@ -191,7 +194,7 @@ const SELECT_COL = '34px '
 const SELECT_COL_W = 34
 const colsFor = (selectable: boolean) => (selectable ? SELECT_COL + TABLE_COLS : TABLE_COLS)
 
-type MetaItem = { text: string; href?: string }
+type MetaItem = { text: string; href?: string; crossWs?: CrossWsPeer }
 
 // İşlem ikonu, sırasıyla:
 //   1. küratörlü marka eşleşmesi (gömülü SVG logo)
@@ -337,13 +340,15 @@ function SectionBanner({ id, count, topClass }: { id: 'future' | 'past'; count: 
 
 // ── TABLE row ─────────────────────────────────────────────────────────────
 const TableTxRow = memo(function TableTxRow({
-  tx, cat, account, toAccount, recipient, family, balanceAfter, balanceCurrency, projected, future, openModal, removeTx,
-  selectable, selected, onToggleSelect, grouped, isFirst, isLast, compact, focusCategoryIds,
+  tx, cat, account, toAccount, crossWs, recipient, family, balanceAfter, balanceCurrency, projected, future, openModal, removeTx,
+  selectable, selected, onToggleSelect, grouped, isFirst, isLast, compact, focusCategoryIds, focused,
 }: {
   tx: Transaction
   cat?: Category
   account?: Account
   toAccount?: Account
+  /** Alanlar arası transfer bacağıysa karşı taraf (Alıcı Hesap sütununda gösterilir) */
+  crossWs?: CrossWsPeer
   recipient?: Person
   family?: Person
   balanceAfter?: number
@@ -366,6 +371,8 @@ const TableTxRow = memo(function TableTxRow({
   compact?: boolean
   /** Bkz. Props.focusCategoryIds */
   focusCategoryIds?: ReadonlySet<string>
+  /** Başka yerden bu satıra gidildi: kısa süre vurgulanır (bkz. useFocusTxRow) */
+  focused?: boolean
 }) {
   const isIncome    = tx.type === 'income'
   const isXfer      = tx.type === 'transfer'
@@ -392,12 +399,14 @@ const TableTxRow = memo(function TableTxRow({
                 : future ? 'bg-sky-500/[0.06] hover:bg-sky-500/[0.09]'
                 : 'bg-card hover:bg-accent/40',
               projected ? 'opacity-60' : '',
+              focused ? FOCUS_ROW_CLASS : '',
               compactCells,
             ].join(' ')
           : [
               'group grid transition-colors border-b border-border/50',
               selected ? 'bg-[var(--batch-accent-soft)] hover:bg-[var(--batch-accent-soft)]' : future ? 'bg-sky-500/[0.04] hover:bg-accent/40' : 'hover:bg-accent/40',
               projected ? 'opacity-60' : '',
+              focused ? FOCUS_ROW_CLASS : '',
               compactCells,
             ].join(' ')
       }
@@ -464,9 +473,14 @@ const TableTxRow = memo(function TableTxRow({
         ) : null}
       </div>
 
-      {/* Alıcı Hesap — yalnızca transferlerde dolu */}
+      {/* Alıcı Hesap — transferlerde ve alanlar arası transfer bacaklarında dolu */}
       <div className="px-2 py-2 flex items-center gap-1.5 min-w-0 overflow-hidden">
-        {isXfer && toAccount ? (
+        {crossWs ? (
+          <CrossWsLink peer={crossWs} className="flex items-center gap-1.5 group/link">
+            {crossWs.account && <AccountAvatar account={crossWs.account} size="xs" className="flex-shrink-0" />}
+            <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{crossWsLabel(crossWs)}</span>
+          </CrossWsLink>
+        ) : isXfer && toAccount ? (
           <Link href={`/accounts/${tx.toAccountId}`} className="flex items-center gap-1.5 min-w-0 group/link">
             <AccountAvatar account={toAccount} size="xs" className="flex-shrink-0" />
             <span className="text-xs text-muted-foreground truncate min-w-0 group-hover/link:text-primary transition-colors">{toAccount.name}</span>
@@ -599,11 +613,13 @@ const TableTxRow = memo(function TableTxRow({
 
 // ── CARDS row (compact minimal) ───────────────────────────────────────────
 const CardTxRow = memo(function CardTxRow({
-  tx, cat, account, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryIds,
+  tx, cat, account, crossWs, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryIds, focused,
 }: {
   tx: Transaction
   cat?: Category
   account?: Account
+  /** Alanlar arası transfer bacağıysa karşı taraf */
+  crossWs?: CrossWsPeer
   recipient?: Person
   family?: Person
   showAccount: boolean
@@ -613,6 +629,8 @@ const CardTxRow = memo(function CardTxRow({
   removeTx: (id: string) => void
   /** Bkz. Props.focusCategoryIds */
   focusCategoryIds?: ReadonlySet<string>
+  /** Bkz. TableTxRow.focused */
+  focused?: boolean
 }) {
   const isIncome  = tx.type === 'income'
   const isXfer    = tx.type === 'transfer'
@@ -625,6 +643,7 @@ const CardTxRow = memo(function CardTxRow({
   // Build meta items — each can have an href for navigation
   const metaItems: MetaItem[] = []
   if (showAccount && account) metaItems.push({ text: account.name, href: `/accounts/${tx.accountId}` })
+  if (crossWs) metaItems.push({ text: crossWsLabel(crossWs), crossWs })
   // Bölünmüş satırda kategori adı "Market +2" olarak okunur (bkz. SplitCountBadge).
   if (cat) metaItems.push({
     text: (tx.categorySplits?.length ?? 0) > 1 ? `${cat.name} +${tx.categorySplits!.length - 1}` : cat.name,
@@ -641,6 +660,7 @@ const CardTxRow = memo(function CardTxRow({
       'group flex items-center gap-2.5 px-2 py-[5px] rounded-lg hover:bg-accent/40 transition-colors',
       future ? 'bg-sky-500/[0.04]' : '',
       projected ? 'opacity-60' : '',
+      focused ? FOCUS_ROW_CLASS : '',
     ].join(' ')}>
       {/* Icon — yalnızca açıklamadan */}
       <TxIcon description={tx.description} recipient={recipient} />
@@ -679,7 +699,7 @@ const CardTxRow = memo(function CardTxRow({
                   >
                     {item.text}
                   </Link>
-                ) : item.text}
+                ) : item.crossWs ? <CrossWsLink peer={item.crossWs} className="hover:text-foreground" /> : item.text}
               </span>
             ))}
           </div>
@@ -811,6 +831,7 @@ export function TransactionList({
   const openModal  = useUIStore(s => s.openModal)
   const removeTx   = useTransactionStore(s => s.remove)
   const allTxs     = useTransactionStore(s => s.transactions)
+  const crossWsPeers = useCrossWorkspacePeers(transactions)
 
   // O(1) lookup maps — replace per-row categories/accounts/people .find() scans.
   const catById    = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
@@ -946,6 +967,14 @@ export function TransactionList({
     },
   })
 
+  const scrollToRow = useCallback((i: number) => {
+    // Liste sayfada aşağıda kalmış olabilir (hesap özeti üstte): önce listeyi
+    // görünür yap, sonra satıra kaydır.
+    parentRef.current?.scrollIntoView({ block: 'end' })
+    virtualizer.scrollToIndex(i, { align: 'center' })
+  }, [virtualizer])
+  const focusedTxId = useFocusTxRow(primaryAccountId, rows, scrollToRow)
+
   if (transactions.length === 0) {
     return <EmptyState icon="↕" title={emptyTitle} description={emptyDescription} />
   }
@@ -1034,6 +1063,8 @@ export function TransactionList({
                         cat={catFor(row.tx)}
                         account={accById.get(row.tx.accountId)}
                         toAccount={row.tx.toAccountId ? accById.get(row.tx.toAccountId) : undefined}
+                        crossWs={crossWsPeers.get(row.tx.id)}
+                        focused={focusedTxId === row.tx.id}
                         recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                         family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                         balanceAfter={runningBalances.get(row.tx.id)?.balance}
@@ -1080,6 +1111,8 @@ export function TransactionList({
                     future={row.future}
                     cat={catFor(row.tx)}
                     account={accById.get(row.tx.accountId)}
+                    crossWs={crossWsPeers.get(row.tx.id)}
+                    focused={focusedTxId === row.tx.id}
                     recipient={row.tx.recipientId ? personById.get(row.tx.recipientId) : undefined}
                     family={row.tx.familyMemberId ? personById.get(row.tx.familyMemberId) : undefined}
                     showAccount={showAccount}
