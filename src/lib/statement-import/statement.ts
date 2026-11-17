@@ -7,6 +7,7 @@ import { parseOdeabankCard } from './odeabank-card'
 import { parseOdeabankPeriod } from './odeabank-period'
 import { parseKuveytCard } from './kuveyt-card'
 import { parseKuveytScreenshot } from './kuveyt-period'
+import { parseBurganScreenshots } from './burgan-period'
 import type { OcrPage } from './ocr'
 import { parseQnbPeriod, parseQnbStatement } from './qnb-card'
 import { parseBurganCard } from './burgan-card'
@@ -157,9 +158,15 @@ export function withDiffHint(st: ParsedStatement): ParsedStatement {
   return hint ? { ...st, check: { ...check, issues: [...check.issues, hint] } } : st
 }
 
-/** Ekran görüntüsü (OCR) — yalnız ekstresi PDF olarak alınamayan dönem içi listeler. */
-export function parseScreenshot(page: OcrPage): ParsedStatement {
-  const parsed = parseKuveytScreenshot(page)
-  if (parsed) return parsed
-  throw new Error('Bu ekran görüntüsünün biçimi henüz tanınmıyor. Şimdilik Kuveyt Türk "Dönem İçi Harcamalar" ekranı destekleniyor; diğer bankalar için PDF ekstre yükleyin.')
+/** Ekran görüntüsü (OCR) — yalnız ekstresi PDF olarak alınamayan dönem içi listeler.
+ *  Uzun liste birden çok ekran görüntüsüyle (aşağı kaydırarak) gelebilir. */
+export function parseScreenshots(pages: OcrPage[]): ParsedStatement {
+  const kuveyt = pages.map(p => parseKuveytScreenshot(p))
+  if (pages.length === 1 && kuveyt[0]) return kuveyt[0]
+  if (kuveyt.some(Boolean)) throw new Error('Kuveyt Türk "Dönem İçi Harcamalar" ekranını tek ekran görüntüsü olarak yükleyin.')
+  const burgan = parseBurganScreenshots(pages)
+  if (burgan) return burgan
+  throw new Error('Bu ekran görüntüsünün biçimi henüz tanınmıyor. Şimdilik Kuveyt Türk "Dönem İçi Harcamalar" ve Burgan (ON) "Kart Hareketleri → Dönem İçi" ekranları destekleniyor; diğer bankalar için PDF ekstre yükleyin.')
 }
+
+export const parseScreenshot = (page: OcrPage): ParsedStatement => parseScreenshots([page])
