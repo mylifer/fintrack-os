@@ -9,8 +9,9 @@ import type { LineKind, ParsedStatement, StatementLine } from './statement'
    Tablo (kart başına "XXXX NOLU KARTIN HARCAMALARI"):
      İşlem Tarihi | İşlem Açıklama | Kalan Tutar/Taksit | MaxiPuan | Tutar
    Tutarlar İngilizce biçimde; "+" önekli tutar alacaktır (ödeme, kampanya
-   iadesi). "Önceki Dönem Ekstre Borcu" devirdir. Her kartın sonunda "BU
-   KARTINIZLA YAPILAN İŞLEM TOPLAMI", en sonda "Toplam Tutar" yazar.
+   iadesi). MaxiPuan sütunu kazanılan puandır, borcu etkilemez. "Önceki Dönem
+   Ekstre Borcu" devirdir. Her kartın sonunda "BU KARTINIZLA YAPILAN İŞLEM
+   TOPLAMI", en sonda "Toplam Tutar" yazar.
    Kontrol: devir + satırlar = dönem borcu; her kartın satırları = kart toplamı.
    Hareketsiz dönemde tablo hiç basılmaz: dönem borcu tek devir satırı olur. */
 
@@ -25,6 +26,12 @@ const amountOf = (s: string) => {
   const t = s.trim()
   const v = toMajor(toMinor(Number(t.replace(/^\+/, '').replace(/,/g, ''))))
   return t.startsWith('+') ? -v : v
+}
+
+/** MaxiPuan sütunu: "0.07" kazanılan, "-0.50" harcanan puan; "0.00" puansız. */
+const bonusOf = (s: string) => {
+  const v = toMajor(toMinor(Number(s.trim().replace(/^\+/, '').replace(/,/g, ''))))
+  return v === 0 ? null : v
 }
 
 const PAYMENT_RE = /borc odeme|odemeniz|kart odemesi|hesaptan odeme/
@@ -48,13 +55,13 @@ function labelled(lines: PdfLine[], label: string): string | null {
   return null
 }
 
-interface Cols { descX: number; taksitX: number; puanX: number; tutarRight: number }
+interface Cols { descX: number; taksitX: number; puanX: number; puanRight: number; tutarRight: number }
 
 function headerCols(line: PdfLine): Cols | null {
   const find = (label: string) => line.items.find(i => foldText(i.str).replace(/:$/, '').trim() === foldText(label))
   const desc = find('İşlem Açıklama'), taksit = find('Kalan Tutar/Taksit'), puan = find('MaxiPuan'), tutar = find('Tutar')
   if (!desc || !tutar) return null
-  return { descX: desc.x - 4, taksitX: (taksit?.x ?? 320) - 4, puanX: (puan?.x ?? 430) - 4, tutarRight: tutar.right }
+  return { descX: desc.x - 4, taksitX: (taksit?.x ?? 320) - 4, puanX: (puan?.x ?? 430) - 4, puanRight: puan?.right ?? 475, tutarRight: tutar.right }
 }
 
 export function parseBurganCard(pages: PdfPage[]): ParsedStatement | null {
@@ -71,7 +78,7 @@ export function parseBurganCard(pages: PdfPage[]): ParsedStatement | null {
   const debtText = labelled(all, 'Dönem Borcu (TL)')
   const debt = debtText ? amountOf(debtText) : null
 
-  interface Raw { date: string | null; desc: string; amount: number; card: string | null }
+  interface Raw { date: string | null; desc: string; amount: number; bonus: number | null; card: string | null }
   const raw: Raw[] = []
   const cards: string[] = []
   const cardTotals = new Map<string, number>()
@@ -104,19 +111,21 @@ export function parseBurganCard(pages: PdfPage[]): ParsedStatement | null {
     const desc = line.items.filter(i => i !== amountItem && i.x >= c.descX && i.x < c.taksitX).map(i => i.str.trim()).join(' ').replace(/\s+/g, ' ').trim()
     const mid = line.items.filter(i => i !== amountItem && i.x >= c.taksitX && i.x < c.puanX).map(i => i.str.trim()).join(' ')
     const inst = mid.match(INST_RE)
+    // MaxiPuan sütunu da sağa yaslı: başlığın sağ kenarıyla hizalı tutar
+    const puanItem = line.items.find(i => i !== amountItem && AMOUNT_RE.test(i.str.trim()) && Math.abs(i.right - c.puanRight) <= COL_TOLERANCE)
     if (!desc) continue
-    raw.push({ date, desc: desc + (inst ? ` (${inst[1]}/${inst[2]})` : ''), amount: amountOf(amountItem.str), card })
+    raw.push({ date, desc: desc + (inst ? ` (${inst[1]}/${inst[2]})` : ''), amount: amountOf(amountItem.str), bonus: puanItem ? bonusOf(puanItem.str) : null, card })
   }
 
   // Dönemde hiç hareket yoksa banka işlem tablosunu (devir satırı dahil) hiç
   // basmıyor; yalnız "Toplam Tutar" = dönem borcu yazıyor. Borcun tamamı devirdir.
   const quiet = !sawTable && !raw.length && debt != null && total != null && toMinor(total) === toMinor(debt)
-  if (quiet) raw.push({ date: null, desc: 'Önceki Dönem Ekstre Borcu', amount: debt, card: null })
+  if (quiet) raw.push({ date: null, desc: 'Önceki Dönem Ekstre Borcu', amount: debt, bonus: null, card: null })
 
   const lines: StatementLine[] = raw.map((r, index) => {
     const carry = !r.date && foldText(r.desc).includes('onceki donem')
     return {
-      index, date: r.date, description: carry ? 'Önceki dönem bakiyesi' : r.desc, amount: r.amount, bonus: null,
+      index, date: r.date, description: carry ? 'Önceki dönem bakiyesi' : r.desc, amount: r.amount, bonus: r.bonus,
       installment: null, foreign: null, kind: carry ? 'carry' : kindOf(r.desc, r.amount, r.date !== null),
     }
   })
