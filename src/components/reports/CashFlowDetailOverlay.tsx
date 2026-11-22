@@ -162,7 +162,7 @@ export function CashFlowDetailOverlay({ open, from, to, label, transactions, onC
 
         {/* Tip sekmeleri */}
         <div className="px-6 py-3 border-b border-border/60 flex-shrink-0">
-          <div className="flex gap-0.5 bg-background p-1 rounded-xl w-fit">
+          <div className="flex flex-wrap lg:flex-nowrap gap-0.5 bg-background p-1 rounded-xl w-fit max-w-full">
             {TABS.map(t => {
               const count = t.key === 'all'
                 ? inRange.length

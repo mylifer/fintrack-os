@@ -33,7 +33,9 @@ export function ReportFilterBar({
   return (
     <div className="px-6 py-3 border-b border-border/50 bg-card flex flex-wrap items-center gap-3 flex-shrink-0">
 
-      <div className="flex gap-0.5 bg-background p-1 rounded-xl">
+      {/* Telefonda altı aralık tek satıra sığmayıp sayfayı yatay kaydırıyordu:
+          sarmalanır (lg'de tek satır). */}
+      <div className="flex flex-wrap lg:flex-nowrap gap-0.5 bg-background p-1 rounded-xl">
         {PRESETS.map(p => (
           <button
             key={p.key}

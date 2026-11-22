@@ -28,3 +28,28 @@ test('telefonda üst çubuk: arama, bildirim ve gizlilik her sayfada birer kez',
   await expect(palette).toBeHidden()
   await expect(page).toHaveURL(/\/categories/)
 })
+
+/* Yatay kaydırma: telefonda hiçbir sayfa ekrandan taşmamalı. Üç sayfa taşıyordu
+   (Raporlar 209px, Tahmin 93px, İstatistikler 69px) — hepsi tek satıra sığmayan
+   seçenek şeritlerindendi. Yeni bir şerit/tablo eklenince burası kırmızıya
+   düşer. İçinde kendi yatay kaydırması olan kutular (dönem sekmeleri) sayfanın
+   kaydırmasına girmez; ölçülen yalnız belgenin kendisidir. */
+const ROUTES = [
+  '/dashboard', '/transactions', '/accounts', '/categories', '/tags', '/investments',
+  '/reports', '/statistics', '/forecast', '/budgets', '/goals', '/debts', '/payments',
+  '/kart-takvimi', '/recurring', '/subscriptions', '/aile-uyeleri', '/alicilar',
+  '/ekstre-yukle', '/settings',
+]
+
+test('telefonda hiçbir sayfa yatay kaymıyor', async ({ page }) => {
+  test.setTimeout(180_000)
+  await openApp(page)
+  const overflowing: string[] = []
+  for (const route of ROUTES) {
+    await page.goto(route)
+    await page.waitForTimeout(700)
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    if (overflow > 0) overflowing.push(`${route} (+${overflow}px)`)
+  }
+  expect(overflowing, 'yatay kayan sayfalar').toEqual([])
+})

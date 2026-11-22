@@ -194,7 +194,8 @@ export default function ForecastPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium tracking-wide uppercase text-muted-foreground">Görünüm</span>
-            <div className="flex items-center gap-1">
+            {/* Dört görünüm telefonda tek satıra sığmıyordu: sarmalanır. */}
+            <div className="flex flex-wrap lg:flex-nowrap items-center gap-1">
               {FORECAST_VIEWS.map(v => (
                 <button
                   key={v.id}
