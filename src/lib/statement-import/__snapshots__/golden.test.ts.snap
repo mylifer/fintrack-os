@@ -46,7 +46,7 @@ exports[`altın çıktı: PDF ekstreleri > burgan-card 1`] = `
   "0 | — | carry | 10000.00 | bonus=— | taksit=— | döviz=— | Önceki dönem bakiyesi |",
   "1 | 2026-09-07 | purchase | 310.00 | bonus=— | taksit=— | döviz=— | ORNEK BAKKAL ISTANBUL TR |",
   "2 | 2026-09-08 | refund | -62.10 | bonus=— | taksit=— | döviz=— | ON Kredi Kartı Elektrikli Araç Şarj Kampanyası kaz |",
-  "3 | 2026-09-09 | purchase | 1500.00 | bonus=— | taksit=— | döviz=— | ORNEK KUAFOR ISTANBUL TR |",
+  "3 | 2026-09-09 | purchase | 1500.00 | bonus=0.07 | taksit=— | döviz=— | ORNEK KUAFOR ISTANBUL TR |",
   "4 | 2026-09-17 | payment | -10000.00 | bonus=— | taksit=— | döviz=— | KREDI KARTI BORC ODEME |",
 ]
 `;

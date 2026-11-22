@@ -43,6 +43,8 @@ describe('Burgan (ON) ekstresi', () => {
       ['purchase', 1500, 'ORNEK KUAFOR ISTANBUL TR'],
       ['payment', -10000, 'KREDI KARTI BORC ODEME'],
     ])
+    // MaxiPuan yalnız kuaför satırında yazıyor; borcu etkilemez
+    expect(st.lines.map(l => l.bonus)).toEqual([null, null, null, 0.07, null])
     expect(parseStatement([page]).bank).toBe('burgan')
   })
 
