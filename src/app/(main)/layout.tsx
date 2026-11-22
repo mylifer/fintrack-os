@@ -28,6 +28,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <AppLockGate>
       <PrivacyProvider>
       <div className="flex min-h-screen bg-background">
+        {/* iOS standalone: durum çubuğu şeridi. Sticky başlıklar güvenli alanın
+            altına yapışır (top-[var(--safe-top)]); bu şerit de üstte kalan
+            boşluğu sayfa zeminiyle doldurur, yoksa kayan içerik saatin
+            arkasından görünür. Masaüstünde yüksekliği 0. */}
+        <div aria-hidden className="lg:hidden print:hidden fixed top-0 left-0 right-0 z-40 h-[var(--safe-top)] bg-background" />
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
           <MobileTopBar />

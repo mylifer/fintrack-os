@@ -185,6 +185,13 @@
    BASE LAYER
    ───────────────────────────────────────────────────────────────── */
 @layer base {
+  :root {
+    /* iOS standalone (Ana Ekrana Ekle): içerik durum çubuğunun ve alt
+       gösterge çubuğunun altına uzar. Bu iki değişken o güvenli alanı verir;
+       masaüstünde ve tarayıcı sekmesinde 0'dır, yani düzen değişmez. */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
   * {
     border-color: var(--border);
     outline-color: var(--ring);

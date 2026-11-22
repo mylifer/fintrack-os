@@ -222,7 +222,7 @@ export default function CategoryDetailClient({ id }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* ── Header / breadcrumb ── */}
-      <div className="flex items-center gap-2 px-6 py-4 border-b border-border bg-background sticky top-0 z-30 flex-shrink-0 flex-wrap">
+      <div className="flex items-center gap-2 px-6 py-4 border-b border-border bg-background sticky top-[var(--safe-top)] z-30 flex-shrink-0 flex-wrap">
         <button onClick={() => router.push('/categories')}
           className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors text-sm flex-shrink-0">
           <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" width={15} height={15}>

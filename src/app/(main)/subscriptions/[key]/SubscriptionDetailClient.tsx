@@ -16,7 +16,7 @@ interface Props { groupKey: string }
 /** Back header — shared by both the resolved and "not found" states. */
 function BackHeader({ onBack }: { onBack: () => void }) {
   return (
-    <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-background sticky top-0 z-30 flex-shrink-0">
+    <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-background sticky top-[var(--safe-top)] z-30 flex-shrink-0">
       <button
         onClick={onBack}
         className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"

@@ -93,7 +93,7 @@ export default function TagDetailClient({ tag }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Back header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-background sticky top-0 z-30 flex-shrink-0">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-background sticky top-[var(--safe-top)] z-30 flex-shrink-0">
         <button
           onClick={() => router.push('/tags')}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"

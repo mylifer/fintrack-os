@@ -399,7 +399,7 @@ export function NotificationPanel({
   return (
     <div
       className={[
-        'fixed left-3 right-3 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[400px]',
+        'fixed left-3 right-3 top-[calc(4rem+var(--safe-top))] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[400px]',
         'z-50 rounded-xl border border-border bg-background shadow-xl overflow-hidden flex flex-col',
       ].join(' ')}
       role="dialog"

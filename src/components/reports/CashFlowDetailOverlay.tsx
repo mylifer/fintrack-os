@@ -120,7 +120,7 @@ export function CashFlowDetailOverlay({ open, from, to, label, transactions, onC
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-6 py-4 border-b border-border flex-shrink-0">
+        <div className="flex items-start justify-between px-6 py-4 pt-[calc(1rem+var(--safe-top))] border-b border-border flex-shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-foreground truncate">Nakit Akışı Detayı</h2>

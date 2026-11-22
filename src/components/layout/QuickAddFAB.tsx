@@ -12,7 +12,7 @@ export function QuickAddFAB() {
     <button
       onClick={() => openModal('add-transaction')}
       className={[
-        'lg:hidden print:hidden fixed bottom-20 right-5 z-50',
+        'lg:hidden print:hidden fixed bottom-[calc(5rem+var(--safe-bottom))] right-5 z-50',
         'w-14 h-14 bg-primary text-white rounded-full',
         'flex items-center justify-center',
         'text-2xl',

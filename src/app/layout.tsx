@@ -28,6 +28,12 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
+  // iOS'ta ana ekrandan açılınca durum çubuğu içeriğin ÜSTÜNE biner
+  // (appleWebApp.statusBarStyle: 'black-translucent'). Güvenli alanı
+  // boşaltabilmek için env(safe-area-inset-*) gerekir; o değerler yalnız
+  // viewport-fit=cover ile dolar — yoksa hepsi 0 kalır ve üst çubuk saatin
+  // altında ezilir. Güvenli alanlar globals.css'te --safe-top/--safe-bottom.
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#09090b' },

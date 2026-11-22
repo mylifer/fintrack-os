@@ -19,7 +19,7 @@ export function Header({ title, action }: HeaderProps) {
   const readOnly  = useWorkspaceStore(selectActiveReadOnly)
 
   return (
-    <header className="flex items-center justify-between px-6 py-5 border-b border-border bg-background sticky top-0 z-30">
+    <header className="flex items-center justify-between px-6 py-5 border-b border-border bg-background sticky top-[var(--safe-top)] z-30">
       <h1 className="text-base font-semibold text-foreground">{title}</h1>
 
       <div className="flex items-center gap-2 print:hidden">

@@ -247,7 +247,7 @@ export default function BudgetDetailClient({ id }: { id: string }) {
     <div className="flex flex-col h-full">
 
       {/* ── Custom header ──────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-background sticky top-0 z-30 flex-shrink-0">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-background sticky top-[var(--safe-top)] z-30 flex-shrink-0">
         <button
           onClick={() => router.push('/budgets')}
           className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors text-sm flex-shrink-0"

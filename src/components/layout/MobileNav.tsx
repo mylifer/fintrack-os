@@ -40,7 +40,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Ana menü"
-      className="lg:hidden print:hidden fixed bottom-0 left-0 right-0 z-40 bg-background border-t border-border pb-[env(safe-area-inset-bottom)]"
+      className="lg:hidden print:hidden fixed bottom-0 left-0 right-0 z-40 bg-background border-t border-border pb-[var(--safe-bottom)]"
     >
       <div className="flex h-14">
         {PRIMARY.map(item => {
@@ -67,7 +67,7 @@ export function MobileNav() {
               className={[
                 'lg:hidden print:hidden fixed inset-x-0 bottom-0 z-[60] flex flex-col max-h-[85dvh]',
                 'bg-background border-t border-border rounded-t-2xl shadow-xl outline-none',
-                'pb-[env(safe-area-inset-bottom)]',
+                'pb-[var(--safe-bottom)]',
                 'data-open:animate-in data-open:slide-in-from-bottom data-closed:animate-out data-closed:slide-out-to-bottom duration-200',
               ].join(' ')}
             >

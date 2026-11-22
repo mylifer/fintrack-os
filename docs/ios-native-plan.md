@@ -77,8 +77,9 @@ Web ve iOS aynı tablolara yazar; kurallar birebir uyulmazsa kayıtlar birbirini
 
 - Capacitor kabuğu yalnız Windows PC'de, push edilmemiş `ios-app` dalında
   (`C:\Users\Kaan\Projects\fintrack-os-ios`). SwiftUI ile gereksiz; kullanıcı onaylarsa silinir.
-- PWA'da (Safari → Ana Ekrana Ekle) çentik boşluğu sorunu: `statusBarStyle: 'black-translucent'`
-  ama `viewport-fit=cover`/`env(safe-area-inset-*)` yok → üst çubuk saat/pilin altında kalır.
-  Önerildi, yapılmadı.
+- ~~PWA'da (Safari → Ana Ekrana Ekle) çentik boşluğu sorunu.~~ 2026-11-22'de kapatıldı:
+  `viewport-fit=cover` eklendi, güvenli alanlar `globals.css`'teki `--safe-top` /
+  `--safe-bottom` değişkenlerinde toplandı; mobil üst çubuk, sticky sayfa başlıkları,
+  hızlı ekleme düğmesi ve alt menü bunlara göre hizalanıyor.
 - claude.ai'deki "FinTrack OS — Devam Notu" belgesi bu oturumdan okunamadı (erişim reddi); artık
   devir notu bu dosya.
