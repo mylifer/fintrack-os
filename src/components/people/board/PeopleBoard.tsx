@@ -17,6 +17,7 @@ import { collapseInstallments } from '@/lib/utils/installments'
 import { PersonEditModal } from './PersonEditModal'
 import { TableView } from './views/TableView'
 import { IndexView } from './views/IndexView'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import type { Person } from '@/types'
 
 /* ── Kişi tahtası (Alıcılar / Aile Üyeleri) ──────────────────────────────────
@@ -84,7 +85,11 @@ export function PeopleBoard({ variant }: { variant: BoardVariant }) {
 
   const shownExpense = rows.reduce((s, r) => s + r.expense, 0)
   const shownIncome  = rows.reduce((s, r) => s + r.income, 0)
-  const Active = (VIEWS.find(v => v.id === view) ?? VIEWS[0]).Comp
+  // Tablo görünümü 660–640px'lik yoğun bir tablodur; telefonda sütunların çoğu
+  // yan kaydırmadan görünmez. lg altında her zaman "Dizin" basılır (kayıtlı
+  // tercih masaüstü için saklı kalır) ve görünüm seçici gizlenir.
+  const isMobile = useIsMobile()
+  const Active = (VIEWS.find(v => v.id === (isMobile ? 'index' : view)) ?? VIEWS[0]).Comp
 
   async function confirmArchive() {
     if (!archiving) return
@@ -136,8 +141,8 @@ export function PeopleBoard({ variant }: { variant: BoardVariant }) {
               className="w-fit bg-card text-xs"
             />
 
-            {/* Görünüm seçici (segmented control) */}
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-secondary/60">
+            {/* Görünüm seçici (segmented control) — mobilde Dizin sabit */}
+            <div className="hidden lg:flex items-center gap-1 p-1 rounded-xl bg-secondary/60">
               {VIEWS.map(v => (
                 <button
                   key={v.id}

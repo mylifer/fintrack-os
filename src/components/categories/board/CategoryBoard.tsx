@@ -3,6 +3,7 @@
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useCategoryStore, useTransactionStore } from '@/store'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useUndoStore } from '@/store/undo.store'
 import { CategoryIcon } from '../CategoryIcon'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -160,7 +161,12 @@ export function CategoryBoard() {
   }
 
   const archivingChildren = archiving ? archivableSubtreeIds(archiving.id, categories).length - 1 : 0
-  const Active = (VIEWS.find(v => v.id === view) ?? VIEWS[0]).Comp
+  // Tablo görünümü 660–640px'lik yoğun bir tablodur; telefonda sütunların çoğu
+  // yan kaydırmadan görünmez. lg altında her zaman "Dizin" basılır (kayıtlı
+  // tercih masaüstü için saklı kalır) ve görünüm seçici gizlenir.
+  const isMobile = useIsMobile()
+  const effView: ViewId = isMobile ? 'index' : view
+  const Active = (VIEWS.find(v => v.id === effView) ?? VIEWS[0]).Comp
 
   return (
     <>
@@ -223,8 +229,8 @@ export function CategoryBoard() {
               className="w-fit bg-card text-xs"
             />
 
-            {/* Görünüm seçici (segmented control) */}
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-secondary/60">
+            {/* Görünüm seçici (segmented control) — mobilde Dizin sabit */}
+            <div className="hidden lg:flex items-center gap-1 p-1 rounded-xl bg-secondary/60">
               {VIEWS.map(v => (
                 <button
                   key={v.id}
@@ -267,7 +273,7 @@ export function CategoryBoard() {
               {/* Tablo görünümü kırılımı ağaç olarak gösterir; düz listede
                   (arama ya da Dizin) alt kategoriler ayrı satır olduğu için
                   toplamların üst üste bindiğini yazmak gerekiyor. */}
-              {(query.trim() !== '' || view === 'index') && (
+              {(query.trim() !== '' || effView === 'index') && (
                 <span className="hidden sm:inline">
                   alt kategoriler ayrı satır — tutarları üstlerinin içinde de sayılır
                 </span>

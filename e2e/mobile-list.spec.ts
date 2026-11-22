@@ -54,3 +54,22 @@ test('telefonda işlem listesi: tutar ekranda, satır dokunulabilir, satır işl
   await expect(sheet.getByRole('button', { name: 'Sil' })).toBeVisible()
   await expect(sheet.getByRole('link', { name: /kural oluştur/i })).toBeVisible()
 })
+
+/* Kategoriler ve Alıcılar panolarında "Tablo" görünümü 640–660px'lik yoğun bir
+   tablodur: telefonda sütunların çoğu ancak yan kaydırılarak görünür. lg altında
+   kayıtlı tercih ne olursa olsun "Dizin" basılır. */
+test('telefonda kategori panosu: kayıtlı tercih tablo olsa da dizin basılır', async ({ page }) => {
+  await openApp(page)
+  await page.evaluate(() => localStorage.setItem('categories.viewMode', 'table'))
+  await page.goto('/categories')
+  await expect(page.getByRole('heading', { name: 'Kategoriler' })).toBeVisible()
+  await page.waitForTimeout(600)
+
+  const wide = await page.evaluate(() => [...document.querySelectorAll('body *')].filter(el => {
+    const r = el.getBoundingClientRect()
+    return r.width > document.documentElement.clientWidth + 4 && r.height > 8 && getComputedStyle(el).position !== 'fixed'
+  }).length)
+  expect(wide, 'ekrandan geniş öğe').toBe(0)
+  // Görünüm seçici yalnız masaüstünde
+  await expect(page.getByRole('button', { name: 'Tablo', exact: true })).toBeHidden()
+})
