@@ -23,9 +23,13 @@ export function Header({ title, action }: HeaderProps) {
       <h1 className="text-base font-semibold text-foreground">{title}</h1>
 
       <div className="flex items-center gap-2 print:hidden">
-        {/* Bildirim merkezi — Header her sayfada olduğundan zil tek noktadan gelir */}
-        <PrivacyToggle className="w-11 h-11 lg:w-9 lg:h-9 rounded-xl" />
-        <NotificationBell />
+        {/* Gizlilik ve bildirim mobilde üst çubukta (MobileTopBar): Header'ı
+            olmayan sayfalarda da görünsünler ve telefonda aynı düğme iki kez
+            çıkmasın. Masaüstünde yeri burası. */}
+        <div className="hidden lg:flex items-center gap-2">
+          <PrivacyToggle className="w-9 h-9 rounded-xl" />
+          <NotificationBell />
+        </div>
         {/* h-11 (44px) dokunmatikte; masaüstünde eski h-9 yoğunluğu korunur. */}
         {action && !readOnly && (
           <button
