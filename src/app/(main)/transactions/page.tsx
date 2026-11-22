@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { Header }          from '@/components/layout/Header'
 import { PeriodTabs }      from '@/components/ui/PeriodTabs'
 import { SelectField }     from '@/components/ui/Select'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { TransactionList, TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTransactionStore, useUIStore, usePeopleStore, useCategoryStore, useRecurringStore, useAccountStore, useSettingsStore } from '@/store'
@@ -42,6 +43,9 @@ export default function TransactionsPage() {
   const showFuture    = useSettingsStore(s => s.showFutureTxs)
   const setShowFuture = useSettingsStore(s => s.setShowFutureTxs)
   const [sortOption, setSortOption] = useState<TxSortOption>('date-desc')
+  // Telefonda altı açılır menü ekranın yarısını yiyordu: tek "Filtrele"
+  // düğmesi + alttan açılan sayfa (masaüstünde eskisi gibi satır içinde).
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [periodOffset, setPeriodOffset] = useState(0)
 
   // Toplu düzenleme seçim state'i (yalnızca bu sayfa; liste kontrollü seçim alır)
@@ -225,6 +229,41 @@ export default function TransactionsPage() {
     downloadCsv(csv, `islemler-${date}.csv`)
   }
 
+  // Açık filtre sayısı ("Filtrele" rozetinde) — arama ve dönem buna girmez,
+  // ikisi de ekranda zaten görünür.
+  const activeFilterCount = [typeFilter, categoryFilter, accountFilter, familyFilter, recipientFilter].filter(Boolean).length
+
+  function clearFilters() {
+    setTypeFilter(''); setCategoryFilter(''); setAccountFilter('')
+    setFamilyFilter(null); setRecipientFilter(null); setSortOption('date-desc')
+  }
+
+  // Aynı altı kontrol iki yerde basılır: masaüstünde filtre satırında, telefonda
+  // filtre sayfasında istif (tam genişlik).
+  const filterControls = (stacked = false) => {
+    const cls = stacked ? 'w-full bg-card text-sm' : 'w-fit bg-card text-xs'
+    return (
+      <>
+        <SelectField
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+          options={[
+            { value: '',         label: 'Tüm Türler' },
+            { value: 'expense',  label: 'Gider' },
+            { value: 'income',   label: 'Gelir' },
+            { value: 'transfer', label: 'Transfer' },
+          ]}
+          className={cls}
+        />
+        <SelectField value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} options={categoryOptions} className={cls} />
+        <SelectField value={accountFilter}  onChange={e => setAccountFilter(e.target.value)}  options={accountOptions}  className={cls} />
+        <SelectField value={familyFilter?.id ?? ''}    onChange={e => selectPerson(setFamilyFilter, e.target.value)}    options={familyOptions}    className={cls} />
+        <SelectField value={recipientFilter?.id ?? ''} onChange={e => selectPerson(setRecipientFilter, e.target.value)} options={recipientOptions} className={cls} />
+        <SelectField value={sortOption} onChange={e => setSortOption(e.target.value as TxSortOption)} options={TX_SORT_OPTIONS} className={cls} />
+      </>
+    )
+  }
+
   return (
     <>
       <Header title="İşlemler" action={{ label: 'Ekle', onClick: () => openModal('add-transaction') }} />
@@ -236,7 +275,9 @@ export default function TransactionsPage() {
           onChange: setPeriodOffset,
         }}
         rightSlot={
-          <label className="flex items-center gap-2 cursor-pointer select-none whitespace-nowrap">
+          // Telefonda bu kutu dönem şeridinin altında tam bir satır yiyordu;
+          // oradaki yeri filtre sayfasına taşındı (aynı durum, tek kaynak).
+          <label className="hidden lg:flex items-center gap-2 cursor-pointer select-none whitespace-nowrap">
             <input
               type="checkbox"
               checked={showFuture}
@@ -248,65 +289,79 @@ export default function TransactionsPage() {
         }
       />
 
-      {/* Filters */}
-      <div className="flex items-center flex-wrap gap-2 px-6 py-4 bg-transparent border-b border-border flex-shrink-0">
+      {/* Filters — masaüstünde satır içinde, telefonda "Filtrele" sayfasında */}
+      <div className="flex items-center flex-wrap gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-transparent border-b border-border flex-shrink-0">
         <input
           type="text"
           placeholder="Ara: açıklama, alıcı, aile üyesi, kategori, hesap, not, etiket..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-48 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
-        />
-        <SelectField
-          value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)}
-          options={[
-            { value: '',         label: 'Tüm Türler' },
-            { value: 'expense',  label: 'Gider' },
-            { value: 'income',   label: 'Gelir' },
-            { value: 'transfer', label: 'Transfer' },
-          ]}
-          className="w-fit bg-card text-xs"
-        />
-        <SelectField
-          value={categoryFilter}
-          onChange={e => setCategoryFilter(e.target.value)}
-          options={categoryOptions}
-          className="w-fit bg-card text-xs"
-        />
-        <SelectField
-          value={accountFilter}
-          onChange={e => setAccountFilter(e.target.value)}
-          options={accountOptions}
-          className="w-fit bg-card text-xs"
-        />
-        <SelectField
-          value={familyFilter?.id ?? ''}
-          onChange={e => selectPerson(setFamilyFilter, e.target.value)}
-          options={familyOptions}
-          className="w-fit bg-card text-xs"
-        />
-        <SelectField
-          value={recipientFilter?.id ?? ''}
-          onChange={e => selectPerson(setRecipientFilter, e.target.value)}
-          options={recipientOptions}
-          className="w-fit bg-card text-xs"
-        />
-        <SelectField
-          value={sortOption}
-          onChange={e => setSortOption(e.target.value as TxSortOption)}
-          options={TX_SORT_OPTIONS}
-          className="w-fit bg-card text-xs"
+          className="flex-1 min-w-0 lg:min-w-48 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
         />
         <button
-          onClick={handleExportCsv}
-          disabled={filtered.length === 0}
-          title="İşlemleri Dışa Aktar (CSV)"
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-semibold text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          onClick={() => setFiltersOpen(true)}
+          className="lg:hidden flex-shrink-0 flex items-center gap-1.5 h-10 px-3 rounded-xl border border-border bg-card text-xs font-semibold text-foreground active:bg-accent transition-colors"
         >
-          ↓ CSV
+          Filtrele
+          {activeFilterCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[11px] font-bold tabular-nums">
+              {activeFilterCount}
+            </span>
+          )}
         </button>
+        <div className="hidden lg:flex items-center flex-wrap gap-2">
+          {filterControls()}
+          <button
+            onClick={handleExportCsv}
+            disabled={filtered.length === 0}
+            title="İşlemleri Dışa Aktar (CSV)"
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-semibold text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            ↓ CSV
+          </button>
+        </div>
       </div>
+
+      {/* Telefon: filtre sayfası */}
+      <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DialogContent className="lg:hidden top-auto bottom-0 left-0 translate-x-0 translate-y-0 w-full max-w-none sm:max-w-none rounded-b-none rounded-t-2xl p-4 pb-[calc(1rem+var(--safe-bottom))] gap-3 max-h-[85dvh] overflow-y-auto">
+          <DialogTitle className="text-sm font-semibold">Filtrele ve sırala</DialogTitle>
+          <div className="flex flex-col gap-2">
+            {filterControls(true)}
+            <label className="flex items-center gap-3 h-11 px-1 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showFuture}
+                onChange={e => setShowFuture(e.target.checked)}
+                className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+              />
+              <span className="text-sm font-medium text-foreground">Gelecek işlemleri göster</span>
+            </label>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={clearFilters}
+              disabled={activeFilterCount === 0}
+              className="flex-1 h-11 rounded-xl border border-border text-sm font-semibold text-foreground active:bg-accent disabled:opacity-40 transition-colors"
+            >
+              Temizle
+            </button>
+            <button
+              onClick={() => { handleExportCsv(); setFiltersOpen(false) }}
+              disabled={filtered.length === 0}
+              className="flex-1 h-11 rounded-xl border border-border text-sm font-semibold text-foreground active:bg-accent disabled:opacity-40 transition-colors"
+            >
+              ↓ CSV
+            </button>
+            <button
+              onClick={() => setFiltersOpen(false)}
+              className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold active:opacity-90 transition-opacity"
+            >
+              {filtered.length} işlemi göster
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Active person filter chips */}
       {hasPersonFilter && (
