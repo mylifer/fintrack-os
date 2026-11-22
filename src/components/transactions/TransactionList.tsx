@@ -28,6 +28,8 @@ import { usePrivacyStore } from '@/store/privacy.store'
 import { useCrossWorkspacePeers, type CrossWsPeer } from '@/components/transactions/useCrossWorkspacePeers'
 import { CrossWsLink, crossWsLabel } from '@/components/transactions/CrossWsLink'
 import { useFocusTxRow, FOCUS_ROW_CLASS } from '@/lib/hooks/useFocusTxRow'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 
 type OpenModal = (type: NonNullable<ModalType>, payload?: ModalPayload) => void
 
@@ -611,9 +613,67 @@ const TableTxRow = memo(function TableTxRow({
   )
 })
 
+/* ── Mobil satır işlemleri ───────────────────────────────────────────────────
+   Masaüstünde satır işlemleri yalnız fare satırın üstündeyken görünür
+   (`group-hover`). Dokunmatikte hover diye bir şey yok: telefonda iade, kural
+   ve silme listeden HİÇ açılamıyordu. Mobilde onların yerine satırın sağında
+   duran bu "⋯" düğmesi alttan bir sayfa açar. Düzenleme ayrıca satıra
+   dokununca da açılır. */
+const sheetItem = 'flex w-full items-center gap-3 rounded-xl px-3 min-h-12 text-sm font-medium text-foreground hover:bg-accent active:bg-accent transition-colors'
+
+function MobileRowActions({ tx, projected, openModal, removeTx }: {
+  tx: Transaction
+  projected?: boolean
+  openModal: OpenModal
+  removeTx: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const close = () => setOpen(false)
+  const go = (fn: () => void) => { close(); fn() }
+  return (
+    <>
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(true) }}
+        className="lg:hidden flex-shrink-0 size-9 -mr-1 flex items-center justify-center rounded-lg text-muted-foreground active:bg-accent transition-colors"
+        aria-label={`${tx.description} işlemleri`}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="top-auto bottom-0 left-0 translate-x-0 translate-y-0 w-full max-w-none sm:max-w-none rounded-b-none rounded-t-2xl p-4 pb-[calc(1rem+var(--safe-bottom))] gap-2">
+          <DialogTitle className="px-3 pr-10 text-sm font-semibold truncate">{tx.description}</DialogTitle>
+          <div className="flex flex-col">
+            <button className={sheetItem} onClick={() => go(() => openModal('edit-transaction', projected ? { id: tx.id, plannedTx: tx } : { id: tx.id }))}>
+              <PencilIcon size={16} />{projected ? 'Tarihi düzenle' : 'Düzenle'}
+            </button>
+            {!projected && tx.type === 'expense' && tx.amount > 0 && (
+              <button className={sheetItem} onClick={() => go(() => openModal('refund-transaction', { id: tx.id }))}>
+                <RefundIcon size={16} />İade işle
+              </button>
+            )}
+            {!projected && tx.type !== 'transfer' && tx.description && (
+              <Link href={`/categories/rules?yeni=${encodeURIComponent(suggestPatternFrom(tx.description))}`} onClick={close} className={sheetItem}>
+                <Wand2 size={16} />Bu açıklamadan kural oluştur
+              </Link>
+            )}
+            {!projected && (
+              <DeleteConfirmDialog
+                tx={tx}
+                onDelete={() => removeTx(tx.id)}
+                onSettled={close}
+                trigger={<button className={`${sheetItem} text-destructive`}><TrashIcon size={16} />Sil</button>}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 // ── CARDS row (compact minimal) ───────────────────────────────────────────
 const CardTxRow = memo(function CardTxRow({
-  tx, cat, account, crossWs, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryIds, focused,
+  tx, cat, account, crossWs, recipient, family, showAccount, projected, future, openModal, removeTx, focusCategoryIds, focused, mobile,
 }: {
   tx: Transaction
   cat?: Category
@@ -631,6 +691,9 @@ const CardTxRow = memo(function CardTxRow({
   focusCategoryIds?: ReadonlySet<string>
   /** Bkz. TableTxRow.focused */
   focused?: boolean
+  /** Telefon genişliği: satırın tamamı dokunulabilir (düzenlemeyi açar) ve
+   *  işlemler hover yerine "⋯" sayfasından gelir. */
+  mobile?: boolean
 }) {
   const isIncome  = tx.type === 'income'
   const isXfer    = tx.type === 'transfer'
@@ -655,9 +718,20 @@ const CardTxRow = memo(function CardTxRow({
 
   const hasSubline = metaItems.length > 0
 
+  // Mobilde satırın kendisi düzenlemeyi açar; içteki bağlantılar (kategori,
+  // hesap) kendi tıklamalarını zaten durduruyor.
+  const openEdit = () => openModal('edit-transaction', projected ? { id: tx.id, plannedTx: tx } : { id: tx.id })
   return (
-    <div className={[
-      'group flex items-center gap-2.5 px-2 py-[5px] rounded-lg hover:bg-accent/40 transition-colors',
+    <div
+      {...(mobile ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        onClick: openEdit,
+        onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit() } },
+      } : {})}
+      className={[
+      'group flex items-center gap-2.5 rounded-lg hover:bg-accent/40 transition-colors',
+      mobile ? 'px-2 py-2 min-h-14 active:bg-accent/60' : 'px-2 py-[5px]',
       future ? 'bg-sky-500/[0.04]' : '',
       projected ? 'opacity-60' : '',
       focused ? FOCUS_ROW_CLASS : '',
@@ -722,8 +796,9 @@ const CardTxRow = memo(function CardTxRow({
         )}
       </div>
 
-      {/* Actions — visible only on row hover; planlanan satırlar yalnızca düzenlenebilir */}
-      <div className="row-actions flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Actions — mobilde "⋯" sayfası, masaüstünde satır üstünde hover düğmeleri */}
+      {mobile && <MobileRowActions tx={tx} projected={projected} openModal={openModal} removeTx={removeTx} />}
+      <div className={`row-actions items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${mobile ? 'hidden' : 'flex'}`}>
         {projected ? (
           <button
             onClick={() => openModal('edit-transaction', { id: tx.id, plannedTx: tx })}
@@ -822,9 +897,14 @@ export function TransactionList({
   onToggleSelect,
   onSelectMany,
   summary,
-  heightClass = 'h-[calc(100vh-220px)]',
+  heightClass = 'h-[calc(100dvh-220px)]',
   focusCategoryIds,
 }: Props) {
+  // Tablo düzeni 9 sütunlu ve en az ~900px geniştir; telefonda tutar sütunu
+  // ekranın dışında kalıyordu. Mobilde her zaman kart düzeni gösterilir —
+  // çağıran sayfa "table" dese bile (bkz. useIsMobile).
+  const isMobile = useIsMobile()
+  const view: 'cards' | 'table' = isMobile ? 'cards' : layout
   const categories = useCategoryStore(s => s.categories)
   const accounts   = useAccountStore(s => s.accounts)
   const people     = usePeopleStore(s => s.people)
@@ -910,7 +990,7 @@ export function TransactionList({
 
     if (futureTxs.length > 0) {
       out.push({ kind: 'section', id: 'future', count: futureTxs.length, first: true })
-      if (layout === 'table') pushFutureCompact(futureTxs)
+      if (view === 'table') pushFutureCompact(futureTxs)
       else pushSection(futureTxs, true)
       if (currentTxs.length > 0) {
         out.push({ kind: 'section', id: 'past', count: currentTxs.length, first: false })
@@ -918,13 +998,13 @@ export function TransactionList({
     }
     pushSection(currentTxs, false)
     return out
-  }, [transactions, sort, layout])
+  }, [transactions, sort, view])
 
   // Güncel bakiye (yalnızca table layout) — hesaplama computeRunningBalanceEntries'te,
   // gün kartı görünümüyle ORTAK (aynı satır aynı bakiyeyi göstersin diye tek
   // doğruluk kaynağı).
   const runningBalances = useMemo(() => {
-    if (layout !== 'table') return new Map<string, RunningBalanceEntry>()
+    if (view !== 'table') return new Map<string, RunningBalanceEntry>()
 
     const neededIds = primaryAccountId
       ? [primaryAccountId]
@@ -934,7 +1014,7 @@ export function TransactionList({
     // dönük (projeksiyon) bakiye üretirler.
     const ledger = plannedTxs?.length ? [...allTxs, ...plannedTxs] : allTxs
     return computeRunningBalanceEntries(ledger, neededIds, accById)
-  }, [layout, primaryAccountId, transactions, allTxs, plannedTxs, accById])
+  }, [view, primaryAccountId, transactions, allTxs, plannedTxs, accById])
 
   // Toplu seçim için uygun satırlar: planlanan (projected) işlemler düzenlenemez,
   // bu yüzden "tümünü seç" kapsamı dışında tutulur.
@@ -957,7 +1037,7 @@ export function TransactionList({
       if (r.kind === 'section') return 44
       if (r.kind === 'header')  return 52
       if (r.compact)            return 34
-      return layout === 'table' ? 64 : 60
+      return view === 'table' ? 64 : isMobile ? 64 : 60
     },
     overscan: 12,
     getItemKey: i => {
@@ -982,7 +1062,7 @@ export function TransactionList({
   const virtualItems = virtualizer.getVirtualItems()
 
   // ── TABLE layout ─────────────────────────────────────────────────────────
-  if (layout === 'table') {
+  if (view === 'table') {
     // Tarih/bölüm ayraçlarını açıklama kolonunun içeriğiyle hizala: seçim kutusu
     // kolonu (varsa) + açıklama hücresinin sol padding'i (px-3 = 12px).
     const contentInsetLeft = (selectable ? SELECT_COL_W : 0) + 12
@@ -1090,7 +1170,13 @@ export function TransactionList({
   // ── CARDS layout (compact minimal) ────────────────────────────────────────
   return (
     <div ref={parentRef} className={`${heightClass} overflow-y-auto`}>
-      <div className="px-4 py-2">
+      {/* Özet şeridi (gelir/gider/transfer) tablo düzeninde sütun başlığının
+          üstünde duruyor; kart düzeninde listenin başında kalır — mobilde de
+          dönemin toplamları görünsün diye. */}
+      {summary && <div className="mx-4 mt-2 rounded-xl border border-border bg-card">{summary}</div>}
+      {/* Mobilde alt menü (56px + güvenli alan) ve hızlı ekleme düğmesi listenin
+          üstünde durur; son satırlar onların altında kalmasın. */}
+      <div className="px-4 py-2 pb-28 lg:pb-2">
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
           {virtualItems.map(vi => {
             const row = rows[vi.index]
@@ -1120,6 +1206,7 @@ export function TransactionList({
                     openModal={openModal}
                     removeTx={removeTx}
                     focusCategoryIds={focusCategoryIds}
+                    mobile={isMobile}
                   />
                 )}
               </div>

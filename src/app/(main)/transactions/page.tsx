@@ -341,8 +341,9 @@ export default function TransactionsPage() {
           summary={filtered.length > 0 ? (
             // Defter satırı + gelir/gider oran çubuğu — tablo çerçevesinin en üstü,
             // sütun başlığının hemen üstünde (mockup konumu). px-5 ≈ başlık inseti.
-            <div className="flex flex-col gap-2.5 px-5 py-3">
-              <div className="flex items-center gap-6 text-sm">
+            <div className="flex flex-col gap-2.5 px-4 lg:px-5 py-3">
+              {/* Telefonda üç toplam + sayaç tek satıra sığmıyor: sarmalanır */}
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
                 <span className="inline-flex items-baseline gap-2">
                   <span className="text-xs text-muted-foreground">Gelir</span>
                   <span className="font-semibold tabular-nums text-green-600">+{formatCurrency(totalIncome)}</span>
