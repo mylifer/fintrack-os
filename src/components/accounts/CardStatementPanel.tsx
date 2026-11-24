@@ -24,10 +24,14 @@ const fmtDay = (iso: string) => formatDate(iso, 'd MMM')
  *  işlemdir. */
 export function CardStatementPanel({ account }: { account: Account }) {
   const [expanded, setExpanded] = useState<string | null>(null)
+  // Geçmiş ekstre tablosu varsayılan kapalı: özet kartları yeterli, tablo
+  // listeyi aşağı itiyordu. Gecikmiş bir ekstre varsa açık başlar.
+  const [showHistory, setShowHistory] = useState<boolean | null>(null)
   const { result, plan, resolved } = useCardStatements(account)
 
   const money = (n: number) => formatCurrency(n, account.currency)
   const last = result.statements[0]
+  const historyOpen = showHistory ?? result.statements.some(st => st.status === 'overdue')
 
   return (
     <div id="ekstre" className="px-6 lg:px-8 py-4 border-b border-border bg-card flex-shrink-0 scroll-mt-4">
@@ -76,7 +80,18 @@ export function CardStatementPanel({ account }: { account: Account }) {
         </p>
       )}
 
-      <div className="overflow-x-auto">
+      <button
+        type="button"
+        onClick={() => setShowHistory(!historyOpen)}
+        aria-expanded={historyOpen}
+        aria-controls="statement-history"
+        className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+      >
+        {historyOpen ? '▾' : '▸'} Geçmiş ekstreler ({result.statements.length})
+      </button>
+
+      {historyOpen && (
+      <div id="statement-history" className="overflow-x-auto mt-2">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-muted-foreground border-b border-border">
@@ -145,6 +160,7 @@ export function CardStatementPanel({ account }: { account: Account }) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   )
 }

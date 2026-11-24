@@ -5,6 +5,7 @@ import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
 import { AccountHero }        from '@/components/accounts/AccountHero'
+import { AccountInsights }    from '@/components/accounts/AccountInsights'
 import { Search, SlidersHorizontal } from 'lucide-react'
 import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore, useCategoryStore, useSettingsStore } from '@/store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
@@ -360,7 +361,9 @@ export default function AccountDetailClient({
 
       {/* Transaction list — Tablo / Gün Kartı arasında geçilebilir. İkisi de AYNI
           listeyi alır: gerçekleşen + gelecek (planlanan) işlemler. */}
-      <div>
+      {/* Geniş ekranda liste + sağ sütun (içgörüler); dar ekranda alt alta */}
+      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+      <div className="min-w-0">
         <TxViewsShell
           initialView={initialView}
           transactions={filteredTxs}
@@ -376,6 +379,8 @@ export default function AccountDetailClient({
           onToggleSelect={sel.toggle}
           onSelectMany={sel.selectMany}
         />
+      </div>
+      <AccountInsights account={account} accountTxs={accountTxs} from={from} to={to} />
       </div>
       </div>
 
