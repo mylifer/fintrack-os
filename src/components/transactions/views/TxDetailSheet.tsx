@@ -1,7 +1,9 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
+import { X } from 'lucide-react'
 import { useAccountStore, useCategoryStore, usePeopleStore, useTransactionStore, useUIStore } from '@/store'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
@@ -9,13 +11,12 @@ import { awaitsApproval } from '@/lib/utils/calculations'
 import { DEFAULT_ICON } from '@/lib/category-palette'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { DeleteConfirmDialog } from '@/components/transactions/TransactionList'
-import {
-  IndigoSheet, KeyValueList, SheetButtons, sheetBtnPrimary, sheetBtnSecondary,
-} from '@/components/accounts/indigo/IndigoSheet'
 import type { Account, Transaction } from '@/types'
 
-/* İşlem ayrıntısı — İndigo alt paneli. Kendi düzenleme formu YOK: Düzenle /
-   İade / Sil mevcut modal ve onay akışlarını çağırır, kurallar tek yerde. */
+/* İşlem ayrıntı paneli — Akış görünümünde satıra dokununca açılır. Telefonda
+   alttan çıkan bir sayfa, geniş ekranda sağ kenara yaslanan bir panel. Kendi
+   düzenleme formu YOK: Düzenle / İade / Sil mevcut modal ve onay akışlarını
+   çağırır, böylece kurallar tek yerde kalır. */
 export function TxDetailSheet({
   tx, account, projected, onClose,
 }: {
@@ -30,6 +31,7 @@ export function TxDetailSheet({
   const allTxs     = useTransactionStore(s => s.transactions)
   const removeTx   = useTransactionStore(s => s.remove)
   const openModal  = useUIStore(s => s.openModal)
+  const closeRef   = useRef<HTMLButtonElement>(null)
 
   // Liste yenilenince (düzenleme sonrası) panel güncel kaydı göstersin
   const live = allTxs.find(t => t.id === tx.id) ?? tx
@@ -45,6 +47,14 @@ export function TxDetailSheet({
     return allTxs.filter(t => t.installGroupId === live.installGroupId).sort((a, b) => a.date.localeCompare(b.date))
   }, [allTxs, live.installGroupId])
 
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null
+    closeRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('keydown', onKey); prev?.focus?.() }
+  }, [onClose])
+
   const isXfer   = live.type === 'transfer'
   const incoming = isXfer && live.toAccountId === account.id
   const isRefund = live.type === 'expense' && live.amount < 0
@@ -53,9 +63,9 @@ export function TxDetailSheet({
   const typeLabel = isXfer ? (incoming ? 'Gelen transfer' : 'Giden transfer') : live.type === 'income' ? 'Gelir' : isRefund ? 'İade' : 'Gider'
 
   const rows: [string, React.ReactNode][] = [
-    ['Kategori', cat ? <Link href={`/categories/${cat.id}`} className="hover:underline">{cat.name}</Link> : 'Kategorisiz'],
     ['Tür', typeLabel],
-    [account.type === 'credit_card' ? 'Kart' : 'Hesap', account.name],
+    ['Kategori', cat ? <Link href={`/categories/${cat.id}`} className="hover:underline">{cat.name}</Link> : 'Kategorisiz'],
+    ['Hesap', account.name],
   ]
   if (other) rows.push([incoming ? 'Gönderen hesap' : 'Hedef hesap', <Link key="o" href={`/accounts/${other.id}`} className="hover:underline">{other.name}</Link>])
   if (recipient) rows.push(['Alıcı', <Link key="r" href={`/alicilar/${recipient.id}`} className="hover:underline">{recipient.name}</Link>])
@@ -64,85 +74,112 @@ export function TxDetailSheet({
   if (live.notes) rows.push(['Not', live.notes])
   if (plan) rows.push(['Toplam', `${formatCurrency(plan.reduce((s, t) => s + Math.abs(t.amount), 0), live.currency)} · ${plan.length} taksit`])
 
-  return (
-    <IndigoSheet title={live.description} onClose={onClose} hideTitle>
-      <div className="flex flex-col items-center gap-2 pb-4 text-center">
-        <CategoryIcon icon={cat?.icon ?? DEFAULT_ICON} color={cat?.color ?? '#94a3b8'} size={34} className="!rounded-[20px]" />
-        <div className="text-xl font-extrabold">{live.description}</div>
-        <div className={`text-[40px] leading-tight font-extrabold tracking-[-0.02em] tabular-nums ${positive ? 'text-[var(--ip-pos)]' : ''}`}>
-          {positive ? '+' : isXfer ? '' : '−'}{formatCurrency(Math.abs(live.amount), live.currency)}
+  return createPortal(
+    <div className="fixed inset-0 z-50" role="presentation">
+      <button type="button" aria-label="Paneli kapat" tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-black/45 animate-in fade-in" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tx-sheet-title"
+        className="absolute inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-[28px] bg-popover px-6 pt-3 pb-[calc(24px+env(safe-area-inset-bottom,0px))] text-popover-foreground shadow-2xl animate-in slide-in-from-bottom sm:inset-y-0 sm:left-auto sm:right-0 sm:bottom-0 sm:max-h-none sm:w-[440px] sm:rounded-none sm:rounded-l-[28px] sm:pt-6 sm:slide-in-from-right"
+      >
+        <div className="mx-auto mb-3 h-1.5 w-11 rounded-full bg-foreground/20 sm:hidden" aria-hidden="true" />
+        <div className="flex justify-end">
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Kapat" className="flex size-9 items-center justify-center rounded-full hover:bg-muted">
+            <X className="size-4" />
+          </button>
         </div>
-        <span className="text-sm text-[var(--ip-sub)]">{formatDate(live.date.slice(0, 10), 'd MMMM yyyy, EEEE')}</span>
-        {(projected || awaitsApproval(live)) && (
-          <div className="flex gap-1.5">
-            {projected && <span className="rounded-full bg-[var(--ip-accent)]/15 px-2.5 py-0.5 text-xs font-bold text-[var(--ip-accent)]">Planlandı</span>}
-            {awaitsApproval(live) && <span className="rounded-full bg-orange-500/15 px-2.5 py-0.5 text-xs font-bold text-orange-600">Onay bekliyor</span>}
+
+        <div className="flex flex-col items-center gap-2 pb-5 text-center">
+          <CategoryIcon icon={cat?.icon ?? DEFAULT_ICON} color={cat?.color ?? '#94a3b8'} size={34} />
+          <h2 id="tx-sheet-title" className="text-xl font-bold">{live.description}</h2>
+          <div className={`text-4xl font-extrabold tracking-tight tabular-nums ${positive ? 'text-green-600' : ''}`}>
+            {positive ? '+' : isXfer ? '' : '−'}{formatCurrency(Math.abs(live.amount), live.currency)}
+          </div>
+          <div className="text-sm text-muted-foreground">{formatDate(live.date.slice(0, 10), 'd MMMM yyyy, EEEE')}</div>
+          <div className="flex flex-wrap justify-center gap-1.5">
+            {projected && <span className="rounded-full bg-sky-500/12 px-2.5 py-0.5 text-xs font-bold text-sky-600 dark:text-sky-400">Planlandı</span>}
+            {awaitsApproval(live) && <span className="rounded-full bg-orange-500/12 px-2.5 py-0.5 text-xs font-bold text-orange-600 dark:text-orange-400">Onay bekliyor</span>}
+          </div>
+        </div>
+
+        <dl className="flex flex-col rounded-2xl bg-muted/60 px-4">
+          {rows.map(([k, v], i) => (
+            <div key={k} className={`flex justify-between gap-4 py-3 text-sm ${i ? 'border-t border-border' : ''}`}>
+              <dt className="text-muted-foreground">{k}</dt>
+              <dd className="m-0 min-w-0 text-right font-semibold break-words">{v}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {plan && (
+          <div className="mt-5">
+            <div className="mb-2 text-sm font-bold">Taksit planı</div>
+            <div className="mb-3 flex gap-1.5" aria-hidden="true">
+              {plan.map(p => (
+                <span key={p.id} className={`h-2 flex-1 rounded-full ${p.date.slice(0, 10) <= todayStr ? 'bg-[#5b4cff]' : 'bg-foreground/15'}`} />
+              ))}
+            </div>
+            <dl className="flex flex-col rounded-2xl bg-muted/60 px-4">
+              {plan.map((p, i) => {
+                const done = p.date.slice(0, 10) <= todayStr
+                const me = p.id === live.id
+                return (
+                  <div key={p.id} className={`flex justify-between gap-4 py-2.5 text-sm ${i ? 'border-t border-border' : ''}`}>
+                    <dt className={me ? 'font-bold' : 'text-muted-foreground'}>
+                      {p.installIndex ?? i + 1}/{p.installTotal ?? plan.length} · {formatDate(p.date.slice(0, 10), 'd MMM yyyy')}
+                    </dt>
+                    <dd className="m-0 tabular-nums">
+                      {formatCurrency(Math.abs(p.amount), p.currency)}
+                      <span className="ml-1.5 text-xs text-muted-foreground">{done ? 'işlendi' : 'bekliyor'}</span>
+                    </dd>
+                  </div>
+                )
+              })}
+            </dl>
           </div>
         )}
-      </div>
 
-      <KeyValueList rows={rows} />
-
-      {plan && (
-        <div className="mt-[18px]">
-          <b>Taksit planı</b>
-          <div className="mt-2.5 mb-1 flex gap-1.5" aria-hidden="true">
-            {plan.map(p => (
-              <i key={p.id} className={`h-2 flex-1 rounded-full ${p.date.slice(0, 10) <= todayStr ? 'bg-[var(--ip-accent)]' : 'bg-[var(--ip-fg)]/15'}`} />
-            ))}
-          </div>
-          <KeyValueList rows={plan.map((p, i) => [
-            `${p.installIndex ?? i + 1}/${p.installTotal ?? plan.length} · ${formatDate(p.date.slice(0, 10), 'd MMM')}${p.id === live.id ? ' (bu)' : ''}`,
-            <span key={p.id} className="tabular-nums">
-              {formatCurrency(Math.abs(p.amount), p.currency)}{' '}
-              <span className="font-medium text-[var(--ip-sub)]">{p.date.slice(0, 10) <= todayStr ? '· işlendi' : '· bekliyor'}</span>
-            </span>,
-          ])} />
-        </div>
-      )}
-
-      {projected ? (
-        <SheetButtons>
-          <button type="button" className={sheetBtnSecondary} onClick={onClose}>Kapat</button>
-          <button
-            type="button"
-            className={sheetBtnPrimary}
-            onClick={() => { onClose(); openModal('edit-transaction', { id: live.id, plannedTx: live }) }}
-          >
-            Tarihi düzenle
-          </button>
-        </SheetButtons>
-      ) : (
-        <>
-          <SheetButtons>
-            <button type="button" className={sheetBtnSecondary} onClick={onClose}>Kapat</button>
+        <div className="mt-6 flex gap-2.5">
+          {projected ? (
             <button
               type="button"
-              className={sheetBtnPrimary}
-              onClick={() => { onClose(); openModal('edit-transaction', { id: live.id }) }}
+              onClick={() => { onClose(); openModal('edit-transaction', { id: live.id, plannedTx: live }) }}
+              className="h-12 flex-1 rounded-full bg-[#5b4cff] font-bold text-white hover:bg-[#4b3cf0]"
             >
-              Düzenle
+              Tarihi düzenle
             </button>
-          </SheetButtons>
-          <div className="mt-3 flex justify-center gap-6 text-sm font-bold">
-            {live.type === 'expense' && live.amount > 0 && (
+          ) : (
+            <>
+              <DeleteConfirmDialog
+                tx={live}
+                onDelete={() => removeTx(live.id)}
+                onSettled={onClose}
+                trigger={
+                  <button type="button" className="h-12 rounded-full bg-muted px-5 font-bold text-destructive hover:bg-destructive/10">Sil</button>
+                }
+              />
+              {live.type === 'expense' && live.amount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { onClose(); openModal('refund-transaction', { id: live.id }) }}
+                  className="h-12 rounded-full bg-muted px-5 font-bold hover:bg-muted/70"
+                >
+                  İade işle
+                </button>
+              )}
               <button
                 type="button"
-                className="text-[var(--ip-accent)] hover:underline"
-                onClick={() => { onClose(); openModal('refund-transaction', { id: live.id }) }}
+                onClick={() => { onClose(); openModal('edit-transaction', { id: live.id }) }}
+                className="h-12 flex-1 rounded-full bg-[#5b4cff] font-bold text-white hover:bg-[#4b3cf0]"
               >
-                İade işle
+                Düzenle
               </button>
-            )}
-            <DeleteConfirmDialog
-              tx={live}
-              onDelete={() => removeTx(live.id)}
-              onSettled={onClose}
-              trigger={<button type="button" className="text-[var(--ip-neg)] hover:underline">İşlemi sil</button>}
-            />
-          </div>
-        </>
-      )}
-    </IndigoSheet>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }

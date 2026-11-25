@@ -12,7 +12,7 @@
 export type TxViewId = 'feed' | 'table' | 'ruleless' | 'datecol'
 
 export const TX_VIEW_COOKIE = 'fintrack-tx-view'
-export const DEFAULT_TX_VIEW: TxViewId = 'feed'
+export const DEFAULT_TX_VIEW: TxViewId = 'table'
 
 const VALID: readonly TxViewId[] = ['feed', 'table', 'ruleless', 'datecol']
 

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist } from 'next/font/google'
+import { Manrope } from 'next/font/google'
 import { cookies, headers } from 'next/headers'
 import Script from 'next/script'
 import './globals.css'
@@ -13,7 +13,8 @@ import { INVESTMENTS_VIEW_COOKIE, parseInvestmentsView } from '@/lib/investments
 import { PaymentsViewProvider } from '@/components/layout/PaymentsViewProvider'
 import { PAYMENTS_VIEW_COOKIE, parsePaymentsView } from '@/lib/payments-view'
 
-const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
+// İndigo görünümü: Manrope. latin-ext Türkçe karakterler (ğ, ş, İ…) için şart.
+const manrope = Manrope({ subsets: ['latin', 'latin-ext'], variable: '--font-sans' })
 
 export const metadata: Metadata = {
   title: 'FinTrack OS',
@@ -55,7 +56,7 @@ export default async function RootLayout({
   const paymentsView    = parsePaymentsView(cookieStore.get(PAYMENTS_VIEW_COOKIE)?.value)
 
   return (
-    <html lang="tr" className={cn("h-full", geist.variable, "font-sans")} suppressHydrationWarning>
+    <html lang="tr" className={cn("h-full", manrope.variable, "font-sans")} suppressHydrationWarning>
       <body className="min-h-full bg-background text-foreground antialiased">
         {/* Anti-FOUC: restore saved theme before first paint */}
         <Script

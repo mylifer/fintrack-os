@@ -52,32 +52,31 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   ZINC NEW YORK — Light (default)
+   İNDİGO — Light (default)
    ───────────────────────────────────────────────────────────────── */
 :root {
-  /* Katmanlı nötr zemin: hafif kırık-beyaz sayfa + saf beyaz kartlar (mockup dili) */
-  --background:           #f7f7f6;
-  --foreground:           oklch(0.141 0.005 285.82);
+  /* Katmanlı zemin: lavanta sayfa + saf beyaz kartlar (İndigo kart ekranı dili) */
+  --background:           #f3f4fb;
+  --foreground:           #12132b;
   --card:                 #ffffff;
-  --card-foreground:      oklch(0.141 0.005 285.82);
+  --card-foreground:      #12132b;
   --popover:              #ffffff;
-  --popover-foreground:   oklch(0.141 0.005 285.82);
-  /* Birincil aksan: turkuaz — nötr temadan ayrışır.
-     Aksan parlak (luminans ~0.55) olduğu için üstündeki yazı KOYU olmalı:
-     beyaz metin 1.8:1 ile okunmaz, koyu mürekkep ~11:1 verir. */
-  --primary:              #00D9D9;
-  --primary-foreground:   #062626;
-  --secondary:            oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.034 264.665);
-  --muted:                oklch(0.967 0.001 286.375);
-  --muted-foreground:     oklch(0.552 0.015 285.938);
-  --accent:               oklch(0.967 0.001 286.375);
-  --accent-foreground:    oklch(0.21 0.034 264.665);
+  --popover-foreground:   #12132b;
+  /* Birincil aksan: indigo. Koyu bir ton olduğu için üstündeki yazı BEYAZ
+     (≈5.6:1); eski turkuaz aksan koyu mürekkep istiyordu. */
+  --primary:              #5b4cff;
+  --primary-foreground:   #ffffff;
+  --secondary:            #eceefa;
+  --secondary-foreground: #12132b;
+  --muted:                #eceefa;
+  --muted-foreground:     #5d6080;
+  --accent:               #eceefa;
+  --accent-foreground:    #12132b;
   --destructive:          oklch(0.577 0.245 27.325);
-  --border:               oklch(0.92 0.004 286.32);
-  --input:                oklch(0.92 0.004 286.32);
-  --ring:                 #00D9D9;
-  --radius:               0.625rem;
+  --border:               #e2e4f1;
+  --input:                #d9dcee;
+  --ring:                 #5b4cff;
+  --radius:               0.875rem;
 
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -89,45 +88,45 @@
   --cf-income:  #16a34a;
   --cf-expense: #dc2626;
 
-  /* Toplu düzenleme (batch edit) seçim aksanı — turkuaz (nötr temadan ayrışır) */
-  --batch-accent:        #00D9D9;
-  --batch-accent-soft:   #e8fbfb;
-  --batch-accent-border: #a3e9e9;
+  /* Toplu düzenleme (batch edit) seçim aksanı — indigo */
+  --batch-accent:        #5b4cff;
+  --batch-accent-soft:   #ecebff;
+  --batch-accent-border: #c9c4ff;
 
-  --sidebar-background:           oklch(0.985 0.002 247.839);
-  --sidebar-foreground:           oklch(0.373 0.016 285.806);
-  --sidebar-primary:              #00D9D9;
-  --sidebar-primary-foreground:   #062626;
-  --sidebar-accent:               oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground:    oklch(0.21 0.034 264.665);
-  --sidebar-border:               oklch(0.92 0.004 286.32);
-  --sidebar-ring:                 oklch(0.141 0.005 285.82);
+  --sidebar-background:           #ffffff;
+  --sidebar-foreground:           #3f4266;
+  --sidebar-primary:              #5b4cff;
+  --sidebar-primary-foreground:   #ffffff;
+  --sidebar-accent:               #eceefa;
+  --sidebar-accent-foreground:    #12132b;
+  --sidebar-border:               #e2e4f1;
+  --sidebar-ring:                 #5b4cff;
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   ZINC NEW YORK — Dark (opt-in via .dark on <html>)
+   İNDİGO — Dark (opt-in via .dark on <html>)
    ───────────────────────────────────────────────────────────────── */
 .dark {
-  /* Katmanlı koyu: neredeyse-siyah sayfa + biraz açık gri kartlar (mockup dili) */
-  --background:           #0a0a0a;
-  --foreground:           oklch(0.985 0.001 106.424);
-  --card:                 #151515;
-  --card-foreground:      oklch(0.985 0.001 106.424);
-  --popover:              #1b1b1b;
-  --popover-foreground:   oklch(0.985 0.001 106.424);
-  /* Birincil aksan: koyu temada da aynı turkuaz (zaten koyu zeminde parlak) */
-  --primary:              #00D9D9;
-  --primary-foreground:   #062626;
-  --secondary:            oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0.001 106.424);
-  --muted:                oklch(0.274 0.006 286.033);
-  --muted-foreground:     oklch(0.705 0.015 286.067);
-  --accent:               oklch(0.274 0.006 286.033);
-  --accent-foreground:    oklch(0.985 0.001 106.424);
+  /* Katmanlı koyu: gece indigosu sayfa + biraz açık kartlar */
+  --background:           #0c0d1d;
+  --foreground:           #eef0ff;
+  --card:                 #15172c;
+  --card-foreground:      #eef0ff;
+  --popover:              #1b1d36;
+  --popover-foreground:   #eef0ff;
+  /* Birincil aksan: koyu zeminde bir ton açık indigo (okunurluk için) */
+  --primary:              #7b6dff;
+  --primary-foreground:   #ffffff;
+  --secondary:            #23254a;
+  --secondary-foreground: #eef0ff;
+  --muted:                #23254a;
+  --muted-foreground:     #a3a6c8;
+  --accent:               #23254a;
+  --accent-foreground:    #eef0ff;
   --destructive:          oklch(0.704 0.191 22.216);
-  --border:               oklch(1 0 0 / 14%);
-  --input:                oklch(1 0 0 / 20%);
-  --ring:                 #00D9D9;
+  --border:               rgba(255, 255, 255, 0.09);
+  --input:                rgba(255, 255, 255, 0.15);
+  --ring:                 #7b6dff;
 
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -148,19 +147,19 @@
   --cf-income:  #6ee7b7;
   --cf-expense: #fb7185;
 
-  /* Toplu düzenleme (batch edit) seçim aksanı — koyu temada turkuaz + koyu soft */
-  --batch-accent:        #00D9D9;
-  --batch-accent-soft:   #0b2a2a;
-  --batch-accent-border: #1e5e5e;
+  /* Toplu düzenleme (batch edit) seçim aksanı — koyu temada indigo + koyu soft */
+  --batch-accent:        #7b6dff;
+  --batch-accent-soft:   #241f55;
+  --batch-accent-border: #4a3fa8;
 
-  --sidebar-background:           #0f0f0f;
-  --sidebar-foreground:           oklch(0.985 0.001 106.424);
-  --sidebar-primary:              #00D9D9;
-  --sidebar-primary-foreground:   #062626;
-  --sidebar-accent:               oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground:    oklch(0.985 0.001 106.424);
-  --sidebar-border:               oklch(1 0 0 / 10%);
-  --sidebar-ring:                 oklch(0.552 0.015 285.938);
+  --sidebar-background:           #10122a;
+  --sidebar-foreground:           #d6d8f2;
+  --sidebar-primary:              #7b6dff;
+  --sidebar-primary-foreground:   #ffffff;
+  --sidebar-accent:               #23254a;
+  --sidebar-accent-foreground:    #eef0ff;
+  --sidebar-border:               rgba(255, 255, 255, 0.08);
+  --sidebar-ring:                 #7b6dff;
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -274,39 +273,4 @@
 @keyframes hero-shine {
   0%, 100% { background-position: 100% 0; }
   50%      { background-position: 0 0; }
-}
-
-/* ── Hesap detayı "İndigo" sayfası ────────────────────────────────────────
-   Kart ekranı demosunun (İndigo) belirteçleri. Açık temada demonun birebir
-   renkleri; koyu temada aynı düzen, gece indigosu zeminle. Yalnız
-   .indigo-page altında geçerlidir. */
-.indigo-page {
-  --ip-page: #f3f4fb;
-  --ip-panel: #ffffff;
-  --ip-surface2: #f1f2fa;
-  --ip-chip: #e8e9f7;
-  --ip-fg: #12132b;
-  --ip-sub: #5d6080;
-  --ip-line: rgba(18, 19, 43, 0.08);
-  --ip-accent: #5b4cff;
-  --ip-accent-fg: #ffffff;
-  --ip-pos: #0f9d63;
-  --ip-neg: #d92d4b;
-  --ip-sheet: #ffffff;
-  background: var(--ip-page);
-  color: var(--ip-fg);
-}
-.dark .indigo-page {
-  --ip-page: #0c0d1d;
-  --ip-panel: #15172c;
-  --ip-surface2: #1d1f3a;
-  --ip-chip: #232549;
-  --ip-fg: #eef0ff;
-  --ip-sub: #a3a6c8;
-  --ip-line: rgba(255, 255, 255, 0.08);
-  --ip-accent: #7b6dff;
-  --ip-accent-fg: #ffffff;
-  --ip-pos: #4ade80;
-  --ip-neg: #ff7a8a;
-  --ip-sheet: #17192f;
 }
