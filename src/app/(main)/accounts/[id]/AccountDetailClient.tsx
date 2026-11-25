@@ -5,8 +5,11 @@ import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
 import { AccountHero }        from '@/components/accounts/AccountHero'
-import { AccountInsights }    from '@/components/accounts/AccountInsights'
-import { Search, SlidersHorizontal } from 'lucide-react'
+import { AccountFeedPanel, type FeedChip } from '@/components/accounts/indigo/AccountFeedPanel'
+import { AccountSideCards, useInstallmentPlans, type WeekRange } from '@/components/accounts/indigo/AccountSideCards'
+import { StatementsSheet, PlansSheet, AccountInfoSheet } from '@/components/accounts/indigo/AccountSheets'
+import { indigoFont } from '@/components/accounts/indigo/font'
+import { TxDetailSheet } from '@/components/transactions/views/TxDetailSheet'
 import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore, useCategoryStore, useSettingsStore } from '@/store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { compareCategoriesByName } from '@/lib/utils/categories'
@@ -14,6 +17,7 @@ import { useShallow }         from 'zustand/react/shallow'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { txHasCategory } from '@/lib/utils/categorySplits'
+import { baseAmount } from '@/lib/utils/fx'
 import { useCountUp }         from '@/lib/hooks/useCountUp'
 import { getPeriodRangeAt, formatPeriodLabel, periodOffsetFor, today } from '@/lib/utils/date'
 import { useTxFocusStore } from '@/lib/tx-focus'
@@ -21,7 +25,6 @@ import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { isFutureDate } from '@/components/transactions/views/shared'
 import { SelectField }        from '@/components/ui/Select'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
-import { CardStatementPanel } from '@/components/accounts/CardStatementPanel'
 import { DepositPanel } from '@/components/accounts/DepositPanel'
 import { TX_SORT_OPTIONS, type TxSortOption } from '@/components/transactions/TransactionList'
 import { TxViewsShell } from '@/components/transactions/views/TxViewsShell'
@@ -31,21 +34,26 @@ import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { useWorkspaceSwitchFallback } from '@/lib/hooks/useWorkspaceSwitchFallback'
 import type { Account, PersonRole, Transaction } from '@/types'
 
-const TYPE_CHIPS = [
-  { value: '',         label: 'Tümü' },
-  { value: 'expense',  label: 'Gider' },
-  { value: 'income',   label: 'Gelir' },
-  { value: 'transfer', label: 'Transfer' },
-]
+/* Hesap detayı — "İndigo" kart ekranı. Üstte renkli bant (bakiye, limit, hızlı
+   işlemler), altında iki kolon: solda İşlemler akışı, sağda özet kartları.
+   Ekstreler, taksitler ve hesap bilgisi alt panellerde açılır. Veri hazırlığı
+   (dönem, süzgeçler, planlanan işlemler, toplu seçim) bu sayfada kalır;
+   paneller yalnızca sunar. */
 
 type PersonFilter = { id: string; name: string } | null
+type SheetState = 'statements' | 'plans' | 'info' | null
+
+/** "Ödeme ve iadeler": hesaba para giren hareketler */
+function isInflow(t: Transaction, accountId: string): boolean {
+  return t.type === 'income' || (t.type === 'expense' && t.amount < 0) || (t.type === 'transfer' && t.toAccountId === accountId)
+}
 
 export default function AccountDetailClient({
   id,
   initialView = DEFAULT_TX_VIEW,
 }: {
   id: string
-  /** Sunucuda çerezden okunan işlem listesi görünümü (bkz. lib/tx-view.ts). */
+  /** Sunucuda çerezden okunan işlem listesi görünümü — yalnız "Tablo" modunda kullanılır. */
   initialView?: TxViewId
 }) {
   const accounts      = useAccountStore(s => s.accounts)
@@ -70,13 +78,13 @@ export default function AccountDetailClient({
   const [familyFilter, setFamilyFilter]     = useState<PersonFilter>(null)
   const [recipientFilter, setRecipientFilter] = useState<PersonFilter>(null)
   const [search, setSearch]                 = useState('')
-  const [typeFilter, setTypeFilter]         = useState('')
+  const [chip, setChip]                     = useState<FeedChip>('all')
+  const [week, setWeek]                     = useState<WeekRange | null>(null)
   const [categoryFilter, setCategoryFilter] = useState('')
   const [sortOption, setSortOption]         = useState<TxSortOption>('date-desc')
   const [periodOffset, setPeriodOffset]     = useState(0)
-  // Kategori/aile/alıcı/sıralama seçicileri varsayılan kapalı; seçili bir
-  // süzgeç varken açılırsa düğmedeki sayı ne kadarının etkin olduğunu söyler.
-  const [filtersOpen, setFiltersOpen]       = useState(false)
+  const [sheet, setSheet]                   = useState<SheetState>(null)
+  const [sheetTx, setSheetTx]               = useState<Transaction | null>(null)
 
   const recurring = useRecurringStore(s => s.recurring)
 
@@ -94,14 +102,19 @@ export default function AccountDetailClient({
     [periodType, periodOffset],
   )
 
-  // Bir satıra gidiliyorsa (bkz. lib/tx-focus) o satırın dönemini aç; kaydırma
-  // ve vurgu listede yapılır.
+  // Dönem değişince haftalık süzgeç düşer (başka döneme ait bir hafta kalmasın)
+  const [weekFor, setWeekFor] = useState(`${from}|${to}`)
+  if (weekFor !== `${from}|${to}`) {
+    setWeekFor(`${from}|${to}`)
+    setWeek(null)
+  }
+
+  // Bir satıra gidiliyorsa (bkz. lib/tx-focus) o satırın dönemini aç
   const focusTxId = useTxFocusStore(s => (s.accountId === id ? s.txId : null))
   const focusDate = useMemo(
     () => (focusTxId ? accountTxs.find(t => t.id === focusTxId)?.date.slice(0, 10) ?? null : null),
     [focusTxId, accountTxs],
   )
-  // Render sırasında ayarlanır (yukarıdaki ofset sıfırlamasıyla aynı kalıp)
   const [focusSeen, setFocusSeen] = useState<string | null>(null)
   if (focusDate && focusDate !== focusSeen) {
     setFocusSeen(focusDate)
@@ -129,31 +142,32 @@ export default function AccountDetailClient({
     [search, people, categories, accounts],
   )
 
-  // Transactions filtered by period + person + search + type + category (planlananlar dahil)
+  // Dönem + kişi + arama + süzgeç düğmesi + hafta + kategori (planlananlar dahil)
   const filteredTxs = useMemo(
     () => [...accountTxs, ...projectedTxs].filter(t => {
-      // "Gelecek işlemler" kapalıyken SADECE planlananları elemek yetmez:
-      // deftere kaydedilmiş gelecek tarihli işlemler (ileri tarihli fatura,
-      // gelecek taksit) de gizlenmeli — kullanıcı kutuyu kaldırdığında listede
-      // hiçbir gelecek satır kalmasın.
+      // "Gelecek işlemler" kapalıyken deftere kaydedilmiş gelecek tarihli
+      // işlemler (ileri tarihli fatura, gelecek taksit) de gizlenir.
       if (!showFuture && isFutureDate(t.date)) return false
-      if (from && t.date < from) return false
-      if (to   && t.date > to)   return false
+      const d = t.date.slice(0, 10)
+      if (from && d < from) return false
+      if (to   && d > to)   return false
+      if (week && (d < week.from || d > week.to)) return false
       if (familyFilter    && t.familyMemberId !== familyFilter.id)   return false
       if (recipientFilter && t.recipientId    !== recipientFilter.id) return false
-      if (typeFilter && t.type !== typeFilter) return false
+      if (chip === 'inst' && !(t.isInstallment || t.installGroupId)) return false
+      if (chip === 'big'  && !(t.type === 'expense' && baseAmount(t) >= 2000)) return false
+      if (chip === 'pay'  && !isInflow(t, id)) return false
       // Bölünmüş işlem ikincil payının kategorisinde de listelenir
       if (categoryFilter && !txHasCategory(t, categoryFilter)) return false
       if (search && !searchMatcher(t)) return false
       return true
     }),
-    [accountTxs, projectedTxs, showFuture, from, to, familyFilter, recipientFilter, typeFilter, categoryFilter, search, searchMatcher],
+    [accountTxs, projectedTxs, showFuture, from, to, week, familyFilter, recipientFilter, chip, id, categoryFilter, search, searchMatcher],
   )
 
-  // Toplu düzenleme seçimi — filtre/dönem değişince temizlenir
-  const sel = useTxSelection(`${from}|${to}|${search}|${typeFilter}|${categoryFilter}|${familyFilter?.id ?? ''}|${recipientFilter?.id ?? ''}|${showFuture}`)
+  // Toplu düzenleme seçimi — süzgeç/dönem değişince temizlenir
+  const sel = useTxSelection(`${from}|${to}|${search}|${chip}|${week?.from ?? ''}|${categoryFilter}|${familyFilter?.id ?? ''}|${recipientFilter?.id ?? ''}|${showFuture}`)
 
-  // Filtre alanı seçenekleri
   const categoryOptions = useMemo(() => [
     { value: '', label: 'Tüm Kategoriler' },
     ...[...categories].sort(compareCategoriesByName).map(c => ({ value: c.id, label: c.name })),
@@ -189,10 +203,10 @@ export default function AccountDetailClient({
   }
 
   // collapseInstallments: dönem Gelir/Gider Raporlar ile aynı "satın alma ayına
-  // toplu yaz" kuralıyla sayılır. calcAvailableCredit (aşağıda) HAM accountTxs
-  // okumaya devam eder — kredi limiti taksitlerin gerçek posting tarihine göre
-  // bloke olur.
+  // toplu yaz" kuralıyla sayılır. calcAvailableCredit HAM accountTxs okur —
+  // kredi limiti taksitlerin gerçek posting tarihine göre bloke olur.
   const reportAccountTxs = useMemo(() => collapseInstallments(accountTxs), [accountTxs])
+  const plans = useInstallmentPlans(id, accountTxs)
 
   // These must be called unconditionally before any early return (Rules of Hooks)
   const { income: periodIncome, expense: periodExpense } =
@@ -201,8 +215,6 @@ export default function AccountDetailClient({
   const animBalance = useCountUp(account ? Math.abs(account.balance) : 0)
   const animAvail   = useCountUp(available ?? 0)
   const animLimit   = useCountUp(account?.creditLimit ?? 0)
-  const animIncome  = useCountUp(periodIncome)
-  const animExpense = useCountUp(periodExpense)
 
   // Alan değişince bu hesap yeni alanda yoksa: aynı adlı hesaba, yoksa (tercihen
   // aynı türdeki) ilk aktif hesaba, o da yoksa Hesaplar'a geç — 404 yerine.
@@ -218,10 +230,10 @@ export default function AccountDetailClient({
   if (!account) return notFound()
 
   const moreFilterCount = [categoryFilter, familyFilter, recipientFilter, sortOption !== 'date-desc'].filter(Boolean).length
-
   const usedPct = account.creditLimit && available !== null
     ? ((account.creditLimit - available) / account.creditLimit) * 100
     : 0
+  const periodLabel = formatPeriodLabel(periodType, periodOffset)
 
   return (
     <>
@@ -233,7 +245,7 @@ export default function AccountDetailClient({
       <PeriodTabs
         nav={{
           offset:   periodOffset,
-          label:    formatPeriodLabel(periodType, periodOffset),
+          label:    periodLabel,
           onChange: setPeriodOffset,
         }}
         rightSlot={
@@ -249,140 +261,104 @@ export default function AccountDetailClient({
         }
       />
 
-      {/* Üst bant, ekstre, süzgeçler ve liste sayfayla birlikte kayar (düzen
-          min-h-screen; liste görünümleri kendi sabit yükseklikli kutusunda). */}
-      <div className="flex-1">
-      <AccountHero
-        account={account}
-        balance={animBalance}
-        available={available === null ? null : animAvail}
-        limit={animLimit}
-        usedPct={usedPct}
-        periodLabel={formatPeriodLabel(periodType, periodOffset)}
-        income={animIncome}
-        expense={animExpense}
-        txCount={filteredTxs.length}
-        onAddTx={() => openModal('add-transaction', { accountId: id })}
-        onReconcile={() => openModal('reconcile-balance', { id })}
-        onEdit={() => setEditingAccount(account)}
-      />
-
-      {account.type === 'credit_card' && <CardStatementPanel account={account} />}
-      {account.type === 'savings' && <DepositPanel account={account} />}
-
-      {/* Arama + tür düğmeleri; seyrek kullanılan süzgeçler "Filtreler" altında */}
-      <div className="flex flex-col gap-3 px-6 lg:px-8 py-4 border-b border-border">
-        <div className="flex items-center flex-wrap gap-2">
-          <label className="flex flex-1 min-w-56 items-center gap-2.5 rounded-full bg-muted/60 px-4 h-10 focus-within:ring-2 focus-within:ring-ring/50">
-            <Search className="size-4 text-muted-foreground" aria-hidden="true" />
-            <input
-              type="search"
-              placeholder="Ara: açıklama, alıcı, aile üyesi, kategori, not, etiket..."
-              aria-label="İşlem ara"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/70 text-foreground"
-            />
-          </label>
-          <div role="group" aria-label="İşlem türü" className="flex flex-wrap gap-1.5">
-            {TYPE_CHIPS.map(c => (
-              <button
-                key={c.value}
-                type="button"
-                aria-pressed={typeFilter === c.value}
-                onClick={() => setTypeFilter(c.value)}
-                className="h-9 rounded-full px-3.5 text-sm font-semibold transition-colors bg-muted/60 text-foreground hover:bg-muted aria-pressed:bg-foreground aria-pressed:text-background"
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            aria-expanded={filtersOpen}
-            aria-controls="account-more-filters"
-            onClick={() => setFiltersOpen(o => !o)}
-            className="inline-flex h-9 items-center gap-2 rounded-full border border-border px-3.5 text-sm font-semibold hover:bg-muted"
-          >
-            <SlidersHorizontal className="size-4" aria-hidden="true" />
-            Filtreler
-            {moreFilterCount > 0 && (
-              <span className="inline-flex size-5 items-center justify-center rounded-full bg-foreground text-[11px] text-background">{moreFilterCount}</span>
-            )}
-          </button>
-        </div>
-        {filtersOpen && (
-          <div id="account-more-filters" className="flex items-center flex-wrap gap-2">
-            <SelectField
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              options={categoryOptions}
-              className="w-fit bg-card text-xs"
-            />
-            <SelectField
-              value={familyFilter?.id ?? ''}
-              onChange={e => selectPerson(setFamilyFilter, e.target.value)}
-              options={familyOptions}
-              className="w-fit bg-card text-xs"
-            />
-            <SelectField
-              value={recipientFilter?.id ?? ''}
-              onChange={e => selectPerson(setRecipientFilter, e.target.value)}
-              options={recipientOptions}
-              className="w-fit bg-card text-xs"
-            />
-            <SelectField
-              value={sortOption}
-              onChange={e => setSortOption(e.target.value as TxSortOption)}
-              options={TX_SORT_OPTIONS}
-              className="w-fit bg-card text-xs"
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Active person filter chips */}
-      {(familyFilter || recipientFilter) && (
-        <div className="flex gap-2 px-6 py-2 bg-card border-b border-border flex-wrap flex-shrink-0">
-          {familyFilter && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded" style={{ background: 'rgba(125,211,252,0.12)', color: '#7DD3FC' }}>
-              Aile: {familyFilter.name}
-              <button onClick={() => setFamilyFilter(null)} className="ml-0.5 hover:opacity-70 font-bold leading-none">✕</button>
-            </span>
-          )}
-          {recipientFilter && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded" style={{ background: 'rgba(167,139,250,0.12)', color: '#A78BFA' }}>
-              Alıcı: {recipientFilter.name}
-              <button onClick={() => setRecipientFilter(null)} className="ml-0.5 hover:opacity-70 font-bold leading-none">✕</button>
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Transaction list — Tablo / Gün Kartı arasında geçilebilir. İkisi de AYNI
-          listeyi alır: gerçekleşen + gelecek (planlanan) işlemler. */}
-      {/* Geniş ekranda liste + sağ sütun (içgörüler); dar ekranda alt alta */}
-      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
-      <div className="min-w-0">
-        <TxViewsShell
-          initialView={initialView}
-          transactions={filteredTxs}
+      <div className={`indigo-page ${indigoFont.className} flex-1`}>
+        <AccountHero
           account={account}
-          projectedIds={projectedIds}
-          plannedTxs={projectedTxs}
-          sort={sortOption}
-          emptyTitle="Bu dönemde işlem yok"
-          emptyDescription="Farklı bir dönem seçin veya İşlem Ekle ile kayıt oluşturun."
-          onPersonClick={handlePersonClick}
-          selectable
-          selectedIds={sel.selectedIds}
-          onToggleSelect={sel.toggle}
-          onSelectMany={sel.selectMany}
+          balance={animBalance}
+          available={available === null ? null : animAvail}
+          limit={animLimit}
+          usedPct={usedPct}
+          onAddTx={() => openModal('add-transaction', { accountId: id })}
+          onOpenStatements={() => setSheet('statements')}
+          onOpenPlans={plans.length ? () => setSheet('plans') : undefined}
+          onOpenCard={() => setSheet('info')}
         />
+
+        <div className="px-4 sm:px-6 pt-7 pb-[72px]">
+          <div className="mx-auto max-w-[1160px]">
+            {account.type === 'savings' && (
+              <div className="mb-6 overflow-hidden rounded-3xl border border-[var(--ip-line)]"><DepositPanel account={account} /></div>
+            )}
+            <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+              <AccountFeedPanel
+                account={account}
+                transactions={filteredTxs}
+                projectedIds={projectedIds}
+                sort={sortOption}
+                search={search}
+                onSearch={setSearch}
+                chip={chip}
+                onChip={setChip}
+                weekLabel={week?.label ?? null}
+                onClearWeek={() => setWeek(null)}
+                filterCount={moreFilterCount}
+                filtersSlot={
+                  <>
+                    <SelectField value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} options={categoryOptions} className="w-fit bg-card text-xs" />
+                    <SelectField value={familyFilter?.id ?? ''} onChange={e => selectPerson(setFamilyFilter, e.target.value)} options={familyOptions} className="w-fit bg-card text-xs" />
+                    <SelectField value={recipientFilter?.id ?? ''} onChange={e => selectPerson(setRecipientFilter, e.target.value)} options={recipientOptions} className="w-fit bg-card text-xs" />
+                    <SelectField value={sortOption} onChange={e => setSortOption(e.target.value as TxSortOption)} options={TX_SORT_OPTIONS} className="w-fit bg-card text-xs" />
+                  </>
+                }
+                tableSlot={
+                  <TxViewsShell
+                    initialView={initialView === 'feed' ? 'table' : initialView}
+                    transactions={filteredTxs}
+                    account={account}
+                    projectedIds={projectedIds}
+                    plannedTxs={projectedTxs}
+                    sort={sortOption}
+                    emptyTitle="Bu dönemde işlem yok"
+                    emptyDescription="Farklı bir dönem seçin veya İşlem Ekle ile kayıt oluşturun."
+                    onPersonClick={handlePersonClick}
+                    selectable
+                    selectedIds={sel.selectedIds}
+                    onToggleSelect={sel.toggle}
+                    onSelectMany={sel.selectMany}
+                  />
+                }
+                selectedIds={sel.selectedIds}
+                onToggleSelect={sel.toggle}
+                onSelectMany={sel.selectMany}
+              />
+              <AccountSideCards
+                account={account}
+                accountTxs={accountTxs}
+                from={from}
+                to={to}
+                periodLabel={periodLabel}
+                income={periodIncome}
+                expense={periodExpense}
+                week={week}
+                onWeek={setWeek}
+                plans={plans}
+                onOpenTx={setSheetTx}
+                onOpenPlans={() => setSheet('plans')}
+              />
+            </div>
+          </div>
+        </div>
       </div>
-      <AccountInsights account={account} accountTxs={accountTxs} from={from} to={to} />
-      </div>
-      </div>
+
+      {sheet === 'statements' && account.type === 'credit_card' && (
+        <StatementsSheet account={account} onClose={() => setSheet(null)} />
+      )}
+      {sheet === 'plans' && (
+        <PlansSheet account={account} plans={plans} onClose={() => setSheet(null)}
+          onOpenTx={t => { setSheet(null); setSheetTx(t) }} />
+      )}
+      {sheet === 'info' && (
+        <AccountInfoSheet
+          account={account}
+          available={available}
+          onClose={() => setSheet(null)}
+          onEdit={() => setEditingAccount(account)}
+          onReconcile={() => openModal('reconcile-balance', { id })}
+        />
+      )}
+      {sheetTx && (
+        <TxDetailSheet tx={sheetTx} account={account} projected={projectedIds.has(sheetTx.id)} onClose={() => setSheetTx(null)} />
+      )}
 
       <BatchEditDrawer selectedIds={sel.list} onClose={sel.clear} />
 
