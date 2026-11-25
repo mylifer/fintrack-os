@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { DEFAULT_ICON } from '@/lib/category-palette'
-import { installmentLabel } from '@/components/transactions/TransactionList'
+import { installmentLabel, TxIcon } from '@/components/transactions/TransactionList'
 import { useFocusTxRow, FOCUS_ROW_CLASS } from '@/lib/hooks/useFocusTxRow'
 import { TxDetailSheet } from './TxDetailSheet'
 import { dayTotals, sortDates, sortWithinDay, splitFuture, type TxViewProps } from './shared'
@@ -242,7 +242,12 @@ const FeedRow = memo(function FeedRow({
             </svg>
           </span>
         ) : (
-          <CategoryIcon icon={cat?.icon ?? DEFAULT_ICON} color={cat?.color ?? '#94a3b8'} size={24} className="flex-none" />
+          <TxIcon
+            description={tx.description}
+            recipient={recipient}
+            size={34}
+            fallback={<CategoryIcon icon={cat?.icon ?? DEFAULT_ICON} color={cat?.color ?? '#94a3b8'} size={24} className="flex-none" />}
+          />
         )}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-center gap-1.5">

@@ -10,7 +10,7 @@ import { formatDate, today } from '@/lib/utils/date'
 import { awaitsApproval } from '@/lib/utils/calculations'
 import { DEFAULT_ICON } from '@/lib/category-palette'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
-import { DeleteConfirmDialog } from '@/components/transactions/TransactionList'
+import { DeleteConfirmDialog, TxIcon } from '@/components/transactions/TransactionList'
 import type { Account, Transaction } from '@/types'
 
 /* İşlem ayrıntı paneli — Akış görünümünde satıra dokununca açılır. Telefonda
@@ -91,7 +91,12 @@ export function TxDetailSheet({
         </div>
 
         <div className="flex flex-col items-center gap-2 pb-5 text-center">
-          <CategoryIcon icon={cat?.icon ?? DEFAULT_ICON} color={cat?.color ?? '#94a3b8'} size={34} />
+          <TxIcon
+            description={live.description}
+            recipient={recipient}
+            size={44}
+            fallback={<CategoryIcon icon={cat?.icon ?? DEFAULT_ICON} color={cat?.color ?? '#94a3b8'} size={34} />}
+          />
           <h2 id="tx-sheet-title" className="text-xl font-bold">{live.description}</h2>
           <div className={`text-4xl font-extrabold tracking-tight tabular-nums ${positive ? 'text-green-600' : ''}`}>
             {positive ? '+' : isXfer ? '' : '−'}{formatCurrency(Math.abs(live.amount), live.currency)}

@@ -15,7 +15,7 @@ import type { TxViewProps } from './shared'
  * hepsi aynı işlemleri gösterir.
  *
  * Alternatifler KOLONLU düzen üzerine kurulur: kolon hizası kullanıcı için
- * pazarlık konusu değil, yeni bir görünüm eklerken korunmalı. Akış (varsayılan)
+ * pazarlık konusu değil, yeni bir görünüm eklerken korunmalı. Akış
  * az kullanılan kolonları bağlam satırına toplar ama tutarı her satırda aynı
  * sağ kenarda tutar; tam kolonlu görünümler seçici üzerinden duruyor.
  *
