@@ -1,18 +1,15 @@
 'use client'
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useState } from 'react'
 import Link from 'next/link'
-import { useAccountStore, usePaymentsStore, useTransactionStore } from '@/store'
-import { buildCardStatements, type StatementStatus } from '@/lib/utils/card-statement'
-import { assignCardPayments } from '@/lib/payments/schedule'
-import { planIdFor } from '@/lib/payments/ids'
-import { resolveCardDays } from '@/lib/payments/bank-rules'
+import { type StatementStatus } from '@/lib/utils/card-statement'
 import { formatCurrency } from '@/lib/utils/currency'
-import { formatDate, today } from '@/lib/utils/date'
+import { formatDate } from '@/lib/utils/date'
 import { Badge } from '@/components/ui/Badge'
+import { useCardStatements } from './useCardStatements'
 import type { Account } from '@/types'
 
-const STATUS: Record<StatementStatus, { label: string; variant: 'ok' | 'danger' | 'amber' | 'secondary' }> = {
+export const STATUS: Record<StatementStatus, { label: string; variant: 'ok' | 'danger' | 'amber' | 'secondary' }> = {
   clear:   { label: 'Borç yok', variant: 'secondary' },
   paid:    { label: 'Ödendi',   variant: 'ok' },
   partial: { label: 'Kısmi',    variant: 'amber' },
@@ -26,34 +23,18 @@ const fmtDay = (iso: string) => formatDate(iso, 'd MMM')
  *  girilen işlemlerden hesaplanır — bankanın ekstresiyle farkı eksik girilmiş
  *  işlemdir. */
 export function CardStatementPanel({ account }: { account: Account }) {
-  const transactions = useTransactionStore(s => s.transactions)
-  const accounts     = useAccountStore(s => s.accounts)
-  const plan = usePaymentsStore(s => s.plans.find(p => p.id === planIdFor('card', account.id)))
-  const occurrences = usePaymentsStore(s => s.occurrences)
   const [expanded, setExpanded] = useState<string | null>(null)
-
-  const todayStr = today()
-  // Kesim + fark ve tatil kuralı (Kart Takvimi ile aynı — bank-rules)
-  const resolved = resolveCardDays(account, plan)
-  const result = useMemo(() => buildCardStatements(account, transactions, {
-    days: resolved.days,
-    payments: assignCardPayments(accounts, transactions).get(account.id) ?? [],
-    dueDay: plan?.dayOfMonth ?? null,
-    minPayPct: account.minPayPct && account.minPayPct !== 3 ? account.minPayPct : null,
-    todayStr,
-    // Kart Takvimi'nde aya özel girilen kesim / son ödeme tarihleri
-    overrides: new Map(occurrences
-      .filter(o => o.targetKind === 'card' && o.targetId === account.id && !o.deleted_at)
-      .map(o => [o.month, { statementDate: o.statementDate ?? null, dueDate: o.dueDate ?? null }])),
-    // resolved.days: account + plan değerlerinden türer
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [account, accounts, transactions, plan?.dayOfMonth, todayStr, occurrences])
+  // Geçmiş ekstre tablosu varsayılan kapalı: özet kartları yeterli, tablo
+  // listeyi aşağı itiyordu. Gecikmiş bir ekstre varsa açık başlar.
+  const [showHistory, setShowHistory] = useState<boolean | null>(null)
+  const { result, plan, resolved } = useCardStatements(account)
 
   const money = (n: number) => formatCurrency(n, account.currency)
   const last = result.statements[0]
+  const historyOpen = showHistory ?? result.statements.some(st => st.status === 'overdue')
 
   return (
-    <div className="px-6 lg:px-8 py-4 border-b border-border bg-card flex-shrink-0">
+    <div id="ekstre" className="px-6 lg:px-8 py-4 border-b border-border bg-card flex-shrink-0 scroll-mt-4">
       <div className="flex items-baseline justify-between gap-3 mb-3">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ekstre</div>
         <div className="text-xs text-muted-foreground">
@@ -99,7 +80,18 @@ export function CardStatementPanel({ account }: { account: Account }) {
         </p>
       )}
 
-      <div className="overflow-x-auto">
+      <button
+        type="button"
+        onClick={() => setShowHistory(!historyOpen)}
+        aria-expanded={historyOpen}
+        aria-controls="statement-history"
+        className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+      >
+        {historyOpen ? '▾' : '▸'} Geçmiş ekstreler ({result.statements.length})
+      </button>
+
+      {historyOpen && (
+      <div id="statement-history" className="overflow-x-auto mt-2">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-muted-foreground border-b border-border">
@@ -168,6 +160,7 @@ export function CardStatementPanel({ account }: { account: Account }) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   )
 }

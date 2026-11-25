@@ -4,12 +4,13 @@ import { useState, useMemo } from 'react'
 import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
-import { AccountAvatar }      from '@/components/accounts/AccountAvatar'
+import { AccountHero }        from '@/components/accounts/AccountHero'
+import { AccountInsights }    from '@/components/accounts/AccountInsights'
+import { Search, SlidersHorizontal } from 'lucide-react'
 import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore, useCategoryStore, useSettingsStore } from '@/store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import { useShallow }         from 'zustand/react/shallow'
-import { formatCurrency }     from '@/lib/utils/currency'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { txHasCategory } from '@/lib/utils/categorySplits'
@@ -18,8 +19,6 @@ import { getPeriodRangeAt, formatPeriodLabel, periodOffsetFor, today } from '@/l
 import { useTxFocusStore } from '@/lib/tx-focus'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { isFutureDate } from '@/components/transactions/views/shared'
-import { Badge }              from '@/components/ui/Badge'
-import { Button }             from '@/components/ui/button'
 import { SelectField }        from '@/components/ui/Select'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
 import { CardStatementPanel } from '@/components/accounts/CardStatementPanel'
@@ -32,10 +31,12 @@ import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { useWorkspaceSwitchFallback } from '@/lib/hooks/useWorkspaceSwitchFallback'
 import type { Account, PersonRole, Transaction } from '@/types'
 
-const TYPE_LABELS: Record<string, string> = {
-  cash: 'Nakit', checking: 'Vadesiz', savings: 'Vadeli',
-  credit_card: 'Kredi Kartı', investment: 'Yatırım', loan: 'Kredi',
-}
+const TYPE_CHIPS = [
+  { value: '',         label: 'Tümü' },
+  { value: 'expense',  label: 'Gider' },
+  { value: 'income',   label: 'Gelir' },
+  { value: 'transfer', label: 'Transfer' },
+]
 
 type PersonFilter = { id: string; name: string } | null
 
@@ -73,6 +74,9 @@ export default function AccountDetailClient({
   const [categoryFilter, setCategoryFilter] = useState('')
   const [sortOption, setSortOption]         = useState<TxSortOption>('date-desc')
   const [periodOffset, setPeriodOffset]     = useState(0)
+  // Kategori/aile/alıcı/sıralama seçicileri varsayılan kapalı; seçili bir
+  // süzgeç varken açılırsa düğmedeki sayı ne kadarının etkin olduğunu söyler.
+  const [filtersOpen, setFiltersOpen]       = useState(false)
 
   const recurring = useRecurringStore(s => s.recurring)
 
@@ -213,6 +217,8 @@ export default function AccountDetailClient({
   if (!accountsReady || !txsReady || redirecting) return null
   if (!account) return notFound()
 
+  const moreFilterCount = [categoryFilter, familyFilter, recipientFilter, sortOption !== 'date-desc'].filter(Boolean).length
+
   const usedPct = account.creditLimit && available !== null
     ? ((account.creditLimit - available) / account.creditLimit) * 100
     : 0
@@ -243,128 +249,96 @@ export default function AccountDetailClient({
         }
       />
 
-      {/* Account summary */}
-      <div className="px-6 lg:px-8 py-5 border-b border-border bg-card flex-shrink-0">
-        {/* Top row: avatar + type badge + edit */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <AccountAvatar account={account} size="lg" />
-            <div className="flex flex-col gap-1.5">
-              <div className="text-base font-semibold text-foreground">{account.name}</div>
-              <Badge variant="default">{TYPE_LABELS[account.type]}</Badge>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => openModal('reconcile-balance', { id })}
-            >
-              Bakiyeyi Eşitle
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setEditingAccount(account)}
-            >
-              Düzenle
-            </Button>
-          </div>
-        </div>
-
-        {/* Balance */}
-        <div className={`text-3xl font-normal tabular-nums mb-4 ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
-          {account.balance < 0 ? '−' : ''}{formatCurrency(animBalance, account.currency)}
-        </div>
-
-        {/* Credit card utilisation bar */}
-        {account.type === 'credit_card' && account.creditLimit && (
-          <div className="mb-4">
-            <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-              <span>Kullanılabilir: {formatCurrency(animAvail, account.currency)}</span>
-              <span>Limit: {formatCurrency(animLimit, account.currency)}</span>
-            </div>
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${usedPct > 80 ? 'bg-destructive' : usedPct > 60 ? 'bg-orange-500' : 'bg-green-600'}`}
-                style={{ width: `${Math.min(usedPct, 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Period stats — calcPeriodFlow ₺-normalize (baseAmount, S2/S3) bir
-            değer döndürür, hesabın kendi para biriminde DEĞİL. Eskiden
-            account.currency ile basılıyordu: USD hesabında 1.000 $ gelir
-            "+34.500 $" görünüyordu (kurun katı kadar şişme). Sembol ₺ olmalı;
-            hesap TRY dışıysa etiket bunu açıkça söyler. */}
-        <div className="flex gap-6 pt-4 border-t border-border">
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-              Gelir{account.currency !== 'TRY' && ' (₺)'}
-            </div>
-            <div className="text-sm font-medium tabular-nums text-green-600">+{formatCurrency(animIncome)}</div>
-          </div>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
-              Gider{account.currency !== 'TRY' && ' (₺)'}
-            </div>
-            <div className="text-sm font-medium tabular-nums text-destructive">−{formatCurrency(animExpense)}</div>
-          </div>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">İşlem</div>
-            <div className="text-sm font-medium tabular-nums text-foreground">{filteredTxs.length}</div>
-          </div>
-        </div>
-      </div>
+      {/* Üst bant, ekstre, süzgeçler ve liste sayfayla birlikte kayar (düzen
+          min-h-screen; liste görünümleri kendi sabit yükseklikli kutusunda). */}
+      <div className="flex-1">
+      <AccountHero
+        account={account}
+        balance={animBalance}
+        available={available === null ? null : animAvail}
+        limit={animLimit}
+        usedPct={usedPct}
+        periodLabel={formatPeriodLabel(periodType, periodOffset)}
+        income={animIncome}
+        expense={animExpense}
+        txCount={filteredTxs.length}
+        onAddTx={() => openModal('add-transaction', { accountId: id })}
+        onReconcile={() => openModal('reconcile-balance', { id })}
+        onEdit={() => setEditingAccount(account)}
+      />
 
       {account.type === 'credit_card' && <CardStatementPanel account={account} />}
       {account.type === 'savings' && <DepositPanel account={account} />}
 
-      {/* Search + filters */}
-      <div className="flex items-center flex-wrap gap-2 px-6 py-3 border-b border-border flex-shrink-0">
-        <input
-          type="text"
-          placeholder="Ara: açıklama, alıcı, aile üyesi, kategori, not, etiket..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-48 text-sm bg-background px-4 py-2 rounded-xl border border-transparent focus:border-border outline-none placeholder:text-muted-foreground/60 text-foreground"
-        />
-        <SelectField
-          value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)}
-          options={[
-            { value: '',         label: 'Tüm Türler' },
-            { value: 'expense',  label: 'Gider' },
-            { value: 'income',   label: 'Gelir' },
-            { value: 'transfer', label: 'Transfer' },
-          ]}
-          className="w-fit bg-card text-xs"
-        />
-        <SelectField
-          value={categoryFilter}
-          onChange={e => setCategoryFilter(e.target.value)}
-          options={categoryOptions}
-          className="w-fit bg-card text-xs"
-        />
-        <SelectField
-          value={familyFilter?.id ?? ''}
-          onChange={e => selectPerson(setFamilyFilter, e.target.value)}
-          options={familyOptions}
-          className="w-fit bg-card text-xs"
-        />
-        <SelectField
-          value={recipientFilter?.id ?? ''}
-          onChange={e => selectPerson(setRecipientFilter, e.target.value)}
-          options={recipientOptions}
-          className="w-fit bg-card text-xs"
-        />
-        <SelectField
-          value={sortOption}
-          onChange={e => setSortOption(e.target.value as TxSortOption)}
-          options={TX_SORT_OPTIONS}
-          className="w-fit bg-card text-xs"
-        />
+      {/* Arama + tür düğmeleri; seyrek kullanılan süzgeçler "Filtreler" altında */}
+      <div className="flex flex-col gap-3 px-6 lg:px-8 py-4 border-b border-border">
+        <div className="flex items-center flex-wrap gap-2">
+          <label className="flex flex-1 min-w-56 items-center gap-2.5 rounded-full bg-muted/60 px-4 h-10 focus-within:ring-2 focus-within:ring-ring/50">
+            <Search className="size-4 text-muted-foreground" aria-hidden="true" />
+            <input
+              type="search"
+              placeholder="Ara: açıklama, alıcı, aile üyesi, kategori, not, etiket..."
+              aria-label="İşlem ara"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/70 text-foreground"
+            />
+          </label>
+          <div role="group" aria-label="İşlem türü" className="flex flex-wrap gap-1.5">
+            {TYPE_CHIPS.map(c => (
+              <button
+                key={c.value}
+                type="button"
+                aria-pressed={typeFilter === c.value}
+                onClick={() => setTypeFilter(c.value)}
+                className="h-9 rounded-full px-3.5 text-sm font-semibold transition-colors bg-muted/60 text-foreground hover:bg-muted aria-pressed:bg-foreground aria-pressed:text-background"
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            aria-expanded={filtersOpen}
+            aria-controls="account-more-filters"
+            onClick={() => setFiltersOpen(o => !o)}
+            className="inline-flex h-9 items-center gap-2 rounded-full border border-border px-3.5 text-sm font-semibold hover:bg-muted"
+          >
+            <SlidersHorizontal className="size-4" aria-hidden="true" />
+            Filtreler
+            {moreFilterCount > 0 && (
+              <span className="inline-flex size-5 items-center justify-center rounded-full bg-foreground text-[11px] text-background">{moreFilterCount}</span>
+            )}
+          </button>
+        </div>
+        {filtersOpen && (
+          <div id="account-more-filters" className="flex items-center flex-wrap gap-2">
+            <SelectField
+              value={categoryFilter}
+              onChange={e => setCategoryFilter(e.target.value)}
+              options={categoryOptions}
+              className="w-fit bg-card text-xs"
+            />
+            <SelectField
+              value={familyFilter?.id ?? ''}
+              onChange={e => selectPerson(setFamilyFilter, e.target.value)}
+              options={familyOptions}
+              className="w-fit bg-card text-xs"
+            />
+            <SelectField
+              value={recipientFilter?.id ?? ''}
+              onChange={e => selectPerson(setRecipientFilter, e.target.value)}
+              options={recipientOptions}
+              className="w-fit bg-card text-xs"
+            />
+            <SelectField
+              value={sortOption}
+              onChange={e => setSortOption(e.target.value as TxSortOption)}
+              options={TX_SORT_OPTIONS}
+              className="w-fit bg-card text-xs"
+            />
+          </div>
+        )}
       </div>
 
       {/* Active person filter chips */}
@@ -387,7 +361,9 @@ export default function AccountDetailClient({
 
       {/* Transaction list — Tablo / Gün Kartı arasında geçilebilir. İkisi de AYNI
           listeyi alır: gerçekleşen + gelecek (planlanan) işlemler. */}
-      <div className="flex-1 overflow-auto">
+      {/* Geniş ekranda liste + sağ sütun (içgörüler); dar ekranda alt alta */}
+      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+      <div className="min-w-0">
         <TxViewsShell
           initialView={initialView}
           transactions={filteredTxs}
@@ -403,6 +379,9 @@ export default function AccountDetailClient({
           onToggleSelect={sel.toggle}
           onSelectMany={sel.selectMany}
         />
+      </div>
+      <AccountInsights account={account} accountTxs={accountTxs} from={from} to={to} />
+      </div>
       </div>
 
       <BatchEditDrawer selectedIds={sel.list} onClose={sel.clear} />

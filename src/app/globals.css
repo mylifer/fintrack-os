@@ -268,3 +268,10 @@
   @page { margin: 12mm; }
   body { background: #fff !important; }
 }
+
+/* Hesap detayı İndigo üst bandı — kart görselinin üstünden geçen parlama
+   (AccountHero). motion-safe ile çağrılır; hareket azaltma tercihinde durur. */
+@keyframes hero-shine {
+  0%, 100% { background-position: 100% 0; }
+  50%      { background-position: 0 0; }
+}
