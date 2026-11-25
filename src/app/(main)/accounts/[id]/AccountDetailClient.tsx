@@ -5,6 +5,7 @@ import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
 import { AccountHero }        from '@/components/accounts/AccountHero'
+import { AccountInsights }    from '@/components/accounts/AccountInsights'
 import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore, useCategoryStore, useSettingsStore } from '@/store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { compareCategoriesByName } from '@/lib/utils/categories'
@@ -322,8 +323,11 @@ export default function AccountDetailClient({
       )}
 
       {/* Transaction list — Tablo / Gün Kartı arasında geçilebilir. İkisi de AYNI
-          listeyi alır: gerçekleşen + gelecek (planlanan) işlemler. */}
-      <div className="flex-1 overflow-auto">
+          listeyi alır: gerçekleşen + gelecek (planlanan) işlemler. Geniş
+          ekranda sağda içgörü sütunu (Nereye gitti?, Haftalık harcama,
+          Taksitler); dar ekranda listenin altına iner. */}
+      <div className="flex-1 overflow-auto xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+      <div className="min-w-0">
         <TxViewsShell
           initialView={initialView}
           transactions={filteredTxs}
@@ -339,6 +343,8 @@ export default function AccountDetailClient({
           onToggleSelect={sel.toggle}
           onSelectMany={sel.selectMany}
         />
+      </div>
+      <AccountInsights account={account} accountTxs={accountTxs} from={from} to={to} />
       </div>
 
       <BatchEditDrawer selectedIds={sel.list} onClose={sel.clear} />
