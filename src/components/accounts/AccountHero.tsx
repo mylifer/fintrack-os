@@ -1,19 +1,17 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Manrope } from 'next/font/google'
-import { Pencil, Plus, ReceiptText, Scale } from 'lucide-react'
+import { CalendarDays, CreditCard, Plus, ReceiptText } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDate, today } from '@/lib/utils/date'
 import { useCardStatements } from './useCardStatements'
+import { indigoFont } from './indigo/font'
 import type { Account } from '@/types'
 
 /* İndigo üst bant — hesap detayının "kart ekranı". Revolut/Monzo dilinde:
    büyük bakiye, kart görseli, yuvarlak hızlı işlemler. Bilinçli olarak tek
    görünümlüdür (açık/koyu temada aynı indigo bant); sayfanın geri kalanı
    uygulama temasını izler. */
-
-const manrope = Manrope({ subsets: ['latin', 'latin-ext'], weight: ['500', '600', '700', '800'] })
 
 const TYPE_LABELS: Record<string, string> = {
   cash: 'Nakit', checking: 'Vadesiz', savings: 'Vadeli',
@@ -76,8 +74,8 @@ function CardDueLine({ account }: { account: Account }) {
 }
 
 export function AccountHero({
-  account, balance, available, limit, usedPct, periodLabel, income, expense, txCount,
-  onAddTx, onReconcile, onEdit,
+  account, balance, available, limit, usedPct,
+  onAddTx, onOpenStatements, onOpenPlans, onOpenCard,
 }: {
   account: Account
   /** Sayım animasyonlu mutlak bakiye */
@@ -85,13 +83,11 @@ export function AccountHero({
   available: number | null
   limit: number
   usedPct: number
-  periodLabel: string
-  income: number
-  expense: number
-  txCount: number
   onAddTx: () => void
-  onReconcile: () => void
-  onEdit: () => void
+  onOpenStatements: () => void
+  /** Süren taksit planı yoksa düğme gösterilmez */
+  onOpenPlans?: () => void
+  onOpenCard: () => void
 }) {
   const isCard = account.type === 'credit_card'
   const negative = account.balance < 0
@@ -104,11 +100,11 @@ export function AccountHero({
 
   return (
     <section
-      className={`${manrope.className} flex-shrink-0 bg-[#1b1f6b] text-white`}
+      className={`${indigoFont.className} flex-shrink-0 bg-[#1b1f6b] text-white`}
       style={{ backgroundImage: 'radial-gradient(1100px 480px at 85% -10%, #4b2bd6, transparent 60%)' }}
       aria-label={`${account.name} özeti`}
     >
-      <div className="mx-auto grid max-w-6xl items-center gap-8 px-6 py-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-10 lg:px-8 lg:py-10">
+      <div className="mx-auto grid max-w-[1160px] items-center gap-8 px-4 sm:px-6 py-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-10 lg:px-8 lg:py-10">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-white/70">
             <span className="truncate">{account.name}</span>
@@ -145,31 +141,11 @@ export function AccountHero({
             </div>
           )}
 
-          {/* Dönem akışı — calcPeriodFlow ₺-normalize döner (hesap TRY dışıysa etiket söyler) */}
-          <div className="mt-5 flex flex-wrap gap-2 text-[13px]">
-            <span className="rounded-full bg-white/10 px-3 py-1.5 text-white/75">{periodLabel}</span>
-            <span className="rounded-full bg-white/10 px-3 py-1.5">
-              <span className="text-white/65">Gelir{account.currency !== 'TRY' && ' (₺)'} </span>
-              <b className="font-bold tabular-nums text-[#7ef0c0]">+{formatCurrency(income)}</b>
-            </span>
-            <span className="rounded-full bg-white/10 px-3 py-1.5">
-              <span className="text-white/65">Gider{account.currency !== 'TRY' && ' (₺)'} </span>
-              <b className="font-bold tabular-nums text-[#ffb3c1]">−{formatCurrency(expense)}</b>
-            </span>
-            <span className="rounded-full bg-white/10 px-3 py-1.5 text-white/75">{txCount} işlem</span>
-          </div>
-
           <div className="mt-6 flex flex-wrap gap-4">
             <QuickAction primary icon={<Plus />} label="İşlem ekle" onClick={onAddTx} />
-            {isCard && (
-              <QuickAction
-                icon={<ReceiptText />}
-                label="Ekstreler"
-                onClick={() => document.getElementById('ekstre')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              />
-            )}
-            <QuickAction icon={<Scale />} label="Bakiyeyi eşitle" onClick={onReconcile} />
-            <QuickAction icon={<Pencil />} label="Düzenle" onClick={onEdit} />
+            {isCard && <QuickAction icon={<ReceiptText />} label="Ekstreler" onClick={onOpenStatements} />}
+            {onOpenPlans && <QuickAction icon={<CalendarDays />} label="Taksitler" onClick={onOpenPlans} />}
+            <QuickAction icon={<CreditCard />} label={isCard ? 'Kart' : 'Hesap'} onClick={onOpenCard} />
           </div>
         </div>
 
