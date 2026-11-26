@@ -5,7 +5,11 @@ import { useWorkspaceStore } from '@/store'
 import { ReadOnlyBadge } from '@/components/settings/ReadOnlyBadge'
 import { Input } from '@/components/ui/Input'
 
-export function WorkspaceSwitcher() {
+/* `dense`: Kompakt kenar çubuğunun 44px'lik üst şeridi için. Orada tetikleyici
+   logonun hemen yanında durduğu için çerçevesiz hali uygulama başlığı gibi
+   okunuyor, tıklanabilir olduğu anlaşılmıyor — bu yüzden kenarlık, hafif zemin
+   ve daha belirgin bir ok veriyoruz. Rafine varyantı olduğu gibi kalır. */
+export function WorkspaceSwitcher({ dense = false }: { dense?: boolean }) {
   const workspaces = useWorkspaceStore(s => s.workspaces)
   const activeId    = useWorkspaceStore(s => s.activeId)
   const ready        = useWorkspaceStore(s => s.ready)
@@ -88,7 +92,9 @@ export function WorkspaceSwitcher() {
         aria-expanded={open}
         className={[
           'w-full flex items-center gap-1.5 text-left transition-colors disabled:opacity-60',
-          'px-2.5 py-2 rounded-lg hover:bg-muted',
+          dense
+            ? 'h-7 px-2 rounded-md border border-border bg-secondary/50 hover:bg-secondary'
+            : 'px-2.5 py-2 rounded-lg hover:bg-muted',
         ].join(' ')}
       >
         <span className="flex-1 min-w-0 truncate text-xs font-semibold text-foreground">
@@ -98,7 +104,7 @@ export function WorkspaceSwitcher() {
         <svg
           fill="none" stroke="currentColor" strokeWidth={2}
           viewBox="0 0 24 24" width={13} height={13}
-          className={`flex-shrink-0 transition-transform duration-200 opacity-50`}
+          className={`flex-shrink-0 transition-transform duration-200 ${dense ? 'opacity-80' : 'opacity-50'}`}
           style={{ transform: open ? 'rotate(180deg)' : 'none' }}
           aria-hidden
         >

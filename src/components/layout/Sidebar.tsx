@@ -1,6 +1,7 @@
 'use client'
 
 import { useSidebarVariant } from '@/components/layout/SidebarVariantProvider'
+import { SidebarCompact } from '@/components/layout/sidebar/SidebarCompact'
 import { SidebarRefined } from '@/components/layout/sidebar/SidebarRefined'
 import { SidebarDual } from '@/components/layout/sidebar/SidebarDual'
 import { SettingsPanel } from '@/components/settings/SettingsPanel'
@@ -12,7 +13,7 @@ export function Sidebar() {
   const { variant } = useSidebarVariant()
   return (
     <>
-      {variant === 'refined' ? <SidebarRefined /> : <SidebarDual />}
+      {variant === 'refined' ? <SidebarRefined /> : variant === 'dual' ? <SidebarDual /> : <SidebarCompact />}
       {/* Ayarlar'da kenar çubuğunun yanında açılan bölüm katmanı */}
       <SettingsPanel />
     </>

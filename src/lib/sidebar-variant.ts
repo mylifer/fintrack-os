@@ -7,12 +7,12 @@
    Bu dosya sunucu bileşenlerinden de import edildiği için 'use client' YOK ve
    tarayıcıya özgü API kullanmaz. */
 
-export type SidebarVariant = 'refined' | 'dual'
+export type SidebarVariant = 'compact' | 'refined' | 'dual'
 
-const ALL: readonly SidebarVariant[] = ['refined', 'dual']
+const ALL: readonly SidebarVariant[] = ['compact', 'refined', 'dual']
 
 export const SIDEBAR_VARIANT_COOKIE = 'fintrack-sidebar'
-export const DEFAULT_SIDEBAR_VARIANT: SidebarVariant = 'dual'
+export const DEFAULT_SIDEBAR_VARIANT: SidebarVariant = 'compact'
 
 /** Çerez değeri bozuk/eksikse varsayılana düşer. */
 export function parseSidebarVariant(value: string | undefined | null): SidebarVariant {
@@ -20,6 +20,11 @@ export function parseSidebarVariant(value: string | undefined | null): SidebarVa
 }
 
 export const SIDEBAR_VARIANTS: { key: SidebarVariant; label: string; hint: string }[] = [
+  {
+    key: 'compact',
+    label: 'Kompakt',
+    hint: 'Sık satırlar, kılcal ayraçlar, bakiyeler sağda hizalı. Her şey tek ekranda.',
+  },
   {
     key: 'dual',
     label: 'Çift Panel',
