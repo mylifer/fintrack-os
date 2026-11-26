@@ -2,7 +2,6 @@
 
 import { useCallback, useState } from 'react'
 import { DEFAULT_TX_VIEW, TX_VIEW_COOKIE, type TxViewId } from '@/lib/tx-view'
-import { FeedView }            from './FeedView'
 import { TableView }           from './TableView'
 import { RulelessTableView }   from './RulelessTableView'
 import { DateColumnTableView } from './DateColumnTableView'
@@ -15,16 +14,13 @@ import type { TxViewProps } from './shared'
  * hepsi aynı işlemleri gösterir.
  *
  * Alternatifler KOLONLU düzen üzerine kurulur: kolon hizası kullanıcı için
- * pazarlık konusu değil, yeni bir görünüm eklerken korunmalı. Akış
- * az kullanılan kolonları bağlam satırına toplar ama tutarı her satırda aynı
- * sağ kenarda tutar; tam kolonlu görünümler seçici üzerinden duruyor.
+ * pazarlık konusu değil, yeni bir görünüm eklerken korunmalı.
  *
  * Seçim ÇEREZDE tutulur ve sunucuda okunur (bkz. lib/tx-view.ts): sayfa ilk
  * HTML'den itibaren kullanıcının seçtiği görünümle gelir, Tablo'dan diğerine
  * atlama (sıçrama) olmaz. Kullanıcı değiştirene kadar gördüğü görünüm budur.
  * ------------------------------------------------------------------------- */
 const VIEWS = [
-  { id: 'feed',     label: 'Akış',         icon: FeedIcon,     Comp: FeedView },
   { id: 'table',    label: 'Tablo',        icon: TableIcon,    Comp: TableView },
   { id: 'ruleless', label: 'Ayraçsız',     icon: RulelessIcon, Comp: RulelessTableView },
   { id: 'datecol',  label: 'Tarih Kolonu', icon: DateColIcon,  Comp: DateColumnTableView },
@@ -92,17 +88,6 @@ export function TxViewsShell({
 }
 
 /* ── Seçici ikonları ───────────────────────────────────────────────────────── */
-/* Akış: solda yuvarlak simge, sağda tutar. */
-function FeedIcon() {
-  return (
-    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round">
-      <rect x="3" y="4.5" width="5" height="5" rx="1.6" />
-      <rect x="3" y="14.5" width="5" height="5" rx="1.6" />
-      <path d="M11 6h6M11 16h6" />
-      <path d="M19.5 8h1.5M19.5 18h1.5" opacity=".55" />
-    </svg>
-  )
-}
 function TableIcon() {
   return (
     <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>

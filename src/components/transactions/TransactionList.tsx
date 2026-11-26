@@ -210,15 +210,9 @@ type MetaItem = { text: string; href?: string; crossWs?: CrossWsPeer }
 export const TxIcon = memo(function TxIcon({
   description,
   recipient,
-  size = 20,
-  fallback,
 }: {
   description: string
   recipient?: { name: string; url?: string }
-  /** Kutu boyu (px). Tablo satırları 20px kullanır. */
-  size?: number
-  /** Logo bulunamazsa baş harf yerine gösterilecek öğe (ör. kategori ikonu). */
-  fallback?: ReactNode
 }) {
   const onlineLogos = usePrivacyStore(s => s.onlineLogos)
   const brand  = useMemo(() => detectBrand(description), [description])
@@ -232,7 +226,7 @@ export const TxIcon = memo(function TxIcon({
   )
 
   if (onlineLogos && !brand && known && failedDomain !== known) {
-    return <Favicon domain={known} alt={description} size={size} onError={() => setFailedDomain(known)} />
+    return <Favicon domain={known} alt={description} onError={() => setFailedDomain(known)} />
   }
 
   if (onlineLogos && !brand && recipientDomain && !recipientFailed) {
@@ -240,24 +234,19 @@ export const TxIcon = memo(function TxIcon({
       <Favicon
         domain={recipientDomain}
         alt={recipient!.name}
-        size={size}
         onError={() => setRecipientFailed(true)}
       />
     )
   }
 
-  if (!brand && fallback) return <>{fallback}</>
-  return <BrandLogo brand={brand} name={description} size={size} />
+  return <BrandLogo brand={brand} name={description} size={20} />
 })
 
 // 20px'lik favicon kutusu — ürün ve alıcı ikonu aynı çerçeveyi paylaşır ki
 // açıklamadan alıcıya düşen satırlarda hiza/ölçü değişmesin.
-function Favicon({ domain, alt, size = 20, onError }: { domain: string; alt: string; size?: number; onError: () => void }) {
+function Favicon({ domain, alt, onError }: { domain: string; alt: string; onError: () => void }) {
   return (
-    <span
-      className={`flex-shrink-0 inline-flex items-center justify-center overflow-hidden bg-card border border-border ${size > 24 ? 'rounded-xl p-[6px]' : 'rounded-md p-[3px]'}`}
-      style={{ width: size, height: size }}
-    >
+    <span className="w-5 h-5 flex-shrink-0 inline-flex items-center justify-center rounded-md overflow-hidden bg-card border border-border p-[3px]">
       {/* eslint-disable-next-line @next/next/no-img-element -- dış/kullanıcı kaynaklı küçük ikon (data: URL ya da favicon); next/image optimizasyonu bu kaynaklara uygulanamaz */}
       <img
         src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
