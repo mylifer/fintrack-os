@@ -53,7 +53,7 @@ export function CardStatementPanel({ account }: { account: Account }) {
   const last = result.statements[0]
 
   return (
-    <div id="ekstre" className="px-6 lg:px-8 py-4 border-b border-border bg-card flex-shrink-0 scroll-mt-4">
+    <div className="px-6 lg:px-8 py-4 border-b border-border bg-card flex-shrink-0">
       <div className="flex items-baseline justify-between gap-3 mb-3">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ekstre</div>
         <div className="text-xs text-muted-foreground">

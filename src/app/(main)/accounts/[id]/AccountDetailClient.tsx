@@ -4,12 +4,13 @@ import { useState, useMemo } from 'react'
 import { notFound, useRouter } from 'next/navigation'
 import { Header }             from '@/components/layout/Header'
 import { PeriodTabs }         from '@/components/ui/PeriodTabs'
-import { AccountHero }        from '@/components/accounts/AccountHero'
+import { AccountAvatar }      from '@/components/accounts/AccountAvatar'
 import { AccountInsights }    from '@/components/accounts/AccountInsights'
 import { useAccountStore, useTransactionStore, useUIStore, usePeopleStore, useRecurringStore, useCategoryStore, useSettingsStore } from '@/store'
 import { makeTxSearchMatcher } from '@/lib/utils/txSearch'
 import { compareCategoriesByName } from '@/lib/utils/categories'
 import { useShallow }         from 'zustand/react/shallow'
+import { formatCurrency }     from '@/lib/utils/currency'
 import { calcAvailableCredit, calcPeriodFlow } from '@/lib/utils/calculations'
 import { collapseInstallments } from '@/lib/utils/installments'
 import { txHasCategory } from '@/lib/utils/categorySplits'
@@ -18,6 +19,8 @@ import { getPeriodRangeAt, formatPeriodLabel, periodOffsetFor, today } from '@/l
 import { useTxFocusStore } from '@/lib/tx-focus'
 import { projectPlannedTransactions } from '@/lib/utils/planned'
 import { isFutureDate } from '@/components/transactions/views/shared'
+import { Badge }              from '@/components/ui/Badge'
+import { Button }             from '@/components/ui/button'
 import { SelectField }        from '@/components/ui/Select'
 import { AccountFormModal }   from '@/components/accounts/AccountFormModal'
 import { CardStatementPanel } from '@/components/accounts/CardStatementPanel'
@@ -29,6 +32,11 @@ import { BatchEditDrawer } from '@/components/transactions/BatchEditDrawer'
 import { useTxSelection } from '@/lib/hooks/useTxSelection'
 import { useWorkspaceSwitchFallback } from '@/lib/hooks/useWorkspaceSwitchFallback'
 import type { Account, PersonRole, Transaction } from '@/types'
+
+const TYPE_LABELS: Record<string, string> = {
+  cash: 'Nakit', checking: 'Vadesiz', savings: 'Vadeli',
+  credit_card: 'Kredi Kartı', investment: 'Yatırım', loan: 'Kredi',
+}
 
 type PersonFilter = { id: string; name: string } | null
 
@@ -236,24 +244,80 @@ export default function AccountDetailClient({
         }
       />
 
-      {/* Hesap özeti — İndigo bant. Eski özet kutusunun her şeyi burada:
-          banka logosu, tür, bakiye, kullanılabilir/limit, dönem gelir/gider/
-          işlem sayısı, Bakiyeyi Eşitle ve Düzenle. calcPeriodFlow ₺-normalize
-          döner; hesap TRY dışıysa etiket (₺) der. */}
-      <AccountHero
-        account={account}
-        balance={animBalance}
-        available={available === null ? null : animAvail}
-        limit={animLimit}
-        usedPct={usedPct}
-        periodLabel={formatPeriodLabel(periodType, periodOffset)}
-        income={animIncome}
-        expense={animExpense}
-        txCount={filteredTxs.length}
-        onAddTx={() => openModal('add-transaction', { accountId: id })}
-        onReconcile={() => openModal('reconcile-balance', { id })}
-        onEdit={() => setEditingAccount(account)}
-      />
+      {/* Account summary */}
+      <div className="px-6 lg:px-8 py-5 border-b border-border bg-card flex-shrink-0">
+        {/* Top row: avatar + type badge + edit */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <AccountAvatar account={account} size="lg" />
+            <div className="flex flex-col gap-1.5">
+              <div className="text-base font-semibold text-foreground">{account.name}</div>
+              <Badge variant="default">{TYPE_LABELS[account.type]}</Badge>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => openModal('reconcile-balance', { id })}
+            >
+              Bakiyeyi Eşitle
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setEditingAccount(account)}
+            >
+              Düzenle
+            </Button>
+          </div>
+        </div>
+
+        {/* Balance */}
+        <div className={`text-3xl font-normal tabular-nums mb-4 ${account.balance < 0 ? 'text-destructive' : 'text-foreground'}`}>
+          {account.balance < 0 ? '−' : ''}{formatCurrency(animBalance, account.currency)}
+        </div>
+
+        {/* Credit card utilisation bar */}
+        {account.type === 'credit_card' && account.creditLimit && (
+          <div className="mb-4">
+            <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
+              <span>Kullanılabilir: {formatCurrency(animAvail, account.currency)}</span>
+              <span>Limit: {formatCurrency(animLimit, account.currency)}</span>
+            </div>
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${usedPct > 80 ? 'bg-destructive' : usedPct > 60 ? 'bg-orange-500' : 'bg-green-600'}`}
+                style={{ width: `${Math.min(usedPct, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Period stats — calcPeriodFlow ₺-normalize (baseAmount, S2/S3) bir
+            değer döndürür, hesabın kendi para biriminde DEĞİL. Eskiden
+            account.currency ile basılıyordu: USD hesabında 1.000 $ gelir
+            "+34.500 $" görünüyordu (kurun katı kadar şişme). Sembol ₺ olmalı;
+            hesap TRY dışıysa etiket bunu açıkça söyler. */}
+        <div className="flex gap-6 pt-4 border-t border-border">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              Gelir{account.currency !== 'TRY' && ' (₺)'}
+            </div>
+            <div className="text-sm font-medium tabular-nums text-green-600">+{formatCurrency(animIncome)}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">
+              Gider{account.currency !== 'TRY' && ' (₺)'}
+            </div>
+            <div className="text-sm font-medium tabular-nums text-destructive">−{formatCurrency(animExpense)}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">İşlem</div>
+            <div className="text-sm font-medium tabular-nums text-foreground">{filteredTxs.length}</div>
+          </div>
+        </div>
+      </div>
 
       {account.type === 'credit_card' && <CardStatementPanel account={account} />}
       {account.type === 'savings' && <DepositPanel account={account} />}
@@ -326,7 +390,7 @@ export default function AccountDetailClient({
           listeyi alır: gerçekleşen + gelecek (planlanan) işlemler. Geniş
           ekranda sağda içgörü sütunu (Nereye gitti?, Haftalık harcama,
           Taksitler); dar ekranda listenin altına iner. */}
-      <div className="flex-1 overflow-auto xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+      <div className="flex-1 overflow-auto xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
       <div className="min-w-0">
         <TxViewsShell
           initialView={initialView}

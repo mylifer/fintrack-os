@@ -112,7 +112,7 @@ export function FeedView({
 
   return (
     <>
-      <div ref={parentRef} className={`${heightClass} overflow-auto mx-4 lg:mx-6 my-3 rounded-2xl border border-border/70 bg-card`}>
+      <div ref={parentRef} className={`${heightClass} overflow-auto mx-4 lg:mx-6 my-3 rounded-xl border border-border bg-card shadow-sm`}>
         {selectable && (
           <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-card px-4 py-2">
             <Checkbox
@@ -138,11 +138,11 @@ export function FeedView({
                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
               >
                 {row.kind === 'section' ? (
-                  <div className="px-5 pt-4 pb-1 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                  <div className="px-5 pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     {row.id === 'future' ? 'Gelecek' : 'Gerçekleşen'} · {row.count}
                   </div>
                 ) : row.kind === 'day' ? (
-                  <div className="flex items-center justify-between px-5 pt-4 pb-1.5 text-[13px] font-bold text-muted-foreground">
+                  <div className="flex items-center justify-between px-5 pt-4 pb-1.5 text-xs font-medium text-muted-foreground">
                     <span className={row.future ? 'text-sky-600 dark:text-sky-400' : ''}>{dayLabel(row.date)}</span>
                     <span className={`tabular-nums ${row.net > 0 ? 'text-green-600' : ''}`}>
                       {row.net > 0 ? '+' : row.net < 0 ? '−' : ''}{formatCurrency(Math.abs(row.net), account.currency)}
@@ -219,8 +219,8 @@ const FeedRow = memo(function FeedRow({
   return (
     <div
       className={[
-        'group mx-2 flex items-center gap-3 rounded-xl px-2 transition-colors',
-        selected ? 'bg-[var(--batch-accent-soft)]' : 'hover:bg-accent/60',
+        'group mx-2 flex items-center gap-3 rounded-lg px-2 transition-colors',
+        selected ? 'bg-[var(--batch-accent-soft)]' : 'hover:bg-accent',
         future || projected ? 'opacity-80' : '',
         focused ? FOCUS_ROW_CLASS : '',
       ].join(' ')}
@@ -236,7 +236,7 @@ const FeedRow = memo(function FeedRow({
         className="flex min-w-0 flex-1 items-center gap-3.5 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60 rounded-lg"
       >
         {isXfer ? (
-          <span className="inline-flex size-[38px] flex-none items-center justify-center rounded-[11px] bg-slate-500 text-white" aria-hidden="true">
+          <span className="inline-flex size-[34px] flex-none items-center justify-center rounded-lg bg-slate-500 text-white" aria-hidden="true">
             <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
               <path d="M7 7h11l-3-3M17 17H6l3 3" />
             </svg>
@@ -251,16 +251,16 @@ const FeedRow = memo(function FeedRow({
         )}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-[15px] font-semibold text-foreground">{tx.description}</span>
+            <span className="truncate text-sm font-medium text-foreground">{tx.description}</span>
             {inst && <Pill>{installmentLabel(tx)}</Pill>}
             {isRefund && <Pill tone="green">İade</Pill>}
             {projected && <Pill tone="sky">Planlandı</Pill>}
             {pending && <Pill tone="orange">Onay bekliyor</Pill>}
           </span>
-          <span className="truncate text-[13px] text-muted-foreground">{context}</span>
+          <span className="truncate text-xs text-muted-foreground">{context}</span>
         </span>
         <span className="flex flex-none flex-col items-end">
-          <span className={`text-[15px] font-bold tabular-nums ${positive ? 'text-green-600' : isXfer ? 'text-foreground/70' : 'text-foreground'}`}>
+          <span className={`text-sm font-medium tabular-nums ${positive ? 'text-green-600' : isXfer ? 'text-foreground/70' : 'text-foreground'}`}>
             {positive ? '+' : isXfer ? '' : '−'}{formatCurrency(Math.abs(tx.amount), tx.currency)}
           </span>
           {inst && tx.installTotal ? (
@@ -281,7 +281,7 @@ const PILL_TONES = {
 
 function Pill({ tone = 'default', children }: { tone?: keyof typeof PILL_TONES; children: React.ReactNode }) {
   return (
-    <span className={`inline-flex h-5 flex-none items-center rounded-full px-2 text-[11px] font-bold ${PILL_TONES[tone]}`}>
+    <span className={`inline-flex h-5 flex-none items-center rounded-md px-1.5 text-[11px] font-medium ${PILL_TONES[tone]}`}>
       {children}
     </span>
   )

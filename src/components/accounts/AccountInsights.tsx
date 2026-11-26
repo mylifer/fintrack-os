@@ -16,7 +16,7 @@ import type { Account, Transaction } from '@/types'
    satırlar (mutabakat, anapara hareketi, onay bekleyen) isFlowTx ile dışarıda. */
 
 const OTHER_COLOR = '#94a3b8'
-const ACCENT = '#5b4cff'
+const ACCENT = 'var(--primary)'
 
 function addDays(iso: string, n: number): string {
   const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n)
@@ -100,20 +100,23 @@ export function AccountInsights({
   }, [accountTxs, account.id, todayStr])
   const plansLeft = plans.reduce((s, p) => s + p.left, 0)
 
-  const card = 'rounded-3xl border border-border/70 bg-card p-5'
+  // Uygulamanın kart dili (shadcn Card): ince kenarlık, hafif gölge, küçük
+  // büyük harfli başlık — Ayarlar ve panolardaki kartlarla aynı.
+  const card = 'rounded-xl border border-border bg-card text-card-foreground p-5 shadow-sm'
+  const title = 'text-xs font-medium tracking-wide uppercase text-muted-foreground'
 
   return (
     <aside className="flex flex-col gap-4 px-4 pb-6 lg:px-6 xl:pl-0 xl:pt-3" aria-label="Hesap içgörüleri">
       <section className={card} aria-labelledby="ins-cat">
         <div className="flex items-baseline justify-between gap-3">
-          <h2 id="ins-cat" className="text-base font-bold">Nereye gitti?</h2>
-          <span className="text-sm font-bold tabular-nums">{formatCurrency(total)}</span>
+          <h2 id="ins-cat" className={title}>Nereye gitti?</h2>
+          <span className="text-sm font-semibold tabular-nums">{formatCurrency(total)}</span>
         </div>
         {cats.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">Bu dönemde harcama yok.</p>
         ) : (
           <>
-            <div className="my-3.5 flex h-3.5 gap-[3px] overflow-hidden rounded-full" role="img" aria-label="Kategorilere göre harcama dağılımı">
+            <div className="my-3.5 flex h-2 gap-[2px] overflow-hidden rounded-full" role="img" aria-label="Kategorilere göre harcama dağılımı">
               {cats.map(c => <span key={c.id} style={{ width: `${(c.v / catSum) * 100}%`, background: c.color }} />)}
             </div>
             <ul className="grid gap-2 text-sm">
@@ -133,7 +136,7 @@ export function AccountInsights({
 
       {buckets.list.length > 0 && (
         <section className={card} aria-labelledby="ins-time">
-          <h2 id="ins-time" className="text-base font-bold">{buckets.weekly ? 'Haftalık harcama' : 'Aylık harcama'}</h2>
+          <h2 id="ins-time" className={title}>{buckets.weekly ? 'Haftalık harcama' : 'Aylık harcama'}</h2>
           <div className="mt-3 flex h-36 items-end gap-2">
             {buckets.list.map(b => (
               <div key={b.title} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1.5" title={`${b.title}: ${formatCurrency(b.v)}`}>
@@ -141,7 +144,7 @@ export function AccountInsights({
                   {b.v >= 1000 ? `${(b.v / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}B` : Math.round(b.v)}
                 </span>
                 <span
-                  className="w-full max-w-12 rounded-lg"
+                  className="w-full max-w-12 rounded-md"
                   style={{ height: `${Math.max(4, Math.round((b.v / maxBucket) * 96))}px`, background: ACCENT, opacity: b.v === maxBucket ? 1 : 0.45 }}
                   aria-label={`${b.title}: ${formatCurrency(b.v)}`}
                   role="img"
@@ -156,7 +159,7 @@ export function AccountInsights({
       {plans.length > 0 && (
         <section className={card} aria-labelledby="ins-inst">
           <div className="flex items-baseline justify-between gap-3">
-            <h2 id="ins-inst" className="text-base font-bold">Taksitler</h2>
+            <h2 id="ins-inst" className={title}>Taksitler</h2>
             <span className="text-xs text-muted-foreground">{plans.length} plan · kalan {formatCurrency(plansLeft, account.currency)}</span>
           </div>
           <ul className="mt-2 flex flex-col">
@@ -167,22 +170,22 @@ export function AccountInsights({
                   <button
                     type="button"
                     onClick={() => setOpenTx(p.next ?? p.first)}
-                    className="flex w-full items-center gap-3 rounded-xl px-1 py-2 text-left hover:bg-accent/60"
+                    className="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left hover:bg-accent"
                   >
                     <svg width={42} height={42} viewBox="0 0 42 42" className="flex-none" aria-hidden="true">
                       <circle cx="21" cy="21" r={r} fill="none" stroke="currentColor" strokeOpacity=".15" strokeWidth="5" />
                       <circle cx="21" cy="21" r={r} fill="none" stroke={ACCENT} strokeWidth="5" strokeLinecap="round"
                         strokeDasharray={`${(p.done / p.n) * c} ${c}`} transform="rotate(-90 21 21)" />
-                      <text x="21" y="25" textAnchor="middle" fontSize="11" fontWeight="700" fill="currentColor">{p.done}/{p.n}</text>
+                      <text x="21" y="25" textAnchor="middle" fontSize="11" fontWeight="600" fill="currentColor">{p.done}/{p.n}</text>
                     </svg>
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm font-semibold">{p.first.description}</span>
+                      <span className="truncate text-sm font-medium">{p.first.description}</span>
                       <span className="text-xs text-muted-foreground">
                         {p.next ? `Sıradaki ${formatDate(p.next.date.slice(0, 10), 'd MMM')}` : ''}
                       </span>
                     </span>
                     <span className="flex flex-none flex-col items-end">
-                      <span className="text-sm font-bold tabular-nums">{formatCurrency(p.left, account.currency)}</span>
+                      <span className="text-sm font-semibold tabular-nums">{formatCurrency(p.left, account.currency)}</span>
                       <span className="text-xs text-muted-foreground">kaldı</span>
                     </span>
                   </button>
